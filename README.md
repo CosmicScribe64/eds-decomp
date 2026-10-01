@@ -76,8 +76,8 @@ above it.
   [decomp-permuter](https://github.com/simonlindholm/decomp-permuter) on a near-miss draft.
 
 The [`wiki/`](wiki/index.md) holds what we know about the game, the ROM and the toolchain. It opens in Obsidian.
-Start with `wiki/overview.md` and `wiki/concepts/decomp-workflow.md`. Contributors and agents should read
-[`AGENTS.md`](AGENTS.md).
+Start with `wiki/overview.md` and `wiki/concepts/decomp-workflow.md`. Contributors, human or agent, follow
+[`CLAUDE.md`](CLAUDE.md).
 
 Game code is built with `old_agbcc -O2`. The sound driver uses `agbcc -O2 -fprologue-bugfix` and the SDK save
 code `agbcc -O1`. All three come from [pret/agbcc](https://github.com/pret/agbcc).

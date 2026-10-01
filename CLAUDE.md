@@ -15,10 +15,29 @@ tools/dr python3 tools/check.py <unit>      # per-unit match check (safe to run 
 tools/dr python3 tools/check_all.py         # every unit (the CI gate)
 ```
 `check.py`, `check_all.py` and `permute.py` also work without the ROM, taking their targets from the original
-assembly (`tools/target.py`). See `wiki/tools/rom-free-workflow.md`. Agents working through GitHub follow `AGENTS.md`.
+assembly (`tools/target.py`). See `wiki/tools/rom-free-workflow.md`.
+Without Docker (e.g. web sandboxes): `tools/setup_native.sh`, then `. ~/.eds-tools/env.sh`; `tools/dr` then runs commands directly.
 Code lives in units (`units.txt`): `src/<unit>.c` with `INCLUDE_ASM` for unmatched functions, or `asm/<unit>.s`.
 The decomp workflow, conventions and matching tips are in `wiki/concepts/decomp-workflow.md`.
 Naming convention for decompiled symbols: pret-style (`CamelCase` functions, `gCamelCase` globals, `sub_08XXXXXX`/`gUnk_0XXXXXXX` until named).
+
+## Matching rules (for every contributor, human or agent)
+
+- **No ROM, ever.** Never commit, upload, download or ask for the game image or its data. The original code of
+  every function is in `asm/nonmatching/<unit>/<func>.s`, and the tools compare compiled C against it.
+- Unmatched functions are `INCLUDE_ASM` lines, often with a parked attempt above them in
+  `#if 0 /* NONMATCHING: what differs */ ... #endif`. Check with
+  `tools/dr python3 tools/check.py <unit> --diff <func> --norm`. A function counts only when the whole unit
+  reports `unit bytes MATCH`; otherwise put the `INCLUDE_ASM` back and park the best attempt.
+- Near misses: `tools/dr python3 tools/permute.py <unit> <func> --run -j 2 --minutes 20`.
+- Ordinary C is preferred. Byte-identical **FAKEMATCH** forms are accepted when commented `/* FAKEMATCH: why */`:
+  the permuter's odd-but-valid C, `register T x asm("rN")`, empty `asm("" : "+r"(x))` constraints. Hand-written
+  instructions inside `asm()` are not accepted.
+- Keep placeholder names (`sub_08XXXXXX`, `gUnk_0XXXXXXX`); other units and the build depend on them. Declare
+  prototypes, externs and structs locally in the unit; reference ROM data and RAM through address-suffixed
+  `extern`s (no string literals, `const` tables or defined globals in C). One unit per agent or PR.
+- CI (`.github/workflows/progress.yml`, no ROM): `check_all.py` must pass, a PR may not lower the number of
+  matching functions, and the objdiff report feeds decomp.dev. `make compare` needs the ROM and is run locally.
 
 ## Layout
 

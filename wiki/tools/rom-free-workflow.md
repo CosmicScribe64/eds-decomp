@@ -8,7 +8,7 @@ updated: 2026-10-01
 ---
 # Working without the ROM
 
-Goal: let GitHub-connected agents and CI work on the matching decomp without the game ever being committed or provided. ROMs are never put on GitHub. Agent-facing instructions are in `AGENTS.md`.
+Goal: let GitHub-connected agents and CI work on the matching decomp without the game ever being committed or provided. ROMs are never put on GitHub. Contributor and agent rules are in `CLAUDE.md` (Matching rules).
 
 ## How it works
 - **Targets come from the original assembly.** `tools/target.py` exposes `ROM`, which is the real `baserom.gba` when present. Without it, a slice-only view assembles the containing unit's `asm/<unit>.s` (with `asm/nonmatching/<unit>/*.s`), links it alone at the unit's ROM address with symbol stubs, and returns the bytes. Results are cached in `build/target-cache/`. `check.py`, `permute.py`, `check_all.py` and the private scripts that slice `check.ROM` all use it.

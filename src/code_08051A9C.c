@@ -261,7 +261,7 @@ int sub_08051ED0(int player)
 {
     struct Duel *d = &gUnk_020192E0;
     u8 *step = &d->step;
-    s8 st = *step;
+    u8 st = *step;
     switch (st) {
     case 0:
         sub_080602A4(0x206, 0x712, 0xB, gUnk_08086018);
@@ -270,7 +270,7 @@ int sub_08051ED0(int player)
     case 1:
         if (sub_08052F38(1)) {
             int p = 1 & player;
-            u16 id = CARD_ID(((struct DuelP *)d)->players[(u16)(p)].hand[gUnk_0201CFB0.w82C]);
+            u16 id = CARD_ID(((struct DuelP *)d)->players[p].hand[gUnk_0201CFB0.w82C]);
             if (sub_08054398(player, id) != 0 && sub_08007834(id) == 0) {
                 u32 lvl;
                 CARD_LEVEL(id, lvl);

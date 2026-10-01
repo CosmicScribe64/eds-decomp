@@ -618,4 +618,101 @@ void sub_080657F8(u16 pos)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08064AF0", sub_080657F8); /* 0x080657F8 size 0x2BC */
+extern void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2);
+extern void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
+extern void *memset(void *dst, int c, unsigned int n);
+extern void *memcpy(void *dst, const void *src, unsigned int n);
+extern const u8 gUnk_08087568[4];
+static inline u16 CardAtk5AB4(u16 id)
+{
+    switch ((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return ((((const u32 *)0x08621DE0)[id & 0x7FF] << 14) >> 23) * 10;
+    }
+}
+static inline u16 CardDef5AB4(u16 id)
+{
+    switch ((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1FF) * 10;
+    }
+}
+#if 0 /* NONMATCHING: 282 lines; first 37% exact. Divine digit loops: target hoists ((row+1)<<5)+1 and keeps row<<5 on the stack */
+/* Draw the selected card's ATK/DEF into the tilemap at (col, row); the Divine cards (type 24) get fixed
+ * digit patterns by card number instead (hypothesis). */
+void sub_08065AB4(u16 *map, u16 col, u16 row)
+{
+    u8 d[4];
+    u16 id;
+    u8 i;
+
+    id = sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]);
+    switch (CARD_KIND(id)) {
+    case 21:
+    case 22:
+    case 23:
+        break;
+    case 24:
+        map[col + (row << 5)] = 0x198;
+        for (i = 0; i <= 1; i++) {
+            int r = ((row + i) & 0x1F) << 5;
+            map[((col + 1) & 0x1F) + r] = 0x2258;
+            map[((col + 2) & 0x1F) + r] = 0x2230;
+            map[((col + 3) & 0x1F) + r] = 0x2230;
+            map[((col + 4) & 0x1F) + r] = 0x2230;
+        }
+        map[col + (((row + 1) & 0x1F) << 5)] = 0x199;
+        switch (CARD_NUM(id)) {
+        case 0x776:
+            {
+                u8 *p = d;
+                memset(p, 0, 4);
+                *p = 4;
+            }
+            for (i = 0; i <= 3; i++) {
+                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
+                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+            }
+            break;
+        case 0x777:
+            {
+                u8 *p = d;
+                memset(p, 0, 4);
+                *p = 10;
+            }
+            for (i = 0; i <= 3; i++) {
+                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
+                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+            }
+            break;
+        case 0x778:
+            memcpy(d, gUnk_08087568, 4);
+            for (i = 0; i <= 3; i++) {
+                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
+                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+            }
+            break;
+        }
+        break;
+    default:
+        map[col + (row << 5)] = 0x198;
+        map[col + (((row + 1) & 0x1F) << 5)] = 0x199;
+        sub_080794E0(CardAtk5AB4(id), 4, 1, map, (col + 4) & 0x1F, row, 2, 0x300, 0);
+        sub_080794E0(CardDef5AB4(id), 4, 1, map, (col + 4) & 0x1F, (row + 1) & 0x1F, 2, 0x300, 0);
+        break;
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08064AF0", sub_08065AB4); /* 0x08065AB4 size 0x3B8 */

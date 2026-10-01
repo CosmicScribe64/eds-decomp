@@ -288,6 +288,98 @@ void sub_08043758(void)
         sub_080761F0((x0 + i * 10) | (y << 16), 0, i < gUnk_02017A40[0x3E1] ? 0x431E : 0x431D);
     }
 }
+/* Effect queue at 0x02017A40: 0x14-byte entries from +0x280, entry count at +0x3C0, remaining cost at +0x3E1. */
+struct EffEnt37CC { u16 id; u8 player : 1; u8 rest2 : 7; u8 pad[0x14 - 3]; };
+struct EffState37CC { u8 pad[0x280]; struct EffEnt37CC ent[16]; u16 count; u8 pad3C2[0x3E1 - 0x3C2]; u8 need; };
+#define EQ ((struct EffState37CC *)gUnk_02017A40)
+#define EQ_CUR (EQ->ent[EQ->count - 1])
+struct Scr828 { u8 pad[0x828]; u32 mode; u32 sel; };
+extern struct Scr828 gUnk_0201CFB0;
+extern u32 gUnk_02019968[];
+int sub_08008860(int player);
+u32 sub_08052F38(u32 msg);
+int sub_0800A2A8(int player, u16 number);
+void sub_08017FF4(int player, int zone);
+void sub_080193D4(int player, int a, int b, int c);
+void sub_08077AEC(int se);
+#define CARD_ID(w) (((w) << 20) >> 20)
+#if 0 /* NONMATCHING: 99 lines; structure right, register choices differ in both cases */
+/* Tribute selection step: the chosen card's level is taken off the remaining cost; returns 1 once it is paid
+ * (hypothesis). Mode 0 picks from the monster zones, mode 11 from the hand. */
+int sub_080437CC(void)
+{
+    u32 msg = 0xF0;
+    sub_0804353C(EQ_CUR.id);
+    if (sub_08008860(EQ_CUR.player) <= 4)
+        msg = 0xF1;
+    if (sub_08052F38(msg) != 0) {
+        switch (gUnk_0201CFB0.mode) {
+        case 11: {
+            int p = EQ_CUR.player;
+            u32 type;
+            u16 id = CARD_ID(*(u32 *)(p * 0xD64 + gUnk_0201CFB0.sel * 4 + (u32)gUnk_02019968));
+            const u16 *num = &gUnk_08622AB4[id & 0x7FF];
+            if (*num == gUnk_0819A990[sub_0804353C(EQ_CUR.id)].a && sub_0800A2A8(EQ_CUR.player, *num) <= 1) {
+                sub_08077AEC(3);
+                return 0;
+            }
+            type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+            if (type <= 0x14) {
+                int lv;
+                switch ((int)type) {
+                case 0x15:
+                case 0x16:
+                case 0x17:
+                    lv = 0;
+                    break;
+                case 0x18:
+                    lv = 10;
+                    break;
+                default:
+                    lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                    break;
+                }
+                if (EQ->need < lv)
+                    EQ->need = 0;
+                else
+                    EQ->need -= lv;
+                sub_080193D4(EQ_CUR.player, gUnk_0201CFB0.sel, 0, 1);
+            }
+            break;
+        }
+        case 0: {
+            int p = EQ_CUR.player;
+            u32 type;
+            u16 id = CARD_ID(*(u32 *)(gUnk_0201CFB0.sel * 0x94 + p * 0xD64 + (u32)gUnk_0201930C));
+            type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+            if (type <= 0x14) {
+                int lv;
+                switch ((int)type) {
+                case 0x15:
+                case 0x16:
+                case 0x17:
+                    lv = 0;
+                    break;
+                case 0x18:
+                    lv = 10;
+                    break;
+                default:
+                    lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                    break;
+                }
+                if (EQ->need < lv)
+                    EQ->need = 0;
+                else
+                    EQ->need -= lv;
+                sub_08017FF4(EQ_CUR.player, gUnk_0201CFB0.sel);
+            }
+            break;
+        }
+        }
+    }
+    return EQ->need == 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_080437CC); /* 0x080437CC size 0x2DC */
 /* Can the recipe entry matching this card be satisfied (enough cost in hand + field)? */
 int sub_08043AA8(struct CardRef *ref)

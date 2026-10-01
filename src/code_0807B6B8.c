@@ -770,4 +770,109 @@ u16 sub_0807C4A8(void)
     *(vu16 *)0x0400004C = 0;
     return sub_08075AE4(2);
 }
+/* Password entry state at 0x0201F7B0 (same block as struct LinkState). */
+struct PwView {
+    u8 digits[8];   /* +0x00 entered digits */
+    u8 shown[8];    /* +0x08 copy used for the lookup */
+    u8 pos : 4;     /* +0x10 cursor position 0-7 */
+    u32 key : 4;    /*       selected key: 0-9 digits, 10 = OK */
+    u8 blink : 6;   /* +0x11 */
+    u32 timer : 6;  /* +0x10 bits 14-19 */
+    u16 c : 12;     /* +0x12 bits 4-15 */
+    u16 card;       /* +0x14 result of sub_0807C304 */
+};
+/* Keypad layout: screen position and the neighbours for up/down (byte 6) and left/right (byte 7). */
+struct KeyNav { u8 x, y; u8 pad[4]; u8 up : 4; u8 down : 4; u8 left : 4; u8 right : 4; };
+extern struct KeyNav gUnk_08087E24_n[] asm("gUnk_08087E24");
+extern const u8 gUnk_08087F88[], gUnk_08087F94[], gUnk_08087F98[];
+void sub_08077AEC(int se);
+void sub_0801A7DC(const u8 *fmt, ...);
+void sub_0801A7E8(void);
+#define PW ((struct PwView *)gUnk_0201F7B0)
+struct KeysView { u8 pad[6]; u16 pressed; };
+extern struct KeysView gKeys_C4CC asm("gUnk_03000040");
+#define PW_KEYS (gKeys_C4CC.pressed)
+#if 0 /* NONMATCHING: 63 lines; A-button block: target extracts key as (b<<24)>>28 with an unsigned compare */
+/* Password entry, one frame: L/R move the cursor, the d-pad moves between keys, A enters a digit (or looks up
+ * the password on OK), B deletes or cancels. Returns 1 when the screen is done. */
+u32 sub_0807C4CC(void)
+{
+    int i;
+
+    sub_0807BF68();
+    sub_0807BF9C(PW->pos);
+    sub_0807BFE0();
+    PW->blink++;
+    PW->timer = 0x20;
+    if (PW_KEYS & 0x200) {
+        PW->pos = (PW->pos + 7) & 7;
+        PW->blink = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 0x100) {
+        PW->pos = (PW->pos + 9) & 7;
+        PW->blink = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 0x40) {
+        PW->key = gUnk_08087E24_n[PW->key].up;
+        PW->timer = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 0x80) {
+        PW->key = gUnk_08087E24_n[PW->key].down;
+        PW->timer = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 0x20) {
+        PW->key = gUnk_08087E24_n[PW->key].left;
+        PW->timer = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 0x10) {
+        PW->key = gUnk_08087E24_n[PW->key].right;
+        PW->timer = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (PW_KEYS & 1) {
+        sub_08077AEC(0x26);
+        if ((u32)PW->key <= 9) {
+            PW->digits[PW->pos] = PW->key;
+            sub_080761F0((gUnk_08087E24_n[PW->key].x - 4) | ((gUnk_08087E24_n[PW->key].y - 12) << 16), 0x80, 0x10E0);
+            if (PW->pos <= 6) {
+                PW->pos++;
+                PW->blink = 0x20;
+            } else {
+                PW->key = 10;
+                PW->timer = 0x20;
+            }
+        } else {
+            sub_080761F0(0x780024, 0x80, 0x10E3);
+            sub_080761F0(0x780044, 0x80, 0x10E7);
+            sub_08075294((u32)PW->shown, PW->digits, 8);
+            PW->card = sub_0807C304();
+            PW->c = 0;
+            sub_0801A7DC(gUnk_08087F88);
+            for (i = 0; i <= 7; i++)
+                sub_0801A7DC(gUnk_08087F94, PW->shown[i] + '0');
+            sub_0801A7DC(gUnk_08087F98, PW->card);
+            sub_0801A7E8();
+            return 1;
+        }
+    }
+    if (PW_KEYS & 2) {
+        if (PW->pos == 0)
+            goto cancel;
+        PW->pos--;
+        PW->blink = 0x20;
+        sub_08077AEC(0x25);
+    }
+    if (!(PW_KEYS & 0xC))
+        return 0;
+cancel:
+    sub_08077AEC(2);
+    ((u8 *)&gUnk_03000040)[0x4859] = 10;
+    return 1;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807C4CC); /* 0x0807C4CC size 0x2FC */

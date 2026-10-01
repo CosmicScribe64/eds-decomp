@@ -511,4 +511,183 @@ u32 sub_0801FE54(void)
 }
 
 INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_0801FEA0); /* 0x0801FEA0 size 0x490 */
+/* 0x02017A40 beyond the lists: resolution step and the current entry's two handlers. */
+typedef u16 (*ActFn0330)(struct ActEntry *e, struct ActEntry *prev);
+struct ActState0330 {
+    struct ActEntry listA[32];
+    struct ActEntry listB[16];  /* +0x280 */
+    u16 countB;                 /* +0x3C0 */
+    u8 pad3C2[0x3D0 - 0x3C2];
+    u8 flag : 1;                /* +0x3D0 */
+    u8 step : 7;
+    u8 idx;                     /* +0x3D1 */
+    u8 b3D2;
+    u8 b3D3;
+    u8 pad3D4[0x3E4 - 0x3D4];
+    u8 b3E4;
+    u8 b3E5;
+    u8 pad3E6[0x480 - 0x3E6];
+    ActFn0330 fnA;              /* +0x480 */
+    ActFn0330 fnB;              /* +0x484 */
+    u8 b488;
+    u8 pad489[0x490 - 0x489];
+    u8 b490;
+    u8 b491;
+};
+extern struct ActState0330 gAct0330 asm("gUnk_02017A40");
+struct EffDef0330 { u8 pad[0x10]; ActFn0330 fnA; ActFn0330 fnB; };
+extern const struct EffDef0330 gUnk_0819A9D4[];
+struct Step150 { u8 pad[0x150]; u8 flag : 1; u8 step : 7; };
+extern struct Step150 gUnk_02017CC0;
+struct LogEnt0330 { s16 i; struct ActEntry e; };
+s32 sub_08047058(u16 card);
+void sub_080197C0(int player, u16 card);
+void sub_0801A7B4(void *p, int a);
+s32 sub_0801A32C(void);
+s32 sub_0801FEA0(struct ActEntry *e, u32 player);
+s32 sub_0802D30C(struct ActEntry *e, u32 player);
+#define LAST0330 (&gAct0330.listB[gAct0330.countB - 1])
+#if 0 /* NONMATCHING: 1142 lines; first full draft (same 0x100 frame and case order); case bodies differ in size */
+/* Effect chain resolution, one step per call: for each queued entry look up its two handlers (table at
+ * 0x0819A9D4), run them, then log the chain over the link and hand control to the players (hypothesis). */
+int sub_08020330(void)
+{
+    switch (gAct0330.step) {
+    case 0:
+        gAct0330.idx = 0;
+        gAct0330.step++;
+    case 1: {
+        struct ActEntry *e;
+        s32 r = sub_08047058(gAct0330.listB[gAct0330.idx].card);
+        if (r == -1) {
+            gAct0330.fnA = NULL;
+            gAct0330.fnB = NULL;
+        } else {
+            gAct0330.fnA = gUnk_0819A9D4[r].fnA;
+            gAct0330.fnB = gUnk_0819A9D4[r].fnB;
+        }
+        if (gAct0330.listB[gAct0330.idx].flag4_0)
+            gAct0330.fnA = NULL;
+        e = &gAct0330.listB[gAct0330.idx];
+        if (e->flag4_1)
+            gAct0330.fnB = NULL;
+        sub_080197C0(e->flag2_0, e->card);
+        gUnk_02017FB0.filler308[0] &= ~2 & ~8;
+        gAct0330.b3E4 = 0;
+        gAct0330.b3E5 = 0;
+        gAct0330.step++;
+        break;
+    }
+    case 2:
+        if (gAct0330.fnA == NULL) {
+            gAct0330.step += 2;
+            break;
+        }
+        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]))
+            sub_080229BC(0xF091, &gAct0330.listB[gAct0330.idx], 0x14);
+        gAct0330.step++;
+    case 3:
+        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]) == 0) {
+            if (gAct0330.fnA(&gAct0330.listB[gAct0330.idx],
+                             gAct0330.countB > 1 ? &gAct0330.listB[gAct0330.countB - 2] : NULL))
+                gUnk_02017FB0.filler308[0] |= 8;
+        }
+        if (gUnk_02017FB0.filler308[0] & 8)
+            gAct0330.step++;
+        break;
+    case 4:
+        if (gAct0330.fnB == NULL) {
+            gAct0330.step += 2;
+            break;
+        }
+        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]))
+            sub_080229BC(0xF081, &gAct0330.listB[gAct0330.idx], 0x14);
+        gAct0330.step++;
+    case 5:
+        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]) == 0) {
+            if (gAct0330.fnB(&gAct0330.listB[gAct0330.idx],
+                             gAct0330.countB > 1 ? &gAct0330.listB[gAct0330.countB - 2] : NULL))
+                gUnk_02017FB0.filler308[0] |= 2;
+        }
+        if (gUnk_02017FB0.filler308[0] & 2)
+            gAct0330.step++;
+        break;
+    case 6:
+        gAct0330.idx++;
+        if (gAct0330.idx < gAct0330.countB) {
+            gAct0330.step = 1;
+            break;
+        }
+        gAct0330.step++;
+    case 7:
+        if (gUnk_02015EE8.link) {
+            s16 i;
+            u8 buf[0x100];
+            sub_0802297C(0xF061, gAct0330.countB, 0, 0);
+            for (i = 0; i < gAct0330.countB; i++) {
+                *(s16 *)buf = i;
+                sub_08075294(buf + 2, &gAct0330.listB[i], 0x14);
+                sub_080229BC(0xF062, buf, 0x16);
+            }
+            sub_0802297C(0xF063, gAct0330.countB, 0, 0);
+            gUnk_02017FB0.filler308[0] &= 0x7F;
+        }
+        gAct0330.step++;
+        break;
+    case 8:
+        sub_0801A7B4(&gUnk_02017CC0, 0);
+        gUnk_02017CC0.step++;
+        break;
+    case 9:
+        if (sub_0801A32C())
+            gAct0330.step++;
+        break;
+    case 10:
+        if (gUnk_02015EE8.link && !(gUnk_02017FB0.filler308[0] >> 7))
+            break;
+        gAct0330.b488 &= ~1;
+        gAct0330.step++;
+    case 11:
+        if (sub_0802D30C(LAST0330, 1 - LAST0330->flag2_0)) {
+            gAct0330.b490 = 0;
+            gAct0330.b491 &= 0xF0 & 0x7F;
+        } else {
+            gAct0330.step++;
+        }
+        gAct0330.step++;
+        break;
+    case 12:
+        if ((u16)sub_0801FEA0(LAST0330, 1 - LAST0330->flag2_0)) {
+            if (gAct0330.b491 & 0x80)
+                gAct0330.step = 1;
+            else
+                gAct0330.step++;
+        }
+        break;
+    case 13:
+        if (sub_0802D30C(LAST0330, LAST0330->flag2_0)) {
+            gAct0330.b490 = 0;
+            gAct0330.b491 &= 0x7F;
+        } else {
+            gAct0330.step++;
+        }
+        gAct0330.step++;
+        break;
+    case 14:
+        if ((u16)sub_0801FEA0(LAST0330, LAST0330->flag2_0)) {
+            if (gAct0330.b491 & 0x80)
+                gAct0330.step = 1;
+            else
+                gAct0330.step++;
+        }
+        break;
+    default:
+        gAct0330.flag = 0;
+        gAct0330.b3D2 = 1;
+        gAct0330.b3D3 = 0;
+        break;
+    }
+    return 1;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_08020330); /* 0x08020330 size 0x7C4 */

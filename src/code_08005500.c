@@ -26,7 +26,9 @@ extern struct TitleState gUnk_0201527C;
 /* 0x02013D90: follows the save image */
 struct Unk02013D90 {
     u8 flags;               /* +0x00: bit0 selects the right-hand layout */
-    u8 filler1[0x2B];
+    u8 filler1;
+    u16 card;               /* +0x02: card shown on the detail screen */
+    u8 filler4[0x28];
     s32 unk2C;              /* +0x2C: number shown by sub_0800642C */
     s32 unk30;              /* +0x30: number shown by sub_0800646C */
     u8 filler34[8];
@@ -315,4 +317,112 @@ void sub_0800646C(void)
     sub_080063D0(x + 0x44, 0x8E, gUnk_02013D90.unk30);
 }
 
+static inline int Level64AC(u16 id)
+{
+    switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 10;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+    }
+}
+/* Spell/trap subtype icon index (bits 17-19 of the stats word for types 21 and 22). */
+static inline int Icon64AC(u16 id)
+{
+    switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+    case 21:
+    case 22:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0xE0000) >> 17;
+    default:
+        return 0;
+    }
+}
+#if 0 /* NONMATCHING: 381 lines; build keeps one more callee-saved register (r9), and the ROM reloads and re-masks the card id for each table read */
+/* Card detail screen: level stars (squeezed together above 9), the spell/trap icon, and the fixed
+ * ATK/DEF digits of the three Divine cards (hypothesis from the sprite tiles). */
+void sub_080064AC(void)
+{
+    int x;
+    int level;
+    int i;
+
+    if (gUnk_02013D90.flags & 1)
+        x = 0x48;
+    else
+        x = 0;
+    level = Level64AC(gUnk_02013D90.card);
+    if ((u16)(((const u16 *)0x08622AB4)[gUnk_02013D90.card & 0x7FF] - 0x780) <= 0x4F)
+        return;
+    switch ((int)((((const u32 *)0x08621DE0)[gUnk_02013D90.card & 0x7FF] & 0x1F00000) >> 20)) {
+    case 21:
+    case 22:
+        sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
+        if (Icon64AC(gUnk_02013D90.card) != 0)
+            sub_080761F0((x + 0x50) | 0x240000, 0, 0x2024);
+        break;
+    case 23:
+        break;
+    default:
+        for (i = 0; i < level; i++) {
+            if (level <= 9)
+                sub_080761F0((x + 0x54 - i * 8) | 0x260000, 0, 2);
+            else
+                sub_080761F0((0x54 - 0x4E * i / level + x) | 0x260000, 0, 2);
+        }
+        i = ((const u32 *)0x08621DE0)[gUnk_02013D90.card & 0x7FF] >> 29;
+        if (i != 0 && i <= 6)
+            sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
+        sub_0800642C();
+        sub_0800646C();
+        break;
+    case 24:
+        for (i = 0; i <= 9; i++)
+            sub_080761F0((x + 0x54 - i * 8) | 0x260000, 0, 2);
+        sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
+        switch (((const u16 *)0x08622AB4)[gUnk_02013D90.card & 0x7FF]) {
+        case 0x776:
+            sub_080761F0(0x86003F, 0x4000, 0x303A);
+            sub_080761F0(0x86004B, 0, 0x3034);
+            sub_080761F0(0x86004F, 0, 0x3030);
+            sub_080761F0(0x860053, 0, 0x3030);
+            sub_080761F0(0x860057, 0, 0x3030);
+            sub_080761F0(0x8E003F, 0x4000, 0x303C);
+            sub_080761F0(0x8E004B, 0, 0x3034);
+            sub_080761F0(0x8E004F, 0, 0x3030);
+            sub_080761F0(0x8E0053, 0, 0x3030);
+            sub_080761F0(0x8E0057, 0, 0x3030);
+            break;
+        case 0x777:
+            sub_080761F0(0x86003F, 0x4000, 0x303A);
+            sub_080761F0(0x86004B, 0, 0x303F);
+            sub_080761F0(0x86004F, 0, 0x3030);
+            sub_080761F0(0x860053, 0, 0x3030);
+            sub_080761F0(0x860057, 0, 0x3030);
+            sub_080761F0(0x8E003F, 0x4000, 0x303C);
+            sub_080761F0(0x8E004B, 0, 0x303F);
+            sub_080761F0(0x8E004F, 0, 0x3030);
+            sub_080761F0(0x8E0053, 0, 0x3030);
+            sub_080761F0(0x8E0057, 0, 0x3030);
+            break;
+        case 0x778:
+            sub_080761F0(0x86003F, 0x4000, 0x303A);
+            sub_080761F0(0x86004B, 0, 0x303E);
+            sub_080761F0(0x86004F, 0, 0x303E);
+            sub_080761F0(0x860053, 0, 0x303E);
+            sub_080761F0(0x860057, 0, 0x303E);
+            sub_080761F0(0x8E003F, 0x4000, 0x303C);
+            sub_080761F0(0x8E004B, 0, 0x303E);
+            sub_080761F0(0x8E004F, 0, 0x303E);
+            sub_080761F0(0x8E0053, 0, 0x303E);
+            sub_080761F0(0x8E0057, 0, 0x303E);
+            break;
+        }
+        break;
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08005500", sub_080064AC); /* 0x080064AC size 0x3CC */

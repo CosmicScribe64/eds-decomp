@@ -640,3 +640,9 @@ updated: 2026-09-29
 - First C drafts (m2c now runs in the image; the old drafts were empty failures): `sub_0805E1D0` (174 lines), `sub_08076DAC` (289, follows `sub_08076BEC`), `sub_080437CC` (99), `sub_08065AB4` (282, first 37% exact).
 - `sub_0806DBB0` draft 46 to 43 lines (LEFT menu tail pinned to the RIGHT tail's registers).
 - Full `make compare`: `eds.gba: OK`; `check_all` 112/112. 1,707/1,976 functions, 60.91% of code bytes.
+
+## [2026-10-01] progress | Solo pass 2: first drafts for the no-draft list
+- First C drafts (each parked with its blocker noted): `sub_0807C4CC` password keypad (63 lines), `sub_0805E788` screen transition (115), `sub_080064AC` card detail stars (381), `sub_0803283C` sweep effect (487), `sub_080686E8` deck-edit list builder (760), `sub_08043B98` ritual summon (1,221), `sub_08020330` effect chain resolution (1,142).
+- `sub_08051ED0` draft 18 to 13 lines (only the level-table reload differs).
+- `build/solo-s49/climb.py` gained two mutation kinds (redundant re-mask, index casts); one run over the 53 drafts within 40 lines gave three small improvements and no matches.
+- Full `make compare`: `eds.gba: OK`; `check_all` 112/112. Still 1,707/1,976 functions (60.91%).

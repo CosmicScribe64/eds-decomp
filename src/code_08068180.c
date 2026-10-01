@@ -215,6 +215,102 @@ u16 *sub_08068668(int list)
         return gUnk_0201DB20_p.lists.l2.a[gUnk_0201DB20_p.arr14A0[2]];
     }
 }
+#define L0_86E8 (((struct CardList0View *)gUnk_0201DB20)->cards)
+#define L1_86E8 (((struct CardList1View *)gUnk_0201DB20)->cards)
+#define L2_86E8 (((struct CardList2View *)gUnk_0201DB20)->cards)
+#define CNT_86E8 (gUnk_0201DB20_p.cnt1494)
+/* Second row of card list `list`. */
+static inline u16 *Row1_86E8(u8 list)
+{
+    switch (list) {
+    case 0:
+        return L0_86E8[1];
+    case 1:
+        return L1_86E8[1];
+    case 2:
+        return L2_86E8[1];
+    }
+}
+static inline int Has2_86E8(u16 id)
+{
+    if (gUnk_0201DB20[0x1C5A] & 0x20)
+        return (T9(id) << 28) >> 30;
+    return ((T9(id) << 28) >> 30) || (T9(id) >> 6);
+}
+struct Mode86E8 { u8 pad[0x4874]; u8 mode : 2; };
+extern struct Mode86E8 gMain_86E8 asm("gUnk_03000040");
+#if 0 /* NONMATCHING: 760 lines; first draft. ROM frame is 0xC (build 0x4) and keeps 0x0201DB20 in r8; list-row helper shape unknown */
+/* Rebuild the three deck-edit card lists from the trunk counts, filtered by the list mode, then compact the
+ * second row of every list whose filter flag (arr14A0) is 1 (hypothesis). */
+void sub_080686E8(void)
+{
+    u16 i;
+    u16 id;
+
+    for (i = 0; i <= 2; i++)
+        CNT_86E8[0][i] = 0;
+    switch (gMain_86E8.mode) {
+    case 1:
+        for (id = 1; id <= 0x334; id++) {
+            u16 num = ((const u16 *)0x08622AB4)[id & 0x7FF];
+            if ((u16)(num - 0x4BA) > 0x315 || (u16)(num - 0x76C) <= 0x13) {
+                if (TN(id))
+                    L0_86E8[0][CNT_86E8[0][0]++] = id;
+                if (Has2_86E8(id))
+                    L1_86E8[0][CNT_86E8[0][1]++] = id;
+                if ((T9(id) << 26) >> 30)
+                    L2_86E8[0][CNT_86E8[0][2]++] = id;
+            }
+        }
+        break;
+    case 0:
+        for (id = 1; id <= 0x334; id++) {
+            if ((u16)(((const u16 *)0x08622AB4)[id & 0x7FF] - 0x780) > 0x4F) {
+                if (TN(id))
+                    L0_86E8[0][CNT_86E8[0][0]++] = id;
+                if (Has2_86E8(id))
+                    L1_86E8[0][CNT_86E8[0][1]++] = id;
+                if ((T9(id) << 26) >> 30)
+                    L2_86E8[0][CNT_86E8[0][2]++] = id;
+            }
+        }
+        break;
+    case 2:
+        for (id = 1; id <= 0x334; id++) {
+            if ((u16)(((const u16 *)0x08622AB4)[id & 0x7FF] - 0x76C) > 0x63)
+                L0_86E8[0][CNT_86E8[0][0]++] = id;
+        }
+        break;
+    }
+    for (i = 0; i <= 2; i++) {
+        if (gUnk_0201DB20_p.arr14A0[i] == 1) {
+            u16 k = 0;
+            u16 j;
+            for (j = 0; j < CNT_86E8[1][i]; j++) {
+                u16 c;
+                switch (i) {
+                case 2:
+                    c = L2_86E8[1][j];
+                    if ((T9(c) << 26) >> 30)
+                        Row1_86E8(i)[k++] = c;
+                    break;
+                case 0:
+                    c = L0_86E8[1][j];
+                    if (TN(c))
+                        Row1_86E8(i)[k++] = c;
+                    break;
+                case 1:
+                    c = L1_86E8[1][j];
+                    if (((T9(c) << 28) >> 30) || (T9(c) >> 6))
+                        Row1_86E8(i)[k++] = Row1_86E8(i)[j];
+                    break;
+                }
+            }
+            CNT_86E8[1][i] = k;
+        }
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08068180", sub_080686E8); /* 0x080686E8 size 0x4A8 */
 /* Load the graphic of the currently selected card into VRAM 0x06012FE0 if it changed. */
 /* The selected list is 0, 1 or 2, as in the adjacent list accessors. */

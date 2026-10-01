@@ -125,6 +125,170 @@ struct SaveHdr {
 };
 extern struct SaveHdr gUnk_02011C20;
 
+/* Transition state at 0x02018450 (+0x15C step, +0x15D sub-step, +0x15F timer). */
+struct ScnE788 { u8 pad[0x15C]; u8 step; u8 sub; u8 unk15E; u8 t; };
+extern struct ScnE788 gUnk_02018450;
+struct KeysE788 { u8 pad[4]; u16 held; u16 pressed; };
+extern struct KeysE788 gKeysE788 asm("gUnk_03000040");
+/* Per-side pointers to the BG offset words shaken during the transition. */
+extern s32 *const gUnk_081A4194[];
+extern void (*IntrTable[])(void);
+void sub_080757F4(void);
+void sub_0805DD3C(void);
+void sub_0805DEA4(u16 flags, s32 *pos, int mode);
+void sub_0805DF04(int side, int delta, int mode);
+s32 sub_08076F9C(void);
+u16 sub_08075A6C(int speed);
+void sub_08077AEC(int se);
+#define E788_FAST ((gKeysE788.held & 2) || (((u8 *)&gUnk_0201CFB0)[0] & 1))
+#if 0 /* NONMATCHING: 115 lines; structure and jump tables right, register choices differ (ROM uses r6 as a scratch for constants) */
+/* Screen transition (fade, shake and blend) run once per frame; returns 1 when finished (hypothesis).
+ * Holding B (or the fast flag) speeds up every timer. */
+u32 sub_0805E788(u16 a, u16 b, u16 flags)
+{
+    s32 pos[2];
+    int k;
+    u8 v;
+
+    pos[0] = a;
+    pos[1] = b;
+    switch (gUnk_02018450.step) {
+    case 0:
+        *(vu16 *)0x04000000 |= 0x1C00;
+        *(vu16 *)0x04000050 = 0x3FFF;
+        gUnk_02018450.step++;
+    case 1:
+        *(vu16 *)0x04000054 = 0xF - gUnk_02018450.sub;
+        v = gUnk_02018450.sub;
+        if (v <= 0xE) {
+            gUnk_02018450.sub++;
+            if (E788_FAST && gUnk_02018450.sub <= 0xB)
+                gUnk_02018450.sub += 3;
+        } else {
+            gUnk_02018450.step++;
+        }
+        return 0;
+    case 2:
+        sub_080757F4();
+        *(vu16 *)0x04000208 = 0;
+        *(vu16 *)0x04000200 &= ~2;
+        *(vu16 *)0x04000208 = 1;
+        *(vu16 *)0x04000208 = 0;
+        *(vu16 *)0x04000200 &= ~2;
+        IntrTable[1] = 0;
+        *(vu16 *)0x04000208 = 1;
+        sub_0805DD3C();
+        gUnk_02018450.sub = 0;
+        gUnk_02018450.unk15E = 0;
+        gUnk_02018450.t = 0;
+        gUnk_02018450.step++;
+    case 3:
+        switch (gUnk_02018450.sub) {
+        case 0:
+            if (flags == 0) {
+                gUnk_02018450.step++;
+                return 0;
+            }
+            gUnk_02018450.sub++;
+        case 1:
+            if (gUnk_02018450.t <= 0x1D) {
+                sub_0805DEA4(flags, pos, 0);
+                gUnk_02018450.t++;
+                if (E788_FAST && gUnk_02018450.t <= 0x15)
+                    gUnk_02018450.t += 7;
+                break;
+            }
+            sub_08077AEC(9);
+            gUnk_02018450.t = 0;
+            gUnk_02018450.sub++;
+        case 2:
+            sub_0805DEA4(flags, pos, 1);
+            if (gUnk_02018450.t <= 0x1D) {
+                for (k = 0; k <= 1; k++) {
+                    if ((6 << (k * 8)) & flags) {
+                        *gUnk_081A4194[k * 2] = ((sub_08076F9C() % 16) - 8) << 8;
+                        *gUnk_081A4194[k * 2 + 1] = ((sub_08076F9C() % 16) - 8) << 8;
+                    }
+                    if ((4 << (k * 8)) & flags)
+                        sub_0805DF04(k, pos[1 - k] - pos[k], 1);
+                }
+                gUnk_02018450.t++;
+                if (E788_FAST && gUnk_02018450.t <= 0x15)
+                    gUnk_02018450.t += 7;
+                break;
+            }
+            for (k = 0; k <= 1; k++) {
+                if ((6 << (k * 8)) & flags) {
+                    *gUnk_081A4194[k * 2] = 0;
+                    *gUnk_081A4194[k * 2 + 1] = 0;
+                }
+            }
+            gUnk_02018450.t = 0;
+            gUnk_02018450.sub++;
+        case 3:
+            sub_0805DEA4(flags, pos, 1);
+            v = gUnk_02018450.t;
+            if (v <= 0x1F) {
+                *(vu16 *)0x04000050 = 0xC0;
+                if (flags & 2)
+                    *(vu16 *)0x04000050 |= 0x404;
+                if (flags & 0x200)
+                    *(vu16 *)0x04000050 |= 0x808;
+                *(vu16 *)0x04000054 = gUnk_02018450.t;
+                gUnk_02018450.t++;
+                if (E788_FAST && gUnk_02018450.t <= 0x15)
+                    gUnk_02018450.t += 7;
+                if (gUnk_02018450.t == 0x20) {
+                    if (flags & 2)
+                        *(vu16 *)0x04000000 &= 0xFBFF;
+                    if (flags & 0x200)
+                        *(vu16 *)0x04000000 &= 0xF7FF;
+                }
+                for (k = 0; k <= 1; k++) {
+                    if ((4 << (k * 8)) & flags)
+                        sub_0805DF04(k, pos[1 - k] - pos[k], 0);
+                }
+                break;
+            }
+            *(vu16 *)0x04000050 = 0;
+            *(vu16 *)0x04000054 = 0;
+            gUnk_02018450.t = 0;
+            gUnk_02018450.sub++;
+        case 4:
+            sub_0805DEA4(flags, pos, 1);
+            for (k = 0; k <= 1; k++) {
+                if ((4 << (k * 8)) & flags)
+                    sub_0805DF04(k, pos[1 - k] - pos[k], 0);
+            }
+            if (gKeysE788.pressed & 2) {
+                gUnk_02018450.step++;
+            } else {
+                v = gUnk_02018450.t;
+                if (v <= 0x3B) {
+                    gUnk_02018450.t++;
+                    if (E788_FAST && gUnk_02018450.t <= 0x33)
+                        gUnk_02018450.t += 7;
+                } else {
+                    gUnk_02018450.step++;
+                }
+            }
+            break;
+        }
+        return 0;
+    case 4:
+        sub_0805DEA4(flags, pos, 1);
+        for (k = 0; k <= 1; k++) {
+            if ((4 << (k * 8)) & flags)
+                sub_0805DF04(k, pos[1 - k] - pos[k], 0);
+        }
+        if (sub_08075A6C(E788_FAST ? 4 : 1))
+            gUnk_02018450.step++;
+        return 0;
+    default:
+        return 1;
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0805E788", sub_0805E788); /* 0x0805E788 size 0x574 */
 /* Card id (12 bits) of the card the duel screen cursor points at: zone `mode + index` of `player`
  * for modes 0/5/10, hand slot `index` for mode 11, else 0. */

@@ -646,3 +646,8 @@ updated: 2026-09-29
 - `sub_08051ED0` draft 18 to 13 lines (only the level-table reload differs).
 - `build/solo-s49/climb.py` gained two mutation kinds (redundant re-mask, index casts); one run over the 53 drafts within 40 lines gave three small improvements and no matches.
 - Full `make compare`: `eds.gba: OK`; `check_all` 112/112. Still 1,707/1,976 functions (60.91%).
+
+## [2026-10-01] progress | sub_08043B98 draft improved (still nonmatching)
+- `src/code_080431E4.c`: reordered cases to the target order (0x80, 0x64, 0x63, 0x78), early `skip` return, case 0x80 now matches (two-branch call, `int n = 0x58A`, 3-arg call to `sub_08043AA8` via cast, `volatile u8` re-read of `need` as FAKEMATCH), `& 1` in the 0x64 loop condition, single-return level helper.
+- Remaining: `ref` lives in r8 (target r9), loop counter/`ok` registers differ in 0x64 and 0x78, and the `level == 0` test folds the shift in the build. `register ... asm("r9")` for `ref` made it worse. Permuter score stayed around 9000+, unhelpful.
+- Updated draft parked; unit still `MATCH`.

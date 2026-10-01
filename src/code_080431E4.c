@@ -432,7 +432,26 @@ void sub_08060308(u32 a, void (*draw)(void), int (*step)(void));
 int sub_08043AA8(struct CardRef *ref);
 #define REF_SKIP(r) (((u8 *)(r))[4] & 4)
 int sub_080437CC(void);
-#if 0 /* NONMATCHING: 1221 lines; first full draft, same frame (0x18); case layout and register allocation still differ */
+static inline int GetRecipeCardLevelV(u16 id)
+{
+    int type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+    int v;
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        v = 0;
+        break;
+    case 0x18:
+        v = 10;
+        break;
+    default:
+        v = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+        break;
+    }
+    return v;
+}
+#if 0 /* NONMATCHING: built 0x1028 vs 0x1040 for the unit; case order, early skip, case 0x80 (shared call, int n, volatile re-read FAKEMATCH) match; r8/r9/sl allocation in cases 0x64/0x78 and the folded level==0 test at the ok check differ */
 /* Ritual summon executor (hypothesis): 0x80 checks the recipe and starts tribute selection, 0x78 lets the
  * CPU pick tributes by level, 0x64 finds the ritual monster in hand, 0x63 plays it. */
 int sub_08043B98(struct CardRef *ref)
@@ -448,18 +467,22 @@ int sub_08043B98(struct CardRef *ref)
     switch (gUnk_02017A40[0x3E0]) {
     case 0x80: {
         int idx;
+        int n = 0x58A;
         EQ->need = skip;
-        if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0) {
-            sub_080197E0(ref->player, gUnk_08623DF4[0x58A]);
+        if (sub_08008524(0, n) > 0) {
+            sub_080197E0(ref->player, gUnk_08623DF4[n]);
+            return 0;
+        } else if (sub_08008524(1, n) > 0) {
+            sub_080197E0(ref->player, gUnk_08623DF4[n]);
             return 0;
         }
-        if ((u16)sub_08043AA8(ref) == 0)
+        if ((u16)((int (*)(struct CardRef *, int, int))sub_08043AA8)(ref, 0, 0) == 0)
             return 0;
         idx = sub_0804353C(ref->id);
         if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
             return 0;
         EQ->need = gUnk_0819A990[idx].cnt;
-        gUnk_02017A40[0x510] = EQ->need;
+        gUnk_02017A40[0x510] = *(volatile u8 *)&EQ->need;
         if (ref->player)
             return 0x78;
         sub_080602A4(0x206, 0x612, 0xB, gUnk_0808545C);
@@ -467,7 +490,7 @@ int sub_08043B98(struct CardRef *ref)
         return 0x64;
     }
     case 0x64:
-        for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
+        for (i = 0; i < gUnk_020192E4[ref->player & 1].handCount; i++) {
             if (*(u16 *)((u8 *)0x08622AB4 + ((GetRecipeHandWord(ref->player, i) << 21) >> 20))
                 == gUnk_0819A990[sub_0804353C(ref->id)].a) {
                 u32 *c = (u32 *)(i * 4 + (ref->player & 1) * 0xD64 + (u32)gUnk_020192E4 + 0x684);
@@ -488,14 +511,16 @@ int sub_08043B98(struct CardRef *ref)
         if (sub_08008860(ref->player) <= 4) {
             for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
                 int ok = 1;
+                int lv;
                 u16 cid = (*(u32 *)(i * 4 + ref->player * 0xD64 + (u32)gUnk_02019968) << 20) >> 20;
                 const u16 *num = &gUnk_08622AB4[cid & 0x7FF];
                 if (*num == gUnk_0819A990[sub_0804353C(id)].a && sub_0800A2A8(ref->player, *num) <= 1)
                     ok = 0;
-                if (GetRecipeCardLevel(cid) == 0)
+                lv = GetRecipeCardLevelV(cid);
+                if (lv <= 0)
                     ok = 0;
-                if (ok && handLv < GetRecipeCardLevel(cid)) {
-                    handLv = GetRecipeCardLevel(cid);
+                if (ok && handLv < GetRecipeCardLevelV(cid)) {
+                    handLv = GetRecipeCardLevelV(cid);
                     handIdx = i;
                 }
             }
@@ -503,8 +528,8 @@ int sub_08043B98(struct CardRef *ref)
         for (i = 0; i <= 4; i++) {
             if (gUnk_0201930C[ref->player & 1].z[i].w0 << 20) {
                 u16 cid = (gUnk_0201930C[ref->player & 1].z[i].w0 << 20) >> 20;
-                if (fieldLv < GetRecipeCardLevel(cid)) {
-                    fieldLv = GetRecipeCardLevel((gUnk_0201930C[ref->player & 1].z[i].w0 << 20) >> 20);
+                if (fieldLv < GetRecipeCardLevelV(cid)) {
+                    fieldLv = GetRecipeCardLevelV((gUnk_0201930C[ref->player & 1].z[i].w0 << 20) >> 20);
                     fieldIdx = i;
                 }
             }

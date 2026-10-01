@@ -254,9 +254,10 @@ int sub_08051DF4(int player)
 #else
 INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051DF4); /* 0x08051DF4 size 0xDC */
 #endif
-#if 0 /* NONMATCHING: register allocation differs. The ROM puts id in r4
-       * (reusing p's register) and msg in r5; the build has id in r5 and msg
-       * in r4. */
+#if 0 /* NONMATCHING: 13 lines, 2 bytes short. Everything up to the level
+       * switch matches; the ROM reloads the stats table address in the level
+       * default case, the build reuses the earlier load (also tried: level as
+       * an inline function). */
 int sub_08051ED0(int player)
 {
     struct Duel *d = &gUnk_020192E0;

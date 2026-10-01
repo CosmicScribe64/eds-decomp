@@ -13,7 +13,7 @@ objdiff.json
 # Local tooling and editor state.
 .DS_Store
 .claude/
-.obsidian/workspace*
+**/.obsidian/workspace*
 staging/
 
 # Local multi-agent orchestration. These scripts drive the maintainer's own agent setup,

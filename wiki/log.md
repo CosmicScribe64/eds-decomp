@@ -632,3 +632,11 @@ updated: 2026-09-29
 - Cost: about 30 points of the 5-hour limit and 16% of the weekly Fable quota in roughly 20 minutes of work; Fable use also counts toward the all-models limits.
 - Tools: `check.py --diff` prints the first-difference offset, matching prefix and differing-line count. New `tools/corpus.py` compiles C from nine other agbcc decomps (35,333 functions) and finds similar functions by instruction pattern.
 - Full `make compare`: `eds.gba: OK`; `check_all` 112/112.
+
+## [2026-10-01] progress | Solo pass: one match, five first drafts
+- `CLAUDE.md` is now the only contributor guide (AGENTS.md removed upstream; its rules folded into a "Matching rules" section). `.gitignore` now ignores `wiki/.obsidian/workspace*`.
+- New plan in `build/solo-s50/PLAN.md` from the pace research and a fresh measurement of all 245 parked drafts.
+- [[code-08031bc8]]: `sub_080320C4` matches with a FAKEMATCH mask (`((ref->player & 1) ^ 1) & 1`). First C draft for `sub_08032390` (192 lines).
+- First C drafts (m2c now runs in the image; the old drafts were empty failures): `sub_0805E1D0` (174 lines), `sub_08076DAC` (289, follows `sub_08076BEC`), `sub_080437CC` (99), `sub_08065AB4` (282, first 37% exact).
+- `sub_0806DBB0` draft 46 to 43 lines (LEFT menu tail pinned to the RIGHT tail's registers).
+- Full `make compare`: `eds.gba: OK`; `check_all` 112/112. 1,707/1,976 functions, 60.91% of code bytes.

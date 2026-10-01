@@ -11,6 +11,8 @@ on:
 jobs:
   report:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write    # publish the progress badges to the `badges` branch
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,3 +51,16 @@ jobs:
         with:
           name: AY5E_report
           path: build/report.json
+
+      # README badges: shields.io reads code.json and functions.json from the `badges` branch.
+      - name: Publish progress badges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 tools/badges.py /tmp/badges
+          cd /tmp/badges
+          git init -q -b badges
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "Update progress badges"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" badges

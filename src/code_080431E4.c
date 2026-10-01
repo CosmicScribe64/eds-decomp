@@ -440,10 +440,32 @@ int sub_08043B98(struct CardRef *ref)
     u16 id = ref->id;
     int i;
 
-    u8 skip = REF_SKIP(ref);
+    u8 skip;
 
-    if (skip == 0) {
+    if ((skip = REF_SKIP(ref)) != 0)
+        return 0;
+    {
     switch (gUnk_02017A40[0x3E0]) {
+    case 0x80: {
+        int idx;
+        EQ->need = skip;
+        if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0) {
+            sub_080197E0(ref->player, gUnk_08623DF4[0x58A]);
+            return 0;
+        }
+        if ((u16)sub_08043AA8(ref) == 0)
+            return 0;
+        idx = sub_0804353C(ref->id);
+        if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
+            return 0;
+        EQ->need = gUnk_0819A990[idx].cnt;
+        gUnk_02017A40[0x510] = EQ->need;
+        if (ref->player)
+            return 0x78;
+        sub_080602A4(0x206, 0x612, 0xB, gUnk_0808545C);
+        sub_08060308(5, sub_08043758, sub_080437CC);
+        return 0x64;
+    }
     case 0x64:
         for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
             if (*(u16 *)((u8 *)0x08622AB4 + ((GetRecipeHandWord(ref->player, i) << 21) >> 20))
@@ -497,26 +519,6 @@ int sub_08043B98(struct CardRef *ref)
             EQ->need = (int)EQ->need > fieldLv ? EQ->need - fieldLv : 0;
         }
         return EQ->need != 0 ? 0x78 : 0x64;
-    }
-    case 0x80: {
-        int idx;
-        EQ->need = skip;
-        if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0) {
-            sub_080197E0(ref->player, gUnk_08623DF4[0x58A]);
-            return 0;
-        }
-        if ((u16)sub_08043AA8(ref) == 0)
-            return 0;
-        idx = sub_0804353C(ref->id);
-        if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
-            return 0;
-        EQ->need = gUnk_0819A990[idx].cnt;
-        gUnk_02017A40[0x510] = EQ->need;
-        if (ref->player)
-            return 0x78;
-        sub_080602A4(0x206, 0x612, 0xB, gUnk_0808545C);
-        sub_08060308(5, sub_08043758, sub_080437CC);
-        return 0x64;
     }
     default:
         gUnk_02017A40[0x3E0] = 0;

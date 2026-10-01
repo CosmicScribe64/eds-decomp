@@ -94,6 +94,7 @@ void sub_08052390(void);
 void sub_08052190(void);
 int sub_0805243C(void);
 
+extern struct { u8 pad[0x82C]; u8 b82C; } gScr1A9C asm("gUnk_0201CFB0");
 #if 0 /* NONMATCHING: register allocation only. The ROM keeps ps in r7 and
        * count/&b4FC in r8; the build swaps them (ps r8, count r7). */
 int sub_08051A9C(int player, u16 x, int count)
@@ -113,15 +114,15 @@ int sub_08051A9C(int player, u16 x, int count)
         if (gUnk_02017A40.count != 0) {
             u8 *bp = &gUnk_02017A40.b4FC;
             if (*bp <= 9) {
-                sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
                 gUnk_0201CFB0.b808 |= 8;
+                sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
                 (*bp)++;
                 return 0;
             } else {
                 u16 msg = 8;
                 if (player != 0)
                     msg = 0x8008;
-                sub_0801EC58(msg, (u16)player, (*(u8 *)&gUnk_0201CFB0.w82C << 8) | 0xB, 0);
+                sub_0801EC58(msg, (u16)player, (gScr1A9C.b82C << 8) | 0xB, 0);
                 sub_080193D4(player, gUnk_0201CFB0.w82C, x, 1);
                 gUnk_02017A40.count--;
                 *bp = 0;

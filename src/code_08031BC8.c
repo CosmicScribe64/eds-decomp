@@ -326,11 +326,10 @@ int sub_08032058(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: 2 lines differ. The ROM materializes the xor constant 1 after the player-bit
-       * lsrs, while our build schedules movs #1 between the lsls/lsrs. */
 int sub_080320C4(struct CardRef *ref)
 {
-    int count = gUnk_020192E4[(ref->player & 1) ^ 1].handCount;
+    /* FAKEMATCH: the redundant outer & 1 puts movs #1 after the bit extraction */
+    int count = gUnk_020192E4[((ref->player & 1) ^ 1) & 1].handCount;
 
     if (!ref->skip4) {
         int i;
@@ -356,8 +355,7 @@ int sub_080320C4(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08031BC8", sub_080320C4); /* 0x080320C4 size 0x104 */
+
 
 int sub_080321C8(struct CardRef *ref)
 {

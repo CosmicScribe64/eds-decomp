@@ -1,0 +1,109 @@
+---
+title: Decomp Workflow
+type: concept
+status: solid
+confidence: high
+sources: [rom-analysis]
+updated: 2026-10-01
+---
+# Decomp Workflow
+
+This page covers how the repo builds, and how to turn one assembly function into matching C. Read it before touching `src/`.
+
+[[matching-tricks]] consolidates the wiki's matching recipes, failed variants,
+compiler/ABI constraints and validation limits by discrepancy. Read the relevant
+section and its linked unit examples before starting a new batch. The queue and
+parallel ownership workflow are in [[agent-tooling]].
+
+## Build
+
+Everything runs in Docker, through `tools/dr`, so the host stays clean. Build the image once with `docker build -t eds-decomp docker/`.
+
+```sh
+tools/dr make -j8 compare     # full build of eds.gba, then SHA-1 check against the baserom
+```
+
+`baserom.gba` is a symlink to the original ROM. The data files `.incbin` from it, so it has to be present to build.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `units.txt` | Link order. Each line is a **unit**, which links from the first of `src/<u>.c`, `src/<u>.s`, `asm/<u>.s`, `data/<u>.s` that exists. `@libs` is where libgcc/libc go. `@rodata <u>` places a unit's `.rodata` at that point. |
+| `config/functions.tsv` | Every function: address, mode (`t`/`a`), size, name, unit, and why it was found (`bl@`, `ptr@`, `gap`). |
+| `config/splits.txt` | Unit boundaries fed to `tools/disasm.py`. |
+| `config/cflags.txt` | Per-unit compiler flag overrides. |
+| `asm/nonmatching/<unit>/<func>.s` | One file per not-yet-decompiled function (agbcc "divided" Thumb syntax). |
+| `asm/<unit>.s` | Unit wrapper that `.include`s its functions in order. |
+| `src/<unit>.c` | C for a unit. Functions that don't match yet stay as `INCLUDE_ASM(...)`. |
+| `data/*.s` | `.rodata`: `.incbin` chunks split at the `gUnk_08XXXXXX` labels that code references. |
+| `include/global.h`, `include/gba.h` | Base types, `INCLUDE_ASM`, IO registers, and BIOS stubs. |
+| `symbols.ld` | Hand-named absolute symbols (RAM variables). |
+
+Undefined symbols whose names end in an 8-digit hex address (`gUnk_03001234`, `sub_08012345`) get that address automatically (`tools/autosyms.py`). You can `extern` any RAM or ROM address by name without editing a shared file.
+
+## Compiler
+
+Three compiler builds are in use. `check.py` and the Makefile choose one per unit from `config/cflags.txt`:
+
+| Code | Compiler |
+|---|---|
+| Game code (`0x08000228`–`0x0807D3CF`), the default | `old_agbcc -mthumb-interwork -O2 -fhex-asm` |
+| Sound driver (`0x0807D3D0`–`0x0807EACF`), unit `sound_driver` | `agbcc -mthumb-interwork -O2 -fhex-asm -fprologue-bugfix` |
+| SDK AgbSram (`sdk/agb_sram`) | `agbcc -mthumb-interwork -O1` |
+
+See [[compiler-flags]] for the details and the evidence matrix, and [[agbcc]] for the compiler itself.
+
+> [!note] Resolved contradiction (2026-09-29)
+> Early on this page said game code used `agbcc -fprologue-bugfix`. That was based on `sub_08000838`, which matches under both compilers. The compiler survey ([[compiler-flags]]) showed that game code needs `old_agbcc`, and the default was switched.
+
+## Decompiling a unit
+
+1. `tools/dr python3 tools/mkunit.py <unit>` writes `src/<unit>.c` as a skeleton made entirely of `INCLUDE_ASM` lines. At that point the unit already matches.
+2. Replace one `INCLUDE_ASM` line with C. Read the target in `asm/nonmatching/<unit>/<func>.s`, or run `tools/dr python3 tools/check.py <unit> --asm <func>`.
+3. `tools/dr python3 tools/check.py <unit>` compiles the unit on its own, links it at its ROM address, and prints `match` or `DIFF` per function. `--diff <func>` shows an instruction diff between target and built; `--keep` keeps agbcc's `.s` output.
+4. Repeat. A function is done only when `check.py` reports it as `match` **and** the whole unit still matches. If a function comes out a different size, every later function shifts.
+5. If you can't get a match, put `INCLUDE_ASM` back. You may keep your best attempt above it inside `#if 0 /* NONMATCHING: <what differs> */ ... #endif`.
+
+`check.py` never touches the shared link, so several people or agents can check different units at once. Run the full `make compare` only when nobody else is building.
+
+## Conventions
+
+- **Names:** functions are `sub_08XXXXXX` and globals `gUnk_0XXXXXXX`, until they get a real name. Keep the asm symbol names, because other units call `sub_...` by name. Put proposed names on the unit's wiki page. A later global rename pass applies them.
+- **Declarations:** declare prototypes, `extern`s and structs **locally in your unit's C file** (for now). Don't edit shared headers during parallel work.
+- **No new data in C (yet):** string literals, `const` tables and initialised globals would create `.rodata` or `.data` sections that have to be placed in the ROM layout. Instead, reference the existing ROM data by address:
+
+  ```c
+  extern const char gUnk_08080A20[];
+  ```
+
+  Don't define globals in C either. Declare them `extern` and let autosyms place them.
+- **Signatures:** parameter types follow from the prologue narrowing. `lsl #24; lsr #24` means `u8`, `lsl #24; asr #24` means `s8`, and `#16` means `u16`/`s16`.
+
+## When a draft won't match
+Keep the best attempt under `#if 0 /* NONMATCHING: what differs */`, directly above its `INCLUDE_ASM` line.
+Check [[matching-tricks]] and the unit's failed variants before a new experiment.
+For a register-allocation near miss, start with a bounded [[decomp-permuter]] run:
+`tools/dr python3 tools/permute.py <unit> <func> --run -j 1 --minutes 3 --profile regalloc`.
+Extend a search when new evidence or an improving candidate justifies it; avoid
+rerunning unchanged failed drafts. A score of zero still needs ABI review and an
+exact whole-unit check.
+
+## agbcc matching tips
+- DMA sequences: write the DMA *set* and the DMA *wait* as two separate blocks, each with its own `vu32 *` register pointer, the way the SDK `DmaSet`/`DmaWait` macros are written (sub_0800257C; verified).
+- A range test that looks odd in the asm is often a small `switch` (possibly inside a static inline).
+- gcc 2.95 loop optimisation: loop-invariant motion runs only on `for`/`while`/`do` loops, not on loops built with `goto`. loop.c runs twice (hoisting cutoffs differ between passes) and moves loop-exit blocks next to a nearby barrier. Global PRE (gcse) can still hoist when a loop has a clean preheader.
+- A `u16` running counter makes the compiler re-load constants from the literal pool on each use.
+- A `return 1` shared through a `done:` label gives a different block layout than the same `return 1` duplicated inline, so try both (sub_08052CE8).
+
+- `add rX, rY, #0` is how agbcc moves registers. `mov rX, rY` between low registers never appears in its output.
+- Constants: agbcc uses `mov` + `lsl` when the constant is a shifted 8-bit value (`0x04000000` is `mov #0x80; lsl #19`), `mov` + `neg` for small negatives, and a literal pool (`ldr rX, =...`) otherwise. `mov r2, #0x11; neg r2, r2` is the int `~0x10`, so do the arithmetic in `int`/`s32`, not `u16`, or you get a pooled `0xFFEF`.
+- Statement and declaration order drive scheduling. If a load happens early in the target, load it into a local first (`void *src = *p;`) before the `if`.
+- `bl _0800XXXX @ far jump` is agbcc's long branch inside one big function. Write normal C, and it comes back on its own when the function is large enough.
+- A `switch` with dense cases compiles to a jump table: `lsl #2; ldr =table; add; ldr; mov pc`. Case labels are the table entries.
+- Loops: `for` and `while` usually come out as a test at the bottom, with a `b` into it at the top. `do { } while` has no initial jump.
+- Return value narrowing (`lsl/lsr` before `bx`) means the return type is `u8`/`u16`.
+- If registers come out swapped, try reordering locals or expressions, using a temporary, or changing `int`/`u32`/`s32` signedness. Changing the function's shape usually beats forcing it with `register`.
+- Tables and structures that are already known are listed in [[index]] (card data: [[card-table]], [[card-id-map]]; RAM: [[ram-map]]).
+
+Related: [[matching-decompilation]], [[toolchain]].

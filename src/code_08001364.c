@@ -1,0 +1,830 @@
+#include "global.h"
+#include "main.h"
+
+#include "gba.h"
+
+/* Dialogue text-box ("Bustup") module and Calendar scene helpers. */
+
+/* One record of the dialogue table at 0x0813ADF4 (490 records + terminator). */
+struct DialogueEntry {
+    u16 eventId;
+    u16 speakerId;
+    char text[0x300];
+};
+
+#define DIALOGUE_COUNT 490
+
+/* Script / text-box state at 0x02013DE0 (fields this unit touches). */
+struct ScriptState {
+    u8 filler0[0x9A4];
+    u8 objCount:3;              /* +0x09A4 number of active animation objects */
+    u8 filler9A5[0x9AC - 0x9A5];
+    u8 textBox[0xAA8 - 0x9AC];  /* +0x09AC dialogue box / text state */
+    u8 unkAA8[0x10C0 - 0xAA8];  /* +0x0AA8 sparkle line state */
+    u8 objs[0x12E9 - 0x10C0];   /* +0x10C0 second animation-object array */
+    u8 unk12E9;                 /* +0x12E9 index into gUnk_08080AB6 (sparkle start x) */
+    u8 unk12EA;                 /* +0x12EA index into gUnk_08080AE0 */
+    u8 speaker;                 /* +0x12EB current speaker character id */
+    u8 filler12EC[0x12EE - 0x12EC];
+    u16 unk12EE;                /* +0x12EE */
+    u8 filler12F0[0x136C - 0x12F0];
+    u16 dialogueIndex;          /* +0x136C current dialogue table index */
+    u8 filler136E[0x136F - 0x136E];
+    u8 unk136F;                 /* +0x136F */
+    u8 filler1370[0x137C - 0x1370];
+    u8 unk137C_0:1;             /* +0x137C bit 0 */
+    u8 autoAdvance:1;           /* +0x137C bit 1: set every frame by "Auto Bustup" */
+};
+
+/* Calendar scene state at 0x0201F7D0. */
+struct Calendar {
+    u16 unk0;
+    u16 date;               /* +0x02 packed date, see sub_080047F4 */
+    u32 shownEvents;        /* +0x04 event mask currently drawn */
+    u16 blink:2;            /* +0x08 bits 0-1: setup/animation state (3 = steady) */
+    u16 secondHalf:1;       /* +0x08 bit 2: showing weeks 3+ of the month */
+    u16 page:1;             /* +0x08 bit 3: displayed Mode-4 frame (DISPCNT bit 4) */
+    u16 weekday:3;          /* +0x08 bits 4-6: cursor column (day of week) */
+    u16 week:3;             /* +0x08 bits 7-9: cursor row (week within the page) */
+};
+
+/* Unpacked date (sub_080047F4 output). */
+struct Date {
+    u32 year:12;
+    u32 month:4;
+    u32 day:5;
+};
+
+/* Save image at 0x02011C20 (see wiki save-game). */
+struct SaveData {
+    u32 unk0;
+    u8 flags4;              /* +0x04 bit 7: Shift-JIS text mode */
+};
+
+/* Calendar event names at 0x081980D4 (9 entries). */
+struct CalendarEvent {
+    u32 flags;              /* event bit(s) this entry is shown for */
+    u8 name[0x40];
+};
+
+#define gMain gUnk_03000040
+extern struct ScriptState gUnk_02013DE0;
+extern struct Calendar gUnk_0201F7D0;
+extern struct SaveData gUnk_02011C20;
+#define gSaveData gUnk_02011C20
+extern const u16 gUnk_081D0200[]; /* 10px Shift-JIS font, 10 rows of u16 per glyph */
+extern const u8 gUnk_08229500[];  /* 10px ASCII font, 10 rows of u8 per glyph */
+extern const struct CalendarEvent gUnk_081980D4[];
+extern const u8 gUnk_087F5DF8[]; /* 4 x 0x800 seasonal OBJ tiles */
+#define gCalendar gUnk_0201F7D0
+
+extern struct DialogueEntry gUnk_0813ADF4[];
+typedef u16 (*StepFunc)(void);
+extern StepFunc gUnk_0813ADD4[];
+extern const u8 gUnk_087F1798[];
+
+extern const u8 gUnk_081976A0[];
+extern const u8 gUnk_081976B4[];
+extern const u8 gUnk_081976C8[];
+extern const u8 gUnk_081976DC[];
+extern const u8 gUnk_081976F0[];
+extern const u8 gUnk_08197704[];
+extern const u8 gUnk_08197718[];
+extern const u8 gUnk_0819772C[];
+extern const u8 gUnk_08197740[];
+extern const u8 gUnk_08197754[];
+extern const u8 gUnk_08197768[];
+extern const u8 gUnk_0819777C[];
+extern const u8 gUnk_08197790[];
+extern const u8 gUnk_081977A4[];
+extern const u8 gUnk_081977B8[];
+extern const u8 gUnk_081977CC[];
+extern const u8 gUnk_081977E0[];
+extern const u8 gUnk_081977F4[];
+extern const u8 gUnk_08197808[];
+extern const u8 gUnk_0819781C[];
+extern const u8 gUnk_08197830[];
+extern const u8 gUnk_08197844[];
+extern const u8 gUnk_08197858[];
+extern const u8 gUnk_0819786C[];
+extern const u8 gUnk_08197880[];
+extern const u8 gUnk_08197894[];
+extern const u8 gUnk_081978A8[];
+extern const u8 gUnk_081978BC[];
+extern const u8 gUnk_081978D0[];
+extern const u8 gUnk_081978E4[];
+extern const u8 gUnk_081978F8[];
+
+void sub_080011F0(u32);
+void sub_08075294(void *dest, const void *src, u32 size);
+u16 sub_08072584(u16 sjis);
+void sub_08001E24(u8 *dest, u32 color);
+void sub_08001E4C(u8 *dest, u32 color, u16 glyph);
+void sub_08001F08(u32 x, u32 y, const u8 *str);
+void sub_08001FB0(u32 mask);
+void sub_08002008(void);
+void sub_08002048(void);
+void sub_080047F4(struct Date *out, u16 date);
+s32 sub_080042D8(u32 year, u32 month, s32 day);
+s32 sub_080042B4(u32 year, u32 month);
+u32 sub_080044E4(u32 year, u32 month, s32 day);
+void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
+void sub_080762D0(u32 yx, u16 shapeSize, u16 attr2);
+
+/* Scene/script state at 0x020150CC (part of the 0x02013DE0 script area). */
+struct Unk020150CC {
+    u8 filler0[4];
+    s16 unk4;               /* +0x04 scroll value */
+    u8 unk6;                /* +0x06 box state (2 = settle) */
+    u8 unk7;                /* +0x07 step delta */
+    u8 filler8[0x80 - 0x08];
+    u16 dialogueIndex;      /* +0x80 index into the dialogue table */
+    u8 filler82[0x90 - 0x82];
+    u8 unk90;               /* +0x90 flags (1 = started, 2 = advancing) */
+};
+extern struct Unk020150CC gUnk_020150CC;
+extern const u8 gUnk_0813ADF8[]; /* dialogue table text base (0x0813ADF4 + 4) */
+
+void sub_080787F4(s32, s32, s32, void *);
+void sub_08000A28(void);
+void sub_08000708(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+const void *sub_08001C78(u32 charId);
+void sub_08000420(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+void sub_08000570(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+void sub_08000944(void *tb);
+
+/* Packed per-card state at gSaveData+0x20D0 (one u32 per entry; the entry
+ * index comes from gUnk_08080AE0). */
+struct CardState {
+    u16 unk0;               /* +0x00: low 11 bits = first stat */
+    u16 unk1;               /* +0x02: bits 6-15 = third stat */
+};
+extern const u16 gUnk_08080AB6[];
+extern const u8 gUnk_08080AE0[];
+struct Unk08080AD4 {
+    u16 unk0, unk2, unk4, unk6, unk8, unkA;
+};
+extern const struct Unk08080AD4 gUnk_08080AD4;
+void sub_080002C0(u16 x, u16 y, u16 attr, u16 n);
+void sub_08000324(u16 value, u16 x, u16 y, u16 digits, u8 pal);
+void sub_08001374(s32 arg0);
+
+/* Animation object (stride 0x14) used by the two script object arrays. */
+struct AnimObj {
+    u8 filler0[0xE];
+    u8 unkE;                /* +0x0E active/redraw flag */
+};
+
+/* Text-box module state at 0x02014888. */
+struct Unk02014888 {
+    u8 filler0[0x842];
+    s8 unk842;                          /* +0x842 */
+    u8 filler843;
+    u8 unk844[0x84A - 0x844];           /* +0x844 (== gUnk_020150CC) */
+    u8 unk84A;                          /* +0x84A */
+    u8 filler84B[0x851 - 0x84B];
+    u8 unk851;                          /* +0x851 */
+};
+extern struct Unk02014888 gUnk_02014888;
+
+/* Dialogue-box sparkle sub-state at 0x020147B4. */
+struct Unk020147B4 {
+    u8 filler0[0x91A];
+    u16 unk91A;                         /* +0x91A */
+    u8 filler91C[2];
+    u8 unk91E;                          /* +0x91E */
+    u8 filler91F[0x99B - 0x91F];
+    s8 unk99B;                          /* +0x99B */
+};
+extern struct Unk020147B4 gUnk_020147B4;
+
+extern const u8 gUnk_08080A64[];
+extern const u8 gUnk_08080A84[];
+
+void sub_080786D0(void *obj);
+void sub_08078534(void *obj, s32, s32, s32, s32, s32, s32, s32, s32, void *);
+void sub_0807A420(void *);
+void sub_0807A298(void *);
+void sub_0807A2EC(void *);
+void sub_08000AC8(u16, s32);
+void sub_0807883C(void *);
+void sub_08077AEC(s32);
+void sub_0801A7DC(const u8 *, u32, u32, u32);
+void sub_0801A7E8(void);
+u16 sub_08001BC8(u32);
+u16 sub_08001BEC(u32);
+void sub_08000838(void *);
+void sub_08000854(void *);
+void sub_08000C54(void *);
+void sub_08000994(void *);
+
+/* Step 0 of the Bustup runner. */
+u16 sub_08001364(void)
+{
+    sub_080011F0(0);
+    return 1;
+}
+
+/* Draws the selected card's three stat counters (attack/defense/level) into
+ * the dialogue box; optionally also draws a rank icon when arg0 is set. */
+#if 0 /* NONMATCHING: instruction sequences line up, but the hoisted base
+       * pointers land in different registers (target: r7 = 0x20D0, r9 =
+       * gUnk_08080AE0; built: r8 = 0x20D0, r9 = &unk12E9), shifting the whole
+       * prologue and literal pool. */
+void sub_08001374(s32 arg0)
+{
+    if ((arg0 << 0x10) != 0)
+        sub_080002C0(gUnk_08080AB6[gUnk_02013DE0.unk12E9], 0x43, 4, 1);
+    sub_08000324((u32)((u32)((struct CardState *)((u8 *)&gUnk_02011C20 + 0x20D0
+                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4))->unk0 << 21) >> 21,
+                 gUnk_08080AD4.unk0, gUnk_08080AD4.unk2, 3, 2);
+    sub_08000324((u32)(*(u32 *)((u8 *)&gUnk_02011C20 + 0x20D0
+                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4) << 10) >> 21,
+                 gUnk_08080AD4.unk4, gUnk_08080AD4.unk6, 3, 2);
+    sub_08000324(((struct CardState *)((u8 *)&gUnk_02011C20 + 0x20D0
+                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4))->unk1 >> 6,
+                 gUnk_08080AD4.unk8, gUnk_08080AD4.unkA, 3, 2);
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08001364", sub_08001374); /* 0x08001374 size 0xF0 */
+/* Bustup step: re-initialises both script object arrays and the sparkle trail,
+ * programs the horizontal-scroll registers from the dialogue state, and
+ * finalises the dialogue box. */
+#if 0 /* NONMATCHING: the loops and object-pointer arithmetic are semantically
+       * right, and the ROM's scroll reload and signed object sentinel are
+       * reproduced, but base allocation, literal materialization and layout
+       * differ. The current candidate is 0x230 bytes; the ROM function is
+       * 0x244. */
+s32 sub_08001464(void)
+{
+    u8 i;
+    s8 v;
+    u16 st;
+
+    for (i = 0; i < gUnk_02013DE0.objCount; i++) {
+        sub_080786D0(gUnk_02013DE0.objs + i * 0x14);
+        ((struct AnimObj *)(gUnk_02013DE0.objs + i * 0x14))->unkE = 0xFF;
+    }
+    ((struct AnimObj *)(gUnk_02013DE0.objs + gUnk_02013DE0.unk12E9 * 0x14))->unkE = 0;
+    for (i = 0; i < gUnk_02013DE0.objCount; i++) {
+        if ((s8)((struct AnimObj *)(gUnk_02013DE0.objs + i * 0x14))->unkE != -1)
+            sub_08078534(gUnk_02013DE0.objs + i * 0x14, 0, 0, 0, 1, 0, 0, 0, 0,
+                         gUnk_02013DE0.unkAA8);
+    }
+    sub_0807A420(&gUnk_020147B4);
+    sub_0807A420(&gUnk_020147B4);
+    sub_0807A420(&gUnk_020147B4);
+    v = gUnk_020147B4.unk91A;
+    sub_08000AC8(v, 1);
+    if (gUnk_020147B4.unk91E == 0)
+        sub_08001374(1);
+    /* The ROM reloads the scroll value after the preceding calls. */
+    st = gUnk_020147B4.unk99B;
+    v = gUnk_020147B4.unk91A;
+    if (st == 1) {
+        *(vu16 *)0x04000028 = v * 2;
+        *(vu16 *)0x0400002A = (v * 2) >> 16;
+    } else if (st == 2) {
+        *(vu16 *)0x04000028 = (u16)(-v * 2);
+        *(vu16 *)0x0400002A = ((u16)(-v * 2) << 4) >> 0x14;
+    } else {
+        *(vu16 *)0x0400002C = v * 2;
+        *(vu16 *)0x0400002E = (v * 2) >> 16;
+    }
+    v = gUnk_02013DE0.unk12EE;
+    if (gUnk_02013DE0.unk136F == 1) {
+        *(vu16 *)0x04000028 = v * 2;
+        *(vu16 *)0x0400002A = (v * 2) >> 16;
+    } else {
+        *(vu16 *)0x04000028 = (u16)(-v * 2);
+        *(vu16 *)0x0400002A = ((u16)(-v * 2) << 4) >> 0x14;
+    }
+    sub_0807A298(&gUnk_02014888);
+    sub_0807A2EC(&gUnk_02014888);
+    gMain.intrCheck &= 0xFFFE;
+    sub_0807883C((u8 *)&gUnk_02014888 + 0x844);
+    if (gUnk_02014888.unk84A == 2) {
+        if (gUnk_02014888.unk842 == 4)
+            gUnk_02014888.unk851 = 1;
+        else
+            gUnk_02014888.unk851 = 0;
+        gMain.seqIndex1 = 1;
+        *(vu16 *)0x04000028 = 0;
+        *(vu16 *)0x0400002A = 0;
+        *(vu16 *)0x0400002C = 0;
+        *(vu16 *)0x0400002E = 0;
+    }
+    return 0;
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08001364", sub_08001464); /* 0x08001464 size 0x244 */
+/* Bustup step: loads the current dialogue's scene (large box for a speaker at
+ * 0x20-0x23, small box otherwise) and resets the dialogue state, then enables
+ * forced-blank and Mode 4. */
+s32 sub_080016A8(void)
+{
+    u8 box = 1;
+    s32 speaker;
+
+    sub_080787F4(0, 0xFFFFFE80, 0, &gUnk_020150CC);
+    speaker = *((u8 *)&gUnk_020150CC - 1);
+    /* Adjacent cases preserve the ROM's signed lower/upper bound tests. */
+    switch (speaker) {
+    case 0x20: case 0x21: case 0x22: case 0x23:
+        break;
+    default:
+        goto small;
+    }
+    sub_08000570(sub_08001C78(speaker),
+                 gUnk_0813ADF8 + gUnk_020150CC.dialogueIndex * 0x304,
+                 (u8 *)&gUnk_020150CC - 0x940,
+                 (u8 *)&gUnk_020150CC - 0x22C, box);
+    goto done;
+small:
+    sub_08000420(sub_08001C78(gUnk_02013DE0.speaker),
+                 gUnk_0813ADF8 + gUnk_02013DE0.dialogueIndex * 0x304,
+                 gUnk_02013DE0.textBox, gUnk_02013DE0.objs, box);
+done:
+    sub_08000A28();
+    sub_08000944(gUnk_02013DE0.textBox);
+    *(vu16 *)0x04000000 = 0x1F04;
+    return 1;
+}
+/* Bustup step: loads the selected dialogue as a 240x80 scene, then rewinds the
+ * step runner by 4 (to re-run the setup). */
+s32 sub_08001770(void)
+{
+    u8 box = 1;
+
+    sub_080787F4(0, 0xFFFFFE80, 0, &gUnk_020150CC);
+    sub_08000708(sub_08001C78(*((u8 *)&gUnk_020150CC - 1)),
+                 gUnk_0813ADF8 + gUnk_020150CC.dialogueIndex * 0x304,
+                 (u8 *)&gUnk_020150CC - 0x940,
+                 (u8 *)&gUnk_020150CC - 0x22C, box);
+    sub_08000A28();
+    gMain.seqIndex1 -= 4;
+    return 0;
+}
+/* Bustup step: advances the dialogue (A button), handles the page/settle
+ * states and text-box dirty flags, and rebuilds the object arrays. Returns 1
+ * once the scene is finished (B / box fully read). */
+#if 0 /* NONMATCHING: the structure is right, but the goto-join layout and the
+       * switch compile differently, and the object-loop bases are materialised
+       * from different literals, so the body does not line up. */
+s32 sub_080017E8(void)
+{
+    u8 i;
+    u16 *boxDirty;
+    u8 *tb;
+    s8 st;
+
+    sub_0807883C(&gUnk_020150CC);
+    if (gUnk_020150CC.unk6 == 2)
+        gMain.seqIndex1 += gUnk_020150CC.unk7;
+    if (gUnk_020150CC.unk90 & 1) {
+        if (gUnk_020150CC.unk90 & 2) {
+            gUnk_020150CC.unk90 &= ~2;
+            gMain.seqIndex1 -= 1;
+            gUnk_020150CC.dialogueIndex += 1;
+            *((u8 *)&gUnk_020150CC - 1) = sub_08001BEC(gUnk_020150CC.dialogueIndex);
+            *((u8 *)&gUnk_020150CC - 0x920) = 0;
+            gMain.speaker = *((u8 *)&gUnk_020150CC - 1);
+            gMain.dialogueIndex = gUnk_020150CC.dialogueIndex;
+            sub_0801A7DC(gUnk_08080A84, gMain.dialogueIndex,
+                         sub_08001BC8(gMain.dialogueIndex), gMain.speaker);
+            sub_0801A7E8();
+            if (sub_08001BC8(gMain.dialogueIndex) == 0) {
+                gMain.speaker = 0;
+                goto block_26;
+                gMain.dialogueIndex = 0;
+            }
+        }
+        goto block_27;
+    }
+    if (gMain.newKeys & 1) {
+        st = *((u8 *)&gUnk_020150CC - 0x927);
+        switch (st) {
+        case 0:
+            *((u8 *)&gUnk_020150CC - 0x927) = 1;
+            break;
+        case -1:
+            *((u8 *)&gUnk_020150CC - 0x927) = 0;
+            if (gUnk_020150CC.unk90 & 2)
+                *((u8 *)&gUnk_020150CC - 0x927) = 1;
+            sub_08077AEC(1);
+            break;
+        case -2:
+            if (!(gUnk_020150CC.unk90 & 2)) {
+                if (gUnk_020150CC.unk4 == 0) {
+                    sub_080787F4(0, 0x180, 1, &gUnk_020150CC);
+                    sub_08077AEC(1);
+                    gUnk_020150CC.unk90 |= 1;
+                }
+            } else {
+                gMain.seqIndex1 -= 1;
+                gUnk_020150CC.dialogueIndex += 1;
+                *((u8 *)&gUnk_020150CC - 0x920) = 0;
+                gMain.speaker = *((u8 *)&gUnk_020150CC - 1);
+                gMain.dialogueIndex = gUnk_020150CC.dialogueIndex;
+                sub_0801A7DC(gUnk_08080A64, gMain.dialogueIndex,
+                             sub_08001BC8(gMain.dialogueIndex), gMain.speaker);
+                sub_0801A7E8();
+            }
+            break;
+        case -3:
+            *((u8 *)&gUnk_020150CC - 0x927) = 3;
+            sub_08077AEC(1);
+            break;
+        }
+    }
+    if (gMain.newKeys & 2) {
+block_26:
+        sub_08077AEC(2);
+        return 1;
+    }
+block_27:
+    sub_08000994(gUnk_02013DE0.objs);
+    for (i = 0; i < gUnk_02013DE0.objCount; i++)
+        sub_080786D0(gUnk_02013DE0.objs + i * 0x14);
+    for (i = 0; i < gUnk_02013DE0.objCount; i++)
+        sub_08078534(gUnk_02013DE0.objs + i * 0x14, 0, 0, 0, 1, 0, 0, 0, 0,
+                     gUnk_02013DE0.unkAA8);
+    sub_0807A298(&gUnk_02014888);
+    sub_0807A2EC(&gUnk_02014888);
+    sub_08000854(tb);
+    gMain.intrCheck &= 0xFFFE;
+    tb = (u8 *)&gUnk_02014888 - 0xFC;
+    boxDirty = (u16 *)((u8 *)&gUnk_02014888 - 0xDA);
+    if (*boxDirty == 1) {
+        sub_08000838(tb);
+        *boxDirty = 0;
+    }
+    sub_08000C54(tb);
+    return 0;
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08001364", sub_080017E8); /* 0x080017E8 size 0x2FC */
+
+/* "Bustup" scene callback: runs the step table at 0x0813ADD4. */
+u16 sub_08001AE4(void)
+{
+    StepFunc step = gUnk_0813ADD4[gMain.seqIndex1];
+
+    if (step != NULL) {
+        if (step())
+            gMain.seqIndex1++;
+        return 0;
+    }
+    REG_DISPCNT &= 0xE0FF;
+    return 1;
+}
+
+/* "Auto Bustup" scene callback: same, but forces auto-advance each frame. */
+u16 sub_08001B34(void)
+{
+    if (gUnk_0813ADD4[gMain.seqIndex1] != NULL) {
+        if (gUnk_0813ADD4[gMain.seqIndex1]())
+            gMain.seqIndex1++;
+        gUnk_02013DE0.autoAdvance = TRUE;
+        return 0;
+    }
+    REG_DISPCNT &= 0xE0FF;
+    return 1;
+}
+
+/* Maps a dialogue event ID to its table index (DIALOGUE_COUNT if not found). */
+u32 sub_08001B98(u16 eventId)
+{
+    u32 i;
+
+    for (i = 0; i <= DIALOGUE_COUNT; i++) {
+        if (gUnk_0813ADF4[i].eventId == eventId)
+            goto found;
+    }
+    i = DIALOGUE_COUNT;
+found:
+    return i;
+}
+
+/* Maps a dialogue table index to its event ID. */
+u16 sub_08001BC8(u32 index)
+{
+    if (index <= DIALOGUE_COUNT)
+        return gUnk_0813ADF4[index].eventId;
+    return 0;
+}
+
+/* Maps a dialogue table index to the speaker (portrait) character ID. */
+u16 sub_08001BEC(u32 index)
+{
+    if (index <= DIALOGUE_COUNT)
+        return gUnk_0813ADF4[index].speakerId;
+    return 0;
+}
+
+void sub_08001C10(u16 eventId)
+{
+    u32 i;
+
+    for (i = 0; i <= DIALOGUE_COUNT; i++) {
+        if (gUnk_0813ADF4[i].eventId == eventId) {
+            gMain.dialogueIndex = i;
+            gMain.speaker = gUnk_0813ADF4[i].speakerId;
+            gMain.seqIndex1 = 0;
+            return;
+        }
+    }
+}
+
+/* Maps a character ID to its portrait ("bustup") descriptor. */
+const void *sub_08001C78(u32 charId)
+{
+    switch (charId) {
+    case 2:
+        return gUnk_08197704;
+    case 3:
+        return gUnk_0819772C;
+    case 4:
+        return gUnk_08197754;
+    case 5:
+        return gUnk_08197740;
+    case 16:
+        return gUnk_0819777C;
+    case 19:
+        return gUnk_08197790;
+    case 20:
+        return gUnk_08197768;
+    case 35:
+        return gUnk_081976B4;
+    case 24:
+        return gUnk_081977A4;
+    case 6:
+        return gUnk_081977E0;
+    case 7:
+        return gUnk_081977F4;
+    case 8:
+        return gUnk_081977B8;
+    case 9:
+        return gUnk_08197808;
+    case 10:
+        return gUnk_081977CC;
+    case 11:
+        return gUnk_0819781C;
+    case 12:
+        return gUnk_08197830;
+    case 13:
+        return gUnk_08197858;
+    case 14:
+        return gUnk_081978D0;
+    case 15:
+        return gUnk_08197880;
+    case 17:
+        return gUnk_08197844;
+    case 18:
+        return gUnk_0819786C;
+    case 21:
+        return gUnk_08197894;
+    case 22:
+        return gUnk_081978A8;
+    case 23:
+        return gUnk_081978BC;
+    case 37:
+        return gUnk_081976C8;
+    case 38:
+        return gUnk_081978F8;
+    case 39:
+        return gUnk_081978E4;
+    case 32:
+        return gUnk_081976DC;
+    case 33:
+        return gUnk_081976F0;
+    case 34:
+        return gUnk_081976A0;
+    case 1:
+    default:
+        return gUnk_08197718;
+    }
+}
+
+/* Write one 8bpp pixel into VRAM (which only takes 16-bit writes). */
+void sub_08001E24(u8 *dest, u32 color)
+{
+    if ((u32)dest & 1) {
+        dest--;
+        *(u16 *)dest = ((u8)color << 8) | *dest;
+    } else {
+        *(u16 *)dest = (u8)color | (*(u16 *)dest >> 8 << 8);
+    }
+}
+
+/* Draw one glyph (10 rows of 1bpp pixels) into the text canvas `dest`, using
+ * either the 8x10 ASCII font (1 byte per row) or the 8x10 Shift-JIS font (u16
+ * per row, MSB first). */
+void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
+{
+    s32 glyphOffset;
+    register int fontOffset asm("r0");
+    s32 scanline;
+    s32 x;
+    s32 nextScanline;
+    u16 widePixels;
+    u32 asciiMask;
+    u32 wideMask;
+    u8 *destLine;
+    u8 *nextDestLine;
+    u8 asciiPixels;
+    destLine = dest;
+    /* FAKEMATCH: preserve the entry copy and index-before-font scheduling.
+     * These empty constraints emit no instructions and do not change values. */
+    asm volatile ("" : "+r"(destLine));
+    scanline = 0;
+    glyphOffset = glyph * 0xA;
+    do {
+        if (0x80 & gUnk_02011C20.flags4) {
+            fontOffset = (glyphOffset + scanline) * 2;
+            asm volatile ("" : : "r"(fontOffset));
+            widePixels = *(const u16 *)((const u8 *)gUnk_081D0200 + fontOffset);
+            wideMask = 0x8000;
+            widePixels = (widePixels >> 8) | ((u8)widePixels << 8);
+            x = 0;
+            nextDestLine = destLine + 0xF0;
+            nextScanline = scanline + 1;
+            do {
+                if (widePixels & wideMask) {
+                    sub_08001E24(&destLine[x], color);
+                }
+                wideMask = wideMask >> 1;
+                x += 1;
+            } while (x <= 0xF);
+        } else {
+            fontOffset = glyphOffset + scanline;
+            asm volatile ("" : : "r"(fontOffset));
+            asciiPixels = gUnk_08229500[fontOffset];
+            asciiMask = 0x80;
+            x = 0;
+            nextDestLine = destLine + 0xF0;
+            nextScanline = scanline + 1;
+            do {
+                if (asciiPixels & asciiMask) {
+                    sub_08001E24(&destLine[x], color);
+                }
+                asciiMask = asciiMask >> 1;
+                x += 1;
+            } while (x <= 7);
+        }
+        destLine = nextDestLine;
+        scanline = nextScanline;
+    } while (scanline <= 9);
+}
+void sub_08001F08(u32 x, u32 y, const u8 *str)
+{
+    u8 *dest;
+
+    if (gCalendar.page)
+        dest = (u8 *)VRAM;
+    else
+        dest = (u8 *)VRAM + 0xA000;
+    dest += x;
+    dest += y * 240;
+    while (*str != 0) {
+        if (gSaveData.flags4 & 0x80) {
+            sub_08001E4C(dest + 241, 0xFF, sub_08072584((str[0] << 8) | str[1]));
+            sub_08001E4C(dest, 0xF7, sub_08072584((str[0] << 8) | str[1]));
+            dest += 10;
+            str += 2;
+        } else {
+            sub_08001E4C(dest + 241, 0xFF, *str);
+            sub_08001E4C(dest, 0xF7, *str);
+            dest += 5;
+            str++;
+        }
+    }
+}
+void sub_08001FB0(u32 mask)
+{
+    u32 x = 0x20;
+    u32 y = 0x80;
+    u32 count = 0;
+    u32 i;
+
+    for (i = 0; i <= 8; i++) {
+        if (gUnk_081980D4[i].flags & mask) {
+            sub_08001F08(x, y, gUnk_081980D4[i].name);
+            y += 12;
+            if (++count == 2)
+                return;
+        }
+    }
+}
+
+void sub_08002008(void)
+{
+    if (gCalendar.page)
+        sub_08075294((void *)0x06007080, gUnk_087F1798, 0x2580);
+    else
+        sub_08075294((void *)0x06011080, gUnk_087F1798, 0x2580);
+}
+
+void sub_08002048(void)
+{
+    gCalendar.page = 1 - gCalendar.page;
+    if (gCalendar.page)
+        REG_DISPCNT |= 0x10;
+    else
+        REG_DISPCNT &= ~0x10;
+}
+
+void sub_08002094(void)
+{
+    struct Date d;
+    s32 cell, col, row, day, daysInMonth;
+    u32 events;
+
+    sub_080047F4(&d, gCalendar.date);
+    day = 1;
+    cell = sub_080042D8(d.year, d.month, 1);
+    col = cell;
+    daysInMonth = sub_080042B4(d.year, d.month);
+    row = 0;
+    if (gCalendar.secondHalf) {
+        while (cell <= 20) {
+            cell++;
+            day++;
+            col++;
+            col %= 7;
+        }
+        cell = 0;
+    }
+    while (day <= daysInMonth && cell <= 20) {
+        if (col == gCalendar.weekday && row == gCalendar.week) {
+            events = sub_080044E4(d.year, d.month, day) & 0x3F700000;
+            if (gCalendar.shownEvents != events) {
+                sub_08002008();
+                sub_08001FB0(events);
+                sub_08002048();
+                sub_08001FB0(events);
+                gCalendar.shownEvents = events;
+            }
+            return;
+        }
+        col++;
+        if (col > 6) {
+            col = 0;
+            row++;
+        }
+        day++;
+        cell++;
+    }
+}
+/* Sets the calendar cursor (weekday + week) to the day `arg0`, clamping to the
+ * second half of the month. */
+void sub_0800217C(u16 arg0)
+{
+    struct Date d;
+    s32 first;
+
+    sub_080047F4(&d, arg0);
+    gCalendar.weekday = sub_080042D8(d.year, d.month, d.day);
+    first = sub_080042D8(d.year, d.month, 1);
+    gCalendar.week = (u32)(d.day - 1 + first) / 7U;
+    if (gCalendar.week > 2) {
+        gCalendar.week -= 2;
+        gCalendar.secondHalf = 1;
+    } else {
+        gCalendar.secondHalf = 0;
+    }
+}
+void sub_08002220(void)
+{
+    struct Date d;
+    s32 i;
+    s32 x;
+    u32 tileOffset;
+    s32 season;
+
+    sub_080762D0((gCalendar.weekday * 32 + 13) | ((gCalendar.week * 24 + 37) << 16), 0x80, 0x178);
+    if (gCalendar.secondHalf)
+        sub_080762D0(0x00080068, 0x4080, 0x190);
+    else
+        sub_080762D0(0x00700068, 0x4080, 0x194);
+    for (i = 0; i <= 6; i++)
+        sub_080761F0((25 << 16) | (i * 32 + 16), 0x4080, 0x82A0 + i * 4);
+
+    sub_080047F4(&d, gCalendar.date);
+    tileOffset = ((d.month - 1) % 3) * 10;
+    switch (gCalendar.blink) {
+    case 1:
+        sub_080047F4(&d, gCalendar.date);
+        season = (d.month - 1) / 3;
+        sub_08075294((void *)0x06014C00, gUnk_087F5DF8 + season * 0x800, 0x800);
+    case 0:
+    case 2:
+        gCalendar.blink++;
+        break;
+    default:
+        sub_080761F0(0x00080010, 0x4080, tileOffset + 0x7260);
+        sub_080761F0(0x00080030, 0x4080, tileOffset + 0x7264);
+        sub_080761F0(0x00080050, 0x40, tileOffset + 0x7268);
+        break;
+    }
+}

@@ -1,0 +1,26 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/code_0805F96C/sub_0805F96C.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0805FBA4.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0805FC18.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0805FCF4.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0805FD28.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0805FEA4.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0806007C.s"
+	.include "asm/nonmatching/code_0805F96C/sub_080600AC.s"
+	.include "asm/nonmatching/code_0805F96C/sub_080600D8.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060160.s"
+	.include "asm/nonmatching/code_0805F96C/sub_080602A4.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060308.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060344.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060400.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0806041C.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0806044C.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060578.s"
+	.include "asm/nonmatching/code_0805F96C/sub_0806075C.s"
+	.include "asm/nonmatching/code_0805F96C/sub_080608BC.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060934.s"
+	.include "asm/nonmatching/code_0805F96C/sub_08060964.s"

@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Resolve absolute data references (R_ARM_ABS32) in unit objects to their final ROM/RAM values.
+
+  python3 tools/objdiff_resolve.py IN.o OUT.o [IN.o OUT.o ...]
+
+Why: the original asm writes some literal-pool words as plain numbers (`.4byte 0x02013D90`) while the C
+refers to a symbol (`gUnk_02013D90`), or the other way round. The linked bytes are identical, but
+objdiff compares unlinked objects and would count every such word as a mismatch. After this pass
+both sides hold the same plain value and only real code differences remain.
+
+Resolved:  references to symbols whose address is known (name suffix _XXXXXXXX, config/functions.tsv,
+           symbols.ld), and references into the object's own .text (jump tables, local pools). The latter
+           are mapped through the containing function's ROM address, so they also work in the objdiff
+           "base" objects, where not-yet-decompiled functions are left out and offsets shift.
+Left as is: everything else (calls stay symbolic on both sides, which objdiff already compares by name).
+Needs no baserom and no full link.
+"""
+import re
+import struct
+import sys
+
+R_ARM_ABS32 = 2
+
+
+def load_addresses():
+    addr = {}
+    for line in open('config/functions.tsv'):
+        if line.startswith('#'):
+            continue
+        f = line.rstrip('\n').split('\t')
+        a = int(f[0], 16)
+        addr[f[3]] = a | 1 if f[1] == 't' else a
+    for line in open('symbols.ld'):
+        m = re.match(r'\s*(\w+)\s*=\s*(0x[0-9A-Fa-f]+)\s*;', line)
+        if m:
+            addr[m.group(1)] = int(m.group(2), 16)
+    return addr
+
+
+ADDR = load_addresses()
+
+
+def sym_address(name):
+    if name in ADDR:
+        return ADDR[name]
+    m = re.search(r'_([0-9A-Fa-f]{8})$', name)
+    if m:
+        a = int(m.group(1), 16)
+        if name.startswith('sub_') and 0x08000000 <= a < 0x08080A20:
+            a |= 1  # thumb function pointer
+        return a
+    return None
+
+
+def resolve(inp, outp):
+    data = bytearray(open(inp, 'rb').read())
+    assert data[:4] == b'\x7fELF' and data[4] == 1 and data[5] == 1, 'expected ELF32 little-endian'
+    e_shoff, = struct.unpack_from('<I', data, 0x20)
+    e_shentsize, e_shnum, e_shstrndx = struct.unpack_from('<HHH', data, 0x2E)
+    sh = []
+    for i in range(e_shnum):
+        sh.append(list(struct.unpack_from('<IIIIIIIIII', data, e_shoff + i * e_shentsize)))
+    # sh fields: name type flags addr offset size link info addralign entsize
+    shstr = sh[e_shstrndx]
+
+    def cstr(off):
+        return data[off:data.index(b'\0', off)].decode()
+
+    secname = [cstr(shstr[4] + s[0]) for s in sh]
+    symtab = next(i for i, s in enumerate(sh) if s[1] == 2)
+    strtab = sh[symtab][6]
+    syms = []
+    for k in range(sh[symtab][5] // 16):
+        name, value, size, info, other, shndx = struct.unpack_from('<IIIBBH', data, sh[symtab][4] + k * 16)
+        syms.append((cstr(sh[strtab][4] + name) if name else '', value, size, info, shndx))
+    text = secname.index('.text') if '.text' in secname else None
+    # functions defined in .text, for mapping .text offsets to ROM addresses
+    funcs = []
+    for name, value, size, info, shndx in syms:
+        if shndx == text and (info & 0xF) == 2 and name in ADDR:
+            funcs.append((value & ~1, size, ADDR[name] & ~1))
+    funcs.sort()
+
+    def text_to_rom(off):
+        for start, size, rom in funcs:
+            if start <= off < start + max(size, 1):
+                return rom + (off - start)
+        return None
+
+    resolved = 0
+    for ri, rs in enumerate(sh):
+        if rs[1] != 9 or rs[6] != symtab:  # SHT_REL against our symtab
+            continue
+        target_sec = rs[7]
+        tsec = sh[target_sec]
+        keep = []
+        for k in range(rs[5] // 8):
+            r_offset, r_info = struct.unpack_from('<II', data, rs[4] + k * 8)
+            rtype, rsym = r_info & 0xFF, r_info >> 8
+            value = None
+            if rtype == R_ARM_ABS32:
+                name, svalue, _, info, shndx = syms[rsym]
+                addend, = struct.unpack_from('<I', data, tsec[4] + r_offset)
+                if shndx == 0 and name:
+                    a = sym_address(name)
+                    if a is not None:
+                        value = (a + addend) & 0xFFFFFFFF
+                elif shndx == text and text is not None:
+                    local = (svalue & ~1) + addend if (info & 0xF) == 3 else (svalue & ~1) + addend
+                    thumb = 1 if ((info & 0xF) == 2 and svalue & 1) else 0
+                    rom = text_to_rom(local & ~1)
+                    if rom is not None:
+                        value = rom | (local & 1) | thumb
+                elif name and sym_address(name) is not None:
+                    value = (sym_address(name) + addend) & 0xFFFFFFFF
+            if value is None:
+                keep.append((r_offset, r_info))
+            else:
+                struct.pack_into('<I', data, tsec[4] + r_offset, value)
+                resolved += 1
+        for k, (o, i) in enumerate(keep):
+            struct.pack_into('<II', data, rs[4] + k * 8, o, i)
+        rs[5] = len(keep) * 8
+        struct.pack_into('<IIIIIIIIII', data, e_shoff + ri * e_shentsize, *rs)
+    open(outp, 'wb').write(data)
+    return resolved
+
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    for i in range(0, len(args), 2):
+        resolve(args[i], args[i + 1])

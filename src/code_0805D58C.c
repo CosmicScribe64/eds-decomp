@@ -1,0 +1,660 @@
+#include "global.h"
+
+#define IO32(off) (*(vu32 *)(0x04000000 + (off)))
+#define IO16(off) (*(vu16 *)(0x04000000 + (off)))
+void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
+struct PickBits { u32 f0 : 1; u32 f1 : 4; u32 f2 : 9; u32 rest : 18; };
+/* Block at 0x0201D7E4 (step machine that scrolls a picked zone into view). */
+struct Pick {
+    u32 w0;             /* +0 */
+    u8 step;            /* +4 */
+    u8 pad5;
+    s16 x;              /* +6 */
+    s16 y;              /* +8 */
+    u16 padA;
+    u32 bits;           /* +0xC packed position (struct PickBits) */
+    u32 bits2;          /* +0x10 */
+    u8 pad14[0x1E - 0x14];
+    u16 h1E;
+};
+extern struct Pick gUnk_0201D7E4;
+#define PICK_BITS (*(struct PickBits *)&gUnk_0201D7E4.bits)
+#define PICK_BITS2 (*(struct PickBits *)&gUnk_0201D7E4.bits2)
+extern const u16 gUnk_081A4454[];
+extern const u16 gUnk_081A43E4[];
+struct Sel {
+    u8 pl;              /* +0 */
+    u8 zone;            /* +1 */
+    u16 h;              /* +2: low byte = flag, high byte = row */
+};
+struct ScrFlags {
+    u8 pad[0x830];
+    u8 f0 : 1;
+    u8 rest : 7;
+    u8 pad831[3];
+    struct Sel sel;     /* +0x834 */
+    u8 step;            /* +0x838 */
+    u8 cnt;             /* +0x839 */
+};
+extern struct ScrFlags gUnk_0201CFB0;
+extern u8 gUnk_0201930C[];
+extern const u16 gUnk_081A4474[];
+void sub_08077AEC(u16 se);
+void sub_08060FD0(int a, int b);
+int sub_08062140(int id);
+void sub_08076714(u32 yx, u16 a, u16 attr, u32 c);
+#define CARD_ID(w) (((w) << 20) >> 20)
+struct MainBig { u8 pad0[4]; u16 held; u8 pad[0x4862 - 6]; u16 vcount; };
+extern struct MainBig gUnk_03000040;
+struct Blk18450 { u8 pad[0x15D]; u8 k; };
+extern struct Blk18450 gUnk_02018450;
+extern const u32 gUnk_0819DD94[];
+extern const u32 gUnk_081A0594[];
+extern const u16 gUnk_081A2D94[];
+#define K gUnk_02018450.k
+#define H gUnk_03000040.vcount
+int sub_080623AC(int a, int b, int c);
+int sub_080623EC(int a, int b, int c);
+void sub_08024134(u32 player, u32 a, u32 b);
+void sub_080241F0(u32 a);
+void sub_08024248(int a, int b, int c);
+void sub_08060578(void);
+void sub_0805DE34(int a, int x, int y, u32 val);
+void sub_0805DE6C(int a, int x, int y, u32 val);
+void sub_0805DD64(int x, int y, int val);
+void sub_0805DDC4(int x, int y, int val, int k);
+int sub_08076F9C(void);
+void sub_08075294(u32 dst, const void *src, u32 n);
+extern const u8 gUnk_08608360[];
+extern const u16 gUnk_082A6500[];
+
+extern const u16 gUnk_081A44D4[];
+#if 0 /* NONMATCHING: logic identical; the ROM keeps &gUnk_0201CFB0 in r8 (pl r7, zone r6, fb r9, flag/row/id spilled) and computes q=base+0x834 via `add r2,r8`; the build folds q to a literal `base+0x834` and re-assigns pl/zone/fb differently (same size) */
+void sub_0805D58C(void)
+{
+    struct ScrFlags *sc = &gUnk_0201CFB0;
+    struct Sel *q = &sc->sel;
+    int pl = q->pl;
+    int zone = q->zone;
+    int cardoff = (pl & 1) * 0xD64 + zone * 0x94;
+    int flag = *(u8 *)&q->h;
+    int fb = (gUnk_0201930C[cardoff + 6] >> 1) & 1;
+    int row = q->h >> 8;
+    u8 id = CARD_ID(*(u32 *)((u32)gUnk_0201930C + cardoff));
+    u8 *step = &sc->step;
+    switch (*step) {
+    case 0:
+        sub_08077AEC(6);
+        sub_08060FD0(pl, zone);
+        sc->cnt = 0;
+        (*step)++;
+        /* fallthrough */
+    case 1:
+        if (sc->cnt <= 9) {
+            int a = sub_080623AC(pl, 0, zone);
+            int b = sub_080623EC(pl, 0, zone);
+            u16 attr;
+            if (row == 0)
+                attr = gUnk_081A4474[fb * 24];
+            else
+                attr = gUnk_081A4474[fb * 24 + (sc->cnt * 24) / 10];
+            if (attr & 0x1000) {
+                attr &= 0xEFFF;
+                attr = (s16)attr + (sub_08062140(id) + 0x1000);
+            }
+            sub_08076714((b << 16) | a, 0x80, attr | 0x400,
+                         0x1000000 | gUnk_081A44D4[sc->cnt + flag * 10]);
+            sc->cnt += 1;
+            if (sc->cnt <= 9)
+                return;
+        }
+        /* fallthrough */
+    default:
+        sc->f0 = 0;
+        break;
+    }
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805D58C); /* 0x0805D58C size 0x17C */
+#endif
+#if 0 /* NONMATCHING: same loads and control flow, register assignment differs (ROM: pl r7, zone r6, row r9, base r8; build r6/r7/r8/r9), and the frame-table index is summed as (cnt*2 + row*48) vs ((row*24 + cnt)*2) */
+void sub_0805D708(void)
+{
+    struct ScrFlags *sc = &gUnk_0201CFB0;
+    struct Sel *q = &sc->sel;
+    s8 pl = q->pl;
+    int zone = q->zone;
+    int flag = *(u8 *)&q->h;
+    int row = q->h >> 8;
+    int id = CARD_ID(*(u32 *)((pl & 1) * 0xD64 + (u32)gUnk_0201930C + zone * 0x94));
+    u8 *step = &sc->step;
+    switch (*step) {
+    case 0:
+        sub_08077AEC(6);
+        sub_08060FD0(pl, zone);
+        sc->cnt = 0;
+        (*step)++;
+        /* fall through */
+    case 1:
+        if (sc->cnt <= 0x17) {
+            u16 a = sub_080623AC(pl, 0, zone);
+            int b = sub_080623EC(pl, 0, zone);
+            u16 attr = gUnk_081A4474[row * 24 + sc->cnt];
+            u32 c;
+            if (attr & 0x1000) {
+                attr = (s16)attr + (sub_08062140(id) + 0x1000);
+                attr &= 0xEFFF;
+            }
+            c = 0x1000000;
+            if (flag != 0)
+                c += 0x20;
+            sub_08076714((b << 16) | a, 0x80, attr | 0x400, c);
+            sc->cnt++;
+            if (sc->cnt <= 0x17)
+                return;
+        }
+        /* fall through */
+    default:
+        sc->f0 = 0;
+        break;
+    }
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805D708); /* 0x0805D708 size 0x140 */
+#endif
+void sub_0805D848(void)
+{
+    struct PickBits *src = &PICK_BITS;
+    struct PickBits *dst = &PICK_BITS2;
+    if (*((u8 *)dst - 12) == 0) {
+        if ((*(u8 *)src & 0x1E) == 0x1A && (*(u8 *)dst & 0x1E) == 0x16)
+            sub_08077AEC(14);
+        else
+            sub_08077AEC(7);
+    }
+    if (gUnk_0201CFB0.step <= 15) {
+        int x = sub_080623AC(src->f0, src->f1, src->f2);
+        int y = sub_080623EC(src->f0, src->f1, src->f2);
+        int x2 = sub_080623AC(dst->f0, dst->f1, dst->f2);
+        int y2 = sub_080623EC(dst->f0, dst->f1, dst->f2);
+        int dx, dy;
+        u16 tile = 0x40;
+        int flip = 0;
+        u16 t;
+        int old;
+        dx = x2 - x;
+        dy = y2 - y;
+        t = gUnk_081A4454[gUnk_0201CFB0.step];
+        dx *= t;
+        dy *= t;
+        dx /= 256;
+        dy /= 256;
+        if (((u8 *)dst)[1] & 0x80)
+            tile = sub_08062140(*(u32 *)&gUnk_0201CFB0.sel) + 0x1000;
+        if ((u8)(((u8 *)src)[1] & 0x40) == (u8)(((u8 *)dst)[1] & 0x40)) {
+            if ((u8)(((u8 *)dst)[1] & 0x40)) flip = 0x20;
+        } else if ((u8)(((u8 *)dst)[1] & 0x40)) {
+            flip = gUnk_0201CFB0.step * 2;
+        } else {
+            flip = 0x20 - gUnk_0201CFB0.step * 2;
+        }
+        sub_08076714((x + dx) | ((y + dy) << 16), 0x80, tile + 0x400,
+                     ((u32)gUnk_081A43E4[gUnk_0201CFB0.step] << 16) | flip);
+        old = gUnk_0201CFB0.step;
+        gUnk_0201CFB0.step = old + 1;
+        if ((gUnk_03000040.held & 2) || (1 & *(u8 *)&gUnk_0201CFB0)) {
+            if (gUnk_0201CFB0.step <= 11)
+                gUnk_0201CFB0.step = old + 4;
+        }
+    }
+    if (gUnk_0201CFB0.step == 16)
+        gUnk_0201CFB0.f0 = 0;
+}
+void sub_0805DA1C(void)
+{
+    struct PickBits *pb = &PICK_BITS;
+    struct ScrFlags *screen;
+    u8 *step = (u8 *)pb - 8;
+    if (*step == 0)
+        sub_08077AEC(7);
+    if (*step <= 0xF) {
+        int a1 = sub_080623AC(pb[0].f0, pb[0].f1, pb[0].f2);
+        int b1 = sub_080623EC(pb[0].f0, pb[0].f1, pb[0].f2);
+        int a2 = sub_080623AC(pb[1].f0, pb[1].f1, pb[1].f2);
+        int b2 = sub_080623EC(pb[1].f0, pb[1].f1, pb[1].f2);
+        int dx1 = a2 - a1;
+        int dy1 = b2 - b1;
+        int dx2 = a1 - a2;
+        int dy2 = b1 - b2;
+        u16 t = gUnk_081A4454[*step];
+        u8 old;
+        dx1 *= t;
+        dy1 *= t;
+        dx1 /= 256;
+        dy1 /= 256;
+        dx2 *= t;
+        dy2 *= t;
+        dx2 /= 256;
+        dy2 /= 256;
+        /* Stage the screen address before drawing; read its flag afterward. */
+        screen = &gUnk_0201CFB0;
+        sub_08076714((a1 + dx1) | ((b1 + dy1) << 16), 0x80, 0x440, (u32)gUnk_081A43E4[*step] << 16);
+        sub_08076714((a2 + dx2) | ((b2 + dy2) << 16), 0x80, 0x440, (u32)gUnk_081A43E4[*step] << 16);
+        old = *step;
+        *step = old + 1;
+        if ((gUnk_03000040.held & 2) || (1 & *(u8 *)screen)) {
+            if (*step <= 0xB)
+                *step = old + 4;
+        }
+    }
+    if (gUnk_0201CFB0.step == 0x10)
+        gUnk_0201CFB0.f0 = 0;
+}
+
+void sub_0805DB90(void)
+{
+    int a = sub_080623AC(PICK_BITS.f0, PICK_BITS.f1, PICK_BITS.f2);
+    int b = sub_080623EC(PICK_BITS.f0, PICK_BITS.f1, PICK_BITS.f2);
+    u8 *step = &gUnk_0201D7E4.step;
+    switch (*step) {
+    case 0:
+        sub_08024134(0, 0, 0);
+        (*step)++;
+        break;
+    case 1: {
+        u32 *w = &gUnk_0201D7E4.w0;
+        sub_080241F0(*w);
+        (*step)++;
+        break;
+    }
+    case 2: {
+        s16 *px = &gUnk_0201D7E4.x;
+        s16 *py;
+        int t = a + *px;
+        py = &gUnk_0201D7E4.y;
+        sub_08024248(t, b + *py, 1);
+        if (gUnk_0201D7E4.h1E == 0)
+            (*step)++;
+        break;
+    }
+    default:
+        sub_08060578();
+        gUnk_0201CFB0.f0 = 0;
+        break;
+    }
+}
+#if 0 /* NONMATCHING: same instruction count and the (h*4 + k*640) + table add order matches the ROM; only the register chosen for the running index differs (target r1, build r2/r0) and the initial IO/table literal loads are swapped */
+#define TBL32(t) (*(const u32 *)((H << 2) + K * 640 + (u32)(t)))
+#define TBL16(t) (*(const u16 *)((H << 1) + K * 320 + (u32)(t)))
+void sub_0805DC38(void)
+{
+    const u32 *ta;
+    const u32 *tb;
+    const u16 *tc;
+    H = *(vu16 *)0x04000006;
+    ta = gUnk_0819DD94;
+    IO32(0x28) = TBL32(ta);
+    tb = gUnk_081A0594;
+    IO32(0x2C) = TBL32(tb);
+    tc = gUnk_081A2D94;
+    IO16(0x20) = TBL16(tc);
+    IO32(0x38) = TBL32(ta);
+    IO32(0x3C) = TBL32(tb);
+    IO16(0x30) = TBL16(tc);
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805DC38); /* 0x0805DC38 size 0x104 */
+#endif
+void sub_0805DD3C(void)
+{
+    IO32(0x28) = 0;
+    IO32(0x2C) = 0;
+    IO16(0x20) = 0x100;
+    IO32(0x38) = 0;
+    IO32(0x3C) = 0;
+    IO16(0x30) = 0x100;
+}
+void sub_0805DD64(int x, int y, int val)
+{
+    int n = val;
+    int base = 0x2020;
+    x += 0x14;
+    if (n == 0) {
+        sub_080761F0((y << 16) | x, 0, base);
+    } else {
+        do {
+            sub_080761F0(x | (y << 16), 0, (u16)(n % 10 + base));
+            n /= 10;
+            x -= 4;
+        } while (n != 0);
+    }
+}
+void sub_0805DDC4(int x, int y, int val, int k)
+{
+    int n = val;
+    u16 base = 0x302E + k * 0x30;
+    x += 0x50;
+    if (n == 0) {
+        sub_080761F0((y << 16) | x, 0x40, base);
+    } else {
+        do {
+            sub_080761F0(x | (y << 16), 0x40, (u16)(base + (n % 10) * 4));
+            n /= 10;
+            x -= 0x10;
+        } while (n != 0);
+    }
+}
+void sub_0805DE34(int a, int x, int y, u32 val)
+{
+    x += a * 0x78;
+    x += 0x47;
+    y += 0x7E;
+    sub_080761F0((y << 16) | x, 0x4000, 0x202A);
+    sub_0805DD64(x + 4, y, val);
+}
+void sub_0805DE6C(int a, int x, int y, u32 val)
+{
+    x += a * 0x78;
+    x += 0x47;
+    y += 0x86;
+    sub_080761F0((y << 16) | x, 0x4000, 0x202C);
+    sub_0805DD64(x + 4, y, val);
+}
+void sub_0805DEA4(u16 mask, u32 *vals, u16 flag)
+{
+    int i;
+    u32 *p;
+    int sh;
+    for (i = 0, p = vals, sh = 0; i <= 1; p++, sh += 8, i++) {
+        if (flag == 0 || (mask & (2 << sh)) == 0) {
+            if (((int)mask >> sh) & 1)
+                sub_0805DE6C(i, 0, 0, *p);
+            else
+                sub_0805DE34(i, 0, 0, *p);
+        }
+    }
+}
+void sub_0805DF04(int a, int b, u16 c)
+{
+    int x = a * 0x68 + 8;
+    int k = a;
+    if (c != 0)
+        k = sub_08076F9C() & 3;
+    sub_0805DDC4(x, 0x40, b, k);
+}
+#if 0 /* NONMATCHING: same structure; register numbering of the hoisted constants 0x3F/0xFC0 (target ip=0x3F,r8=0xFC0; build r8=0x3F,ip=0xFC0), of the running temps, and `(s1 & 3)` (target movs r1,#3/adds r0,r3/ands r0,r1) differ */
+void sub_0805DF34(int a, u16 b, u16 c, u32 d)
+{
+    u16 pal = d;
+    const u16 *src;
+    u16 *dst;
+    int n;
+    u32 i;
+    u16 *p;
+    sub_08075294(0x05000000 + (pal >> 4) * 0x20, gUnk_08608360 + b * 0x80, 0x80);
+    src = (const u16 *)((const u8 *)gUnk_082A6500 + b * 135 * 32);
+    {
+        u32 addr = a << 14;
+        addr += c << 5;
+        addr += 0x06004000;
+        dst = (u16 *)addr;
+    }
+    for (n = 720; n != 0; n--) {
+        u16 s0 = src[0];
+        int s1 = src[1];
+        u32 s2 = src[2];
+        s16 t;
+        dst[0] = (s0 & 0x3F) | ((s0 & 0xFC0) << 2);
+        dst[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) << 6);
+        t = s1 >> 8;
+        dst[2] = (t & 0x3F) | ((((t >> 6) | ((s2 & 0xF) << 2))) << 8);
+        s2 >>= 4;
+        dst[3] = (s2 & 0x3F) | ((s2 & 0xFC0) << 2);
+        src += 3;
+        dst += 4;
+    }
+    {
+        u32 addr = a << 14;
+        addr += 0x06004000;
+        addr += c << 5;
+        p = (u16 *)addr;
+    }
+    {
+        s16 v = (u8)pal;
+        v = (v << 8) | v;
+        for (i = 0; i <= 0xB3F; p++, i++)
+            *p = (*p & 0x3F3F) + v;
+    }
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805DF34); /* 0x0805DF34 size 0x120 */
+#endif
+void sub_0805E054(int a, u16 *p, u16 y, u16 b)
+{
+    int off = *p * 2;
+    u16 *cnt = (u16 *)((u8 *)p + (off + 8));
+    u16 *src = (u16 *)((u8 *)p + (off + 16));
+    u32 addr = a << 14;
+    u16 *dst;
+    u16 i;
+    u16 v;
+    addr += 0x06004000;
+    addr += y << 5;
+    dst = (u16 *)addr;
+    for (i = 0; i < (*cnt << 5); i++) {
+        u16 w = *src;
+        v = w;
+        /* Keep the loaded word separate from the pixel accumulator. */
+        __asm__ __volatile__("" : : "r"(w));
+        if (w & 0xFF00)
+            v += (u8)b << 8;
+        if (v & 0xFF)
+            v += (u8)b;
+        *dst = v;
+        dst++;
+        src++;
+    }
+    sub_08075294(0x05000000 + (b >> 4) * 0x20, p + 4, 0x40);
+}
+#if 0 /* NONMATCHING: identical structure; the ROM rematerializes the 0x2000000 add constant for `t` in the inner loop (and 0x1000000 after the else loop) while the build keeps them in r6/r7/r9 (16 bytes shorter); swapping the two increments or the declaration order does not change the CSE */
+void sub_0805E100(int a, int x, int y, int v)
+{
+    u16 *dst = (u16 *)((a << 11) + 0x06000000);
+    u32 t;
+    int odd;
+    s16 row;
+    u16 h;
+    h = v / 2;
+    dst = (u16 *)((u8 *)dst + (x / 2) * 2);
+    dst = (u16 *)((u8 *)dst + (y << 5));
+    row = 0;
+    odd = 1 & x;
+    t = h << 24;
+    while (row <= 9) {
+        u16 *p;
+        u16 *next;
+        s8 nrow;
+        u32 u;
+        int j;
+        if (odd != 0) {
+            *dst = (t >> 24) << 8;
+            t += 0x1000000;
+            next = dst + 16;
+            nrow = row + 1;
+            p = dst + 1;
+            u = t + 0x1000000;
+            for (j = 3; j >= 0; j--) {
+                *p = (t >> 24) | ((u >> 24) << 8);
+                u += 0x2000000;
+                t += 0x2000000;
+                p++;
+            }
+        } else {
+            next = dst + 16;
+            nrow = row + 1;
+            p = dst;
+            u = t + 0x1000000;
+            for (j = 3; j >= 0; j--) {
+                *p = (t >> 24) | ((u >> 24) << 8);
+                u += 0x2000000;
+                t += 0x2000000;
+                p++;
+            }
+            dst[4] = t >> 24;
+            t += 0x1000000;
+        }
+        dst = next;
+        row = nrow;
+    }
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E100); /* 0x0805E100 size 0xD0 */
+#endif
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E1D0); /* 0x0805E1D0 size 0x1E8 */
+#if 0 /* NONMATCHING: scene init (loads both players' portrait sprite + palette, sets BG/OBJ tiles, installs the HBlank handler); cleaned-up m2c draft compiles but the prologue of about 50 instructions already diverges (gcc folds the two clear-bit masks into one AND, reorders the arg-halfword masks, and sizes the function smaller) */
+extern u8 gUnk_020185A4[];
+extern const u32 gUnk_08621DE0[];
+extern const u16 gUnk_08622AB4[];
+extern const u16 gUnk_08631558[];
+extern const u16 gUnk_0862EEC0[];
+extern const u16 gUnk_08633BF0[];
+extern const u16 gUnk_08627AF8[];
+extern const u16 gUnk_0862A190[];
+extern const u16 gUnk_0862C828[];
+extern const u16 gUnk_08625460[];
+extern const u16 gUnk_0863840C[];
+extern const u16 gUnk_0863842C[];
+extern const u16 gUnk_0868247C[];
+extern const u16 gUnk_0868267C[];
+extern void (*gUnk_03000000[16])(void);
+void sub_08075278(void *dst, u32 size);
+void sub_080752B0(void *dst, const void *src, u32 size);
+void sub_08073498(void);
+void sub_080757AC(void);
+void sub_0805DF34(int a, u16 b, u16 c, u32 d);
+void sub_0805E054(int a, u16 *p, u16 y, u16 b);
+void sub_0805E100(int a, int x, int y, int v);
+void sub_0805E1D0(int a, int x, int y, int v);
+void sub_0805DC38(void);
+
+void sub_0805E3B8(u16 arg0, u16 arg1)
+{
+    s8 p0 = arg0;
+    s8 p1 = arg1;
+
+    sub_08075278(&gUnk_020185A4, 0xC);
+    gUnk_0201CFB0.pad[0] = (-3 & gUnk_0201CFB0.pad[0]) & -5;
+    *(u16 *)((u8 *)&gUnk_03000040 + 0x40E) = 1;
+    *(vu16 *)0x04000050 = 0;
+    *(vu16 *)0x0400000C = 0x4084;
+    sub_08073498();
+    *(vu16 *)0x0400000E = 0x4188;
+    sub_080757AC();
+    sub_080752B0((void *)0x05000240, gUnk_0863840C, 0x20);
+    sub_080752B0((void *)0x06010400, gUnk_0863842C, 0x1C0);
+    sub_080752B0((void *)0x05000260, gUnk_0868247C, 0x20);
+    sub_080752B0((void *)0x060105C0, gUnk_0868267C, 0x1800);
+    sub_08075278((void *)0x06004000, 0x4000);
+    sub_08075278((void *)0x06000000, 0x800);
+    if (p0 != 0) {
+        const u16 *spr;
+        u16 st;
+        sub_0805DF34(0, p0, 0x14C, 0x40);
+        sub_0805E100(0, 3, 5, 0x14C);
+        st = (gUnk_08621DE0[p0 & 0x7FF] & 0x1F00000) >> 20;
+        switch (st) {
+        case 21:
+            spr = gUnk_08631558;
+            break;
+        case 22:
+            spr = gUnk_0862EEC0;
+            break;
+        case 23:
+            spr = gUnk_08633BF0;
+            break;
+        default: {
+            s16 t = gUnk_08622AB4[p0 & 0x7FF];
+            int v;
+            if (t == 0x776) {
+                v = 3;
+            } else if (t >= 0x776 && t <= 0x778) {
+                v = 1;
+            } else {
+                int st2 = (gUnk_08621DE0[p0 & 0x7FF] & 0x1F00000) >> 20;
+                switch (st2) {
+                case 22: v = 7; break;
+                case 21: v = 8; break;
+                case 23: v = 9; break;
+                default: v = (gUnk_08621DE0[p0 & 0x7FF] & 0xC0000) >> 18; break;
+                }
+            }
+            switch (v) {
+            case 1: spr = gUnk_08627AF8; break;
+            case 2: spr = gUnk_0862A190; break;
+            case 3: spr = gUnk_0862C828; break;
+            default: spr = gUnk_08625460; break;
+            }
+            break;
+        }
+        }
+        sub_0805E054(0, (u16 *)spr, 0x2C, 0x80);
+        sub_0805E1D0(0, 1, 1, 0x2C);
+    }
+    sub_08075278((void *)0x06008000, 0x4000);
+    sub_08075278((void *)0x06000800, 0x800);
+    if (p1 != 0) {
+        const u16 *spr;
+        u16 st;
+        sub_0805DF34(1, p1, 0x14C, 0xA0);
+        sub_0805E100(1, 0x12, 5, 0x14C);
+        st = (gUnk_08621DE0[p1 & 0x7FF] & 0x1F00000) >> 20;
+        switch (st) {
+        case 21:
+            spr = gUnk_08631558;
+            break;
+        case 22:
+            spr = gUnk_0862EEC0;
+            break;
+        case 23:
+            spr = gUnk_08633BF0;
+            break;
+        default: {
+            s16 t = gUnk_08622AB4[p1 & 0x7FF];
+            int v;
+            if (t == 0x776) {
+                v = 3;
+            } else if (t >= 0x776 && t <= 0x778) {
+                v = 1;
+            } else {
+                int st2 = (gUnk_08621DE0[p1 & 0x7FF] & 0x1F00000) >> 20;
+                switch (st2) {
+                case 22: v = 7; break;
+                case 21: v = 8; break;
+                case 23: v = 9; break;
+                default: v = (gUnk_08621DE0[p1 & 0x7FF] & 0xC0000) >> 18; break;
+                }
+            }
+            switch (v) {
+            case 1: spr = gUnk_08627AF8; break;
+            case 2: spr = gUnk_0862A190; break;
+            case 3: spr = gUnk_0862C828; break;
+            default: spr = gUnk_08625460; break;
+            }
+            break;
+        }
+        }
+        sub_0805E054(1, (u16 *)spr, 0x2C, 0xE0);
+        sub_0805E1D0(1, 0x10, 1, 0x2C);
+    }
+    gUnk_02018450.k = 0;
+    *(vu16 *)0x04000208 = 0;
+    *(vu16 *)0x04000200 &= 0xFFFD;
+    gUnk_03000000[1] = sub_0805DC38;
+    *(vu16 *)0x04000208 = 1;
+    *(vu16 *)0x04000208 = 0;
+    *(vu16 *)0x04000200 |= 2;
+    *(vu16 *)0x04000208 = 1;
+}
+#else
+INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E3B8); /* 0x0805E3B8 size 0x3D0 */
+#endif

@@ -1,0 +1,5 @@
+# Per-unit compiler + flags: <unit> <compiler> <flags...>. Units not listed use
+# DEFAULT_CC1/DEFAULT_CFLAGS from the Makefile (old_agbcc -mthumb-interwork -O2 -fhex-asm).
+# See wiki/concepts/compiler-flags.md.
+sdk/agb_sram agbcc -mthumb-interwork -O1
+sound_driver agbcc -mthumb-interwork -O2 -fhex-asm -fprologue-bugfix

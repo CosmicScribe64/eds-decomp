@@ -1,0 +1,76 @@
+---
+title: Unit code_08013CDC (duel command handlers, turn bookkeeping / player flags / grid effect)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-01
+---
+# Unit code_08013CDC
+
+`0x08013CDC`–`0x080150DB`, Thumb, `old_agbcc -O2`. Source: `src/code_08013CDC.c`.
+Duel "script command" handlers, dispatched like those in [[code-08012c4c]] and [[code-080162c4]]. Most of them set one per-player flag from `arg2`. Two large handlers do per-turn bookkeeping.
+
+Unit status: `unit bytes MATCH`, 14/16 functions in C (verified with `tools/check.py code_08013CDC`).
+
+The unit uses the shared headers `include/main.h` (struct `Main`) and `include/duel.h`
+(struct `DuelCard` / `DuelZone` / `DuelPlayer` / `DuelState`); its own copies of those
+structs and of the `gUnk_020192E0` / `gUnk_020192E4` / `gUnk_03000040` externs were removed.
+
+## Functions
+
+| Address | Size | Status | Purpose | Proposed name |
+|---|---|---|---|---|
+| `0x08013CDC` | 0x340 | nonmatching (asm, attempt in `#if 0`) | Turn bookkeeping for the acting player. Counts down `turnsB_0` and both players' `turns6_14` (clears both when either reaches 0), clears `flag8_3`. For monster zones 0–4 it bumps the zone counter (+6 bits 2–5, cap 15) and applies per-card effects by card number (0x0F/0x1AC/0x243/0x2DA/0x2E6/0x458/0x536/0x5E9 → `sub_08017ADC(player, id, slot<<8\|player, 11)`; 0x52 cap 6; 0x267 cap 4; 0x540 sets zone +7 bits 2/5). For spell/trap zones 5–9 it bumps the counter of card number 0x47 (cap 12) or sets +0x91 bit 2 for card types > 20. Link entries of kind 2 get their value +1 (up to 5) | `DuelCmd_TurnStart` (hypothesis) |
+| `0x0801401C` | 0x6F4 | nonmatching (asm) | Large turn-end pass over both players' zones and lists (not attempted: many loops, 0x1C-byte frame with spills) | |
+| `0x08014710` | 0xF4 | matching | 32-frame sparkle sprite at the zone position from `sub_080623AC/sub_080623EC(player, 0, 2)`, SE 15 | |
+| `0x08014804` | 0x40 | matching | `player.flag8_10 = 1` | |
+| `0x08014844` | 0x40 | matching | `player.flag8_9 = 1` | |
+| `0x08014884` | 0x40 | matching | `player.flag8_11 = 1` | |
+| `0x080148C4` | 0x50 | matching | `player.flag8_6 = arg2` | |
+| `0x08014914` | 0x50 | matching | `player.flag6_13 = arg2` | |
+| `0x08014964` | 0x74 | matching | `player.flag6_11 = arg2; player.flag6_12 = arg4` | |
+| `0x080149D8` | 0x4C | matching | `player.turns6_14 = arg2` | |
+| `0x08014A24` | 0x40 | matching | `gUnk_020192E0.flag1ACD_5 = arg2` | |
+| `0x08014A64` | 0x44 | matching | `gUnk_020192E0.flag1ACD_6 = arg2` | |
+| `0x08014AA8` | 0xB4 | matching | `arg2 ? counterC++ : counterC--` (not below 0) | |
+| `0x08014B5C` | 0x50 | matching | `player.flagC_4 = arg2` | |
+| `0x08014BAC` | 0x84 | matching | Wait for `sub_08060B4C`, then open the Card Detail view `sub_0800688C(arg2, 300, 0)` and wait for `sub_08006D08` | |
+| `0x08014C30` | 0x4AC | matching | 9-step effect: `sub_080619E8`, `sub_08061A1C/1D24/1E54(arg2)`, then a 4×5 grid of 32×32 sprites that zooms in (`gUnk_08081768`, alpha fade, `sub_080763D0`), flashes (BLDY, `sub_080762D0`), and fades out. Calls `sub_0805ED9C` / `sub_0805F00C(arg2)` and SE 0x2C in between, and `sub_08060578` at the end | |
+
+## Shared headers and local views
+
+The unit includes `main.h` and `duel.h` and no longer defines `struct Main`, `DuelCard`,
+`DuelZone`, `DuelPlayer` or `DuelState` (5 local struct definitions removed; the
+`gUnk_020192E0` / `gUnk_020192E4` / `gUnk_03000040` externs also come from the headers).
+Two small per-unit views are kept because `duel.h` declares the bytes differently; the
+headers are shared and were not changed:
+
+- `struct DuelPlayer08013CDC`, aliased as `gUnk_020192E4_lp[2] asm("gUnk_020192E4")`.
+  `duel.h` declares player +0x06..+0x0D as `u8` fields/bitfields (`countB84`,
+  `flag7_3..turns7_6`, `unk8`, `unk9`, `unkB_0`, `flagsC`), but this unit's original
+  `u16` bitfield containers are needed by:
+  - `sub_08014964`: writes two +0x07 bits (`flag6_11`, `flag6_12`) and only matches
+    with a single `u16` load/store (canonical `u8 flag7_3`/`flag7_4` writes are 4 bytes longer);
+  - `sub_08014804`/`sub_08014844`/`sub_08014884` (+0x09 bits 1/2/3) and `sub_080148C4`
+    (+0x08 bit 6), whose bits have no canonical field name (`unk9`/`unk8` are plain bytes);
+  - `sub_08014AA8`/`sub_08014B5C` (+0x0C bits 1–3 / bit 4), likewise `flagsC` is a plain byte.
+  `sub_08014914` (canonical `flag7_5`) and `sub_080149D8` (canonical `turns7_6`) do match
+  the header and use it directly.
+- `struct DuelFlags08013CDC`, aliased as `gUnk_020192E0_flags asm("gUnk_020192E0")`:
+  `duel.h` folds +0x1ACC..+0x1ACE into `u32` bitfields (`unk1ACC_0`/`queueCount`), so the
+  +0x1ACD bits 5/6 written by `sub_08014A24`/`sub_08014A64` need this finer view.
+
+## Data
+
+- `gUnk_020192E4[2]` player state (0xD64): canonical `duel.h` names +0x6 `countB84` (u8), +0x7 `deckOut`/`winA`/`winExodia`/`flag7_3`/`flag7_4`/`flag7_5` and `turns7_6`, +0x8 `unk8`, +0x9 `unk9`, +0xB `unkB_0`, +0xC `flagsC`; +0x28 `zones`; +0xCC4 `arrCC4[80]`. The unit's local view re-splits +0x06..+0x0D as `u16` bitfields (`numLinks`, `flag6_11..turns6_14`, `flag8_3..unk8_12`, `unkA`, `turnsB_0`, `counterC`, `flagC_4`).
+- Zone (0x94 bytes): canonical `duel.h` +0x0 `card.id` (bits 0–11), +0x6 `flag6_1` and `counter6` (bits 2–5), +0x7 `unk7` (plain byte), +0x91 (`unk8C[5]`) bit 2. The unit's register-level accesses are **byte** operations (`ldrb`/`strb`, `and #2` tests); the `#if 0` draft masks `unk7`/`unk8C[5]` directly because the header has no bit names for +0x07/+0x91.
+- `gUnk_0201CFB0` bit 0 `fast` (fast-forward), bit 2.
+
+## Matching tricks
+
+- **One temporary per read (`sub_08014C30`).** Reusing a single `int t` for every `timer` read across cases 5–7 gives one pseudo and shifts registers everywhere. Separate locals (`ta`…`te`) match.
+- **`dy = y - 0x40` as a new variable, `x -= 0x68` in place (`sub_08014C30`).** CSE then folds `dy` to `i*32 - 0x3E` while `x` stays in its register, as in the ROM.
+- `timer` must be a `u32` bitfield for the signed compares. The earlier `(s16)` cast in `sub_08014710` still matches with the `u32` container.
+- Card tables use the pointer form `*(gUnk_08622AB4 + (id & 0x7FF))`, which computes the index before loading the table address.
+- `sub_08013CDC` (asm): with `if ((s8)self->turnsB_0)` the `lsl #29` test matches. The ROM then recomputes `player*0xD64` inside the zone loop and hoists only the `0x0201930C` base and the `~0x3C` mask. Our build hoists `player*0xD64`, which moves `player` to a high register and shifts every later allocation. This was not resolved.

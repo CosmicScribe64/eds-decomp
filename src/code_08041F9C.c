@@ -1,0 +1,903 @@
+#include "global.h"
+
+struct CardRef {
+    u16 id;             /* +0x00 */
+    u8 player : 1;      /* +0x02 bit 0 */
+    u8 unk2_1 : 3;
+    u16 zone : 6;       /* +0x02 bits 4-9 */
+    u16 kind : 6;
+    u8 unk4_0 : 2;
+    u8 skip4 : 1;
+    u8 unk4_3 : 5;
+    u8 unk5;
+    u16 pos;
+    u16 unk8;
+    u8 numTargets : 3;  /* +0x0A bits 0-2 */
+    u8 unkA_3 : 5;
+    u8 unkB;
+    u16 targets[3];     /* +0x0C */
+};
+struct DuelCard { u32 id : 12; u32 unk12 : 20; };
+struct DuelZone {
+    struct DuelCard card;   /* +0x00 */
+    u8 unk4;
+    u8 unk5;
+    u8 flags6;
+    u8 unk7[0x94 - 7];
+};
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 filler[0xD64 - 11 * 0x94];
+};
+extern struct DuelZonesPlayer gUnk_0201930C[2];
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
+struct DuelFlags { u8 bit0 : 1; u8 bit1 : 1; u8 rest : 6; u8 filler1[4]; };
+#define DUEL_FLAGS (*(struct DuelFlags *)((u8 *)0x020192E4 + 0x1B0E))
+struct DuelPlayerB { u8 unk0[2]; u8 handCount; u8 unk3[4]; u8 b7; u8 pad[0xD64 - 8]; };
+extern struct CardRef gUnk_02017EE8;
+extern u8 gUnk_020192E0[];
+extern struct DuelPlayerB gUnk_020192E4[2];
+struct DuelHand { u32 h[0x1B4 / 4]; u8 pad[0xD64 - 0x1B4]; };
+extern struct DuelHand gUnk_02019968[2];
+int sub_08008C94(int player, u16 id);
+int sub_0802CD28(u16 id);
+int sub_0802CE38(struct CardRef *ref, int a, int b);
+extern const u8 gUnk_08084D6C[], gUnk_08084D88[], gUnk_08084DB0[], gUnk_08084DD4[], gUnk_08084E00[], gUnk_08084E24[], gUnk_08084E54[], gUnk_08084E6C[], gUnk_08084E90[];
+extern const u8 gUnk_08084ECC[], gUnk_08084EF4[], gUnk_08084F18[], gUnk_08084F44[], gUnk_08084F78[], gUnk_08084F94[], gUnk_08084FB8[], gUnk_08084FE4[], gUnk_08085014[];
+extern const u8 gUnk_08085058[], gUnk_08085094[], gUnk_080850D8[], gUnk_080850F4[], gUnk_08085114[], gUnk_0808512C[], gUnk_08085144[], gUnk_0808516C[], gUnk_08085198[];
+extern const u8 gUnk_080851B8[], gUnk_080851E8[], gUnk_08085200[], gUnk_08085238[], gUnk_08085278[], gUnk_0808528C[], gUnk_080852AC[], gUnk_080852E4[], gUnk_080852E8[];
+extern const u8 gAlias_080851E8[];
+extern const char gUnk_0822C720[][0x40];
+void sub_080752D0(u8 *dst, const u8 *src);
+void sub_080752E8(u8 *dst, const u8 *src);
+void sub_080753F4(char *dst, const char *fmt, ...);
+void sub_08075434(char *dst, char *a, char *b);
+void sub_0800ABC8(u32 player, u32 slot, void *out);
+extern u8 gUnk_02017A40[];
+int sub_0804244C();
+struct F491 { u8 lo : 4; u8 b4 : 1; u8 b5 : 1; u8 f6 : 1; u8 f7 : 1; };
+struct G5EE8 { u8 unk0; u8 b1; };
+extern struct G5EE8 gUnk_02015EE8;
+void sub_080229BC(u32 a, void *b, int c);
+int sub_08041DC4(struct CardRef *ref, int player, int idx);
+int sub_08041F9C(struct CardRef *ref, int player, int idx);
+
+
+/* Takes (ref, player, hand index). Can this hand card be used as the effect's
+ * card? Fills ref->id. */
+int sub_08041F9C(struct CardRef *ref, int player, int idx)
+{
+    u16 id = (*(u32 *)((u8 *)gUnk_02019968 + idx * 4 + (1 & player) * 0xD64) << 20) >> 20;
+    u32 n = 0x7FF & id;
+    if (sub_08008C94(player, id) != 0 && (((((const u32 *)0x08621DE0)[n] & 0x1F00000) >> 20) == 0x16)) {
+        if (sub_0802CD28(id) > 1)
+            goto store;
+        {
+            u32 f = *((u8 *)gUnk_02019968 + 0x148A);
+            u32 m = (f << 27) >> 29;
+            if (m == 2 || m == 4) {
+                if (((f << 30) >> 31) == player)
+                    goto store;
+            }
+        }
+    }
+fail:
+    return 0;
+store:
+    {
+        int t;
+        ref->id = id;
+        t = CARD_TYPE(id);
+        switch (t) {
+        case 0x15:
+        case 0x16:
+            if (gUnk_020192E4[1 & player].b7 >> 6 != 0)
+                goto fail;
+        }
+        return (u16)sub_0802CE38(ref, 0, 1);
+    }
+}
+/* Takes (ref, player, kind 5 | 0xB, index). Returns 0x41 when the hand/field
+ * card is usable for the effect, else 1. */
+int sub_08042078(struct CardRef *ref, int player, int kind, int idx)
+{
+    int r = 1;
+    switch (kind) {
+    case 0xB:
+        if ((u16)sub_08041F9C(ref, player, idx))
+            r = 0x41;
+        break;
+    case 5:
+        if ((u16)sub_08041DC4(ref, player, idx + 5))
+            r = 0x41;
+        break;
+    }
+    return r;
+}
+#if 0 /* NONMATCHING: only the hand loop base differs. The ROM computes e+4
+       * into r3 for the first test and copies it to r8 for the loop; this
+       * build goes straight to r8. */
+/* Is any spell/trap zone (5-9) or hand card of the player usable right now? */
+int sub_080420A4(int player)
+{
+    int i;
+    u8 *e;
+    for (i = 5; i <= 9; i++) {
+        u32 id = (*(u32 *)ZB2(1 & player, i) << 20) >> 20;
+        if (id != 0) {
+            int n = sub_0802CD28(id);
+            int ok = (u16)sub_08041DC4(&gUnk_02017EE8, player, i);
+            if (n > 1 && ok != 0)
+                goto found;
+        }
+    }
+    e = gUnk_020192E0;
+    if (((struct DuelFlags *)(e + 0x1B12))->bit1 == player)
+        goto hand;
+    return 0;
+found:
+    return 1;
+hand:
+    {
+        struct DuelPlayerB *pl = (struct DuelPlayerB *)(e + 4);
+        for (i = 0; i < pl[1 & player].handCount; i++) {
+            u32 id = (*(u32 *)((u8 *)gUnk_02019968 + i * 4 + (1 & player) * 0xD64) << 20) >> 20;
+            if (id != 0) {
+                int n = sub_0802CD28(id);
+                int ok = (u16)sub_08041F9C(&gUnk_02017EE8, player, i);
+                if (n > 1 && ok != 0)
+                    goto found;
+            }
+        }
+    }
+    return 0;
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08041F9C", sub_080420A4); /* 0x080420A4 size 0xE8 */
+/* Build the description text of a queued effect into buf, chosen by ref->kind (5-30) and its small arguments. */
+void sub_0804218C(struct CardRef *ref, u8 *buf)
+{
+    char *t[3];
+    char tmp[0x100];
+    const u8 *txt;
+    switch (ref->kind) {
+    case 5:
+        switch ((u8)ref->pos) {
+        case 0:
+            txt = gUnk_08084D6C;
+            break;
+        case 1:
+            txt = gUnk_08084D88;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 6:
+        switch ((u8)ref->pos) {
+        case 0:
+            txt = gUnk_08084DB0;
+            break;
+        case 1:
+            txt = gUnk_08084DD4;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 7:
+        switch ((u8)ref->pos) {
+        case 0:
+            txt = gUnk_08084E00;
+            break;
+        case 1:
+            txt = gUnk_08084E24;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 8:
+        switch ((u8)ref->pos) {
+        case 0:
+            txt = gUnk_08084E54;
+            break;
+        case 1:
+            txt = gUnk_08084E6C;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 17: {
+        u8 pb;
+        u16 w;
+        int zz;
+        int p;
+        struct DuelZone *zn;
+        u32 id;
+        *(u16 *)buf = 0;
+        pb = (u8)ref->unk8;
+        w = ref->unk8;
+        zz = w >> 8;
+        p = 1 & pb;
+        zn = ZB(p, zz);
+        id = (*(u32 *)zn << 20) >> 20;
+        if (id != 0 && (zn->flags6 & 2)) {
+            sub_0800ABC8(pb, zz, t);
+            sub_080753F4((char *)buf, (const char *)gUnk_08084E90, gUnk_0822C720[id]);
+            sub_08075434(tmp, (char *)buf, t[1]);
+            sub_08075434((char *)buf, tmp, t[2]);
+        }
+        goto out;
+    }
+    case 10:
+        txt = gUnk_08084ECC;
+        goto call;
+    case 11:
+        txt = gUnk_08084EF4;
+        goto call;
+    case 12:
+        txt = gUnk_08084F18;
+        goto call;
+    case 18:
+        txt = gUnk_08084F44;
+        goto call;
+    case 16:
+        switch ((u8)ref->pos) {
+        case 0:
+            txt = gUnk_08084F78;
+            break;
+        case 1:
+            txt = gUnk_08084F94;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 19:
+        txt = gUnk_08084FB8;
+        goto call;
+    case 13:
+        switch (((u8)ref->unk8 & 0xF)) {
+        case 0:
+            txt = gUnk_08084FE4;
+            break;
+        case 1:
+            txt = gUnk_08085014;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 14:
+        switch (((u8)ref->unk8 & 0xF)) {
+        case 0:
+            txt = gUnk_08085058;
+            break;
+        case 1:
+            txt = gUnk_08085094;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 15:
+        switch (ref->unk8) {
+        case 0:
+            txt = gUnk_080850D8;
+            break;
+        case 1:
+            txt = gUnk_080850F4;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 20:
+        txt = gUnk_08085114;
+        goto call;
+    case 21:
+        txt = gUnk_0808512C;
+        goto call;
+    case 22:
+        txt = gUnk_08085144;
+        goto call;
+    case 23:
+        txt = gUnk_0808516C;
+        goto call;
+    case 24:
+        txt = gUnk_08085198;
+        goto call;
+    case 25:
+        txt = gUnk_080851B8;
+        goto call;
+    case 26:
+        switch (ref->unk8) {
+        case 0:
+            txt = gUnk_080851E8;
+            break;
+        case 1:
+            txt = gAlias_080851E8;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 27:
+        txt = gUnk_08085200;
+        goto call;
+    case 28:
+        txt = gUnk_08085238;
+        goto call;
+    case 29:
+        switch (ref->unk8) {
+        case 0:
+            txt = gUnk_08085278;
+            break;
+        case 1:
+            txt = gUnk_0808528C;
+            break;
+        default:
+            goto out;
+        }
+        goto call;
+    case 30:
+        goto last;
+    }
+    goto out;
+call:
+    sub_080752D0(buf, txt);
+    goto out;
+last:
+    sub_080752D0(buf, gUnk_080852AC);
+out:
+    sub_080752E8(buf, gUnk_080852E4);
+    sub_080752E8(buf, gUnk_080852E8);
+}
+/* Widths below follow the ROM's ldrb/ldrh/ldr accesses. These views
+ * deliberately overlap because the selection flags are also updated as a u32. */
+typedef int (*EffectCallback)(struct CardRef *, u8 *);
+extern u8 gUnk_02017FB0[], gUnk_0201AE60[], gUnk_0201CFB0[], gUnk_03000040[];
+extern const u8 gUnk_08085330[], gUnk_08085374[], gUnk_080853AC[], gUnk_080853F8[];
+extern const u32 gUnk_0819A9D4[], gUnk_08621DE0[];
+void sub_0801DC04(void);
+void sub_0801EC58(u16 cmd, u16 a, u16 b, u16 c);
+void sub_0801FBCC(u32 a, u32 b);
+u32 sub_0801FD68(void *entry, int player, int kind, int index);
+u16 sub_0802297C(u16 cmd, u16 a, u16 b, u16 c);
+void sub_0802AF34(int player, int area, int a, int b);
+int sub_080420A4(int player);
+void sub_08049048(int a, int b, struct CardRef *ref);
+int sub_08047058(u32 card);
+int sub_08052F38(u32 keys);
+int sub_08058514(struct CardRef *ref, int a);
+u32 sub_0805ECFC(void);
+void sub_080602A4(u16 a, u16 b, u16 c, const u8 *text);
+void sub_08060308(u16 mode, void (*cb1)(void), u16 (*cb2)(void));
+void sub_08077AEC(u32 sound);
+
+/* Local aliases retain the addresses and explicit access widths. */
+union EffectCardRef {
+    struct CardRef ref;
+    struct { u16 id; union { u16 word; u8 byte[2]; } __attribute__((packed, aligned(2))) flags; u8 rest[0x10]; } raw;
+};
+union EffectHalf { u16 word; u8 byte[2]; } __attribute__((packed, aligned(2)));
+struct EffectStateView {
+    u8 unk0[0x3E4];
+    u8 targetPhase, targetStep;
+    u8 unk3E6[0x480 - 0x3E6];
+    EffectCallback phase4, phase5;
+    u8 unk488[2];
+    union EffectHalf requestedZone;
+    u32 requestedArg;
+    u8 requestStep, requestFlags, selectionPhase, selectionMode;
+    u8 unk494[0x4A8 - 0x494];
+    union EffectCardRef queuedRef, selectedRef;
+    u16 activeCard;
+};
+struct DuelSelectionView {
+    u8 unk0[0x1B12];
+    u8 turnFlags;
+    u8 unk1B13[0x1B28 - 0x1B13];
+    u16 cardId;
+    u8 unk1B2A[2];
+    union { u32 word; u8 byte[4]; } flags;
+    u8 auxiliaryFlags;
+    u8 unk1B31[2];
+    u8 playerAndArea;
+    union EffectHalf index;
+};
+struct EffectWaitView { u8 unk0[0x14]; u16 pending; };
+struct EffectCursorView { u8 unk0[0x824]; s32 player, area, index; };
+struct EffectKeysView { u8 unk0[6]; u16 pressed; };
+extern struct EffectStateView gEffectState asm("gUnk_02017A40");
+extern struct DuelSelectionView gDuelSelection asm("gUnk_020192E0");
+extern struct EffectWaitView gEffectWait asm("gUnk_0201AE60");
+extern struct EffectCursorView gEffectCursor asm("gUnk_0201CFB0");
+extern struct EffectKeysView gEffectKeys asm("gUnk_03000040");
+typedef char effect_ref_size_check[sizeof(union EffectCardRef) == 0x14 ? 1 : -1];
+typedef char effect_ref_offset_check[(u32)&((struct EffectStateView *)0)->selectedRef == 0x4BC ? 1 : -1];
+typedef char effect_cursor_flags_check[(u32)&((struct DuelSelectionView *)0)->flags == 0x1B2C ? 1 : -1];
+
+
+#if 0 /* NONMATCHING: candidate 0x638 vs ROM 0x664; block layout, extraction
+       * and allocation differ. It compiles, but behavior is not differentially
+       * verified. */
+int sub_0804244C(void) {
+    int text[0x100];
+    s32 area;
+    s32 selectedArea;
+    s32 level;
+    u16 player;
+    s32 index;
+    s32 sound;
+    s32 message;
+    u16 zoneMessage;
+    s32 keyMask;
+    s16 slot;
+    u16 accepted;
+    u16 choice;
+    u32 id;
+    u32 packedPlayer;
+    u32 packedZone;
+    int savedPackedZone;
+    u32 savedPackedPlayer;
+    u32 zoneKind;
+    int baseArea;
+    u32 packedIndex;
+    u8 *refBytes;
+    u8 *storeStep;
+    u8 *storeFlags;
+    u8 toggledFlags;
+    u8 startFlags;
+    s16 step;
+    int nextStep;
+    int nextStepValue;
+    int completedFlags;
+    u8 branchStep;
+
+    step = gEffectState.requestStep;
+    switch (step) {
+    case 0xB:
+        baseArea = (u8) gDuelSelection.playerAndArea >> 2;
+        area = ((1 & gDuelSelection.index.byte[0]) << 6) | baseArea;
+        if (area != 5) {
+            if (area == 0xB) {
+                sub_08049048(1, 0, &gEffectState.queuedRef.ref);
+                if (2 & gDuelSelection.flags.byte[0]) {
+block_36:
+                    return 0;
+                }
+            }
+            goto block_63;
+        }
+        gDuelSelection.flags.byte[0] = (u8) (-3 & gDuelSelection.flags.byte[0]);
+        packedIndex = (u32)gDuelSelection.index.word << 0x17;
+        selectedArea = ((1 & gDuelSelection.index.byte[0]) << 6) | baseArea;
+        if (!(2 & *(gUnk_020192E0 + 0x2C + ((((packedIndex >> 0x18) + selectedArea) * 0x94) + (0xD64 * (1 & ((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F)))) + 6))) {
+            message = 0x7F;
+            if (2 & gDuelSelection.playerAndArea) {
+                message = 0x807F;
+            }
+            sub_0801EC58(message, (packedIndex >> 0x18) + selectedArea, 0, 0);
+        }
+        sub_0801FBCC((((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F) << 0x1F) | (((u8) gEffectState.queuedRef.raw.flags.byte[1] >> 2) << 0x19) | ((((((u32) ((u32)gDuelSelection.index.word << 0x17) >> 0x18) + (((1 & gDuelSelection.index.byte[0]) << 6) | ((u8) gDuelSelection.playerAndArea >> 2))) & 0x1F) << 0x10) | 0x200000) | gDuelSelection.cardId, ((u32)gEffectState.queuedRef.ref.unk8 << 0x10) | gEffectState.queuedRef.ref.pos);
+block_63:
+        gEffectState.requestFlags = (u8) ((0x80 | gEffectState.requestFlags) & ~0x40);
+block_90:
+        return 1;
+    case 0x2:
+        if (gEffectWait.pending == 0) {
+block_68:
+            nextStep = 0xF0;
+block_69:
+            gEffectState.requestStep = nextStep;
+        } else {
+            gDuelSelection.flags.byte[0] = (u8) (-2 & gDuelSelection.flags.byte[0] & ~2);
+            gEffectState.requestStep = 0xAU;
+        }
+        goto block_36;
+    case 0xA:
+        if (1 & gDuelSelection.flags.byte[0]) {
+            sub_0801DC04();
+        } else {
+            if (2 & gDuelSelection.flags.byte[0]) {
+                nextStep = gEffectState.requestStep + 1;
+                goto block_69;
+            }
+            if (2 & gEffectKeys.pressed) {
+                gEffectState.requestStep = 1U;
+            } else {
+                keyMask = 0xE;
+                if (!(2 & gDuelSelection.turnFlags)) {
+                    keyMask = 0xF;
+                }
+                if (sub_08052F38(keyMask) != 0) {
+                    player = gEffectCursor.player;
+                    zoneKind = gEffectCursor.area;
+                    index = gEffectCursor.index;
+                    choice = sub_0805ECFC();
+                    switch (zoneKind) {
+                    case 0:
+                    case 5:
+                    case 10:
+                    case 11:
+                        if (choice != 0) {
+                            gDuelSelection.flags.byte[0] = (u8) (1 | gDuelSelection.flags.byte[0]);
+                            gDuelSelection.flags.byte[3] = (u8) (3 & gDuelSelection.flags.byte[3]);
+                            gDuelSelection.auxiliaryFlags = (u8) (-4 & gDuelSelection.auxiliaryFlags);
+                            gDuelSelection.flags.word = (u32) ((gDuelSelection.flags.word & 0xFC0003FF) | ((u32) ((u32)sub_08042078(&gUnk_02017EE8, player, (s32) zoneKind, index) << 0x10) >> 6));
+                        } else {
+                            sound = 3;
+block_53:
+                            sub_08077AEC(sound);
+                        }
+                        break;
+                    case 13:
+                        sound = 3;
+                        goto block_53;
+                    case 12:
+                    case 14:
+                    case 15:
+                        sub_0802AF34(player, zoneKind, 0, 0);
+                        sound = 1;
+                        goto block_53;
+                    }
+                }
+            }
+        }
+        goto block_36;
+    case 0xC8:
+        slot = 5;
+loop_72:
+        id = (u32) (*(u32 *)((u8 *)gUnk_0201930C + slot * 0x94 + 0xD64 * ((u32)((u32)gEffectState.requestFlags << 0x1B) >> 0x1F)) << 0x14) >> 0x14;
+        if ((id != 0) && (level = sub_0802CD28((u16) id), refBytes = gUnk_02017A40 + 0x4A8, accepted = (u16) sub_08041DC4((struct CardRef *) refBytes, (s32) ((u32) ((u32)gEffectState.requestFlags << 0x1B) >> 0x1F), slot), (level > 1)) && (accepted != 0) && (sub_08058514((struct CardRef *) refBytes, 0) != 0)) {
+            gEffectState.requestFlags = (u8) ((-0x10 & gEffectState.requestFlags) | (slot & 0xF));
+            storeStep = &gEffectState.requestStep;
+            nextStepValue = gEffectState.requestStep + 1;
+        } else {
+            slot += 1;
+            if (slot > 9) {
+                storeStep = &gEffectState.requestStep;
+                nextStepValue = 0xF0;
+            } else {
+                goto loop_72;
+            }
+        }
+        *storeStep = nextStepValue;
+        goto block_36;
+    case 0x64:
+        sub_080229BC(0xF051U, gUnk_02017A40 + 0x4A8, 0x14);
+        gEffectState.requestFlags = (u8) (0x7F & gEffectState.requestFlags);
+        gUnk_02017FB0[0x307] = (u8) (-9 & gUnk_02017FB0[0x307]);
+        nextStep = gEffectState.requestStep + 1;
+        goto block_69;
+    case 0x65:
+        if ((s32) ((u32)gUnk_02017FB0[0x307] << 0x1C) >= 0) {
+            goto block_36;
+        }
+        storeFlags = &gEffectState.requestFlags;
+        if (!(0x80 & gEffectState.requestFlags)) {
+            goto block_68;
+        }
+        completedFlags = -0x41 & gEffectState.requestFlags;
+block_89:
+        *storeFlags = completedFlags;
+        goto block_90;
+    case 0xC9:
+        savedPackedZone = (u32)gEffectState.requestFlags << 0x1C;
+        if (!(2 & *((u8 *)gUnk_0201930C + (savedPackedZone >> 0x1C) * 0x94 + 0xD64 * ((u32)((u32)gEffectState.requestFlags << 0x1B) >> 0x1F) + 6))) {
+            zoneMessage = 0x7F;
+            if (0x10 & gEffectState.requestFlags) {
+                zoneMessage = 0x807F;
+            }
+            sub_0801EC58(zoneMessage, savedPackedZone >> 0x1C, 0, 0);
+        }
+        savedPackedPlayer = (u32)gEffectState.requestFlags << 0x1B;
+        packedZone = (u32)gEffectState.requestFlags << 0x1C;
+        sub_0801FBCC(((savedPackedPlayer >> 0x1F) << 0x1F) | (((u8) gEffectState.queuedRef.raw.flags.byte[1] >> 2) << 0x19) | ((packedZone >> 0xC) | 0x200000) | ((u32) (*(u32 *)((u8 *)gUnk_0201930C + 0x94 * (packedZone >> 0x1C) + 0xD64 * (savedPackedPlayer >> 0x1F)) << 0x14) >> 0x14), ((u32)gEffectState.queuedRef.ref.unk8 << 0x10) | gEffectState.queuedRef.ref.pos);
+        gEffectState.requestFlags = (u8) ((0x80 | gEffectState.requestFlags) & ~0x40);
+        goto block_90;
+    case 0xF0:
+        toggledFlags = (-0x11 & gEffectState.requestFlags) | (((1 - ((u32) ((u32)gEffectState.requestFlags << 0x1B) >> 0x1F)) & 1) * 0x10);
+        gEffectState.requestFlags = toggledFlags;
+        if (((u32) ((u32)toggledFlags << 0x1B) >> 0x1F) != ((u32) ((u32)toggledFlags << 0x1A) >> 0x1F)) {
+            gEffectState.requestStep = 0U;
+            return 0;
+        }
+        goto block_90;
+    case 0x0:
+        startFlags = 0x7F & gEffectState.requestFlags;
+        gEffectState.requestFlags = startFlags;
+        gEffectState.queuedRef.raw.id = (s16) step;
+        gEffectState.queuedRef.raw.flags.byte[0] = (u8) ((-2 & gEffectState.queuedRef.raw.flags.byte[0]) | (packedPlayer >> 0x1F));
+        packedPlayer = (u32)startFlags << 0x1B;
+        gEffectState.queuedRef.raw.flags.byte[1] = (u8) ((3 & gEffectState.queuedRef.raw.flags.byte[1]) | (gEffectState.requestedZone.byte[0] * 4));
+        gEffectState.queuedRef.ref.pos = (u16) gEffectState.requestedArg;
+        gEffectState.queuedRef.ref.unk8 = (u16) ((u32) gEffectState.requestedArg >> 0x10);
+        if (((u32)sub_080420A4(packedPlayer >> 0x1F) << 0x10) == 0) {
+            goto block_68;
+        }
+        gEffectState.requestStep = (u8) (gEffectState.requestStep + 1);
+    case 0x1:
+        if (0x10 & gEffectState.requestFlags) {
+            branchStep = 0xC8;
+            if (1 & gUnk_02015EE8.b1) {
+                branchStep = 0x64;
+            }
+            gEffectState.requestStep = branchStep;
+        } else {
+            sub_0804218C(&gEffectState.queuedRef.ref, text);
+            sub_080602A4(0x204, 0x916, 0xB, text);
+            sub_08060308(1, NULL, NULL);
+            gEffectState.requestStep = (u8) (gEffectState.requestStep + 1);
+        }
+        goto block_36;
+    default:
+        storeFlags = &gEffectState.requestFlags;
+        completedFlags = -0x41 & gEffectState.requestFlags;
+        goto block_89;
+    }
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08041F9C", sub_0804244C); /* 0x0804244C size 0x664 */
+/* Queue a request (player, zone, 32-bit arg): sent as a message when the link flags allow, else stored in the 0x02017A40 request block. */
+void sub_08042AB0(int player, u16 zone, u32 arg)
+{
+    if (1 & gUnk_02015EE8.b1) {
+        u8 *e = gUnk_020192E0;
+        if (2 & *(e + 0x1B12)) {
+            u16 buf[4];
+            buf[0] = 1 - player;
+            buf[1] = zone;
+            buf[2] = arg;
+            buf[3] = arg >> 16;
+            sub_080229BC(0xF059, buf, 0xA);
+            return;
+        }
+    }
+    {
+        u8 *es = gUnk_02017A40;
+        struct F491 *f;
+        u8 z;
+        u16 *hp = (u16 *)(es + 0x48A);
+        z = 0;
+        *hp = zone;
+        *(u32 *)(es + 0x48C) = arg;
+        f = (struct F491 *)(es + 0x491);
+        f->b4 = 1 & player;
+        f->b5 = 1 & player;
+        es[0x490] = z;
+        f->lo = 0;
+        f->f6 = 1;
+        f->f7 = 0;
+    }
+}
+
+/* If the pending flag (bit 6 of 0x02017A40+0x491) is set, run sub_0804244C and clear it once that finishes; returns 1 while the flag was set. */
+int sub_08042B60(void)
+{
+    u8 *es = gUnk_02017A40;
+    u8 *p = es + 0x491;
+    if (*p & 0x40) {
+        if ((u16)sub_0804244C() != 0)
+            ((struct F491 *)p)->f6 = 0;
+        return 1;
+    }
+    return 0;
+}
+struct RefEnt { u8 player : 1; u8 unk1 : 3; u16 zone : 6; u16 kind : 6; u8 pad[0x10]; };
+
+/* Is there a queued reference with the given player and zone in the list at `list`? (count at +0x140, 0x14-byte entries from +2) */
+int sub_08042B9C(u8 *list, int player, int zone)
+{
+    int i;
+    for (i = 0; i < *(u16 *)(list + 0x140); i++) {
+        struct RefEnt *e = (struct RefEnt *)(list + 2 + i * 0x14);
+        if (e->player == player && e->zone == zone)
+            return 1;
+    }
+    return 0;
+}
+#if 0 /* NONMATCHING: candidate 0x5D8 vs ROM 0x604; reloads, phase stores,
+       * callback sharing and allocation differ. It compiles, but behavior is
+       * not differentially verified. */
+int sub_08042BE0(void) {
+    int text[0x100];
+    s16 effectIndex;
+    u16 effectOffset;
+    s32 area;
+    s32 player;
+    s16 index;
+    s8 allowedMask;
+    s32 sound;
+    s8 nextPhase;
+    s32 message;
+    const u8 *format;
+    s8 refFlags;
+    u16 choice;
+    u32 phase;
+    u32 packedIndex;
+    u32 zone;
+    u8 *storeByte;
+    u8 *phaseByte;
+    u8 *callbackPhaseByte;
+    u8 savedPhase;
+    s16 savedFlags;
+    int storedValue;
+    s8 phaseFlags;
+
+    phase = (u8) gEffectState.selectionPhase >> 1;
+    switch (phase) {
+    case 0:
+        if (1 & gEffectState.selectionMode) {
+            if ((u32) ((u32) (gUnk_08621DE0[0x7FF & gEffectState.activeCard] & 0x01F00000) >> 0x14) <= 0x14U) {
+                format = gUnk_08085330;
+            } else {
+                format = gUnk_08085374;
+            }
+            sub_080753F4((char *)text, (const char *)format, gUnk_0822C720[gEffectState.activeCard]);
+        } else {
+            sub_0804218C(&gEffectState.selectedRef.ref, text);
+        }
+        sub_080602A4(0x204, 0x916, 0xB, text);
+        sub_08060308(1, NULL, NULL);
+        storeByte = &gEffectState.selectionPhase;
+block_48:
+        savedFlags = *storeByte;
+        storedValue = (1 & savedFlags) | (((savedFlags >> 1) + 1) * 2);
+block_49:
+        *storeByte = storedValue;
+block_18:
+        return 0;
+    case 1:
+        if (gEffectWait.pending == 0) {
+            sub_0802297C(0xF055, 0, 0, 0);
+block_66:
+            return 1;
+        }
+        if (1 & gEffectState.selectionMode) {
+            sub_080602A4(0x206, 0x712, 0xB, gUnk_080853AC);
+        } else {
+            sub_080602A4(0x206, 0x712, 0xB, gUnk_080853F8);
+        }
+        gEffectState.selectionPhase = (u8) ((1 & gEffectState.selectionPhase) | ((((u8) gEffectState.selectionPhase >> 1) + 1) * 2));
+        storeByte = gUnk_020192E0 + 0x1B2C;
+        storedValue = -2 & gDuelSelection.flags.byte[0] & ~2;
+        goto block_49;
+    case 2:
+        if (1 & gDuelSelection.flags.byte[0]) {
+            sub_0801DC04();
+        } else if (2 & gDuelSelection.flags.byte[0]) {
+            phaseByte = &gEffectState.selectionPhase;
+            phaseFlags = gEffectState.selectionPhase;
+            nextPhase = ((phaseFlags >> 1) + 1) * 2;
+block_62:
+            *phaseByte = (1 & phaseFlags) | nextPhase;
+        } else if (2 & gEffectKeys.pressed) {
+            gEffectState.selectionPhase = (u8) (1 & gEffectState.selectionPhase);
+        } else if (sub_08052F38(0xEE) != 0) {
+            player = gEffectCursor.player;
+            zone = gEffectCursor.area;
+            index = gEffectCursor.index;
+            choice = sub_0805ECFC();
+            switch (zone) {
+            case 0:
+            case 5:
+                if (choice != 0) {
+                    gDuelSelection.flags.byte[0] = (u8) (1 | gDuelSelection.flags.byte[0]);
+                    gDuelSelection.flags.byte[3] = (u8) (3 & gDuelSelection.flags.byte[3]);
+                    gDuelSelection.auxiliaryFlags = (u8) (-4 & gDuelSelection.auxiliaryFlags);
+                    if (1 & gEffectState.selectionMode) {
+                        allowedMask = sub_0801FD68(gUnk_02017A40 + 0x4D0, player, zone, index);
+                    } else {
+                        allowedMask = sub_08042078(&gEffectState.selectedRef.ref, player, (s32) zone, index);
+                    }
+                    gDuelSelection.flags.word = (u32) ((gDuelSelection.flags.word & 0xFC0003FF) | ((u32) ((u32)allowedMask << 0x10) >> 6));
+                } else {
+                    sound = 3;
+block_37:
+                    sub_08077AEC(sound);
+                }
+                break;
+            case 10:
+            case 11:
+                if (choice != 0) {
+                    gDuelSelection.flags.byte[0] = (u8) (1 | gDuelSelection.flags.byte[0]);
+                    gDuelSelection.flags.byte[3] = (u8) (3 & gDuelSelection.flags.byte[3]);
+                    gDuelSelection.auxiliaryFlags = (u8) (-4 & gDuelSelection.auxiliaryFlags);
+                    gDuelSelection.flags.word = (u32) ((gDuelSelection.flags.word & 0xFC0003FF) | 0x400);
+                } else {
+                    sound = 3;
+                    goto block_37;
+                }
+                break;
+            case 13:
+                sound = 3;
+                goto block_37;
+            case 12:
+            case 14:
+            case 15:
+                sub_0802AF34(player, zone, 0, 0);
+                sound = 1;
+                goto block_37;
+            }
+        }
+        goto block_18;
+    case 3:
+        gDuelSelection.flags.byte[0] = (u8) (-3 & gDuelSelection.flags.byte[0]);
+        if (1 & gEffectState.selectionMode) {
+            sub_0801EC58(7, 0, 0, 0);
+        }
+        area = ((1 & gDuelSelection.index.byte[0]) << 6) | ((u8) gDuelSelection.playerAndArea >> 2);
+        packedIndex = (u32)gDuelSelection.index.word << 0x17;
+        if (!(2 & *(gUnk_020192E0 + 0x2C + ((((packedIndex >> 0x18) + area) * 0x94) + (0xD64 * (1 & ((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F)))) + 6))) {
+            message = 0x7F;
+            if (2 & gDuelSelection.playerAndArea) {
+                message = 0x807F;
+            }
+            sub_0801EC58(message, (packedIndex >> 0x18) + area, 0, 0);
+        }
+        refFlags = (0xFFFFFC0F & gEffectState.selectedRef.raw.flags.word) | ((((((1 & gDuelSelection.index.byte[0]) << 6) | ((u8) gDuelSelection.playerAndArea >> 2)) + (u8) (gDuelSelection.index.word >> 1)) & 0x3F) * 0x10);
+        gEffectState.selectedRef.raw.flags.word = refFlags;
+        gEffectState.selectedRef.raw.id = (u16) ((u32) (*(u32 *)(gUnk_020192E0 + 0x2C + ((((u32) ((u32)refFlags << 0x16) >> 0x1A) * 0x94) + (0xD64 * (1 & ((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F))))) << 0x14) >> 0x14);
+        gEffectState.selectedRef.raw.flags.byte[0] = (u8) (-2 & gEffectState.selectedRef.raw.flags.byte[0]);
+        effectIndex = sub_08047058(gEffectState.selectedRef.raw.id);
+        if (effectIndex == -1) {
+            gEffectState.phase4 = NULL;
+            gEffectState.phase5 = NULL;
+        } else {
+            effectOffset = effectIndex * 0x18;
+            gEffectState.phase4 = (EffectCallback) *(u32 *)((u8 *)gUnk_0819A9D4 + effectOffset + 0x10);
+            gEffectState.phase5 = (EffectCallback) *(u32 *)((u8 *)gUnk_0819A9D4 + effectOffset + 0x14);
+        }
+        gEffectState.targetPhase = 0;
+        storeByte = &gEffectState.selectionPhase;
+        gEffectState.targetStep = 0;
+        goto block_48;
+    case 4:
+        if (gEffectState.phase4 != NULL) {
+            if (((u32)gEffectState.phase4(&gEffectState.selectedRef.ref, gUnk_02017A40 + 0x4D0) << 0x10) == 0) {
+
+            } else {
+                callbackPhaseByte = &gEffectState.selectionPhase;
+                goto block_55;
+            }
+        } else {
+            callbackPhaseByte = &gEffectState.selectionPhase;
+block_55:
+            savedPhase = *callbackPhaseByte;
+            *callbackPhaseByte = (1 & savedPhase) | (((savedPhase >> 1) + 1) * 2);
+        }
+        goto block_18;
+    case 5:
+        if (gEffectState.phase5 != NULL) {
+            if (((u32)gEffectState.phase5(&gEffectState.selectedRef.ref, gUnk_02017A40 + 0x4D0) << 0x10) == 0) {
+
+            } else {
+                phaseByte = &gEffectState.selectionPhase;
+                goto block_61;
+            }
+        } else {
+            phaseByte = &gEffectState.selectionPhase;
+block_61:
+            phaseFlags = *phaseByte;
+            nextPhase = ((phaseFlags >> 1) + 1) * 2;
+            goto block_62;
+        }
+        goto block_18;
+    default:
+        if (1 & gEffectState.selectionMode) {
+            sub_080229BC(0xF056U, gUnk_02017A40 + 0x4BC, 0x14);
+        } else {
+            sub_080229BC(0xF053U, gUnk_02017A40 + 0x4BC, 0x14);
+        }
+        goto block_66;
+    }
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_08041F9C", sub_08042BE0); /* 0x08042BE0 size 0x604 */

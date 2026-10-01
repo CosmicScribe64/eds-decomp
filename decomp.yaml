@@ -1,0 +1,15 @@
+name: Yu-Gi-Oh! The Eternal Duelist Soul
+platform: gba
+build_system: make
+versions:
+  - name: us
+    fullname: USA (AY5E)
+    sha1: 510fbba212aca9bab95ea12f8fd933e62ee34dea
+    paths:
+      target: "baserom.gba"
+      build_dir: "build"
+      map: "build/eds.map"
+      compiled_target: "eds.gba"
+      elf: "build/eds.elf"
+      asm: "asm"
+      nonmatchings: "asm/nonmatching"

@@ -1,0 +1,158 @@
+# Proposed names from the program-flow / sound / RAM analysis (2026-09-29).
+# Format: 0xADDRESS name  # reason.  Style: pret-style CamelCase functions, gCamelCase globals.
+# All behaviour was verified by disassembly unless the reason says "hyp".
+# See wiki/game/program-flow.md, wiki/rom/ram-map.md, wiki/game/sound-engine.md and wiki/functions/*.md.
+
+## --- boot / main loop / system ---
+0x08075DF4 GameInit  # AgbMain's first call: clears EWRAM/IWRAM, ReadSram, fills IntrTable, copies IntrMain to IWRAM, IE/WAITCNT, SoundInit
+0x08075D70 MainLoop  # AgbMain's second call: waits for the VBlank flag, FrameSyncUpdate, calls gMain.callback, falls back to the main menu
+0x08075CB4 FrameSyncUpdate  # after VBlank: BG scroll from shadows, BG map buffer -> VRAM, FlushOamBuffer, ReadKeys, SoundMain, Random
+0x08075C44 FlushOamBuffer  # if vblankFlags&1: copy gMain.oamBuffer -> OAM, reset the count and entries
+0x08075228 ReadKeys  # only KEYINPUT reader; held/new/prev keys + D-pad auto-repeat after 20 frames
+0x08076F9C Random  # LCG x*0x343FD+0x269EC3, rotate 16, returns 15 bits; called once per frame + 75 other sites
+0x080754F8 SetMainCallback  # SaveGame, clears the VBlank cbs/HBlank, zeroes the sequencer bytes, sets gMain.callback
+0x080754BC SaveGame  # UpdateSaveChecksum + WriteSram/VerifySram up to 32 tries
+0x080755A0 SaveAndResetSceneState  # SaveGame + reset scene state, returns 1; no callers (dead code)
+0x08075D6C DebugHook_Nop  # empty (bx lr), called every frame by MainLoop; hyp: stripped debug hook
+
+## --- interrupt handlers ---
+0x0807569C VBlankIntr  # IntrTable[2]: sets intrCheck bit0, counters, early cb, SoundVBlank, vblankCallback
+0x0807570C Timer2Intr  # IntrTable[6]: reload 0xF400, ++u16 at 0x030051FC
+0x08075740 GamepakIntr  # IntrTable[13]: while(1); unreachable (IntrMain loops on GAMEPAK itself)
+0x0807E324 SoundDma1Intr  # IntrTable[9]: FIFO ring position +16, rewinds DMA1/DMA2 at 0x2C0
+0x08075F74 LinkSerialIntr  # serial+timer3 IRQ (installed by sub_080735D4); reads SIOMULTI, 0xFEFE sync; hyp Nintendo MultiSio-derived
+0x080735D4 LinkSioInit  # sets SIO multi-player 115200, installs LinkSerialIntr into 2 IntrTable slots, IE |= SERIAL|TIMER3
+
+## --- fades / video / memory helpers ---
+0x080757F4 ClearBlend  # brightness level 0, BLDCNT=0, BLDY=0
+0x080759F4 SetBrightnessBlack  # BLDCNT=0x3FFF, BLDY=0x1F
+0x08075A30 SetBrightnessWhite  # BLDCNT=0x3FBF, BLDY=0x1F
+0x08075A6C FadeToBlack  # level += step, returns 1 at full
+0x08075AE4 FadeFromBlack  # level -= step, ClearBlend + return 1 at 0
+0x08075B58 FadeToWhite  # like FadeToBlack with BLDCNT 0x3FBF
+0x08075BD0 FadeFromWhite  # like FadeFromBlack with BLDCNT 0x3FBF
+0x08075278 MemClear16  # zero (size+1)/2 halfwords
+0x08075294 MemCopy16  # copy (size+1)/2 halfwords
+0x080752B0 CopyDoubleWords  # ldm/stm 8-byte block copy, (size+7)/8 blocks
+0x080753CC StrLen  # byte strlen
+0x08075630 LoadSystemFontGfx  # 16-color palette 0x0822C300 + 16 tiles 0x0822C320 to BG and OBJ
+0x08075744 ResetBgHofs  # zero the shadow + BGxHOFS
+0x08075778 ResetBgVofs  # zero the shadow + BGxVOFS
+0x080757AC ResetBgScroll  # ResetBgHofs + ResetBgVofs
+0x08073498 ClearBgMapBuffers  # clears gMain.bgMapBuffer (16 KiB) + 0x02010014 (0x1C00)
+0x08073574 ResetVideo  # ClearBgMapBuffers, LoadSystemFontGfx, identity BG2/3 affine, BG0CNT=4
+0x08072FAC LoadBgImage  # (mapBase, palIdx, tileBase, img): palette + 8bpp tiles to 0x06004000 + map into gMain.bgMapBuffer
+0x080761F0 AddSprite  # append an OAM entry to gMain.oamBuffer[gMain.oamCount++]
+
+## --- save helpers ---
+0x08077080 UpdateSaveChecksum  # gSaveData+0x216E = -(sum of u16[0..0x10B5])
+0x08077034 IsSaveChecksumValid  # the title screen uses it to enable Continue
+0x08076FC4 MemDiffers  # (a, b, u8 n) -> 1 on the first mismatch
+0x08076FF8 IsSaveSignatureValid  # compares "DMEX1INT" at gSaveData+0x2166; no callers
+0x0807701C WriteSaveSignature  # strcpy "DMEX1INT" -> gSaveData+0x2166
+0x080770E8 InitSaveData  # clears the save, SE/BGM on, text byte, signature
+0x080809CC strcpy  # newlib word-at-a-time strcpy
+
+## --- game-side sound API ---
+0x08077A44 IsSeEnabled  # gSaveData+0x2152 bit0
+0x08077A5C IsBgmEnabled  # gSaveData+0x2152 bit1
+0x08077A74 SetSeEnabled  # set/clear bit0
+0x08077AB0 SetBgmEnabled  # set/clear bit1
+0x08077AEC PlaySE  # gated on SE flag + one SE per frame (gMain.lastSeFrame); 288 call sites
+0x08077B24 PlayBGM  # gated on BGM flag, skips if == gMain.currentBgm, records the id
+0x08077B54 PlayBGMNoTrack  # gated on BGM flag, does not update currentBgm (title song 0, menu song 3)
+0x08077BA0 StopBGM  # SoundStopBGM, currentBgm = 0xFFFF
+0x08077BCC FadeOutBGM  # SoundFadeOutBGM(0x10), currentBgm = 0xFFFF
+
+## --- Konami sound driver ---
+0x0807D578 SoundInit  # SOUNDCNT/BIAS/PSG init, driver struct init, wave RAM, SoundDmaInit
+0x0807D3D0 SoundDmaInit  # Timer0 0xFCB9 (~20 kHz), DMA1/DMA2 -> FIFO A/B, copies mix loop to IWRAM 0x03005A54
+0x0807D518 SoundLoadWaveRam  # 16-byte wave pattern from 0x08139550 -> WAVE_RAM, bank toggle
+0x0807DB58 SoundSequencerTick  # per-VBlank sequencer for 10 BGM + 6 SE tracks, writes PSG regs
+0x0807E3B0 SoundVBlank  # unless paused: SoundSequencerTick + ARM mixer (veneer 0x08080A18)
+0x0807E3D8 SoundStartPendingSE  # starts the SE requested in drv+0x18C (SE table 0x08087FD0)
+0x0807E554 SoundMain  # main-thread: pending SE + BGM start from the song table 0x080E09D0
+0x0807E674 SoundRequestBGM  # drv+0x18A = id
+0x0807E6B0 SoundIsBGMPlaying  # (id)
+0x0807E764 SoundFadeOutBGM  # (speed)
+0x0807E814 SoundRequestSE  # drv+0x18C = id (bit15: don't restart if playing)
+0x0807E918 SoundPcmStart  # set up a PCM voice from the sample tables 0x0811B420/0x08088A20 + pitch table 0x081A960C
+0x0807E984 SoundCountActivePcm  # counts active PCM voices
+0x0807EAA0 SoundStopBGM  # drv flags |= 1
+0x0807EAD0 SoundMixAll  # ARM: mixes voices 0-2 -> FIFO A buffer, 3-5 -> FIFO B buffer
+0x0807EAF0 SoundMixFifo  # ARM: clear + mix one FIFO ring span
+0x0807EC1C SoundMixChannel  # ARM inner loop; copied to and executed at IWRAM 0x03005A54
+
+## --- scenes (main callbacks) and steps ---
+0x08004EAC CB_License  # boot: "LICENSED BY NINTENDO", Konami logo, KCEJ logo; debug name "License"
+0x08004AF8 License_InitVideo  # step 0
+0x08004B84 License_ShowNintendoNotice  # step 1, draws "LICENSED BY NINTENDO"
+0x08004CBC License_ShowKonamiLogo  # step 2, image 0x087D01F4
+0x08004D60 License_ShowKcejLogo  # step 3, image 0x087D292C, then installs CB_Title inline
+0x080057BC CB_Title  # title / New Game-Continue; debug name "TITLE"
+0x08005718 Title_StartGame  # Continue -> menu; New Game -> scripts 100/101 + new-game setup
+0x08004FD8 Title_Draw  # hyp; draws New Game/Continue, installs the HBlank/VBlank handlers
+0x08003AA4 CB_MainMenu  # hub; MainLoop's fallback; debug name "Menu"
+0x08003850 MainMenu_DrawItems  # 7 sprite rows + header
+0x08003920 MainMenu_Init  # step 0
+0x080039C0 MainMenu_FadeIn  # step 1
+0x080039E0 MainMenu_HandleInput  # step 2
+0x08003A58 MainMenu_Launch  # step 3: SetMainCallback(gMainMenuTable[cursor])
+0x0801D1E8 CB_Campaign  # menu slot 0 (sprite label "Campaign")
+0x0801AD18 CB_LinkBattle  # menu slot 1 (label "Link Battle"); uses SIO
+0x0806EF04 CB_DeckEdit  # menu slot 2 (label "Deck Edit")
+0x08003E94 CB_Record  # menu slot 3 (label "Record")
+0x08002940 CB_Calendar  # menu slot 4 (label "Calendar")
+0x0807D348 CB_CardTrading  # menu slot 5 (label "Card Trading")
+0x0807CC28 CB_Password  # menu slot 6 (label "Password"; strings "Password:")
+0x08021A48 DuelMainStep  # shared Campaign/Link duel step; dispatches the phase table 0x08198F80 by *(u8*)0x02015EE8
+0x08074A34 CB_DebugMenu  # unreferenced debug menu, items at 0x081A73A0
+0x0800736C CB_DebugCardDetail  # debug "Card Detail"
+0x080073BC CB_DebugAutoDetail  # debug "Auto Detail"
+0x08001AE4 CB_Bustup  # debug "Bustup"; text-box runner over the step table 0x0813ADD4, also used by Title/Campaign to run dialogue
+0x08001B34 CB_AutoBustup  # debug "Auto Bustup"
+0x08074480 CB_DebugGetAllCards  # debug "Get all card"
+0x08063AF8 CB_GetPack  # debug "Get a pack" (pack-opening runner, table 0x081A572C)
+0x0807448C CB_DebugNextLevel  # debug "Next Level"
+0x08001C10 StartDialogue  # (eventId) opens a dialogue record from 0x0813ADF4 (events 100/101 = Tea's intro on New Game); see wiki/game/text-system.md
+
+## --- libgcc ---
+0x0807EE98 _call_via_r0  # bx r0; nop  (the series continues every 4 bytes up to _call_via_lr at 0x0807EED0)
+0x0807EE9C _call_via_r1  # bx r1
+0x0807EEA0 _call_via_r2  # bx r2
+0x0807EEA4 _call_via_r3  # bx r3
+
+## --- data (ROM) ---
+0x081984D8 gMainMenuTable  # 7 scene callbacks launched by the main menu
+0x081984F4 sMainMenuSteps  # CB_MainMenu step table
+0x0819879C sLicenseSteps  # CB_License step table
+0x081988B0 sTitleSteps  # CB_Title step table
+0x08198F80 sDuelPhaseTable  # 10 duel phase handlers indexed by *(u8*)0x02015EE8
+0x081A73A0 sDebugMenuItems  # {char name[0x40]; callback} x10
+0x081A7764 sBgHofsRegs  # {reg, vblankFlags mask} x4
+0x081A7784 sBgVofsRegs  # {reg, vblankFlags mask} x4
+0x080E09D0 gSongTable  # 58 x {u32 data; u16 trackOffset[10]}
+0x08087FD0 gSeTable  # 28-byte SE entries (6 track ptrs + priority/mask/flags)
+0x0811B420 gPcmSampleTable  # PCM sample header pointers (id bit15 = 0)
+0x08088A20 gPcmSampleTable2  # PCM sample header pointers (id bit15 = 1)
+0x081A960C gSoundPitchTable  # u16 per note
+0x08139550 gWaveRamPatterns  # 16-byte PSG ch3 wave patterns
+0x081A78A8 sSaveSignature  # "DMEX1INT"
+
+## --- RAM ---
+0x03000040 gMain  # system struct (size ~0x488C); field offsets in wiki/rom/ram-map.md
+0x0300004C gIntrMainBuf  # = gMain+0xC; IntrMain IWRAM copy (INTR_VECTOR target)
+0x0300044C gMain_intrCheck  # = gMain+0x40C (field; listed for reference)
+0x03000450 gMain_callback  # = gMain+0x410 (field; listed for reference)
+0x03004470 gMain_oamBuffer  # = gMain+0x4430 (field; listed for reference)
+0x03005210 gSoundDriver  # Konami driver state, 0x198 bytes
+0x030053AC gSoundPcmChannels  # 6 x 0x10 PCM voices
+0x0300540C gSoundDmaPos  # FIFO ring positions (u16 cur/prev x2)
+0x03005414 gSoundPcmBuffer  # 2 x 0x320 FIFO ring buffers (A, B)
+0x03005A54 gSoundMixCodeRam  # IWRAM copy of SoundMixChannel
+0x03005B60 gLinkSio  # hyp name; link-cable state used by LinkSioInit/LinkSerialIntr
+0x03006644 gSioMultiRecv  # hyp; SIOMULTI0-3 snapshot in the serial IRQ
+0x02011C20 gSaveData  # 0x2170-byte save image mirrored to SRAM
+0x0201527C gTitleState  # bit0 save present, bit1 Continue selected
+0x02015ED8 gMainMenuCursor  # u16 0..6
+0x02015EE8 gDuelCtrl  # hyp; byte0 = duel phase index into sDuelPhaseTable

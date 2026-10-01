@@ -1,0 +1,16 @@
+# Unit boundaries used by tools/disasm.py.
+#   <addr> <unit> [src]         code unit from <addr> up to the next boundary
+#   <addr> auto                 auto-chunk from <addr> into ~4 KiB units named code_<addr>
+#   data <addr> <unit> [src]    .rodata unit (incbin from the baserom, split at referenced labels)
+# 'src' = the unit already has real source in src/<unit>.{c,s}; no asm is generated for it.
+0x08000228 auto
+0x0807D3D0 sound_driver
+0x0807EAD0 sound_mixer_arm
+0x0807ECF8 sdk/libagbsyscall src
+0x0807ED04 sdk/agb_sram src
+0x0807EE98 end
+
+data 0x08080A20 rodata_08080A20
+data 0x08087FB4 sdk/agb_sram src
+data 0x08087FD0 rodata_08087FD0
+data 0x08800000 end

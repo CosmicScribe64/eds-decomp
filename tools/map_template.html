@@ -1,0 +1,602 @@
+<title>EDS Decomp Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column; stats + controls, the ROM-ordered treemap, a detail card, then a unit table. */
+:root {
+  --bg: #f6f7f8;
+  --surface: #fcfcfb;
+  --fg: #111418;
+  --fg-2: #4d545c;
+  --fg-3: #7b838c;
+  --rule: #dde1e5;
+  --chip: #eceff2;
+  --st-c: #2a78d6;       /* matching C */
+  --st-draft: #eb6834;   /* draft C, not matching yet */
+  --st-sdk: #1baf7a;     /* hand-written / SDK source */
+  --st-asm: #c9ced4;     /* still assembly */
+  --focus: #111418;
+  --f-display: "Chakra Petch", "IBM Plex Sans", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121416; --surface: #1a1c1e; --fg: #f3f4f5; --fg-2: #b9bfc6; --fg-3: #858c94;
+    --rule: #2d3135; --chip: #25292d;
+    --st-c: #3987e5; --st-draft: #d95926; --st-sdk: #199e70; --st-asm: #3b4046; --focus: #f3f4f5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121416; --surface: #1a1c1e; --fg: #f3f4f5; --fg-2: #b9bfc6; --fg-3: #858c94;
+  --rule: #2d3135; --chip: #25292d;
+  --st-c: #3987e5; --st-draft: #d95926; --st-sdk: #199e70; --st-asm: #3b4046; --focus: #f3f4f5;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font: 600 clamp(26px, 5vw, 36px)/1.1 var(--f-display); margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+.sub { color: var(--fg-2); margin: 4px 0 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.stat b { display: block; font: 600 24px/1.2 var(--f-display); font-variant-numeric: tabular-nums; }
+.stat span { color: var(--fg-3); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.bar { height: 8px; border-radius: 4px; background: var(--st-asm); display: flex; overflow: hidden; gap: 2px; }
+.bar i { display: block; height: 100%; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.seg { display: inline-flex; background: var(--chip); border-radius: 8px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; color: var(--fg-2); font: 500 13px var(--f-body); padding: 6px 12px; border-radius: 6px; cursor: pointer; min-height: 32px; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.search { flex: 1 1 200px; min-width: 0; display: flex; gap: 8px; align-items: center; }
+.search input { flex: 1; min-width: 0; font: 14px var(--f-mono); padding: 8px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); min-height: 36px; }
+.search small { color: var(--fg-3); white-space: nowrap; }
+button:focus-visible, input:focus-visible, .row:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--fg-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.labnote { margin: -8px 0 0; font-size: 13px; color: var(--fg-2); }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 14px; flex-wrap: wrap; min-height: 28px; }
+.crumbs button { border: 0; background: none; color: var(--st-c); font: 500 14px var(--f-body); padding: 2px 0; cursor: pointer; }
+.crumbs .here { font-family: var(--f-mono); color: var(--fg); }
+.crumbs .hint { color: var(--fg-3); margin-left: auto; font-size: 12px; }
+.mapbox { position: relative; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 6px; }
+canvas { display: block; width: 100%; touch-action: manipulation; cursor: pointer; border-radius: 6px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); color: var(--fg); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0,0,0,.18); max-width: 260px; z-index: 2; }
+.tip b { font-family: var(--f-mono); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card h2 { margin: 0; font: 600 18px/1.3 var(--f-display); overflow-wrap: anywhere; }
+.card dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+.card dt { color: var(--fg-3); }
+.card dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.card p { margin: 0; color: var(--fg-2); max-width: 65ch; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; }
+.pill i { width: 10px; height: 10px; border-radius: 50%; }
+.card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.card .actions button { border: 1px solid var(--rule); background: var(--chip); color: var(--fg); border-radius: 8px; padding: 6px 12px; font: 500 13px var(--f-body); cursor: pointer; min-height: 34px; }
+h3 { margin: 8px 0 0; font: 600 16px var(--f-display); }
+.table { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.row { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px; gap: 12px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--rule); cursor: pointer; font-size: 13px; }
+.row:first-child { border-top: 0; }
+.row:hover { background: var(--chip); }
+.row .n { font-family: var(--f-mono); overflow-wrap: anywhere; }
+.row .pct { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-2); }
+.row.head { cursor: default; color: var(--fg-3); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; background: var(--chip); }
+.foot { color: var(--fg-3); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>EDS Decomp Map</h1>
+    <p class="sub">Every function in <i>Yu-Gi-Oh! The Eternal Duelist Soul</i> (GBA), in ROM order, coloured by decompilation status and labelled with what it does. Switch to <b>Whole ROM</b> to see the assets and data around the code.</p>
+  </header>
+
+  <section class="stats" id="stats" aria-label="Progress"></section>
+  <div class="bar" id="bar" role="img" aria-label="Share of code bytes by status"></div>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Show">
+      <button id="view-code" aria-pressed="true">Code</button>
+      <button id="view-rom" aria-pressed="false">Whole ROM</button>
+    </div>
+    <div class="seg" role="group" aria-label="Size blocks by" id="grp-size">
+      <button id="by-bytes" aria-pressed="true">Size: bytes</button>
+      <button id="by-count" aria-pressed="false">Size: functions</button>
+    </div>
+    <div class="seg" role="group" aria-label="Arrange blocks by">
+      <button id="ord-addr" aria-pressed="true">ROM order</button>
+      <button id="ord-size" aria-pressed="false">Largest first</button>
+    </div>
+    <div class="seg" role="group" aria-label="Block labels" id="grp-lab">
+      <button id="lab-what" aria-pressed="true">Labels: what it is</button>
+      <button id="lab-addr" aria-pressed="false">Labels: address</button>
+    </div>
+    <label class="search" for="q">
+      <input id="q" type="search" placeholder="Find ReadKeys, 0x0807…, LP…" autocomplete="off" spellcheck="false">
+      <small id="qn"></small>
+    </label>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <p class="labnote" id="labnote"></p>
+
+  <nav class="crumbs" id="crumbs" aria-label="Zoom level"></nav>
+  <div class="mapbox" id="mapbox">
+    <canvas id="map" role="img" aria-label="Treemap of code units and functions"></canvas>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <section class="card" id="detail" aria-live="polite"></section>
+
+  <h3 id="table-title">Units in ROM order</h3>
+  <div class="table" id="table" role="list"></div>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = /*DATA*/null;
+const STATUS = [
+  { key: 'asm', label: 'Still assembly', v: '--st-asm' },
+  { key: 'draft', label: 'Draft C, not matching yet', v: '--st-draft' },
+  { key: 'c', label: 'Matching C', v: '--st-c' },
+  { key: 'sdk', label: 'SDK / hand-written source', v: '--st-sdk' },
+];
+const hex = n => '0x' + n.toString(16).toUpperCase().padStart(8, '0');
+const hx = n => '0x' + n.toString(16).toUpperCase();
+const KIND = ['Known', 'Proposed from the decompiled code', 'Guess (hypothesis)'];
+// Short text for a block: the name if we have one, else the first phrase of the purpose.
+function shortLabel(f) {
+  if (f.lname) return f.lname + (f.kind === 2 ? '?' : '');
+  if (f.purpose) {
+    let t = f.purpose.split(/[:;.(]|, | — /)[0].trim();
+    if (t.length < 4) t = f.purpose;
+    return (t.length > 42 ? t.slice(0, 41) + '…' : t) + (f.kind === 2 ? '?' : '');
+  }
+  return '';
+}
+
+// ---- model
+const units = DATA.units.map(u => {
+  const fns = u.f.map(([a, size, name, st, lab]) => ({ a, size, name, st, lname: lab ? lab[0] : '', purpose: lab ? lab[1] : '', kind: lab ? lab[2] : -1 }));
+  const bytes = fns.reduce((s, f) => s + f.size, 0);
+  const cBytes = fns.filter(f => f.st >= 2).reduce((s, f) => s + f.size, 0);
+  const cCount = fns.filter(f => f.st >= 2).length;
+  const u2 = { name: u.u, desc: u.d, fns, bytes, cBytes, cCount, start: fns[0].a };
+  fns.forEach(f => f.unit = u2);
+  return u2;
+});
+const allFns = units.flatMap(u => u.fns);
+const segs = DATA.rom.map(([a, size, group, text, kind]) => ({ a, size, group, text, kind }));
+const SEGKIND = {
+  v: { label: 'Identified (verified)', v: '--st-c' },
+  h: { label: 'Partly identified (hypothesis)', v: '--st-draft' },
+  u: { label: 'Not identified yet', v: '--st-asm' },
+  pad: { label: 'Padding (zeros)', v: '--chip' },
+};
+const codeBytes = allFns.reduce((s, f) => s + f.size, 0);
+const codeC = allFns.filter(f => f.st >= 2).reduce((s, f) => s + f.size, 0);
+function segShort(sg) {
+  let t = sg.text.split(/[.:;(]| See /)[0].replace(/\*\*/g, '').trim();
+  return t.length > 60 ? t.slice(0, 59) + '…' : t;
+}
+
+let view = 'rom', selSeg = null, segMatches = new Set(), romCells = [], orderBy = 'addr', labelMode = 'what', sizeBy = 'bytes', zoom = null, selected = null, hover = null, matches = new Set();
+try { const s = localStorage.getItem('edsmap.size'); if (s === 'count') sizeBy = 'count'; } catch (e) {}
+
+// ---- colours from tokens
+let COL = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  STATUS.forEach((s, i) => COL[i] = cs.getPropertyValue(s.v).trim());
+  ['surface', 'fg', 'fg-2', 'chip', 'focus', 'st-c', 'st-draft', 'st-asm', 'rule'].forEach(k => COL[k] = cs.getPropertyValue('--' + k).trim());
+}
+
+// ---- summary
+function renderStats() {
+  if (view === 'rom') return renderRomStats();
+  const tot = allFns.length, tb = allFns.reduce((s, f) => s + f.size, 0);
+  const inC = allFns.filter(f => f.st >= 2), cb = inC.reduce((s, f) => s + f.size, 0);
+  const drafts = allFns.filter(f => f.st === 1).length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><b>${(100 * inC.length / tot).toFixed(1)}%</b><span>of functions in source (${inC.length.toLocaleString()} / ${tot.toLocaleString()})</span></div>
+    <div class="stat"><b>${(100 * cb / tb).toFixed(1)}%</b><span>of code bytes (${hx(cb)} / ${hx(tb)})</span></div>
+    <div class="stat"><b>${drafts}</b><span>near-miss drafts to finish</span></div>`;
+  const byBytes = [0, 0, 0, 0];
+  allFns.forEach(f => byBytes[f.st] += f.size);
+  document.getElementById('bar').innerHTML = [2, 3, 1, 0].map(i =>
+    `<i style="width:${100 * byBytes[i] / tb}%;background:var(${STATUS[i].v})" title="${STATUS[i].label}"></i>`).join('');
+  const counts = [0, 0, 0, 0]; allFns.forEach(f => counts[f.st]++);
+  document.getElementById('legend').innerHTML = [2, 3, 1, 0].map(i =>
+    `<span><i style="background:var(${STATUS[i].v})"></i>${STATUS[i].label} <span class="mono">${counts[i]}</span></span>`).join('');
+  const named = allFns.filter(f => f.lname).length, labelled = allFns.filter(f => f.kind >= 0).length;
+  document.getElementById('labnote').innerHTML = `Labels: <b>Name</b> is known or proposed, <i>Name?</i> is a guess. ${named} functions named, ${labelled} described.`;
+  document.getElementById('foot').textContent =
+    `Data from the repo on ${DATA.date}. ROM code region 0x08000228–0x0807EE98; libgcc and libc are linked from the compiler and not shown.`;
+}
+
+function renderRomStats() {
+  const total = segs.reduce((s, x) => s + x.size, 0);
+  const by = { code: 0, v: 0, h: 0, u: 0, pad: 0 };
+  segs.forEach(x => by[x.kind] += x.size);
+  const pct = n => (100 * n / total).toFixed(1) + '%';
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><b>${pct(by.code)}</b><span>of the ROM is code (${(100 * codeC / codeBytes).toFixed(0)}% of it in C)</span></div>
+    <div class="stat"><b>${pct(by.v)}</b><span>data identified and verified</span></div>
+    <div class="stat"><b>${pct(by.h + by.u)}</b><span>data partly or not identified</span></div>`;
+  document.getElementById('bar').innerHTML =
+    `<i style="width:${100 * codeC / total}%;background:var(--st-c)" title="Code in C"></i><i style="width:${100 * (by.code - codeC) / total}%;background:var(--st-asm)" title="Code still assembly"></i>` +
+    ['v', 'h', 'u', 'pad'].map(k => `<i style="width:${100 * by[k] / total}%;background:var(${SEGKIND[k].v});${k === 'v' ? 'opacity:.55' : ''}" title="${SEGKIND[k].label}"></i>`).join('');
+  document.getElementById('legend').innerHTML =
+    `<span><i style="background:linear-gradient(90deg,var(--st-c) 50%,var(--st-asm) 50%)"></i>Code: fill shows the share in C</span>` +
+    ['v', 'h', 'u', 'pad'].map(k => `<span><i style="background:var(${SEGKIND[k].v})"></i>${SEGKIND[k].label}</span>`).join('');
+  document.getElementById('labnote').innerHTML = `Data regions come from the ROM map on the wiki. None of the assets are extracted into source files yet; the build still copies them from the original ROM.`;
+  document.getElementById('foot').textContent = `Data from the repo on ${DATA.date}. 8 MiB ROM, 0x08000000–0x08800000.`;
+}
+
+// ---- squarified treemap
+function squarify(items, x, y, w, h) {
+  const out = [];
+  const total = items.reduce((s, it) => s + it.v, 0);
+  if (!total || w <= 0 || h <= 0) return out;
+  const scale = (w * h) / total;
+  const rest = items.map(it => ({ it, area: it.v * scale }));
+  let row = [];
+  const worst = (r, side) => {
+    const s = r.reduce((a, b) => a + b.area, 0);
+    let mx = 0, mn = Infinity;
+    r.forEach(e => { mx = Math.max(mx, e.area); mn = Math.min(mn, e.area); });
+    return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+  };
+  const layRow = (r) => {
+    const s = r.reduce((a, b) => a + b.area, 0);
+    if (w >= h) {
+      const cw = s / h; let cy = y;
+      r.forEach(e => { const ch = e.area / cw; out.push({ it: e.it, x, y: cy, w: cw, h: ch }); cy += ch; });
+      x += cw; w -= cw;
+    } else {
+      const ch = s / w; let cx = x;
+      r.forEach(e => { const cw = e.area / ch; out.push({ it: e.it, x: cx, y, w: cw, h: ch }); cx += cw; });
+      y += ch; h -= ch;
+    }
+  };
+  while (rest.length) {
+    const side = Math.min(w, h);
+    const next = rest[0];
+    if (!row.length || worst(row.concat(next), side) <= worst(row, side)) { row.push(next); rest.shift(); }
+    else { layRow(row); row = []; }
+  }
+  if (row.length) layRow(row);
+  return out;
+}
+
+// Order-preserving layout: split the address-ordered list where the running total is nearest
+// half, cut along the longer side, recurse. Earlier addresses land left/top of later ones.
+function ordered(items, x, y, w, h, out = []) {
+  if (!items.length || w <= 0 || h <= 0) return out;
+  if (items.length === 1) { out.push({ it: items[0], x, y, w, h }); return out; }
+  const total = items.reduce((s, it) => s + it.v, 0);
+  let acc = 0, k = 1, best = Infinity;
+  for (let i = 0; i < items.length - 1; i++) {
+    acc += items[i].v;
+    const d = Math.abs(acc - total / 2);
+    if (d < best) { best = d; k = i + 1; }
+  }
+  const a = items.slice(0, k), b = items.slice(k);
+  const fa = a.reduce((s, it) => s + it.v, 0) / total;
+  if (w >= h) { ordered(a, x, y, w * fa, h, out); ordered(b, x + w * fa, y, w * (1 - fa), h, out); }
+  else { ordered(a, x, y, w, h * fa, out); ordered(b, x, y + h * fa, w, h * (1 - fa), out); }
+  return out;
+}
+function place(items, x, y, w, h) {
+  if (orderBy === 'addr') return ordered(items, x, y, w, h);
+  return squarify(items.slice().sort((p, q) => q.v - p.v), x, y, w, h);
+}
+
+const canvas = document.getElementById('map'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, cells = [], unitCells = [];
+const val = f => sizeBy === 'bytes' ? f.size : 1;
+
+function layout() {
+  const box = canvas.parentElement.clientWidth - 12;
+  W = Math.max(200, box);
+  H = Math.round(W < 600 ? Math.min(W * 1.45, 640) : Math.min(Math.max(W * 0.62, 420), 640));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cells = []; unitCells = []; romCells = [];
+  if (view === 'rom') {
+    place(segs.map(sg => ({ v: sg.size, sg })), 0, 0, W, H).forEach(r => romCells.push({ sg: r.it.sg, x: r.x, y: r.y, w: r.w, h: r.h }));
+  } else if (zoom) {
+    const fs = zoom.fns.map(f => ({ v: val(f), f }));
+    place(fs, 0, 0, W, H).forEach(r => cells.push({ f: r.it.f, x: r.x, y: r.y, w: r.w, h: r.h }));
+  } else {
+    const us = units.map(u => ({ v: u.fns.reduce((s, f) => s + val(f), 0), u }));
+    place(us, 0, 0, W, H).forEach(r => {
+      const uc = { u: r.it.u, x: r.x, y: r.y, w: r.w, h: r.h };
+      unitCells.push(uc);
+      const pad = 1.5;
+      const fs = r.it.u.fns.map(f => ({ v: val(f), f }));
+      place(fs, r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad)
+        .forEach(c => cells.push({ f: c.it.f, x: c.x, y: c.y, w: c.w, h: c.h }));
+    });
+  }
+  draw();
+}
+
+function label(text, x, y, maxW, font, color, bg) {
+  ctx.font = font;
+  let t = text;
+  while (t.length > 3 && ctx.measureText(t).width > maxW) t = t.slice(0, -1);
+  if (t !== text) t = t.slice(0, -1) + '…';
+  const tw = ctx.measureText(t).width;
+  if (tw > maxW) return;
+  if (bg) { ctx.fillStyle = bg; ctx.globalAlpha = 0.86; ctx.fillRect(x - 3, y - 1, tw + 6, 15); ctx.globalAlpha = 1; }
+  ctx.fillStyle = color; ctx.textBaseline = 'top'; ctx.fillText(t, x, y);
+}
+
+function drawRom() {
+  const body = getComputedStyle(document.body).getPropertyValue('--f-body');
+  romCells.forEach(c => {
+    const g = 0.75, x = c.x + g, y = c.y + g, w = c.w - 2 * g, h = c.h - 2 * g;
+    if (w <= 0.3 || h <= 0.3) return;
+    if (c.sg.kind === 'code') {
+      ctx.fillStyle = COL['st-asm']; ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = COL['st-c']; ctx.fillRect(x, y, w * codeC / codeBytes, h);
+    } else {
+      ctx.fillStyle = c.sg.kind === 'pad' ? COL.chip : COL[{ v: 'st-c', h: 'st-draft', u: 'st-asm' }[c.sg.kind]];
+      ctx.globalAlpha = c.sg.kind === 'v' ? 0.55 : 1;
+      ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1;
+    }
+  });
+  romCells.forEach(c => {
+    if (c.w < 54 || c.h < 20) return;
+    const head = c.sg.kind === 'code' ? `Code · ${(100 * codeC / codeBytes).toFixed(0)}% in C` : c.sg.group;
+    label(head, c.x + 5, c.y + 4, c.w - 10, '600 11px ' + body, COL.fg, COL.surface);
+    if (c.h > 40 && c.sg.kind !== 'code') label(segShort(c.sg), c.x + 5, c.y + 21, c.w - 10, '400 10px ' + body, COL['fg-2'], COL.surface);
+  });
+  const outline = (c, color, lw) => { ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.strokeRect(c.x + 1, c.y + 1, Math.max(c.w - 2, 1), Math.max(c.h - 2, 1)); };
+  romCells.forEach(c => { if (segMatches.has(c.sg)) outline(c, COL.fg, 1.5); });
+  const hc = romCells.find(c => c.sg === hoverSeg); if (hc) outline(hc, COL.fg, 1.5);
+  const sc = romCells.find(c => c.sg === selSeg); if (sc) { outline(sc, COL.surface, 4); outline(sc, COL.focus, 2); }
+}
+
+let hoverSeg = null;
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = COL.surface; ctx.fillRect(0, 0, W, H);
+  if (view === 'rom') return drawRom();
+  const gap = zoom ? 1 : 0.5;
+  cells.forEach(c => {
+    ctx.fillStyle = COL[c.f.st];
+    const w = c.w - gap * 2, h = c.h - gap * 2;
+    if (w > 0.4 && h > 0.4) ctx.fillRect(c.x + gap, c.y + gap, w, h);
+  });
+  const mono = getComputedStyle(document.body).getPropertyValue('--f-mono');
+  const body = getComputedStyle(document.body).getPropertyValue('--f-body');
+  if (!zoom) {
+    ctx.strokeStyle = COL.surface; ctx.lineWidth = 2;
+    unitCells.forEach(u => ctx.strokeRect(u.x + 1, u.y + 1, u.w - 2, u.h - 2));
+  }
+  const minW = zoom ? 50 : 70, minH = zoom ? 20 : 36;
+  cells.forEach(c => {
+    if (c.w < minW || c.h < minH) return;
+    const f = c.f;
+    if (labelMode === 'addr') {
+      if (zoom) label(f.name.replace('sub_', ''), c.x + 5, c.y + 4, c.w - 10, '500 11px ' + mono, COL.fg, COL.surface);
+      return;
+    }
+    const t = shortLabel(f);
+    if (!t) return;
+    const font = (f.kind === 2 ? 'italic ' : '') + (f.lname ? '600 11px ' : '400 11px ') + body;
+    label(t, c.x + 5, c.y + (zoom ? 4 : c.h - 19), c.w - 10, font, COL.fg, COL.surface);
+    if (zoom && c.h > 44 && f.lname && f.purpose)
+      label(f.purpose, c.x + 5, c.y + 22, c.w - 10, '400 10px ' + body, COL['fg-2'], COL.surface);
+  });
+  if (!zoom) unitCells.forEach(u => {
+    if (u.w > 46 && u.h > 20) label(u.u.name.replace('code_', '').replace(/^0?8/, ''), u.x + 4, u.y + 4, u.w - 8, '600 10px ' + mono, COL.fg, COL.surface);
+  });
+  const outline = (c, color, lw) => { ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.strokeRect(c.x + 1, c.y + 1, Math.max(c.w - 2, 1), Math.max(c.h - 2, 1)); };
+  if (matches.size) cells.forEach(c => { if (matches.has(c.f)) outline(c, COL.fg, 1.5); });
+  if (hover) { const c = cells.find(c => c.f === hover); if (c) outline(c, COL.fg, 1.5); }
+  if (selected) { const c = cells.find(c => c.f === selected); if (c) { outline(c, COL.surface, 4); outline(c, COL.focus, 2); } }
+}
+
+// ---- detail + crumbs + table
+function pill(st) { return `<span class="pill"><i style="background:var(${STATUS[st].v})"></i>${STATUS[st].label}</span>`; }
+function unitSummary(u) {
+  return `${u.cCount}/${u.fns.length} functions · ${(100 * u.cBytes / u.bytes).toFixed(0)}% of ${hx(u.bytes)} bytes in source`;
+}
+function renderDetail() {
+  const el = document.getElementById('detail');
+  if (view === 'rom') {
+    if (selSeg && selSeg.kind !== 'code') {
+      const k = SEGKIND[selSeg.kind];
+      el.innerHTML = `<h2>${escapeHtml(selSeg.group)}</h2>
+        <span class="pill"><i style="background:var(${k.v})"></i>${k.label}</span>
+        <p>${escapeHtml(selSeg.text)}</p>
+        <dl><dt>Range</dt><dd class="mono">${hex(selSeg.a)}–${hex(selSeg.a + selSeg.size)}</dd>
+        <dt>Size</dt><dd class="mono">${hx(selSeg.size)} bytes (${(selSeg.size / 1024).toFixed(1)} KiB, ${(100 * selSeg.size / 0x800000).toFixed(2)}% of ROM)</dd>
+        <dt>In the build</dt><dd>Copied from the original ROM (not extracted yet)</dd></dl>`;
+    } else {
+      el.innerHTML = `<h2>Tap a region</h2><p>Each block is one region of the cartridge, placed in address order from 0x08000000 (top-left) to 0x08800000 (bottom-right). Tap a data region for what it holds, or tap <b>Code</b> to open the function map.</p>`;
+    }
+    return;
+  }
+  if (selected) {
+    const f = selected, u = f.unit;
+    el.innerHTML = `
+      <h2>${f.lname ? escapeHtml(f.lname) + (f.kind === 2 ? '?' : '') : `<span class="mono">${f.name}</span>`}</h2>
+      ${f.lname ? `<div class="mono" style="color:var(--fg-2)">${f.name}</div>` : ''}
+      ${pill(f.st)}
+      ${f.purpose ? `<p>${escapeHtml(f.purpose)}</p>` : (f.lname ? '' : '<p>Not identified yet.</p>')}
+      <dl>
+        ${f.kind >= 0 ? `<dt>Label</dt><dd>${KIND[f.kind]}</dd>` : ''}
+        <dt>Address</dt><dd class="mono">${hex(f.a)}–${hex(f.a + f.size)}</dd>
+        <dt>Size</dt><dd class="mono">${hx(f.size)} bytes (${f.size.toLocaleString()})</dd>
+        <dt>Unit</dt><dd class="mono">${u.name}</dd>
+        <dt>Unit status</dt><dd>${unitSummary(u)}</dd>
+      </dl>
+      ${u.desc ? `<p><b>Unit:</b> ${escapeHtml(u.desc)}</p>` : ''}
+      <div class="actions">${zoom === u ? '' : `<button id="zoom-btn">Zoom into ${u.name}</button>`}<button id="clear-btn">Clear selection</button></div>`;
+    const zb = document.getElementById('zoom-btn'); if (zb) zb.onclick = () => setZoom(u);
+    document.getElementById('clear-btn').onclick = () => { selected = null; renderDetail(); draw(); };
+  } else if (zoom) {
+    el.innerHTML = `<h2 class="mono">${zoom.name}</h2><dl><dt>Range</dt><dd class="mono">${hex(zoom.start)}–${hex(zoom.start + zoom.bytes)}</dd><dt>Status</dt><dd>${unitSummary(zoom)}</dd></dl>${zoom.desc ? `<p>${escapeHtml(zoom.desc)}</p>` : ''}<p>Tap a function for details.</p>`;
+  } else {
+    el.innerHTML = `<h2>Tap a block</h2><p>Each small block is one function. The outlined groups are code units of about 4 KiB, each built from one C file (<span class="mono">src/code_08XXXXXX.c</span>) and tagged with its start address. On a phone, tap a unit to zoom in, then tap a function for its name, address, size and status.</p>`;
+  }
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function renderCrumbs() {
+  const el = document.getElementById('crumbs');
+  if (view === 'rom') {
+    el.innerHTML = `<span class="here">Whole ROM</span><span class="hint">${segs.length} regions · 8 MiB</span>`;
+    return;
+  }
+  el.innerHTML = zoom
+    ? `<button id="crumb-rom">Whole ROM</button><span>›</span><button id="crumb-root">All code</button><span>›</span><span class="here">${zoom.name}</span><span class="hint">${zoom.fns.length} functions</span>`
+    : `<button id="crumb-rom">Whole ROM</button><span>›</span><span class="here">All code</span><span class="hint">${orderBy === 'addr' ? '0x08000228 top-left → 0x0807EE98 bottom-right · ' : ''}${units.length} units · ${allFns.length.toLocaleString()} functions</span>`;
+  const r = document.getElementById('crumb-root'); if (r) r.onclick = () => setZoom(null);
+  document.getElementById('crumb-rom').onclick = () => setView('rom');
+}
+function renderTable() {
+  const el = document.getElementById('table');
+  document.getElementById('table-title').textContent = view === 'rom' ? 'ROM regions in order' : 'Units in ROM order';
+  if (view === 'rom') {
+    el.innerHTML = `<div class="row head"><span>Region</span><span>Status</span><span class="pct">KiB</span></div>` +
+      segs.map((sg, i) => `<div class="row" role="listitem" tabindex="0" data-s="${i}"><span class="n">${hex(sg.a).slice(4)} ${escapeHtml(sg.kind === 'code' ? 'Code' : sg.group + ': ' + segShort(sg))}</span><span>${sg.kind === 'code' ? `${(100 * codeC / codeBytes).toFixed(0)}% in C` : SEGKIND[sg.kind].label}</span><span class="pct">${(sg.size / 1024).toFixed(1)}</span></div>`).join('');
+    el.querySelectorAll('.row[data-s]').forEach(r => {
+      const go = () => { const sg = segs[+r.dataset.s]; if (sg.kind === 'code') { setView('code'); } else { selSeg = sg; renderDetail(); draw(); } document.getElementById('crumbs').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+      r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    });
+    return;
+  }
+  el.innerHTML = `<div class="row head"><span>Unit</span><span>Progress</span><span class="pct">Bytes</span></div>` +
+    units.map((u, i) => {
+      const seg = [2, 3, 1, 0].map(s => { const b = u.fns.filter(f => f.st === s).reduce((a, f) => a + f.size, 0); return b ? `<i style="width:${100 * b / u.bytes}%;background:var(${STATUS[s].v})"></i>` : ''; }).join('');
+      return `<div class="row" role="listitem" tabindex="0" data-i="${i}"><span class="n">${u.name}</span><div class="bar" aria-label="${unitSummary(u)}">${seg}</div><span class="pct">${(100 * u.cBytes / u.bytes).toFixed(0)}%</span></div>`;
+    }).join('');
+  el.querySelectorAll('.row[data-i]').forEach(r => {
+    const go = () => { setZoom(units[+r.dataset.i]); document.getElementById('crumbs').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    r.onclick = go; r.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+  });
+}
+
+function setView(v) {
+  view = v; zoom = null; selected = null; selSeg = null; matches = new Set(); segMatches = new Set();
+  document.getElementById('grp-size').hidden = v === 'rom';
+  document.getElementById('grp-lab').hidden = v === 'rom';
+  document.getElementById('view-code').setAttribute('aria-pressed', v === 'code');
+  document.getElementById('view-rom').setAttribute('aria-pressed', v === 'rom');
+  renderStats(); renderCrumbs(); renderDetail(); renderTable(); layout();
+}
+function setZoom(u) {
+  zoom = u;
+  if (selected && u && selected.unit !== u) selected = null;
+  renderCrumbs(); renderDetail(); layout();
+}
+
+// ---- interaction
+function hit(ev) {
+  const r = canvas.getBoundingClientRect();
+  const x = ev.clientX - r.left, y = ev.clientY - r.top;
+  const inside = c => x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h;
+  const rc = romCells.find(inside);
+  return { c: cells.find(inside), s: rc ? rc.sg : null, x, y };
+}
+const tip = document.getElementById('tip');
+canvas.addEventListener('pointermove', ev => {
+  if (ev.pointerType !== 'mouse') return;
+  const { c, s: sg, x, y } = hit(ev);
+  const place = () => { const tw = tip.offsetWidth, th = tip.offsetHeight; tip.style.left = Math.min(x + 14, W - tw) + 'px'; tip.style.top = (y + 20 + th > H ? y - th - 8 : y + 20) + 'px'; };
+  if (view === 'rom') {
+    hoverSeg = sg || null; draw();
+    if (!sg) { tip.hidden = true; return; }
+    tip.innerHTML = sg.kind === 'code' ? `<b>Code</b><br>${(100 * codeC / codeBytes).toFixed(0)}% in C · tap to open` : `<b>${escapeHtml(sg.group)}</b><br>${escapeHtml(segShort(sg))}<br>${(sg.size / 1024).toFixed(1)} KiB · ${SEGKIND[sg.kind].label}`;
+    tip.hidden = false; place(); return;
+  }
+  hover = c ? c.f : null; draw();
+  if (!c) { tip.hidden = true; return; }
+  tip.innerHTML = `${shortLabel(c.f) ? `<div>${escapeHtml(shortLabel(c.f))}</div>` : ''}<b>${c.f.name}</b><br>${hx(c.f.size)} bytes · ${STATUS[c.f.st].label}<br><span class="mono">${c.f.unit.name}</span>`;
+  tip.hidden = false;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  tip.style.left = Math.min(x + 14, W - tw) + 'px';
+  tip.style.top = (y + 20 + th > H ? y - th - 8 : y + 20) + 'px';
+});
+canvas.addEventListener('pointerleave', () => { hover = null; hoverSeg = null; tip.hidden = true; draw(); });
+let lastPointer = 'mouse';
+canvas.addEventListener('pointerdown', ev => { lastPointer = ev.pointerType; });
+canvas.addEventListener('click', ev => {
+  const { c, s: sg } = hit(ev);
+  if (view === 'rom') {
+    if (!sg) return;
+    if (sg.kind === 'code') { tip.hidden = true; setView('code'); return; }
+    selSeg = sg; renderDetail(); draw(); return;
+  }
+  if (!c) return;
+  if (!zoom && lastPointer !== 'mouse') { selected = c.f; setZoom(c.f.unit); return; }
+  if (selected === c.f && !zoom) { setZoom(c.f.unit); return; }   // second tap zooms in
+  selected = c.f; renderDetail(); draw();
+});
+
+function setSize(s) {
+  sizeBy = s;
+  document.getElementById('by-bytes').setAttribute('aria-pressed', s === 'bytes');
+  document.getElementById('by-count').setAttribute('aria-pressed', s === 'count');
+  try { localStorage.setItem('edsmap.size', s); } catch (e) {}
+  layout();
+}
+function setOrder(o) {
+  orderBy = o;
+  document.getElementById('ord-addr').setAttribute('aria-pressed', o === 'addr');
+  document.getElementById('ord-size').setAttribute('aria-pressed', o === 'size');
+  renderCrumbs(); layout();
+}
+document.getElementById('ord-addr').onclick = () => setOrder('addr');
+document.getElementById('ord-size').onclick = () => setOrder('size');
+function setLabels(m) {
+  labelMode = m;
+  document.getElementById('lab-what').setAttribute('aria-pressed', m === 'what');
+  document.getElementById('lab-addr').setAttribute('aria-pressed', m === 'addr');
+  draw();
+}
+document.getElementById('lab-what').onclick = () => setLabels('what');
+document.getElementById('lab-addr').onclick = () => setLabels('addr');
+document.getElementById('by-bytes').onclick = () => setSize('bytes');
+document.getElementById('by-count').onclick = () => setSize('count');
+
+document.getElementById('q').addEventListener('input', ev => {
+  const q = ev.target.value.trim().toUpperCase().replace(/^0X/, '');
+  matches = new Set(); segMatches = new Set();
+  if (view === 'rom' && q.length >= 3) {
+    segs.forEach(sg => { if ((sg.group + ' ' + sg.text).toUpperCase().includes(q) || (q.length >= 7 && sg.a <= parseInt(q, 16) && parseInt(q, 16) < sg.a + sg.size)) segMatches.add(sg); });
+    if (segMatches.size) { document.getElementById('qn').textContent = `${segMatches.size} regions`; selSeg = [...segMatches][0]; renderDetail(); draw(); return; }
+    setView('code'); document.getElementById('q').value = ev.target.value;
+  }
+  if (q.length >= 3) allFns.forEach(f => { if (f.name.toUpperCase().includes(q) || f.lname.toUpperCase().includes(q) || f.purpose.toUpperCase().includes(q) || f.a.toString(16).toUpperCase().padStart(8, '0').includes(q) || (f.a <= parseInt(q, 16) && parseInt(q, 16) < f.a + f.size && q.length >= 7)) matches.add(f); });
+  document.getElementById('qn').textContent = q.length >= 3 ? `${matches.size} found` : '';
+  if (matches.size) {
+    const first = [...matches][0];
+    selected = first;
+    if (matches.size === 1 || [...matches].every(f => f.unit === first.unit)) { setZoom(first.unit); return; }
+  }
+  renderDetail(); draw();
+});
+
+// ---- theme + resize
+readColors();
+new MutationObserver(() => { readColors(); draw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(); });
+let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(layout, 60); }).observe(canvas.parentElement);
+if (document.fonts) document.fonts.ready.then(draw);
+
+document.getElementById('by-bytes').setAttribute('aria-pressed', sizeBy === 'bytes');
+document.getElementById('by-count').setAttribute('aria-pressed', sizeBy === 'count');
+document.getElementById('view-code').onclick = () => setView('code');
+document.getElementById('view-rom').onclick = () => setView('rom');
+setView('code');
+</script>

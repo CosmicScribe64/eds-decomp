@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/code_08002388/sub_08002388.s"
+	.include "asm/nonmatching/code_08002388/sub_0800257C.s"
+	.include "asm/nonmatching/code_08002388/sub_08002704.s"
+	.include "asm/nonmatching/code_08002388/sub_08002728.s"
+	.include "asm/nonmatching/code_08002388/sub_08002930.s"
+	.include "asm/nonmatching/code_08002388/sub_08002940.s"
+	.include "asm/nonmatching/code_08002388/sub_08002980.s"
+	.include "asm/nonmatching/code_08002388/sub_08002A48.s"
+	.include "asm/nonmatching/code_08002388/sub_08002AA0.s"
+	.include "asm/nonmatching/code_08002388/sub_08002CE8.s"
+	.include "asm/nonmatching/code_08002388/sub_08002D34.s"
+	.include "asm/nonmatching/code_08002388/sub_08002D48.s"
+	.include "asm/nonmatching/code_08002388/sub_08002E80.s"
+	.include "asm/nonmatching/code_08002388/sub_08002FBC.s"
+	.include "asm/nonmatching/code_08002388/sub_08002FD0.s"
+	.include "asm/nonmatching/code_08002388/sub_08003020.s"
+	.include "asm/nonmatching/code_08002388/sub_080030FC.s"
+	.include "asm/nonmatching/code_08002388/sub_08003174.s"
+	.include "asm/nonmatching/code_08002388/sub_0800323C.s"
+	.include "asm/nonmatching/code_08002388/sub_08003298.s"

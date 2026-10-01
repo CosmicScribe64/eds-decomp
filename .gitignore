@@ -1,0 +1,27 @@
+# Game images and saves: never committed (see AGENTS.md).
+*.gba
+*.sav
+*.zip
+roms/
+assets/
+
+# Build output and generated files.
+build/
+__pycache__/
+objdiff.json
+
+# Local tooling and editor state.
+.DS_Store
+.claude/
+.obsidian/workspace*
+staging/
+
+# Local multi-agent orchestration. These scripts drive the maintainer's own agent setup,
+# depend on prompts in staging/ and pass local credentials, so they stay out of the public repo.
+tools/opencode-agent
+tools/advisor.py
+tools/launch_*.sh
+tools/watch_*.sh
+tools/dashboard.py
+tools/dashboard.html
+docker/opencode/

@@ -1,0 +1,51 @@
+# Match gate + objdiff progress report, on every push and pull request.
+# No ROM is needed anywhere in CI: every check compares compiled C against the original assembly
+# committed under asm/ (tools/target.py), never against the game itself.
+# decomp.dev reads the uploaded "AY5E_report" artifact from the default branch.
+name: Progress report
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build toolchain image
+        run: docker build -t eds-decomp docker/
+
+      # The gate: every C unit (and authored assembly unit) must still match its original bytes.
+      - name: Every unit matches its original assembly
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/work -w /work eds-decomp \
+            python3 tools/check_all.py -j "$(nproc)"
+
+      # A pull request may not turn matching C back into assembly fallbacks.
+      - name: Progress does not go backwards
+        if: github.event_name == 'pull_request'
+        run: |
+          count() { python3 tools/progress.py | sed -n 's/^Decompiled: \([0-9]*\)\/.*/\1/p'; }
+          head=$(count)
+          git worktree add -q /tmp/base "${{ github.event.pull_request.base.sha }}"
+          base=$(cd /tmp/base && count)
+          echo "functions in matching source: base $base, this PR $head"
+          [ "$head" -ge "$base" ]
+
+      - name: Generate objdiff report
+        run: |
+          docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/work -w /work eds-decomp \
+            make -j"$(nproc)" objdiff-report
+
+      - name: Check report
+        run: python3 tools/check_report.py build/report.json
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: AY5E_report
+          path: build/report.json

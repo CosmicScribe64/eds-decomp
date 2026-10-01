@@ -1,0 +1,14 @@
+#!/bin/sh
+# Run a command with the EDS toolchain.
+#   tools/dr make -j8      |  tools/dr python3 tools/check.py <unit> ...
+# Default: inside the eds-decomp Docker image with the repo mounted at /work
+# (build it once with: docker build -t eds-decomp docker/).
+# Native mode, for sandboxes without Docker (e.g. web agents): if docker is unavailable or
+# EDS_NATIVE=1, the command runs directly; install the toolchain first with tools/setup_native.sh
+# and source the env file it prints.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+if [ "${EDS_NATIVE:-0}" = "1" ] || ! command -v docker >/dev/null 2>&1; then
+    cd "$REPO" && exec "$@"
+fi
+TTY=""; [ -t 0 ] && TTY="-t"
+exec docker run --rm -i $TTY -u "$(id -u):$(id -g)" -v "$REPO":/work -w /work eds-decomp:latest "$@"

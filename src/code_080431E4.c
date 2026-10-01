@@ -1,0 +1,398 @@
+#include "global.h"
+
+int sub_08008524(int player, u16 number);
+/* 4-byte entries of gUnk_0819A990: two 13-bit card numbers (a, num) and a 6-bit count (hypothesis: a fusion/ritual style recipe list) */
+struct RecipeEnt { u32 a : 13; u32 num : 13; u32 cnt : 6; };
+extern struct RecipeEnt gUnk_0819A990[];
+extern const u16 gUnk_08622AB4[];
+struct DuelPlayerC { u8 unk0[2]; u8 handCount; u8 pad[0x684 - 3]; u32 hand[80]; u8 pad2[0xD64 - 0x684 - 0x140]; };
+extern struct DuelPlayerC gUnk_020192E4[2];
+extern const u32 gUnk_08621DE0[];
+struct DuelZoneD { u32 w0; u8 pad[0x94 - 4]; };
+struct DuelZonesPlayerD { struct DuelZoneD zones[11]; u8 filler[0xD64 - 11 * 0x94]; };
+int sub_08008A6C(int player, int zone);
+struct CardListD { u32 w[80]; u8 pad[0xD64 - 0x140]; };
+extern struct CardListD gUnk_02019BE8[2];
+int sub_08007834(u16 id);
+int sub_08043594(int player, int idx);
+int sub_08043600(int player, u16 x);
+int sub_080436B8(int player);
+struct AE60 { u8 unk0[8]; u16 h8; u16 hA; u8 unkC[2]; u16 hE; u8 unk10[0x21 - 0x10]; u8 b21; };
+extern struct AE60 gUnk_0201AE60;
+extern u8 gUnk_02017A40[];
+struct F1ACC { u8 lo : 6; u8 b6 : 1; u8 b7 : 1; };
+struct F1ACD { u8 b0 : 1; u8 rest : 7; };
+extern u8 gUnk_020192E0[];
+extern u8 gUnk_0201ADAC[];
+struct G5EE8 { u8 unk0; u8 b1; };
+extern struct G5EE8 gUnk_02015EE8;
+extern u8 gUnk_0201ADF2[];
+extern const u8 gUnk_08085434[], gUnk_08085448[];
+void sub_0801EC58(u32 msg, u16 zone, int a, int b);
+void sub_0801A7DC(const u8 *fmt, int p, int z);
+void sub_0801A7E8(void);
+struct ZoneE { u32 w0; u8 pad[6 - 4]; u8 flags6; u8 pad2[0x91 - 7]; u8 b91; u8 pad3[0x94 - 0x92]; };
+struct ZonesE { struct ZoneE z[11]; u8 filler[0xD64 - 11 * 0x94]; };
+extern struct ZonesE gUnk_0201930C[2];
+void sub_080761F0(u32 pos, int a, int b);
+struct CardRef {
+    u16 id;             /* +0x00 */
+    u8 player : 1;      /* +0x02 bit 0 */
+    u8 unk2_1 : 3;
+    u16 zone : 6;       /* +0x02 bits 4-9 */
+    u16 kind : 6;
+    u8 rest[0x12 - 4];
+};
+int sub_08047170(int player);
+extern const u16 gUnk_08623DF4[];
+#define RE_A(e) (((u32)*(u16 *)(e) << 19) >> 19)
+#define CARD_STATS(id) (gUnk_08621DE0[(id) & 0x7FF])
+#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
+
+/* Is card number 0x2EF or 0x409 on the field/hand of either player? (count of sub_08008524, hypothesis) */
+int sub_080431E4(void)
+{
+    if (sub_08008524(0, 0x2EF) == 0 && sub_08008524(1, 0x2EF) == 0
+        && sub_08008524(0, 0x409) == 0 && sub_08008524(1, 0x409) == 0)
+        return 0;
+    return 1;
+}
+
+/* Same for card number 0x482. */
+int sub_08043230(void)
+{
+    if (sub_08008524(0, 0x482) == 0 && sub_08008524(1, 0x482) == 0)
+        return 0;
+    return 1;
+}
+#if 0 /* NONMATCHING: structure and all callee behaviour decoded, but the
+       * hoisting differs. The ROM hoists 0x7FF (r8), the zone base (r9) and
+       * p*0xD64 (sl) out of both loops and spills p+1 to the stack; this build
+       * hoists p*0xD64 and p+1 only (about 60 diff lines). Tricks tried, none
+       * matched: a ull zone-base temp (v_zb_ull, more diff); caching the zone
+       * base in a `struct ZonesE *zb` local, caching p*0xD64 in a local, and m
+       * as ull. */
+void sub_0804325C(void)
+{
+    u8 *e;
+    int p;
+    int z;
+    int one;
+    s8 m = 0x7FF;
+    int r7 = sub_080431E4();
+    e = gUnk_020192E0;
+    ((struct F1ACC *)(e + 0x1ACC))->b7 = r7;
+    one = 1;
+    ((struct F1ACC *)(e + 0x1ACC))->b6 = one & sub_08043230();
+    ((struct F1ACD *)(e + 0x1ACD))->b0 = 0;
+    if (sub_08008524(0, 0x601) != 0 || sub_08008524(1, 0x601) != 0)
+        ((struct F1ACD *)(e + 0x1ACD))->b0 = one;
+    for (p = 0; p <= 1; p++) {
+        for (z = 5; z <= 10; z++) {
+            struct ZoneE *zn = (struct ZoneE *)((z * 0x94) + ((1 & p) * 0xD64) + (u32)gUnk_0201930C);
+            u32 id = (zn->w0 << 20) >> 20;
+            u32 idc;
+            s16 r;
+            s16 v;
+            if (id == 0)
+                continue;
+            if (!(zn->flags6 & 2))
+                continue;
+            r = 0;
+            idc = id;
+            switch (((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20)) {
+            case 0x15:
+                if (0x80 & *((u8 *)gUnk_0201930C + 0x1AA0))
+                    r = 1;
+                break;
+            case 0x16:
+                if (0x40 & *((u8 *)gUnk_0201930C + 0x1AA0))
+                    r = 1;
+                break;
+            }
+            {
+                int t = ((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20);
+                if (t <= 0x16 && t >= 0x15)
+                    v = (((const u32 *)0x08621DE0)[idc & m] & 0xE0000) >> 17;
+                else
+                    v = 0;
+            }
+            switch (v) {
+            case 3:
+                if (v & gUnk_0201ADAC[1])
+                    r = 1;
+                break;
+            case 2:
+                if (4 & gUnk_0201ADAC[1])
+                    r = 1;
+                break;
+            case 4:
+                switch (((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20)) {
+                case 0x15:
+                    if (0x10 & gUnk_0201ADAC[1])
+                        r = 1;
+                    break;
+                case 0x16:
+                    if (8 & gUnk_0201ADAC[1])
+                        r = 1;
+                    break;
+                }
+                break;
+            }
+            if (((const u16 *)0x08622AB4)[idc & m] == 0x603)
+                r = 0;
+            if (1 & gUnk_02015EE8.b1) {
+                if (2 & gUnk_0201ADF2[0])
+                    continue;
+            }
+            if (r == 0) {
+                if (gUnk_0201930C[1 & p].z[z].b91 & 8) {
+                    sub_0801EC58(p ? 0x80B1 : 0xB1, z, 0, 0);
+                    sub_0801A7DC(gUnk_08085434, p, z);
+                    sub_0801A7E8();
+                }
+            }
+            if (r != 0) {
+                if (gUnk_0201930C[1 & p].z[z].b91 & 8)
+                    continue;
+                r = 1;
+                sub_0801A7DC(gUnk_08085448, p, z);
+                sub_0801A7E8();
+                if (((const u16 *)0x08622AB4)[idc & m] == 0x409) {
+                    if (sub_08008524(0, 0x2EF) == 0)
+                        r = sub_08008524(1, 0x2EF) != 0;
+                }
+                if (r != 0)
+                    sub_0801EC58(p ? 0x80B1 : 0xB1, z, 1, 0);
+            }
+        }
+    }
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_0804325C); /* 0x0804325C size 0x2E0 */
+/* Index of the entry whose num equals the card number of id, or -1. */
+int sub_0804353C(u16 id)
+{
+    int i = 0;
+    struct RecipeEnt *p = gUnk_0819A990;
+    if (p->num != 0) {
+        for (i = 0; gUnk_0819A990[i].num != 0; i++) {
+            if (gUnk_0819A990[i].num == ((const u16 *)0x08622AB4)[0x7FF & id])
+                return i;
+        }
+    }
+    return -1;
+}
+/* Read the full hand word; keep the index, player offset and hand base distinct. */
+static inline u32 GetRecipeHandWord(int player, int idx)
+{
+    u32 off = (player & 1) * 0xD64;
+    return *(u32 *)(idx * 4 + off + (u32)gUnk_020192E4 + 0x684);
+}
+static inline u32 GetRecipeFirstNumber(int idx)
+{
+    u32 base = (u32)gUnk_0819A990;
+    u32 off = idx * 4;
+    return ((u32)*(u16 *)(base + off) << 19) >> 19;
+}
+int sub_08043594(int player, int idx)
+{
+    u16 i;
+    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+        u32 card = GetRecipeHandWord(player, i);
+        u16 a = GetRecipeFirstNumber(idx);
+        if (*(u16 *)((u8 *)0x08622AB4 + ((card << 21) >> 20)) == a)
+            return 1;
+    }
+    return 0;
+}
+/* Types 21-23 contribute no level; Divine type 24 contributes ten. */
+static inline int GetRecipeCardLevel(u16 id)
+{
+    int type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 10;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+    }
+}
+int sub_08043600(int player, u16 x)
+{
+    int total = 0;
+    int found = 0;
+    int i;
+    for (i = 0; i < gUnk_020192E4[1 & player].handCount; i++) {
+        u16 id = (GetRecipeHandWord(player, i) << 20) >> 20;
+        if (found != 0 || id != x) {
+            int c = GetRecipeCardLevel(id);
+            c += total;
+            total = c;
+        }
+        if (x == id)
+            found = 1;
+    }
+    return total;
+}
+#if 0 /* NONMATCHING: loop-invariant hoisting differs. The ROM keeps only p&1
+       * (r3) and 0x7FF (r2) invariant (spilled around the call), while this
+       * build also hoists p*0xD64 and the table. Tricks tried, none matched: a
+       * goto loop (the compiler still hoists the zone base; 84 lines), the
+       * goto loop plus a ull zone base (72 lines),
+       * `unsigned long long base = 0x0201930C;` with `(u8 *)(u32)base` (76),
+       * inline `(1&player)` and `0x7FF` at each use, and a local base. */
+/* Sum of the "cost" of the player's monster-zone cards that pass sub_08008A6C. */
+int sub_080436B8(int player)
+{
+    u16 total = 0;
+    int i;
+    u16 p = 1 & player;
+    u32 m = 0x7FF;
+    for (i = 0; i <= 4; i++) {
+        u32 id = ((*(u32 *)((u8 *)gUnk_0201930C + p * 0xD64 + i * 0x94)) << 20) >> 20;
+        if (sub_08008A6C(player, i) != 0) {
+            int c;
+            int t = (gUnk_08621DE0[id & m] & 0x1F00000) >> 20;
+            switch (t) {
+            case 0x15:
+            case 0x16:
+            case 0x17:
+                c = 0;
+                break;
+            case 0x18:
+                c = 10;
+                break;
+            default:
+                c = (gUnk_08621DE0[id & m] & 0x1E000000) >> 25;
+                break;
+            }
+            total += c;
+        }
+    }
+    return total;
+}
+#endif
+INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_080436B8); /* 0x080436B8 size 0xA0 */
+/* Draw a row of marker sprites (count at 0x02017A40+0x510; the first 0x02017A40+0x3E1 use tile 0x431E, the rest 0x431D). */
+void sub_08043758(void)
+{
+    int x0 = (gUnk_0201AE60.h8 + 1) << 3;
+    int y = (gUnk_0201AE60.hA - (gUnk_0201AE60.hE - gUnk_0201AE60.b21)) << 3;
+    int i;
+    y += 8;
+    for (i = 0; i < gUnk_02017A40[0x510]; i++) {
+        sub_080761F0((x0 + i * 10) | (y << 16), 0, i < gUnk_02017A40[0x3E1] ? 0x431E : 0x431D);
+    }
+}
+INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_080437CC); /* 0x080437CC size 0x2DC */
+/* Can the recipe entry matching this card be satisfied (enough cost in hand + field)? */
+int sub_08043AA8(struct CardRef *ref)
+{
+    int i;
+    struct RecipeEnt *tbl;
+    if (sub_08047170(ref->player) == 0)
+        return 0;
+    i = 0;
+    tbl = gUnk_0819A990;
+again:
+    {
+        struct RecipeEnt *e = (struct RecipeEnt *)(i * 4 + (u32)tbl);
+        if ((*(u16 *)e << 19) == 0)
+            return 0;
+        if (e->num == ((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
+            u32 a;
+            u32 x;
+            int t;
+            int p;
+            if ((u16)sub_08043594(ref->player, i) == 0)
+                return 0;
+            p = ref->player;
+            a = RE_A(e);
+            if (a == 0xFFFF) {
+                x = 0;
+            } else if (a <= 0x7CF) {
+                x = ((const u16 *)0x08623DF4)[a & 0x7FF];
+            } else {
+                x = ((const u16 *)0x08623DF4)[(a - 0x7D0) & 0x7FF] + 1;
+            }
+            t = sub_08043600(p, (u16)x);
+            t += sub_080436B8(ref->player);
+            if (t >= gUnk_0819A990[i].cnt)
+                return 1;
+            return 0;
+        }
+        i++;
+        goto again;
+    }
+}
+
+INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_08043B98); /* 0x08043B98 size 0x594 */
+static inline u32 GetRecipeListWord(int player, int idx)
+{
+    u32 p = player & 1;
+    u32 idx4 = idx * 4;
+    u32 off = p * 0xD64;
+    return *(u32 *)(idx4 + off + (u32)gUnk_02019BE8);
+}
+/* All classes fit in a signed byte; narrowing keeps the common class test. */
+static inline s8 GetRecipeCardClass(u16 id)
+{
+    int num = ((const u16 *)0x08622AB4)[0x7FF & id];
+    int t;
+    int v;
+    switch (num) {
+    case 0x776:
+        v = 3;
+        break;
+    case 0x777:
+    case 0x778:
+        v = 1;
+        break;
+    default:
+        t = ((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20);
+        switch (t) {
+        case 0x16:
+            v = 7;
+            break;
+        case 0x15:
+            v = 8;
+            break;
+        case 0x17:
+            v = 9;
+            break;
+        default:
+            v = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0xC0000) >> 18;
+            break;
+        }
+        break;
+    }
+    return v;
+}
+/* Class zero or a failed eligibility test succeeds; otherwise return flag 14. */
+int sub_0804412C(int player, int idx)
+{
+    u32 off = (1 & player) * 0xD64;
+    u32 base = (u32)gUnk_02019BE8;
+    u32 *slot = (u32 *)(off + base + idx * 4);
+    u32 id = (*(u32 *)(idx * 4 + off + base) << 20) >> 20;
+    int v = GetRecipeCardClass(id);
+
+    switch (v) {
+    case 0:
+        goto yes;
+    case 2:
+    case 3:
+        break;
+    default:
+        if (sub_08007834((GetRecipeListWord(player, idx) << 20) >> 20) == 0)
+            goto yes;
+        break;
+    }
+    return (*slot << 17) >> 31;
+yes:
+    return 1;
+}

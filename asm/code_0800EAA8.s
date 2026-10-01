@@ -1,0 +1,27 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EAA8.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EADC.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EB10.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EB44.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EBA0.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EBF4.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EC54.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800ECB0.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800ED1C.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800ED58.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EDCC.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EE50.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800EF38.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F0F8.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F294.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F3D0.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F544.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F678.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F6B0.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F7F0.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800F8F8.s"
+	.include "asm/nonmatching/code_0800EAA8/sub_0800FA04.s"

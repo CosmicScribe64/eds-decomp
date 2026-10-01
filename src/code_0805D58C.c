@@ -510,6 +510,68 @@ void sub_0805E100(int a, int x, int y, int v)
 #else
 INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E100); /* 0x0805E100 size 0xD0 */
 #endif
+#if 0 /* NONMATCHING: 174 lines; shape right, register allocation differs (t in r7 vs r3, row in r6 vs r7) */
+void sub_0805E1D0(int bg, int x, int y, int tile)
+{
+    u16 *row;
+    int t;
+    int i, j;
+
+    row = (u16 *)(0x06000000 + bg * 0x800);
+    t = tile / 2;
+    row += x / 2;
+    row += y * 16;
+    for (i = 0; i < 4; i++) {
+        if (x & 1) {
+            row[0] = (u8)t << 8;
+            t++;
+            for (j = 0; j < 6; j++) {
+                row[1 + j] = (u8)t | ((u8)(t + 1) << 8);
+                t += 2;
+            }
+        } else {
+            for (j = 0; j < 6; j++) {
+                row[j] = (u8)t | ((u8)(t + 1) << 8);
+                t += 2;
+            }
+            row[6] = (u8)t;
+            t++;
+        }
+        row += 16;
+    }
+    for (i = 0; i < 10; i++) {
+        if (x & 1) {
+            row[0] |= t << 8;
+            row[1] |= (u8)(t + 1);
+            row[6] |= (u8)(t + 2) | ((u8)(t + 3) << 8);
+        } else {
+            row[0] |= (u8)t | ((u8)(t + 1) << 8);
+            row[5] |= (u8)(t + 2) << 8;
+            row[6] |= (u8)(t + 3);
+        }
+        t += 4;
+        row += 16;
+    }
+    for (i = 0; i < 4; i++) {
+        if (x & 1) {
+            row[0] = (u8)t << 8;
+            t++;
+            for (j = 0; j < 6; j++) {
+                row[1 + j] = (u8)t | ((u8)(t + 1) << 8);
+                t += 2;
+            }
+        } else {
+            for (j = 0; j < 6; j++) {
+                row[j] = (u8)t | ((u8)(t + 1) << 8);
+                t += 2;
+            }
+            row[6] = (u8)t;
+            t++;
+        }
+        row += 16;
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E1D0); /* 0x0805E1D0 size 0x1E8 */
 #if 0 /* NONMATCHING: scene init (loads both players' portrait sprite + palette, sets BG/OBJ tiles, installs the HBlank handler); cleaned-up m2c draft compiles but the prologue of about 50 instructions already diverges (gcc folds the two clear-bit masks into one AND, reorders the arg-halfword masks, and sizes the function smaller) */
 extern u8 gUnk_020185A4[];

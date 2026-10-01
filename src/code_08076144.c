@@ -663,6 +663,79 @@ void sub_08076BEC(u16 x, u16 y, struct SprAnim *a, u16 flag) {
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076BEC); /* 0x08076BEC size 0x1C0 */
 
+#if 0 /* NONMATCHING: 289 lines; structure follows sub_08076BEC. Target keeps i+1 in a stack slot (frame 0x10 vs 0x0C) and x in r3 */
+/* Emit the OAM entries of the current animation frame at the packed position yx, optionally flipped
+ * horizontally (hypothesis; a variant of sub_08076BEC). */
+void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip)
+{
+    struct Main *m;
+    u16 x = yx;
+    u32 y = yx >> 16;
+    u8 *cur = a->cur;
+    int i;
+    u16 n;
+    u32 xm;
+    if (a->unkA >= a->unk8) {
+        sub_080769DC(a);
+        return;
+    }
+    REG_DISPCNT |= 0x40;
+    n = *(u16 *)cur;
+    cur += 2;
+    a->pieces = n;
+    i = 0;
+    if (i < n) {
+        m = &gUnk_03000040;
+        xm = x & 0x1FF;
+        do {
+            u16 fmt = *(u16 *)cur;
+            u8 *o;
+            u8 *p;
+            u16 len;
+            int k;
+            int off;
+            cur += 6;
+            off = i << 3;
+            o = (u8 *)m + off;
+            o[0x4431] &= ~0x20;
+            *(u16 *)(o + 0x4432) = (*(u16 *)(o + 0x4432) & ~0x1FF) | xm;
+            o[0x4430] = y;
+            k = fmt;
+            p = a->base + 0x20;
+            p += 2 + *(u16 *)p * 4;
+            i++;
+            do {
+                len = *(u16 *)p;
+                p += 2;
+                p += len << 5;
+            } while (--k != -1);
+            o = (u8 *)m + off;
+            *(u16 *)(o + 0x4434) = (*(u16 *)(o + 0x4434) & ~0x3FF) | ((fmt * len + 1) & 0x3FF);
+            o[0x4435] = (o[0x4435] | 0xF0) & ~0xC;
+            o[0x4431] &= 0x3F;
+            o[0x4433] = (o[0x4433] & ~0x10) | ((hflip & 1) << 4);
+            switch (*(u16 *)(a->base + 0x22 + fmt * 4)) {
+            case 0:
+                o[0x4433] &= 0x3F;
+                break;
+            case 0x4000:
+                o[0x4433] = (o[0x4433] & 0x3F) | 0x40;
+                break;
+            case 0x8000:
+                o[0x4433] = (o[0x4433] & 0x3F) | 0x80;
+                break;
+            case 0xC000:
+                o[0x4433] |= 0xC0;
+                break;
+            }
+        } while (i < a->pieces);
+    }
+    if (flag != 0) {
+        a->cur = cur;
+        a->unkA++;
+    }
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076DAC); /* 0x08076DAC size 0x1F0 */
 /* Random: LCG (MSVC constants) on gMain.rngState, rotated by 16 (written as shifts, not a rotate); returns 15 bits. */
 /* The generator returns a zero-extended 15-bit value to word consumers. */

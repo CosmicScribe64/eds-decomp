@@ -1,8 +1,8 @@
 # Yu-Gi-Oh! The Eternal Duelist Soul decompilation
 
 [![Build](https://github.com/CosmicScribe64/eds-decomp/actions/workflows/progress.yml/badge.svg)](https://github.com/CosmicScribe64/eds-decomp/actions/workflows/progress.yml)
-[![Code](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FCosmicScribe64%2Feds-decomp%2Fbadges%2Fcode.json)](https://github.com/CosmicScribe64/eds-decomp/actions/workflows/progress.yml)
-[![Functions](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FCosmicScribe64%2Feds-decomp%2Fbadges%2Ffunctions.json)](https://github.com/CosmicScribe64/eds-decomp/actions/workflows/progress.yml)
+[![Code](https://decomp.dev/CosmicScribe64/eds-decomp.svg?mode=shield&measure=code&label=Code)](https://decomp.dev/CosmicScribe64/eds-decomp)
+[![Functions](https://decomp.dev/CosmicScribe64/eds-decomp.svg?mode=shield&measure=functions&label=Functions)](https://decomp.dev/CosmicScribe64/eds-decomp)
 
 A matching decompilation of *Yu-Gi-Oh! The Eternal Duelist Soul* for the Game Boy Advance (USA, `AY5E`).
 The C and assembly in this repository rebuild a ROM that is byte-for-byte identical to the original.

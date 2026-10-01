@@ -422,6 +422,110 @@ again:
     }
 }
 
+extern u8 gUnk_02017E28[];
+extern const u8 gUnk_0808545C[];
+void sub_08007558(void *dst, u32 *card);
+void sub_080197E0(int player, u16 id);
+void sub_08056094(int player, void *list, int a, int b);
+void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
+void sub_08060308(u32 a, void (*draw)(void), int (*step)(void));
+int sub_08043AA8(struct CardRef *ref);
+#define REF_SKIP(r) (((u8 *)(r))[4] & 4)
+int sub_080437CC(void);
+#if 0 /* NONMATCHING: 1221 lines; first full draft, same frame (0x18); case layout and register allocation still differ */
+/* Ritual summon executor (hypothesis): 0x80 checks the recipe and starts tribute selection, 0x78 lets the
+ * CPU pick tributes by level, 0x64 finds the ritual monster in hand, 0x63 plays it. */
+int sub_08043B98(struct CardRef *ref)
+{
+    u16 id = ref->id;
+    int i;
+
+    u8 skip = REF_SKIP(ref);
+
+    if (skip == 0) {
+    switch (gUnk_02017A40[0x3E0]) {
+    case 0x64:
+        for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
+            if (*(u16 *)((u8 *)0x08622AB4 + ((GetRecipeHandWord(ref->player, i) << 21) >> 20))
+                == gUnk_0819A990[sub_0804353C(ref->id)].a) {
+                u32 *c = (u32 *)(i * 4 + (ref->player & 1) * 0xD64 + (u32)gUnk_020192E4 + 0x684);
+                sub_08007558(gUnk_02017E28, c);
+                sub_0801EC58(ref->player ? 0x80C2 : 0xC2, ((u16 *)c)[0], ((u16 *)c)[1], 0);
+                return 0x63;
+            }
+        }
+        return 0;
+    case 0x63:
+        sub_08056094(ref->player, gUnk_02017A40 + 0x3E8, 1, 1);
+        return 0x62;
+    case 0x78: {
+        int handLv = 0;
+        int handIdx = -1;
+        int fieldLv = 0;
+        int fieldIdx = -1;
+        if (sub_08008860(ref->player) <= 4) {
+            for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
+                int ok = 1;
+                u16 cid = (*(u32 *)(i * 4 + ref->player * 0xD64 + (u32)gUnk_02019968) << 20) >> 20;
+                const u16 *num = &gUnk_08622AB4[cid & 0x7FF];
+                if (*num == gUnk_0819A990[sub_0804353C(id)].a && sub_0800A2A8(ref->player, *num) <= 1)
+                    ok = 0;
+                if (GetRecipeCardLevel(cid) == 0)
+                    ok = 0;
+                if (ok && handLv < GetRecipeCardLevel(cid)) {
+                    handLv = GetRecipeCardLevel(cid);
+                    handIdx = i;
+                }
+            }
+        }
+        for (i = 0; i <= 4; i++) {
+            if (gUnk_0201930C[ref->player & 1].z[i].w0 << 20) {
+                u16 cid = (gUnk_0201930C[ref->player & 1].z[i].w0 << 20) >> 20;
+                if (fieldLv < GetRecipeCardLevel(cid)) {
+                    fieldLv = GetRecipeCardLevel((gUnk_0201930C[ref->player & 1].z[i].w0 << 20) >> 20);
+                    fieldIdx = i;
+                }
+            }
+        }
+        if (handLv == 0 && fieldLv == 0)
+            return 0;
+        if (handLv > fieldLv) {
+            sub_0801EC58(ref->player ? 0x80C0 : 0xC0, handIdx, 0, 0);
+            EQ->need = (int)EQ->need > handLv ? EQ->need - handLv : 0;
+        } else {
+            sub_08017FF4(ref->player, fieldIdx);
+            EQ->need = (int)EQ->need > fieldLv ? EQ->need - fieldLv : 0;
+        }
+        return EQ->need != 0 ? 0x78 : 0x64;
+    }
+    case 0x80: {
+        int idx;
+        EQ->need = skip;
+        if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0) {
+            sub_080197E0(ref->player, gUnk_08623DF4[0x58A]);
+            return 0;
+        }
+        if ((u16)sub_08043AA8(ref) == 0)
+            return 0;
+        idx = sub_0804353C(ref->id);
+        if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
+            return 0;
+        EQ->need = gUnk_0819A990[idx].cnt;
+        gUnk_02017A40[0x510] = EQ->need;
+        if (ref->player)
+            return 0x78;
+        sub_080602A4(0x206, 0x612, 0xB, gUnk_0808545C);
+        sub_08060308(5, sub_08043758, sub_080437CC);
+        return 0x64;
+    }
+    default:
+        gUnk_02017A40[0x3E0] = 0;
+        return 0;
+    }
+    }
+    return 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_08043B98); /* 0x08043B98 size 0x594 */
 static inline u32 GetRecipeListWord(int player, int idx)
 {

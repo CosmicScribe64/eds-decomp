@@ -638,7 +638,7 @@ int sub_08033AEC(struct EffCtx *ctx)
             int i;
 
             for (i = 0; i < gUnk_020192E4[1 & ctx->player].handCount; i++) {
-                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[i]));
+                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[(u16)(i)]));
 
                 if (CARD_TYPE(id) == 1) {
                     sub_080602A4(0x205, 0x914, 0xB, gUnk_08082C3C);

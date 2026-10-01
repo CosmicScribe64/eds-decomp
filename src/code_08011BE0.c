@@ -396,8 +396,8 @@ void sub_080122B4(void)
 
     switch (gUnk_020185C0.step) {
     case 0:
-        sub_08077AEC(0x10);
         from.player = player;
+        sub_08077AEC(0x10);
         from.area = 0;
         from.index = slot;
         from.flag14 = ZZ(slot)->flag6_0;
@@ -411,7 +411,7 @@ void sub_080122B4(void)
         zones = (struct DuelZone08011BE0 *)((u8 *)gUnk_0201930C + (player & 1) * 0xD64);
         sub_08007558(card, zones + slot);
         sub_08008CFC(player, slot, mode);
-        if ((u16)(gUnk_08622AB4[*(u16 *)card & 0x7FF] - 1920) > 79) {
+        if ((u16)(gUnk_08622AB4[(u8)(*(u16 *)card & 0x7FF)] - 1920) > 79) {
             from.player = player;
             from.area = 0;
             from.index = slot;

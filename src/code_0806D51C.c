@@ -351,7 +351,7 @@ void sub_0807B5A0(void *object);
 #define DECK_SCROLL_CURVE gUnk_080875D2[DECK_TWEEN_STEP]
 
 /* Deck Edit card-list frame: animate, handle list/menu input, draw, and fade. */
-#if 0 /* NONMATCHING: complete 0x1194-byte draft; 46 normalized diff lines, menu DPAD_RIGHT/LEFT tail register allocation (see build/fable/sub_0806DBB0/NOTES.md) */
+#if 0 /* NONMATCHING: 43 lines: LEFT tail pinned to r2 (merges with RIGHT tail); remaining: pointer folded to one constant, ldrb r3 vs r5 */
 int sub_0806DBB0(void)
 {
     u16 row;
@@ -364,8 +364,6 @@ int sub_0806DBB0(void)
     u16 card;
     int number;
     u32 kind;
-    /* FAKEMATCH: stage the shared phase-byte address before each incoming branch. */
-    struct DeckPhaseByte *menuPhase;
     u8 *tail;
     u8 *list;
     u8 *objects;
@@ -599,33 +597,24 @@ int sub_0806DBB0(void)
                 case DPAD_RIGHT:
                     if (++DECK_FRAME.menuSelected == gUnk_0201DB20.cursor + 1)
                         DECK_FRAME.menuSelected++;
-                    if ((DECK_MENU_RAW & 0x38000) == 0x38000)
+                    if (DECK_FRAME.menuSelected == 7)
                         DECK_FRAME.menuSelected = 0;
-                    /* FAKEMATCH: preserve the original redundant bitfield store. */
-                    {
-                        /* FAKEMATCH: retain the extraction and merge of the original redundant bitfield store. */
-                        register u32 selfWord asm("r2") = DECK_MENU_RAW;
-                        u32 selfField = (selfWord << 14) >> 29;
-                        asm("" : "+r"(selfField));
-                        selfField &= 7;
-                        selfField <<= 15;
-                        asm("" : : "r"(selfWord), "r"(selfField));
-                        DECK_MENU_RAW = (selfWord & ~0x38000) | selfField;
-                    }
-                    menuPhase = (struct DeckPhaseByte *)(PSTATE + 0x1C3D);
-                    goto menu_moved;
+                    DECK_FRAME.menuSelected = DECK_FRAME.menuSelected;
+                    gUnk_0201DB20.phase = 3;
+                    sub_08077AEC(0);
+                    break;
                 case DPAD_LEFT:
-                    if ((DECK_MENU_RAW & 0x38000) == 0) {
+                    if (DECK_FRAME.menuSelected == 0) {
                         DECK_FRAME.menuSelected = 6;
                     } else {
-                        if ((DECK_FRAME.menuSelected = (u16)(DECK_FRAME.menuSelected - 1)) == gUnk_0201DB20.cursor + 1)
-                            DECK_FRAME.menuSelected = (u16)(DECK_FRAME.menuSelected - 1);
+                        if (--DECK_FRAME.menuSelected == gUnk_0201DB20.cursor + 1)
+                            DECK_FRAME.menuSelected--;
                     }
-                    menuPhase = (struct DeckPhaseByte *)PSTATE;
-                    asm("" : "+r"(menuPhase));
-                    menuPhase = (struct DeckPhaseByte *)((u8 *)menuPhase + 0x1C3D);
-menu_moved:
-                    menuPhase->phase = 3;
+                    {
+                        /* FAKEMATCH: same registers as the DPAD_RIGHT tail so the two tails merge */
+                        register struct DeckPhaseByte *p asm("r2") = (struct DeckPhaseByte *)((u8 *)&gUnk_0201DB20 + 0x1C3D);
+                        p->phase = 3;
+                    }
                     sub_08077AEC(0);
                     break;
                 case A_BUTTON:

@@ -84,3 +84,4 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 
 ## Questions
 - [[open-questions]]: unresolved questions by area.
+- [[decomp-pace-comparison]]: how fast other GBA decomps went, and what EDS should change.

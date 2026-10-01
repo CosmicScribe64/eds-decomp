@@ -397,14 +397,10 @@ int sub_0802F1C8(struct CardRef *ref)
 /* Zone address from the duel-state base 0x020192E0 (players[0].zones = 0x0201930C). */
 #define ZG(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_020192E0.players->zones))
 extern u8 gUnk_02019968[];
-#if 0 /* NONMATCHING: only the hand-count base differs. The build keeps the
-       * flag-check gUnk_020192E4 base in sl across the loop, while the ROM
-       * reloads it at the loop test (and swaps r3/r4 for base/0xD64). */
 int sub_0802F200(struct CardRef *ref)
 {
     int i;
-    s16 lvl;
-
+    u16 lvl;
     if ((gUnk_020192E0.byte1B12 & 0x1C) != 8)
         return 0;
     if (sub_08008860(ref->player) == 0)
@@ -413,13 +409,13 @@ int sub_0802F200(struct CardRef *ref)
         return 0;
     for (i = 0; i <= 4; i++) {
         int p = 1 & ref->player;
-        struct DuelZone *z1 = ZG(p, i);
-        u16 id = CARD_ID(CARD_WORD(z1->card));
+        struct DuelZone *z1 = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_020192E0.players->zones);
+        u16 id = (*(u32 *)&z1->card << 20) >> 20;
         if (id != 0) {
             int p2 = 1 & ref->player;
-            struct DuelZone *z2 = ZG(p2, i);
-            if (ZFLAGS(z2) & 2) {
-                switch (CARD_NUMBER(id)) {
+            struct DuelZone *z2 = (struct DuelZone *)(i * 0x94 + p2 * 0xD64 + (u32)gUnk_020192E0.players->zones);
+            if (((u8 *)z2)[6] & 2) {
+                switch (((const u16 *)0x08622AB4)[id & 0x7FF]) {
                 case 0x58:
                 case 0x105:
                 case 0x1FF:
@@ -431,24 +427,50 @@ int sub_0802F200(struct CardRef *ref)
     if (gUnk_020192E4[1 & ref->player].flag8_4)
         return 0;
     for (i = 0; i < gUnk_020192E4[1 & ref->player].handCount; i++) {
-        u16 id = CARD_ID(*(u32 *)(ref->player * 0xD64 + i * 4 + (u32)gUnk_02019968));
-
-        if (CARD_TYPE(id) <= 0x14 && sub_08007834(id) == 0) {
-            CARD_LEVEL(id, lvl);
+        u16 id = (*(u32 *)(ref->player * 0xD64 + i * 4 + (u32)gUnk_02019968) << 20) >> 20;
+        if (((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20) <= 0x14 && sub_08007834(id) == 0) {
+            /* FAKEMATCH (permuter): lvl briefly holds the card index */
+            lvl = id & 0x7FF;
+            switch ((int)((0x1F00000 & ((const u32 *)0x08621DE0)[lvl]) >> 20)) {
+            case 0x15:
+            case 0x16:
+            case 0x17:
+                lvl = 0;
+                break;
+            case 0x18:
+                lvl = 10;
+                break;
+            default:
+                lvl = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                break;
+            }
             if (lvl > 4) {
-                CARD_LEVEL(id, lvl);
+                switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+                case 0x15:
+                case 0x16:
+                case 0x17:
+                    /* FAKEMATCH (permuter): dead store */
+                    lvl = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                    lvl = 0;
+                    break;
+                case 0x18:
+                    lvl = 10;
+                    break;
+                default:
+                    lvl = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                    break;
+                }
                 if (lvl <= 6) {
                     if (sub_08008A44(ref->player) != -1)
                         return 1;
-                } else if (sub_08008AF8(ref->player, -1) > 0)
+                } else if (sub_08008AF8(ref->player, -1) > 0) {
                     return 1;
+                }
             }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0802EB58", sub_0802F200); /* 0x0802F200 size 0x250 */
 
 int sub_0802F450(struct CardRef *ref)
 {

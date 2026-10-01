@@ -100,7 +100,6 @@ extern struct XY gUnk_08087488_s[] asm("gUnk_08087488");
 
 
 /* Draw the card's level stars (tile 0x19A) into map, `perRow` per row starting at (col, row). */
-#if 0 /* NONMATCHING: register allocation only. The target keeps i in r7, col0 r8, perRow r9, map in sl and recomputes 0x1F in r2 inside the loop; the build hoists 0x1F into r7 and spills map to the stack (tried declaration order, idx statements, u16 or u8 map pointer, int params with u16 locals) */
 void sub_08065E6C(u8 *map, u16 col, u16 row, u8 perRow)
 {
     u16 col0 = col;
@@ -114,7 +113,7 @@ void sub_08065E6C(u8 *map, u16 col, u16 row, u8 perRow)
     for (;;) {
         u8 n = i;
         u32 cnt;
-        u8 idx;
+        int idx;
         i++;
         switch (kind) {
         case 0x15:
@@ -131,7 +130,9 @@ void sub_08065E6C(u8 *map, u16 col, u16 row, u8 perRow)
         }
         if (!(n < cnt))
             break;
-        idx = col & 0x1F;
+        /* FAKEMATCH (permuter): the mask goes through the dead `id` */
+        id = 0x1F;
+        idx = col & id;
         idx += (row & 0x1F) * 32;
         *(u16 *)(map + idx * 2) = 0x19A;
         col++;
@@ -141,8 +142,7 @@ void sub_08065E6C(u8 *map, u16 col, u16 row, u8 perRow)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08065E6C", sub_08065E6C); /* 0x08065E6C size 0xC8 */
+
 void sub_08065F34(u16 a, u16 b, u16 *out)
 {
     u16 n = a - 1;

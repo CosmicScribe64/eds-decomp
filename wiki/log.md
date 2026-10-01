@@ -622,3 +622,7 @@ updated: 2026-09-29
 ## [2026-10-01] setup | Published on GitHub
 - Public repository: https://github.com/CosmicScribe64/eds-decomp (commits use the account's noreply address). CI passed on the first push: the match gate (112/112), the no-regression check and the objdiff report (`AY5E_report` artifact).
 - README badges are self-hosted. CI writes `code.json` and `functions.json` (`tools/badges.py`) to the `badges` branch, and shields.io renders them. The decomp.dev GitHub app is installed; the project wasn't listed on decomp.dev yet at the time of writing, so its badges aren't used.
+
+## [2026-10-01] query | Pace of other GBA decomps
+- New [[decomp-pace-comparison]]: GBA projects on decomp.dev with start dates, team sizes and days to 50%/100%, how the fast ones handle the tail, and eight ranked changes for EDS. Indexed in [[index]].
+- Progress: two permuter matches applied (`sub_0802F200`, `sub_08065E6C`), completing `code_0802EB58` and `code_08065E6C`. Full `make compare`: `eds.gba: OK`. 1,706/1,976 functions, 60.86% of code bytes.

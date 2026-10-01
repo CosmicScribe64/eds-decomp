@@ -539,7 +539,6 @@ int sub_08047170(int player)
         return 0;
     return 1;
 }
-#if 0 /* NONMATCHING: summon/tribute state machine; remaining register/shared-tail differences. */
 /* Reconstruction of the summon/tribute selection state machine (a disabled draft).
  * State names remain hypotheses; byte accesses and callees are ROM-derived.
  * The sequence switches intentionally have no default assignment, as in the
@@ -718,6 +717,7 @@ static inline u16 SummonCardIdSymbol(u16 number)
     return *(gUnk_08623DF4 + ((number - 0x7D0) & 0x7FF)) + 1;
 }
 
+#if 0 /* NONMATCHING: summon/tribute state machine; remaining: case 40 offset-register (r1 vs r2/r3) + choices==0 base/offset form, case 80 pool CSE, one far jump; see build/fable/sub_080471E8/NOTES.md */
 void sub_080471E8(u16 faceUp, u16 special)
 {
     char text[0x80];
@@ -1493,3 +1493,4 @@ void sub_080471E8(u16 faceUp, u16 special)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08046738", sub_080471E8); /* 0x080471E8 size 0x1DF8 */
+

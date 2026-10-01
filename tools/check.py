@@ -211,8 +211,16 @@ def main():
             norm = lambda x: re.sub(r'\s*@.*$', '', re.sub(r'\[pc, #\d+\]', '[pc]', re.sub(r'^(b\S*|bl|blx)\s+0x[0-9a-f]+.*$', r'\1', x)))
             strip0 = strip
             strip = lambda ls: [norm(x) for x in strip0(ls)]
-        d = list(difflib.unified_diff(strip(want), strip(have), 'target', 'built', lineterm='', n=a.ctx))
+        sw, sh = strip(want), strip(have)
+        d = list(difflib.unified_diff(sw, sh, 'target', 'built', lineterm='', n=a.ctx))
         print('\n'.join(d) if d else f'{name}: MATCH')
+        if d:
+            # Progress signal for big functions: where the first difference is and how many lines differ.
+            k = next((i for i, (x, y) in enumerate(zip(sw, sh)) if x != y), min(len(sw), len(sh)))
+            off = int(want[k].split(':')[0], 16) - fa if k < len(want) else fsize
+            changed = sum(1 for x in d if x[:1] in '+-' and x[:3] not in ('---', '+++'))
+            print(f'summary: first difference at +0x{off:X} of 0x{fsize:X} '
+                  f'({100 * off / fsize:.1f}% matching prefix), {changed} differing lines')
         if bstart != fa:
             print(f'note: built {name} starts at 0x{bstart:08X}, target 0x{fa:08X} (earlier code differs in size)')
         return

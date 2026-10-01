@@ -351,7 +351,7 @@ void sub_0807B5A0(void *object);
 #define DECK_SCROLL_CURVE gUnk_080875D2[DECK_TWEEN_STEP]
 
 /* Deck Edit card-list frame: animate, handle list/menu input, draw, and fade. */
-#if 0 /* NONMATCHING: complete 0x1194-byte draft; 66 normalized diff lines confined to menu register allocation. */
+#if 0 /* NONMATCHING: complete 0x1194-byte draft; 46 normalized diff lines, menu DPAD_RIGHT/LEFT tail register allocation (see build/fable/sub_0806DBB0/NOTES.md) */
 int sub_0806DBB0(void)
 {
     u16 row;
@@ -767,3 +767,4 @@ done:
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0806D51C", sub_0806DBB0); /* 0x0806DBB0 size 0x1194 */
+

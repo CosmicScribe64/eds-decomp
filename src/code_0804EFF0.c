@@ -530,10 +530,6 @@ void sub_0804F7A4(int player)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804F7A4); /* 0x0804F7A4 size 0x4A8 */
-#if 0 /* NONMATCHING: state machine audited against the ROM. Ordinary C compiles to
- * 0xE68 bytes against the ROM's 0xE24, with the original 0x10C frame recovered.
- * Remaining register lifetimes and shared state-update tails differ. No
- * differential equivalence test has been run. */
 struct FcPlayer {
     u16 life; u8 handCount; u8 pad3[3]; u8 listCount; u8 pad7;
     u8 flags8; u8 flags9; u8 padA; u8 flagsB; u8 flagsC;
@@ -608,6 +604,7 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
+#if 0 /* NONMATCHING: state machine audited against the ROM; same function size 0xE24 but ~547 differing insn lines (cmp.py): return-0/step-store tails cross-jump into other survivors, case 10 step++ must follow sub_08060308, case 102 msg typed s8 (typo, should be u16), register allocation */
 int sub_0804FC4C(void)
 {
     u32 card; /* Written by sub_080195D0 on success before it is consumed. */
@@ -901,6 +898,7 @@ int sub_0804FC4C(void)
     }
     goto pending;
 }
-
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804FC4C); /* 0x0804FC4C size 0xE24 */
+
+

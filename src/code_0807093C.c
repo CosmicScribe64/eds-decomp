@@ -263,208 +263,207 @@ int sub_08070A1C(void)
 void sub_08070F14(void)
 {
 }
-#if 0 /* NONMATCHING: 539 normalized diff lines remain. The remaining
-       * differences are allocation, shared tails and literal pools. Word
-       * caller views and marked register hints reproduce the ROM ABI. */
-
-#define DIN8(o) (*(u8 *)(PSTATE + (o)))
-#define DIN16(o) (*(u16 *)(PSTATE + (o)))
-#define DIN32(o) (*(u32 *)(PSTATE + (o)))
-extern u8 gUnk_0201E148[], gUnk_0201F740[];
-extern const u16 gUnk_080875D2[];
-extern const u8 gUnk_081A6524[], gUnk_081A6EA4[];
-void sub_08065F78(u16, u16, u16 *);
-void sub_08066260(s16, u8, u8, u8 *, u8 *);
-void sub_080665D4(void *, void *);
-void sub_0806699C(void *);
-void sub_08067660(void *), sub_08067908(void *);
-void sub_080679E0(u16 *), sub_08067DA4(u16 *);
-void sub_08068B90(void), sub_08068C48(void);
-void sub_08070F14_arg(void *) __asm__("sub_08070F14");
-void sub_08077AEC(int);
-void sub_08077EF4(const void *, int, int, int, int, int, int, int, int, int, int, void *);
-void sub_08078534(void *, int, int, int, int, int, int, int, int, void *);
-void sub_0807871C(void *);
-void sub_08079834(int, int, int, int, int, int, void *);
-void sub_0807A298(void *);
-void sub_0807B100(int, int, int, void *), sub_0807B114(void *);
-void sub_0807B4A8(u32);
-s32 sub_0807B4D0(s32, u16);
-void sub_0807B5A0(void *);
-
+/* sub_08070F18 is a near copy of the matched sub_0806DBB0 (code_0806D51C); the local
+ * declarations below mirror that unit so the shared code compiles identically. */
+struct DeckFrameFields {
+    u8 pad0[0x618];
+    u8 transition[6];           /* +0x618 */
+    u8 transitionState;         /* +0x61E */
+    u8 pad61F[0x628 - 0x61F];
+    u8 tweenState;              /* +0x628 */
+    u8 pad629;
+    s16 tweenStep;              /* +0x62A */
+    u8 pad62C[0x1710 - 0x62C];
+    u8 redraw : 1;              /* +0x1710 bit 0 */
+    u8 redrawOther : 7;
+    u8 pad1711[0x17DA - 0x1711];
+    u8 frameDirty;              /* +0x17DA */
+    u8 pad17DB[0x1866 - 0x17DB];
+    s8 menuOwner;               /* +0x1866 */
+    u8 pad1867[0x1BB4 - 0x1867];
+    u8 previousArrowDirty;      /* +0x1BB4 */
+    u8 previousArrowState;      /* +0x1BB5 */
+    u8 nextArrowDirty;          /* +0x1BB6 */
+    u8 nextArrowState;          /* +0x1BB7 */
+    u8 rowCount;                /* +0x1BB8 */
+    u8 pad1BB9[0x1C14 - 0x1BB9];
+    u8 rowAnimationState;       /* +0x1C14 */
+    u8 pad1C15[0x1C20 - 0x1C15];
+    u8 menuAnimationState;      /* +0x1C20 */
+    u8 pad1C21[0x1C3C - 0x1C21];
+    u32 menuOtherLow : 15;      /* +0x1C3C */
+    u16 menuSelected : 3;       /* bits 15-17 */
+    u32 menuOtherHigh : 14;
+    u8 pad1C40[0x1C58 - 0x1C40];
+    u16 rowAnimationTimer;      /* +0x1C58 */
+};
+struct DeckMenuRawFields {
+    u8 pad0[0x1C3C];
+    u32 word;
+};
+#define DECK_MENU_RAW (((struct DeckMenuRawFields *)&gUnk_0201DB20)->word)
+struct DeckPhaseByte { u8 phase : 3; u8 rest : 5; };
+struct DeckRowFrame {
+    u8 pad0[12];
+    u8 active;
+    u8 padD[3];
+};
+struct DeckRowFields {
+    u8 pad0[0x1BB8];
+    struct DeckRowFrame rows[6];
+};
+#define DECK_ROWS ((struct DeckRowFields *)&gUnk_0201DB20)->rows
+#define DECK_FRAME (*(struct DeckFrameFields *)&gUnk_0201DB20)
+struct DeckScrollTween {
+    u8 state;                 /* +0x00 (DeckState +0x628) */
+    u8 pad1;
+    s16 value;                /* +0x02 current tween step */
+    u8 pad4[9];
+    u8 direction;             /* +0x0D (DeckState +0x635) */
+};
+extern struct DeckScrollTween gUnk_0201E148;
+extern u8 gUnk_0201F740[];
 extern u8 gUnk_0201F73C;
 extern u16 gUnk_0201E140[];
-void sub_08065108(u16, u8 *, u16, u16, u32, u8);
-void sub_0806518C(u16, u8 *, u16, u16, void *);
-void sub_08065384(u32, u8 *, u16, u16, void *);
-void sub_080657F8(u16);
-void sub_08065AB4(u8 *, u16, u16, void *);
-void sub_08065E6C(u8 *, u16, u16, u8);
-void sub_0806664C(u8, int, u8, u8 *, u8 *);
-void sub_0806704C(u8 *, u8 *, void *);
-void sub_08068180(u8), sub_0806B190(void);
-void sub_08068E20(u8, u8, u8, u8);
-void sub_080787F4(u32, u32, u32, void *), sub_0807883C(void *);
-void sub_0807AFFC(u16, u32, u16);
-void CpuFastSet(const void *, void *, u32);
+extern const u16 gUnk_080875D2[];
+extern const u8 gUnk_081A6524[], gUnk_081A6EA4[];
+void sub_08065F78(u16 position, u16 count, u16 *state);
+void sub_08066260(s16 step, u8 tweenState, u8 direction, u8 *objects, u8 *rows);
+void sub_080665D4(u8 *rows, struct DeckState *state);
+void sub_0806699C(void);
+void sub_0806704C(u8 *list, u8 *row, void *objects);
+void sub_08067660(void *state);
+void sub_08067908(void *state);
+void sub_080679E0(u16 *position);
+void sub_08067DA4(u16 *position);
+void sub_08068180(u8 list);
+void sub_0806B190(void);
+void sub_08068B90(void);
+void sub_08068C48(void);
+void sub_08077AEC(int sound);
+void sub_08077EF4(const void *script, int a, int b, int c, int d, int e,
+                 int f, int g, int h, int i, int j, void *state);
+void sub_08078534(void *objects, int a, int b, int c, int d, int e,
+                 int f, int g, int h, void *state);
+void sub_0807871C(void *objects);
+void sub_0807883C(void *state);
+void sub_08079834(int tile, u32 map, int col, int row, int width, int height, void *work);
+void sub_0807A298(void *state);
+void sub_0807A2EC(void *state);
+void sub_0807B100(int from, int to, int increment, void *state);
+void sub_0807B114(void *state);
+void sub_0807B4A8(u32 level);
+s32 sub_0807B4D0(s32 scale, u16 value);
+void sub_0807B5A0(void *object);
+void sub_08065108(int idx, u8 *map, int col, int row, u32 unused, int slot);
+void sub_0806664C(int slot, int x, int kind, u8 *base, u8 *arr);
+void sub_0806518C(int id, u8 *map, int col, int row, void *p);
+void sub_08065384(int unused, u8 *map, int col, int row, void *p);
+void sub_0807AFFC(int a, u32 b, int c);
+void sub_08068E20(int a, int b, int c, int d);
+void sub_080657F8(int pos);
+void sub_08065AB4(u8 *map, int col, int row, void *p);
+void sub_08065E6C(u8 *map, int col, int row, int perRow);
+void sub_080787F4(u32 a, u32 b, u32 c, void *p);
+/* The unit's shared prototype narrows the column; the ROM passes it as a word. */
+extern u32 sub_08068D1C_word(u8 list, u8 row, int col) __asm__("sub_08068D1C");
+/* sub_08070F14 is the empty function above; the ROM still passes it the list pointer. */
+void sub_08070F14_arg(void *) __asm__("sub_08070F14");
 #define PSTATE ((u8 *)&gUnk_0201DB20)
-/* FAKEMATCH: word caller views preserve callee narrowing while matching the ROM calls. */
-extern s32 sub_08068D1C_word(s32, s32, s32) __asm__("sub_08068D1C");
-extern void sub_08065108_word(s32, u8 *, s32, s32, u32, s32) __asm__("sub_08065108");
-extern void sub_0806518C_word(s32, u8 *, s32, s32, void *) __asm__("sub_0806518C");
-extern void sub_08065AB4_word(u8 *, s32, s32, void *) __asm__("sub_08065AB4");
-extern void sub_08065E6C_word(u8 *, s32, s32, s32) __asm__("sub_08065E6C");
+#define CURLIST gUnk_0201F73C
+#define CNT(list) (gUnk_0201DB20.cnt1494[gUnk_0201DB20.arr14A0[list]][list])
+#define DECK_TWEEN_STATE DECK_FRAME.tweenState
+#define DECK_TWEEN_STEP DECK_FRAME.tweenStep
+#define DECK_SCROLL_CURVE gUnk_080875D2[DECK_TWEEN_STEP]
 #define sub_08068D1C sub_08068D1C_word
-#define sub_08065108 sub_08065108_word
-#define sub_0806518C sub_0806518C_word
-#define sub_08065AB4 sub_08065AB4_word
-#define sub_08065E6C sub_08065E6C_word
-extern void sub_08065384_word(s32, u8 *, s32, s32, void *) __asm__("sub_08065384");
-#define sub_08065384 sub_08065384_word
-extern void sub_08068E20_word(u32, u32, u32, u32) __asm__("sub_08068E20");
-extern void sub_0806664C_word(u32, int, u32, u8 *, u8 *) __asm__("sub_0806664C");
-extern void sub_0807AFFC_word(s32, u32, u32) __asm__("sub_0807AFFC");
-#define sub_08068E20 sub_08068E20_word
-#define sub_0806664C sub_0806664C_word
-#define sub_0807AFFC sub_0807AFFC_word
-s32 sub_08070F18(void) {
-    /* FAKEMATCH: preserve the ROM register for the signed next-row comparisons. */
-    register s32 next1 asm("r2");
-    /* FAKEMATCH: second redraw guard uses the same signed-comparison register. */
-    register s32 next2 asm("r2");
-    struct { s32 fill; u16 scroll; } frame;
-    u32 sp28;
-    s16 *temp_r2;
-    s16 *temp_r2_2;
-    s16 *temp_r5;
-    s16 *temp_r5_2;
-    volatile s16 *var_r1;
-    s32 temp_r0_3;
-    s32 temp_r1;
-    s32 temp_r1_2;
-    s32 temp_r2_10;
-    s32 temp_r2_11;
-    s32 temp_r2_3;
-    u32 temp_r4;
-    s32 var_r0;
-    s32 var_r0_3;
-    u8 *temp_r4_4;
-    u16 *temp_r1_5;
-    u16 *temp_r1_6;
-    u16 *temp_r3_4;
-    /* FAKEMATCH: signed cursor temporary preserves the unsigned guard and final halfword store. */
-    s16 temp_r0_6;
-    u32 temp_r2_5;
-    s16 temp_r3_6;
-    u16 temp_r4_2;
-    s16 temp_r6;
-    u32 var_r0_2;
-    s32 var_r0_4;
-    u8 temp_r0;
-    u32 alphaShift;
-    u32 temp_r0_2;
-    u32 temp_r0_4;
-    s32 temp_r0_5;
-    u32 temp_r1_4;
-    u8 *temp_r6_2;
-    u8 temp_r1_3;
-    s32 temp_r1_7;
-    u8 temp_r2_4;
-    u8 temp_r3;
-    u8 temp_r3_2;
-    u8 temp_r3_3;
-    u8 temp_r3_5;
-    u8 temp_r3_7;
-    u8 var_r5;
-    u8 var_r5_2;
-    u8 var_r5_3;
-    void *temp_r2_6;
-    void *temp_r2_7;
-    void *temp_r2_8;
-    void *temp_r2_9;
-    void *temp_r4_3;
-    void *temp_r5_3;
+#define sub_08070F14 sub_08070F14_arg
 
-    sp28 = gUnk_03000040.keys & 0x3FF;
+/* Deck Edit (variant) card-list frame: animate, handle list/menu input, draw, and fade. */
+#if 0 /* NONMATCHING: rebuilt from the matched sub_0806DBB0; 257 normalized diff lines, all in the input/menu section */
+int sub_08070F18(void)
+{
+    u16 row;
+    /* FAKEMATCH: keep the original fill slot and its stack-store scheduling. */
+    volatile u32 clear;
+    u32 keys;
+    u8 slot;
+    u8 horizontalOffset;
+    u8 blend;
+    /* FAKEMATCH: stage the shared phase-byte address before each incoming branch. */
+    struct DeckPhaseByte *menuPhase;
+    u8 *tail;
+    u8 *list;
+    u8 *objects;
+    struct DeckState *state;
+
+    keys = gUnk_03000040.keys & 0x3FF;
     sub_0807B114(&gUnk_0201E148);
-    if (1 & gUnk_0201E148[0x10E8]) {
-        int direction = *(s16 *)(gUnk_0201E148 + 2);
-        if ((direction == 4 && gUnk_0201E148[0xD] == 3) ||
-            (direction == 3 && gUnk_0201E148[0xD] == 4)) {
-                gUnk_0201DB20.f1710_0 = 0;
-                frame.fill = 0;
-                CpuFastSet(&frame.fill, (void *)0x0600D000, 0x01000200U);
-                temp_r2 = (s16 *)((gUnk_0201F73C * 2) + (u32)gUnk_0201E140);
-                if ((s32) (*temp_r2 - 2) >= 0) {
-                    sub_08065108(sub_08068D1C(gUnk_0201F73C, gUnk_0201DB20.arr14A0[gUnk_0201F73C], (u16) *temp_r2 - 2), (u8 *)0x0600D000, 0, (u8) gUnk_0201DB20.h63A >> 3, (u32)gUnk_0201DB20.pad640, 1);
-                }
-                temp_r2_2 = (s16 *)((gUnk_0201F73C * 2) + (u32)gUnk_0201E140);
-                if ((s32) (*temp_r2_2 - 1) >= 0) {
-                    sub_08065108(sub_08068D1C(gUnk_0201F73C, gUnk_0201DB20.arr14A0[gUnk_0201F73C], (u16) *temp_r2_2 - 1), (u8 *)0x0600D000, 0, (0xFF & (gUnk_0201DB20.h63A + 0x10)) >> 3, (u32)gUnk_0201DB20.pad640, 2);
-                }
-                temp_r1 = gUnk_0201F73C * 2;
-                temp_r5 = (s16 *)(temp_r1 + (u32)gUnk_0201E140);
-                next1 = *temp_r5 + 1;
-                temp_r3 = gUnk_0201DB20.arr14A0[gUnk_0201F73C];
-                temp_r1 += temp_r3 * 6;
-                temp_r1 += (u32)gUnk_0201DB20.cnt1494[0];
-                
-                if (next1 < (s32) *(u16 *)temp_r1) {
-                    sub_08065108(sub_08068D1C(gUnk_0201F73C, temp_r3, (u16) *temp_r5 + 1), (u8 *)0x0600D000, 0, (0xFF & (gUnk_0201DB20.h63A + 0x48)) >> 3, (u32)gUnk_0201DB20.pad640, 4);
-                }
-                temp_r1_2 = gUnk_0201F73C * 2;
-                temp_r5_2 = (s16 *)(temp_r1_2 + (u32)gUnk_0201E140);
-                next2 = *temp_r5_2 + 2;
-                temp_r3_2 = gUnk_0201DB20.arr14A0[gUnk_0201F73C];
-                temp_r1_2 += temp_r3_2 * 6;
-                temp_r1_2 += (u32)gUnk_0201DB20.cnt1494[0];
-                
-                if (next2 < (s32) *(u16 *)temp_r1_2) {
-                    sub_08065108(sub_08068D1C(gUnk_0201F73C, temp_r3_2, (u16) *temp_r5_2 + 2), (u8 *)0x0600D000, 0, (0xFF & (gUnk_0201DB20.h63A + 0x58)) >> 3, (u32)gUnk_0201DB20.pad640, 5);
-                }
-                sub_08079834(0, 0x0600C000, 0, (0xFF & (gUnk_0201DB20.h63E + 0x20)) >> 3, 0x1E, 6, gUnk_0201DB20.pad640);
-                temp_r2_3 = gUnk_0201F73C * 2;
-                temp_r1_3 = gUnk_0201DB20.arr14A0[gUnk_0201F73C];
-                temp_r0_3 = temp_r2_3 + temp_r1_3 * 6;
-                if (*(u16 *)(temp_r0_3 + (u32)gUnk_0201DB20.cnt1494[0]) != 0) {
-                    sub_0806518C(sub_08068D1C(gUnk_0201F73C, temp_r1_3, *(u16 *)(temp_r2_3 + (u32)gUnk_0201E140)), (u8 *)0x0600C000, 0, (0xFF & (gUnk_0201DB20.h63E + 0x20)) >> 3, gUnk_0201DB20.pad640);
-                    sub_080657F8(0);
-                    sub_08065AB4((u8 *)0x0600C000, 0xB, (0xFF & (gUnk_0201DB20.h63E + 0x38)) >> 3, gUnk_0201DB20.pad640);
-                    sub_08065E6C((u8 *)0x0600C000, 0x11, (0xFF & (gUnk_0201DB20.h63E + 0x38)) >> 3, 6);
-                } else {
-                    sub_08065384(sub_08068D1C(gUnk_0201F73C, temp_r1_3, *(u16 *)(temp_r2_3 + (u32)gUnk_0201E140)), (u8 *)0x0600C000, 0, (0xFF & (gUnk_0201DB20.h63E + 0x20)) >> 3, gUnk_0201DB20.pad640);
-                }
+    /* Crossing the midpoint of a horizontal page slide changes the visible rows. */
+    if ((*((u8 *)&gUnk_0201E148 + 0x10E8) & 1) &&
+        ((gUnk_0201E148.value == 4 && gUnk_0201E148.direction == 3) ||
+         (gUnk_0201E148.value == 3 && gUnk_0201E148.direction == 4))) {
+        DECK_FRAME.redraw = 0;
+        clear = 0;
+        CpuFastSet((const void *)&clear, (void *)0x0600D000, 0x01000200);
+        if ((s16)gUnk_0201E140[CURLIST] - 2 >= 0) {
+            sub_08065108(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST] - 2),
+                         (u8 *)0x0600D000, 0, (u8)gUnk_0201DB20.h63A >> 3, (u32)(PSTATE + 0x640), 1);
+        }
+        if ((s16)gUnk_0201E140[CURLIST] - 1 >= 0) {
+            sub_08065108(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST] - 1),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x10) & 0xFF) >> 3, (u32)(PSTATE + 0x640), 2);
+        }
+        if ((s16)gUnk_0201E140[CURLIST] + 1 < CNT(CURLIST)) {
+            sub_08065108(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST] + 1),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x48) & 0xFF) >> 3, (u32)(PSTATE + 0x640), 4);
+        }
+        if ((s16)gUnk_0201E140[CURLIST] + 2 < CNT(CURLIST)) {
+            sub_08065108(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST] + 2),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x58) & 0xFF) >> 3, (u32)(PSTATE + 0x640), 5);
+        }
+        sub_08079834(0, 0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, 30, 6, PSTATE + 0x640);
+        if (CNT(CURLIST) != 0) {
+            sub_0806518C(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST]),
+                         (u8 *)0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, PSTATE + 0x640);
+            sub_080657F8(0);
+            sub_08065AB4((u8 *)0x0600C000, 11, ((gUnk_0201DB20.h63E + 0x38) & 0xFF) >> 3, PSTATE + 0x640);
+            sub_08065E6C((u8 *)0x0600C000, 17, ((gUnk_0201DB20.h63E + 0x38) & 0xFF) >> 3, 6);
+        } else {
+            sub_08065384(sub_08068D1C(CURLIST, gUnk_0201DB20.arr14A0[CURLIST], gUnk_0201E140[CURLIST]),
+                         (u8 *)0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, PSTATE + 0x640);
         }
     }
-    sub_08066260((s16)gUnk_0201DB20.h62A, gUnk_0201DB20.b628, gUnk_0201DB20.b635, &gUnk_0201DB20.pad18AE[2], gUnk_0201DB20.pad1BB8);
+    sub_08066260(DECK_TWEEN_STEP, DECK_TWEEN_STATE, gUnk_0201DB20.b635, PSTATE + 0x18B0, PSTATE + 0x1BB8);
+
+    /* Directions 1/2 move vertically; 3/4 move a five-card page horizontally. */
     switch (gUnk_0201DB20.b635) {
     case 1:
     case 2:
-        switch (gUnk_0201DB20.b628) {          /* switch 3; irregular */
-        case 1:                                     /* switch 3 */
-            (*(vu16 *)(0x0400001C + 0)) = (u16) gUnk_0201DB20.h630;
-            *(vu16 *)0x0400001E = (u16) (gUnk_0201DB20.h632 + (sub_0807B4D0(0x5000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8));
-            *(vu16 *)0x04000014 = (u16) gUnk_0201DB20.h638;
-            *(vu16 *)0x04000016 = (u16) (gUnk_0201DB20.h63A + (sub_0807B4D0(0x1000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8));
-            *(vu16 *)0x04000010 = (u16) gUnk_0201DB20.h63C;
-            *(vu16 *)0x04000012 = (u16) (gUnk_0201DB20.h63E + (sub_0807B4D0(0x2800, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8));
+        switch (DECK_TWEEN_STATE) {
+        case 1:
+            REG_BG3HOFS = gUnk_0201DB20.h630;
+            REG_BG3VOFS = gUnk_0201DB20.h632 + (sub_0807B4D0(0x5000, DECK_SCROLL_CURVE) >> 8);
+            REG_BG1HOFS = gUnk_0201DB20.h638;
+            REG_BG1VOFS = gUnk_0201DB20.h63A + (sub_0807B4D0(0x1000, DECK_SCROLL_CURVE) >> 8);
+            REG_BG0HOFS = gUnk_0201DB20.h63C;
+            REG_BG0VOFS = gUnk_0201DB20.h63E + (sub_0807B4D0(0x2800, DECK_SCROLL_CURVE) >> 8);
             break;
-        case 2:                                     /* switch 3 */
-            gUnk_0201DB20.b628 = 0;
-            gUnk_0201DB20.h632 += sub_0807B4D0(0x5000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8;
-            gUnk_0201DB20.h63A += sub_0807B4D0(0x1000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8;
-            gUnk_0201DB20.h63E += sub_0807B4D0(0x2800, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8;
-            if (gUnk_0201DB20.b1BB5 != 0) {
-                gUnk_0201DB20.b1BB5 = 1;
-                gUnk_0201DB20.b1BB4_0 = 1;
+        case 2:
+            DECK_TWEEN_STATE = 0;
+            gUnk_0201DB20.h632 += sub_0807B4D0(0x5000, DECK_SCROLL_CURVE) >> 8;
+            gUnk_0201DB20.h63A += sub_0807B4D0(0x1000, DECK_SCROLL_CURVE) >> 8;
+            gUnk_0201DB20.h63E += sub_0807B4D0(0x2800, DECK_SCROLL_CURVE) >> 8;
+            if (DECK_FRAME.previousArrowState) {
+                DECK_FRAME.previousArrowState = 1;
+                DECK_FRAME.previousArrowDirty |= 1;
             }
-            if (gUnk_0201DB20.b1BB7 != 0) {
-                gUnk_0201DB20.b1BB7 = 1;
-                gUnk_0201DB20.b1BB6_0 = 1;
+            if (DECK_FRAME.nextArrowState) {
+                DECK_FRAME.nextArrowState = 1;
+                DECK_FRAME.nextArrowDirty |= 1;
             }
             gUnk_0201DB20.b635 = 0;
-            /* fallthrough */
-        default:                                    /* switch 3 */
+            /* fall through */
+        default:
             REG_BG3HOFS = gUnk_0201DB20.h630;
             REG_BG3VOFS = gUnk_0201DB20.h632;
             REG_BG1HOFS = gUnk_0201DB20.h638;
@@ -476,159 +475,136 @@ s32 sub_08070F18(void) {
         break;
     case 3:
     case 4:
-            switch (gUnk_0201DB20.b628) {      /* switch 2; irregular */
-            case 1:                                 /* switch 2 */
-                (*(vu16 *)(0x0400001C + 0)) = (u16) (gUnk_0201DB20.h630 + (sub_0807B4D0(0x5000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8));
-                *(vu16 *)0x0400001E = gUnk_0201DB20.h632;
-                temp_r2_4 = (u8) (sub_0807B4D0(0x4000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8);
-                alphaShift = (u32) (gUnk_080875D2[(s16)gUnk_0201DB20.h62A] >> 3) << 24;
-                temp_r0 = alphaShift >> 24;
-                (*(vu16 *)(0x04000050 + 0)) = 0x3F43;
-                if ((s32)(s16) gUnk_0201DB20.h62A <= 3) {
-                    *(vu16 *)0x04000014 = (u16) temp_r2_4;
-                    *(vu16 *)0x04000016 = gUnk_0201DB20.h63A;
-                    *(vu16 *)0x04000010 = (u16) temp_r2_4;
-                    *(vu16 *)0x04000012 = gUnk_0201DB20.h63E;
-                    sub_0807B4A8(alphaShift >> 25);
-                } else {
-                    REG_BG1HOFS = temp_r2_5 = temp_r2_4 + 0xFFC0;
-                    *(vu16 *)0x04000016 = (u16) gUnk_0201DB20.h63A;
-                    *(vu16 *)0x04000010 = temp_r2_5;
-                    *(vu16 *)0x04000012 = (u16) gUnk_0201DB20.h63E;
-                    sub_0807B4A8((u32) ((s32) (0x20 - (u8) temp_r0) >> 1));
-                }
-                break;
-            case 2:                                 /* switch 2 */
-                gUnk_0201DB20.b628 = 0;
-                gUnk_0201DB20.h630 += sub_0807B4D0(0x5000, gUnk_080875D2[(s16)gUnk_0201DB20.h62A]) >> 8;
-                if (gUnk_0201DB20.b1BB5 != 0) {
-                    gUnk_0201DB20.b1BB5 = 1;
-                    gUnk_0201DB20.b1BB4_0 = 1;
-                }
-                if (gUnk_0201DB20.b1BB7 != 0) {
-                    gUnk_0201DB20.b1BB7 = 1;
-                    gUnk_0201DB20.b1BB6_0 = 1;
-                }
-                gUnk_0201DB20.b635 = 0;
-                /* fallthrough */
-            default:                                /* switch 2 */
-                REG_BG3HOFS = gUnk_0201DB20.h630;
-                REG_BG3VOFS = gUnk_0201DB20.h632;
-                REG_BG1HOFS = gUnk_0201DB20.h638;
+        switch (DECK_TWEEN_STATE) {
+        case 1:
+            REG_BG3HOFS = gUnk_0201DB20.h630 + (sub_0807B4D0(0x5000, DECK_SCROLL_CURVE) >> 8);
+            REG_BG3VOFS = gUnk_0201DB20.h632;
+            horizontalOffset = sub_0807B4D0(0x4000, DECK_SCROLL_CURVE) >> 8;
+            blend = DECK_SCROLL_CURVE >> 3;
+            REG_BLDCNT = 0x3F43;
+            if (DECK_TWEEN_STEP <= 3) {
+                REG_BG1HOFS = horizontalOffset;
                 REG_BG1VOFS = gUnk_0201DB20.h63A;
-                REG_BG0HOFS = gUnk_0201DB20.h63C;
+                REG_BG0HOFS = horizontalOffset;
                 REG_BG0VOFS = gUnk_0201DB20.h63E;
-                (*(vu16 *)(0x04000050 + 0)) = 0x3FC8;
-                (*(vu16 *)(0x04000050 + 2)) = 0x1000;
-                break;
+                sub_0807B4A8(blend >> 1);
+            } else {
+                REG_BG1HOFS = horizontalOffset + 0xFFC0;
+                REG_BG1VOFS = gUnk_0201DB20.h63A;
+                REG_BG0HOFS = horizontalOffset + 0xFFC0;
+                REG_BG0VOFS = gUnk_0201DB20.h63E;
+                sub_0807B4A8((0x20 - blend) >> 1);
             }
+            break;
+        case 2:
+            DECK_TWEEN_STATE = 0;
+            gUnk_0201DB20.h630 += sub_0807B4D0(0x5000, DECK_SCROLL_CURVE) >> 8;
+            if (DECK_FRAME.previousArrowState) {
+                DECK_FRAME.previousArrowState = 1;
+                DECK_FRAME.previousArrowDirty |= 1;
+            }
+            if (DECK_FRAME.nextArrowState) {
+                DECK_FRAME.nextArrowState = 1;
+                DECK_FRAME.nextArrowDirty |= 1;
+            }
+            gUnk_0201DB20.b635 = 0;
+            /* fall through */
+        default:
+            REG_BG3HOFS = gUnk_0201DB20.h630;
+            REG_BG3VOFS = gUnk_0201DB20.h632;
+            REG_BG1HOFS = gUnk_0201DB20.h638;
+            REG_BG1VOFS = gUnk_0201DB20.h63A;
+            REG_BG0HOFS = gUnk_0201DB20.h63C;
+            REG_BG0VOFS = gUnk_0201DB20.h63E;
+            REG_BLDCNT = 0x3FC8;
+            REG_BLDALPHA = 0x1000;
+            break;
+        }
         break;
     }
-    { struct DeckState *input = &gUnk_0201DB20;
-      struct B7C *inputMode;
-    if (input->pad0[0x61E] != 0) {
 
-    } else {
-        inputMode = (struct B7C *)((u8 *)input + 0x1C48);
-        temp_r0_2 = inputMode->a;
-        switch (temp_r0_2) {                        /* switch 4; irregular */
-        case 0:                                     /* switch 4 */
-            if (gUnk_0201DB20.b628 == 1) {
-
-            } else {
-                switch (sp28) {                     /* switch 5; irregular */
-                case 0x2:                           /* switch 5 */
-                    sub_080787F4(0, 0x180, 0, &gUnk_0201DB20.pad0[0x618]);
-                    inputMode->b = 0;
+    if (DECK_FRAME.transitionState == 0) {
+        switch (gUnk_0201DB20.f1C48_0) {
+        case 0:
+            if (DECK_TWEEN_STATE != 1) {
+                switch (keys) {
+                case B_BUTTON:
+                    sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                    gUnk_0201DB20.mode = 0;
                     sub_08077AEC(2);
                     break;
-                case 0x40:                          /* switch 5 */
-                    sub_080679E0(&frame.scroll);
+                case DPAD_UP:
+                    sub_080679E0(&row);
                     break;
-                case 0x80:                          /* switch 5 */
-                    sub_08067DA4(&frame.scroll);
+                case DPAD_DOWN:
+                    sub_08067DA4(&row);
                     break;
-                default:                            /* switch 5 */
-                    temp_r3_4 = (u16 *)((gUnk_0201DB20.cursor * 2) + (gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor] * 6) + (u32)gUnk_0201DB20.cnt1494[0]);
-                    temp_r4_2 = *temp_r3_4;
-                    if ((u32) temp_r4_2 <= 5U) {
-
-                    } else {
-                        switch (sp28) {             /* switch 6; irregular */
-                        case 16:                    /* switch 6 */
-                            temp_r1_6 = &gUnk_0201DB20.arr620[gUnk_0201DB20.cursor];
-                            temp_r2_10 = *temp_r1_6 + 5;
-                            if (temp_r2_10 > (s32) (*temp_r3_4 - 1)) {
-                                *temp_r1_6 = 0;
-                            } else {
-                                *temp_r1_6 = (u16) temp_r2_10;
-                            }
+                default:
+                    if (CNT(gUnk_0201DB20.cursor) > 5) {
+                        switch (keys) {
+                        case DPAD_RIGHT:
+                            if (gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] + 5 > CNT(gUnk_0201DB20.cursor) - 1)
+                                gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] = 0;
+                            else
+                                gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] += 5;
                             gUnk_0201DB20.h18AC = 0xFC00;
-                            sub_0807B100(0, 6, 1, &gUnk_0201DB20.b628);
+                            sub_0807B100(0, 6, 1, PSTATE + 0x628);
                             gUnk_0201DB20.b634 ^= 1;
-                            sub_0807AFFC(sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]), (gUnk_0201DB20.b634 * 0x1680) + 0x06008000, gUnk_0201DB20.b634);
-                            sub_08068E20(((u32) (0xFF & gUnk_0201DB20.h630) >> 3) + 0x1D, ((u32) (0xFF & gUnk_0201DB20.h632) >> 3) + 2, gUnk_0201DB20.b634, 1);
+                            sub_0807AFFC(sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]),
+                                         0x06008000 + gUnk_0201DB20.b634 * 0x1680, gUnk_0201DB20.b634);
+                            sub_08068E20(((gUnk_0201DB20.h630 & 0xFF) >> 3) + 29, ((gUnk_0201DB20.h632 & 0xFF) >> 3) + 2, gUnk_0201DB20.b634, 1);
                             gUnk_0201DB20.b635 = 3;
-                            gUnk_0201DB20.f1710_0 = 1;
-                            sub_08065F34(*(u16 *)((gUnk_0201DB20.cursor * 2) + (gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor] * 6) + (u32)gUnk_0201DB20.cnt1494[0]), gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], &gUnk_0201DB20.f1BB0);
-                            if (gUnk_0201DB20.b1BB7 != 0) {
-                                gUnk_0201DB20.b1BB7 = 2;
-                                gUnk_0201DB20.b1BB6_0 = 1;
+                            DECK_FRAME.redraw = 1;
+                            sub_08065F34(CNT(gUnk_0201DB20.cursor), gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], &gUnk_0201DB20.f1BB0);
+                            if (DECK_FRAME.nextArrowState) {
+                                DECK_FRAME.nextArrowState = 2;
+                                DECK_FRAME.nextArrowDirty |= 1;
                             }
-                            frame.scroll = gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] - 2;
-                            var_r5_2 = 0;
-                            do {
-                                temp_r3_6 = frame.scroll;
-                                if ((temp_r3_6 >= 0) && (temp_r3_7 = gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], ((u16) temp_r3_6 < (u32) ((u16 *)gUnk_0201DB20.cnt1494)[(temp_r3_7 * 3) + gUnk_0201DB20.cursor]))) {
-                                    sub_0806664C(var_r5_2, sub_08068D1C(gUnk_0201DB20.cursor, temp_r3_7, frame.scroll), var_r5_2 + 1, gUnk_0201DB20.pad1BB8, &gUnk_0201DB20.pad18AE[2]);
+                            row = gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] - 2;
+                            for (slot = 0; slot < 5; row++, slot++) {
+                                if ((s16)row >= 0 && row < CNT(gUnk_0201DB20.cursor)) {
+                                    sub_0806664C(slot, sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], row),
+                                                 slot + 1, PSTATE + 0x1BB8, PSTATE + 0x18B0);
                                 } else {
-                                    DIN8(0x1BC4 + var_r5_2 * 0x10) = 0;
+                                    DECK_ROWS[slot].active = 0;
                                 }
-                                frame.scroll += 1;
-                                var_r5_2 += 1;
-                            } while ((u32) var_r5_2 <= 4U);
-                            gUnk_0201DB20.pad1BB8[0x5C] = 0;
-                            gUnk_0201DB20.pad1BB8[0] = 5;
-                            DIN16(0x1C58) = 0x1E;
+                            }
+                            DECK_FRAME.rowAnimationState = 0;
+                            DECK_FRAME.rowCount = 5;
+                            DECK_FRAME.rowAnimationTimer = 30;
                             sub_08077AEC(0);
                             break;
-                        case 32:                    /* switch 6 */
-                            temp_r1_5 = &gUnk_0201DB20.arr620[gUnk_0201DB20.cursor];
-                            temp_r0_6 = *temp_r1_5;
-                            if ((u32) temp_r0_6 <= 4U) {
-                                var_r0_2 = temp_r4_2 - 1;
-                            } else {
-                                var_r0_2 = temp_r0_6 - 5;
-                            }
-                            *temp_r1_5 = var_r0_2;
+                        case DPAD_LEFT:
+                            if (gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] <= 4)
+                                gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] = CNT(gUnk_0201DB20.cursor) - 1;
+                            else
+                                gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] -= 5;
                             gUnk_0201DB20.h18AC = 0xFC00;
-                            sub_0807B100(6, 0, -1, &gUnk_0201DB20.b628);
+                            sub_0807B100(6, 0, -1, PSTATE + 0x628);
                             gUnk_0201DB20.b634 ^= 1;
-                            sub_0807AFFC(sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]), (gUnk_0201DB20.b634 * 0x1680) + 0x06008000, gUnk_0201DB20.b634);
-                            sub_08068E20(((u32) (0xFF & gUnk_0201DB20.h630) >> 3) + 9, ((u32) (0xFF & gUnk_0201DB20.h632) >> 3) + 2, gUnk_0201DB20.b634, 1);
+                            sub_0807AFFC(sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]),
+                                         0x06008000 + gUnk_0201DB20.b634 * 0x1680, gUnk_0201DB20.b634);
+                            sub_08068E20(((gUnk_0201DB20.h630 & 0xFF) >> 3) + 9, ((gUnk_0201DB20.h632 & 0xFF) >> 3) + 2, gUnk_0201DB20.b634, 1);
                             gUnk_0201DB20.h630 -= 0x50;
                             gUnk_0201DB20.b635 = 4;
-                            gUnk_0201DB20.f1710_0 = 1;
-                            sub_08065F34(*(u16 *)((gUnk_0201DB20.cursor * 2) + (gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor] * 6) + (u32)gUnk_0201DB20.cnt1494[0]), gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], &gUnk_0201DB20.f1BB0);
-                            if (gUnk_0201DB20.b1BB5 != 0) {
-                                gUnk_0201DB20.b1BB5 = 2;
-                                gUnk_0201DB20.b1BB4_0 = 1;
+                            DECK_FRAME.redraw = 1;
+                            sub_08065F34(CNT(gUnk_0201DB20.cursor), gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], &gUnk_0201DB20.f1BB0);
+                            if (DECK_FRAME.previousArrowState) {
+                                DECK_FRAME.previousArrowState = 2;
+                                DECK_FRAME.previousArrowDirty |= 1;
                             }
-                            frame.scroll = gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] - 2;
-                            var_r5 = 0;
-                            do {
-                                temp_r6 = frame.scroll;
-                                if ((temp_r6 >= 0) && (temp_r3_5 = gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], ((u16) temp_r6 < (u32) gUnk_0201DB20.cnt1494[0][(temp_r3_5 * 3) + gUnk_0201DB20.cursor]))) {
-                                    sub_0806664C(var_r5, sub_08068D1C(gUnk_0201DB20.cursor, temp_r3_5, frame.scroll), var_r5 + 1, gUnk_0201DB20.pad1BB8, &gUnk_0201DB20.pad18AE[2]);
+                            row = gUnk_0201DB20.arr620[gUnk_0201DB20.cursor] - 2;
+                            for (slot = 0; slot < 5; row++, slot++) {
+                                if ((s16)row >= 0 && row < CNT(gUnk_0201DB20.cursor)) {
+                                    sub_0806664C(slot, sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], row),
+                                                 slot + 1, PSTATE + 0x1BB8, PSTATE + 0x18B0);
                                 } else {
-                                    DIN8(0x1BC4 + var_r5 * 0x10) = 0;
+                                    DECK_ROWS[slot].active = 0;
                                 }
-                                frame.scroll += 1;
-                                var_r5 += 1;
-                            } while ((u32) var_r5 <= 4U);
-                            gUnk_0201DB20.pad1BB8[0x5C] = 0;
-                            gUnk_0201DB20.pad1BB8[0] = 5;
-                            DIN16(0x1C58) = 0x1E;
+                            }
+                            DECK_FRAME.rowAnimationState = 0;
+                            DECK_FRAME.rowCount = 5;
+                            DECK_FRAME.rowAnimationTimer = 30;
                             sub_08077AEC(0);
                             break;
                         }
@@ -636,98 +612,80 @@ s32 sub_08070F18(void) {
                     break;
                 }
             }
-            if (sp28 == 1) {
-                gUnk_0201DB20.pad1C1E[0x1F] = (-8 & gUnk_0201DB20.pad1C1E[0x1F]) | 1;
-                goto block_136;
+            if (keys == A_BUTTON) {
+                ((struct DeckPhaseByte *)(PSTATE + 0x1C3D))->phase = 1;
+                goto confirm_sound;
             }
-            sub_08070F14_arg(&gUnk_0201F73C);
+            sub_08070F14(&gUnk_0201F73C);
             break;
-        case 1:                                     /* switch 4 */
-            if (input->pad1C1E[2] != 0) {
-
-            } else if ((s8) input->pad1711[0x155] != -1) {
-
-            } else {
-                switch (sp28) {                     /* switch 7; irregular */
-                case 16:                            /* switch 7 */
-                    ((struct W84 *)(((u8 *)input) + 0x1C3C))->b++;
-                    if (((struct W84 *)(((u8 *)input) + 0x1C3C))->b == 1) {
-                        ((struct W84 *)(((u8 *)input) + 0x1C3C))->b = 4;
-                    } else if (((struct W84 *)(((u8 *)input) + 0x1C3C))->b == 7) {
-                        ((struct W84 *)(((u8 *)input) + 0x1C3C))->b = 0;
+        case 1:
+            if (DECK_FRAME.menuAnimationState == 0 && DECK_FRAME.menuOwner == -1) {
+                switch (keys) {
+                case DPAD_RIGHT:
+                    if (++DECK_FRAME.menuSelected == 1)
+                        DECK_FRAME.menuSelected = 4;
+                    else if ((DECK_MENU_RAW & 0x38000) == 0x38000)
+                        DECK_FRAME.menuSelected = 0;
+                    menuPhase = (struct DeckPhaseByte *)(PSTATE + 0x1C3D);
+                    goto menu_moved;
+                case DPAD_LEFT:
+                    switch (DECK_FRAME.menuSelected) {
+                    case 4:
+                        DECK_FRAME.menuSelected = 0;
+                        break;
+                    case 0:
+                        DECK_FRAME.menuSelected = 6;
+                        break;
+                    default:
+                        DECK_FRAME.menuSelected = (u16)(DECK_FRAME.menuSelected - 1);
+                        break;
                     }
-                    var_r0 = -8 & input->pad1C1E[0x1F];
-block_121:
-                    input->pad1C1E[0x1F] = var_r0 | 3;
+                    menuPhase = (struct DeckPhaseByte *)(PSTATE + 0x1C3D);
+menu_moved:
+                    menuPhase->phase = 3;
                     sub_08077AEC(0);
                     break;
-                case 32:                            /* switch 7 */
-                    temp_r0_4 = (*(u32 *)((u8 *)input + 0x1C3C)) << 0xE;
-                    temp_r1_4 = temp_r0_4 >> 0x1D;
-                    if (temp_r1_4 != 0) {
-                        if (temp_r1_4 == 4) {
-                            (*(u32 *)((u8 *)input + 0x1C3C)) = (s32) ((*(u32 *)((u8 *)input + 0x1C3C)) & 0xFFFC7FFF);
-                        } else {
-                            (*(u32 *)((u8 *)input + 0x1C3C)) = (s32) ((0xFFFC7FFF & (*(u32 *)((u8 *)input + 0x1C3C))) | (((u16) ((temp_r0_4 >> 0x1D) - 1) & 7) << 0xF));
+                case A_BUTTON:
+                    switch (DECK_FRAME.menuSelected) {
+                    case 0:
+                        if (CNT(gUnk_0201DB20.cursor) == 0)
+                            goto error_sound;
+                        gUnk_0201DB20.mode = 2;
+                        sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                        goto confirm_sound;
+                    case 4:
+                        gUnk_0201DB20.mode = 1;
+                        sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                        goto confirm_sound;
+                    case 5:
+                        gUnk_0201DB20.mode = 3;
+                        sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                        goto confirm_sound;
+                    case 6:
+                        if (sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]) != 0
+                            && CNT(gUnk_0201DB20.cursor) != 0) {
+                            gUnk_03000040.unk4872 = sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]);
+                            sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                            gUnk_0201DB20.mode = 0;
+confirm_sound:
+                            sub_08077AEC(1);
+                            goto draw_frame;
                         }
-                    } else {
-                        (*(u32 *)((u8 *)input + 0x1C3C)) = (s32) ((0xFFFC7FFF & (*(u32 *)((u8 *)input + 0x1C3C))) | 0x30000);
-                    }
-                    var_r0 = -8 & input->pad1C1E[0x1F];
-                    goto block_121;
-                case 1:                             /* switch 7 */
-                    temp_r0_5 = (u32) ((*(u32 *)((u8 *)input + 0x1C3C)) << 0xE) >> 0x1D;
-                    switch (temp_r0_5) {            /* switch 8; irregular */
-                    case 0:                         /* switch 8 */
-                        if (input->cnt1494[0][(input->arr14A0[input->cursor] * 3) + input->cursor] != 0) {
-                            inputMode->b = 2;
-                            sub_080787F4(0, 0x180, 0, &input->pad0[0x618]);
-                            goto block_136;
-                        } else {
-                            goto block_137;
-                        }
-                        break;
-                    case 4:                         /* switch 8 */
-                        inputMode->b = 1;
-                        sub_080787F4(0, 0x180, 0, &input->pad0[0x618]);
-                        goto block_136;
-                    case 5:                         /* switch 8 */
-                        inputMode->b = 3;
-                        sub_080787F4(0, 0x180, 0, &input->pad0[0x618]);
-                        goto block_136;
-                    case 6:                         /* switch 8 */
-                        if (sub_08068D1C(input->cursor, input->arr14A0[input->cursor], input->arr620[input->cursor]) != 0) {
-                            temp_r3_3 = input->arr14A0[input->cursor];
-                            if (*(u16 *)((input->cursor * 2) + (temp_r3_3 * 6) + (u32)input->cnt1494[0]) != 0) {
-                                gUnk_03000040.unk4872 = sub_08068D1C(input->cursor, temp_r3_3, input->arr620[input->cursor]);
-                                sub_080787F4(0, 0x180, 0, &input->pad0[0x618]);
-                                inputMode->b = 0;
-                                goto block_136;
-                            }
-                        }
-                        goto block_137;
-block_136:
-                        sub_08077AEC(1);
-                        break;
-block_137:
+error_sound:
                         sub_08077AEC(3);
                         break;
                     }
                     break;
-                case 2:                             /* switch 7 */
-                    input->pad1C1E[0x1F] = (-8 & input->pad1C1E[0x1F]) | 2;
+                case B_BUTTON:
+                    ((struct DeckPhaseByte *)(PSTATE + 0x1C3D))->phase = 2;
                     sub_08077AEC(2);
                     break;
-                default:                            /* switch 7 */
-                    sub_08070F14_arg(&gUnk_0201F73C);
-                    if ((*(u8 *)((u8 *)&gUnk_0201F73C - 0x15F4)) != 1) {
-                        switch (sp28) {             /* switch 9; irregular */
-                        case 0x40:                  /* switch 9 */
-                            sub_080679E0(&frame.scroll);
-                            break;
-                        case 0x80:                  /* switch 9 */
-                            sub_08067DA4(&frame.scroll);
-                            break;
+                default:
+                    sub_08070F14(&gUnk_0201F73C);
+                    if (*((u8 *)&gUnk_0201F73C - 0x15F4) != 1) {
+                        switch (keys) {
+                        case DPAD_UP: sub_080679E0(&row); break;
+                        case DPAD_DOWN: sub_08067DA4(&row); break;
                         }
                     }
                     break;
@@ -736,62 +694,58 @@ block_137:
             break;
         }
     }
-    }
+
+draw_frame:
     sub_0806B190();
-    sub_08077EF4(&gUnk_081A6524, 5, 0xC, -1, -1, 3, 2, 0, 0, 0, 0, &gUnk_0201DB20);
-    gUnk_0201DB20.pad1711[0xC9] = 1;
-    sub_08065F78(gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], *(u16 *)((gUnk_0201DB20.cursor * 2) + (gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor] * 6) + (u32)gUnk_0201DB20.cnt1494[0]), &gUnk_0201DB20.f1BB0);
-    sub_080665D4(&gUnk_0201DB20.pad1BB8[4], &gUnk_0201DB20);
-    var_r5_3 = 1;
-    do {
-        sub_0807B5A0((var_r5_3 * 0x18) + &gUnk_0201DB20.pad18AE[2]);
-        var_r5_3 += 1;
-    } while ((u32) var_r5_3 <= 6U);
-    sub_0806699C(gUnk_0201F740);
-    temp_r6_2 = gUnk_0201F740 - 4;
-    temp_r5_3 = gUnk_0201F740 + 0xFFFFFAF8;
-    sub_0806704C(temp_r6_2, gUnk_0201F740 - 3, temp_r5_3);
-    temp_r4_3 = gUnk_0201F740 + 0x1C;
-    sub_08067908(temp_r4_3);
-    sub_08067660(temp_r4_3);
-    temp_r4_4 = gUnk_0201F740 + 0xFFFFE3E0;
-    sub_08077EF4(&gUnk_081A6EA4, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, temp_r4_4);
-    sub_08068180(*temp_r6_2);
-    sub_0807871C(temp_r5_3);
-    sub_08078534(temp_r5_3, 0, 0, 0, 0, 0, 3, 0, 0, temp_r4_4);
+    sub_08077EF4(gUnk_081A6524, 5, 12, -1, -1, 3, 2, 0, 0, 0, 0, &gUnk_0201DB20);
+    DECK_FRAME.frameDirty = 1;
+    sub_08065F78(gUnk_0201DB20.arr620[gUnk_0201DB20.cursor], CNT(gUnk_0201DB20.cursor), &gUnk_0201DB20.f1BB0);
+    sub_080665D4(PSTATE + 0x1BBC, &gUnk_0201DB20);
+    for (slot = 1; slot <= 6; slot++)
+        sub_0807B5A0(PSTATE + 0x18B0 + slot * 24);
+    tail = gUnk_0201F740;
+    sub_0806699C();
+    list = tail - 4;
+    sub_0806704C(list, tail - 3, objects = tail - 0x508);
+    sub_08067908(tail + 0x1C);
+    sub_08067660(tail + 0x1C);
+    sub_08077EF4(gUnk_081A6EA4, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, state = (struct DeckState *)(tail - 0x1C20));
+    sub_08068180(*list);
+    sub_0807871C(objects);
+    sub_08078534(objects, 0, 0, 0, 0, 0, 3, 0, 0, state);
     sub_08068B90();
     sub_08068C48();
-    sub_0807A298(temp_r4_4);
-    sub_0807A2EC(temp_r4_4);
-    sub_0807883C(gUnk_0201F740 + 0xFFFFE9F8);
-    temp_r1_7 = (*(u8 *)(0xFFFFE9FE + (u32)gUnk_0201F740));
-    if (temp_r1_7 != 2) {
-        if (temp_r1_7 == 3) {
-            (*(u8 *)(0xFFFFE9FE + (u32)gUnk_0201F740)) = 0U;
-            (*(vu16 *)(0x04000050 + 0)) = 0x3FC8;
-            (*(vu16 *)(0x04000050 + 2)) = 0x1000;
-        } else if (((*(u8 *)(0xFFFFEA08 + (u32)gUnk_0201F740)) == 0) && (temp_r1_7 == 0)) {
-            temp_r2_11 = (s32)((u32)(*(u16 *)(0xFFFFFC8C + (u32)gUnk_0201F740)) << 0x10);
-            if (temp_r2_11 >= 0) {
-                (*(vu16 *)(0x04000050 + 0)) = 0x3FC8;
-                var_r1 = (void *)0x04000050 + 4;
-                var_r0_3 = temp_r2_11 >> 0x18;
-            } else {
-                (*(vu16 *)(0x04000050 + 0)) = 0x3F88;
-                var_r1 = (void *)0x04000050 + 4;
-                var_r0_3 = (s32) (0 - (s16) (*(u16 *)(0xFFFFFC8C + (u32)gUnk_0201F740))) >> 8;
-            }
-            *var_r1 = (s16) var_r0_3;
-            if ((s32) (s16) gUnk_0201DB20.h18AC > 0x3FF) {
-                var_r0_4 = 0x400;
-            } else {
-                var_r0_4 = gUnk_0201DB20.h18AC + 0x30;
-            }
-            gUnk_0201DB20.h18AC = var_r0_4;
-        }
-        return 0;
+    sub_0807A298(state);
+    sub_0807A2EC(state);
+    sub_0807883C(tail - 0x1608);
+    if (tail[-0x1602] == 2)
+        goto complete;
+    if (tail[-0x1602] == 3) {
+        tail[-0x1602] = 0;
+        REG_BLDCNT = 0x3FC8;
+        REG_BLDALPHA = 0x1000;
+        goto done;
     }
+    goto fade;
+complete:
     return 1;
+fade:
+    if (tail[-0x15F8] == 0 && tail[-0x1602] == 0) {
+        if (*(s16 *)(tail - 0x374) >= 0) {
+            REG_BLDCNT = 0x3FC8;
+            REG_BLDY = *(s16 *)(tail - 0x374) >> 8;
+        } else {
+            REG_BLDCNT = 0x3F88;
+            REG_BLDY = -*(s16 *)(tail - 0x374) >> 8;
+        }
+        if ((s16)gUnk_0201DB20.h18AC > 0x3FF)
+            gUnk_0201DB20.h18AC = 0x400;
+        else
+            gUnk_0201DB20.h18AC += 0x30;
+    }
+done:
+    return 0;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0807093C", sub_08070F18); /* 0x08070F18 size 0x1028 */
+

@@ -103,7 +103,7 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (auto-parked by tools/repair.py) */
+#if 0 /* NONMATCHING: fable pass: 662 norm diff lines, first diff +0x336 (link-loop head); see build/fable/sub_0800ABC8/NOTES.md */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -499,5 +499,6 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0800AB08", sub_0800ABC8);
+
 #endif
 

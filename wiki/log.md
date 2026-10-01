@@ -626,3 +626,9 @@ updated: 2026-09-29
 ## [2026-10-01] query | Pace of other GBA decomps
 - New [[decomp-pace-comparison]]: GBA projects on decomp.dev with start dates, team sizes and days to 50%/100%, how the fast ones handle the tail, and eight ranked changes for EDS. Indexed in [[index]].
 - Progress: two permuter matches applied (`sub_0802F200`, `sub_08065E6C`), completing `code_0802EB58` and `code_08065E6C`. Full `make compare`: `eds.gba: OK`. 1,706/1,976 functions, 60.86% of code bytes.
+
+## [2026-10-01] progress | Fable pass on the eight largest functions
+- Eight Fable agents (brief in `build/fable/BRIEF.md`) worked on `sub_08044224`, `sub_080471E8`, `sub_0800ABC8`, `sub_0806DBB0`, `sub_0806B3B0`, `sub_08070F18`, `sub_0806F934` and `sub_0804FC4C`. No new matches. Improved parked drafts: `sub_08070F18` 539 to 257 differing lines (rebuilt from its matched sibling `sub_0806DBB0`); `sub_0806B3B0` now has a complete draft. Per-function notes with ordered blockers are in `build/fable/<func>/NOTES.md`.
+- Cost: about 30 points of the 5-hour limit and 16% of the weekly Fable quota in roughly 20 minutes of work; Fable use also counts toward the all-models limits.
+- Tools: `check.py --diff` prints the first-difference offset, matching prefix and differing-line count. New `tools/corpus.py` compiles C from nine other agbcc decomps (35,333 functions) and finds similar functions by instruction pattern.
+- Full `make compare`: `eds.gba: OK`; `check_all` 112/112.

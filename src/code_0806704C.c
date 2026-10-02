@@ -192,28 +192,37 @@ extern void sub_08065058(s32);
 extern void sub_08065384(u16, s32, s32, u32, u8 *);
 extern void sub_08066478(u8, u16, u16, u8 *, u8 *);
 
-#if 0 /* NONMATCHING: identical except that the target loads the literal 0x1727
-       * for the byte-1 stores (r2), while gcc derives it from 0x1726
-       * (`adds r2,#1`). Tried separate typed views, u8 views and pointer
-       * locals. */
 /* Move the selection from panel *b to panel *a: marks the old cells (`0xFF`) and the new ones (b0 = 1, b1 = 0), then
-   sets the animation bytes `s[idx * 20 + 0xE]` (hypothesis). */
-void sub_0806704C(u8 *a, u8 *b, u8 *s)
+   sets the animation bytes `s[idx * 20 + 0xE]` (hypothesis). Structs are 4-aligned under agbcc, so the 20-byte cell
+   array starts at +0x1724 with the flag bytes at +2/+3. */
+struct Cell_x {
+    u8 pad0[2];
+    u8 b0;                  /* +2 */
+    u8 b1;                  /* +3 */
+    u8 pad4[10];
+    u8 fE;                  /* +0xE */
+    u8 padF[5];
+};
+struct StCells_x {
+    u8 pad0[0x1724];
+    struct Cell_x cell[1];  /* +0x1724, 20 bytes each */
+};
+#define CX_0806704C (*(struct StCells_x *)&gUnk_0201DB20_cells)
+struct CellArr_x { struct Cell_x cell[1]; };
+void sub_0806704C(u8 *a, u8 *b, struct CellArr_x *s)
 {
     if (*a != *b) {
-        gUnk_0201DB20_cells.cell[*a + 0xD].b0 = 1;
-        gUnk_0201DB20_cells.cell[*a + 0xD].b1 = 0;
-        gUnk_0201DB20_cells.cell[*a + 6].b0 = 1;
-        gUnk_0201DB20_cells.cell[*a + 6].b1 = 0;
-        gUnk_0201DB20_cells.cell[*b + 0xD].b0 |= 0xFF;
-        gUnk_0201DB20_cells.cell[*b + 6].b0 |= 0xFF;
+        CX_0806704C.cell[*a + 0xD].b0 = 1;
+        CX_0806704C.cell[*a + 0xD].b1 = 0;
+        CX_0806704C.cell[*a + 6].b0 = 1;
+        CX_0806704C.cell[*a + 6].b1 = 0;
+        CX_0806704C.cell[*b + 0xD].b0 |= 0xFF;
+        CX_0806704C.cell[*b + 6].b0 |= 0xFF;
         *b = *a;
     }
-    s[(*a + 0xD) * 0xE + 20] = 0xFF;
-    s[(*a + 6) * 20 + 0xE] = 1;
+    s->cell[*a + 0xD].fE = 0xFF;
+    s->cell[*a + 6].fE = 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_0806704C); /* 0x0806704C size 0xC0 */
 /* Save image 0x02011C20: 4-byte trunk entries from +0x08, indexed by card ID; f4 = bits 4-5 of byte +1 (copies in
    the deck, hypothesis). Indexing the symbol as a struct array keeps the base load after the call (a constant or a
    (u8 *) cast is folded into the add; a hoisted pointer moves to sl). */

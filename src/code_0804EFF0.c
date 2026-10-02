@@ -379,10 +379,6 @@ int sub_0804F6EC(int player)
     }
     return 0;
 }
-#if 0 /* NONMATCHING, after a complete source/assembly audit. Sizes are 0x4A0 vs 0x4A8
-         * and frames 0 vs 4. Preserves own zones 5-10 and the ROM's player > 99 test.
-         * Behavioral equivalence has not been tested by running it. */
-extern const u16 gUnk_08624842[], gUnk_08623DF4[];
 void sub_080197E0(int player, u16 id);
 void sub_08019860(int player, int amount);
 void sub_08019980(int player, int amount);
@@ -396,23 +392,36 @@ int sub_0800C894(int player, int zone);
 int sub_0800A1C4(int player);
 int sub_08009CAC(int player, u16 number);
 int sub_0807548C(int amount);
+/* Player block view (0xD64 bytes): an array-of-struct declaration is needed so that
+ * gEndPS_020192E4[x].field goes through get_inner_reference (constant base loaded first,
+ * and the 0x46B case's index `player > 99` scaled separately from the base). */
+struct EndPS {
+    u16 life;           /* +0 */
+    u8 pad2_[9];
+    u8 bB;              /* +0xB: bits 4-7 = low 4 bits of a 5-bit zone mask */
+    u8 bC;              /* +0xC: bit 0 = high bit of that mask */
+    u8 pad[0x28 - 0xD];
+    struct Zone zones[22]; /* +0x28 */
+    u8 pad2[0x84];
+};
+extern struct EndPS gEndPS_020192E4[];
+#define EZB(p, z) ((struct Zone *)((z) * 0x94 + (p) * 0xD64 + (u32)((u8 *)gEndPS_020192E4 + 0x28)))
 #define END_ID(z) (((z)->card << 20) >> 20)
 #define END_NUMBER(id) (((const u16 *)0x08622AB4)[(u16)(id) & 0x7FF])
 void sub_0804F7A4(int player)
 {
     int i;
+    u32 id1 = 0x527;
     for (i=0; i<=4; i++) {
-        u8 *ps = (u8 *)gUnk_020192E4 + (player&1)*0xD64;
-        if ((((int)((ps[11] >> 4)|((ps[12]&1)<<4)) >> i)&1) &&
-            (ZB(player&1,i)->card << 20) == 0) {
-            u16 msg=0xAA;
-            sub_080197E0(player,gUnk_08624842[0]);
-            if (player) msg=0x80AA;
-            sub_0801EC58(msg,(u16)i,1,0);
+        int lo = gEndPS_020192E4[player&1].bB >> 4;
+        if ((((int)(((gEndPS_020192E4[player&1].bC&1)<<4)|lo) >> i)&1) &&
+            (gEndPS_020192E4[player&1].zones[i].card << 20) == 0) {
+            sub_080197E0(player,((const u16 *)0x08623DF4)[id1]);
+            sub_0801EC58(player ? 0x80AA : 0xAA,(u16)i,1,0);
         }
     }
     for (i=0; i<=4; i++) {
-        struct Zone *z=ZB(player&1,i);
+        struct Zone *z=EZB(player&1,i);
         u16 id=END_ID(z);
         u32 face=((u32)z->f6<<30)>>31;
         u32 position=((u32)z->f6<<31)>>31;
@@ -445,44 +454,63 @@ void sub_0804F7A4(int player)
                 sub_08019980(player,800);
                 break;
             }
-            if (sub_0800A8CC(player,i,0x58B)) {
-                sub_080197E0(player,gUnk_08623DF4[0x58B]);
-                sub_08019860(player,sub_0800A8CC(player,i,0x58B)*500);
+            {
+            int number = 0x58B;
+            if (sub_0800A8CC(player,i,number)) {
+                sub_080197E0(player,((const u16 *)0x08623DF4)[number]);
+                sub_08019860(player,sub_0800A8CC(player,i,number)*500);
             }
-            if (sub_0800A78C(player,i,0x2DF)) {
-                s16 amount=sub_0800C894(player,i);
-                sub_080197E0(player,gUnk_08623DF4[0x2DF]);
+            }
+            {
+            int number = 0x2DF;
+            if (sub_0800A78C(player,i,number)) {
+                int amount=sub_0800C894(player,i);
+                sub_080197E0(player,((const u16 *)0x08623DF4)[number]);
                 sub_08018544(player,i,1);
                 sub_08019860(player,amount);
             }
-            if (sub_0800A78C(player,i,0x492)) {
+            }
+            {
+            int number = 0x492;
+            if (sub_0800A78C(player,i,number)) {
                 int amount=sub_0800C894(player,i);
-                sub_080197E0(player,gUnk_08623DF4[0x492]);
+                sub_080197E0(player,((const u16 *)0x08623DF4)[number]);
                 amount=sub_0807548C(amount);
-                sub_08019980(1-player,amount*sub_0800A78C(player,i,0x492));
+                sub_08019980(1-player,amount*sub_0800A78C(player,i,number));
+            }
             }
         }
     }
     sub_08046E8C(player);
     for (i=5; i<=10; i++) {
-        struct Zone *z=ZB(player&1,i);
-        u16 id=END_ID(z);
-        u32 face=((u32)z->f6<<30)>>31;
-        u32 disabled=((u32)((u8 *)z)[0x91]<<28)>>31;
+        int p = player & 1;
+        struct Zone *z;
+        u16 id;
+        u32 face;
+        u32 disabled;
+        /* FAKEMATCH: the do/while(0) wrapper puts loop notes after the zone reads, so the
+         * first CSE pass starts a new block there and 0xD64/base stay in the loop; the
+         * post-loop CSE then reuses them for the 0x46B case as in the ROM. */
+        do {
+        z=EZB(p,i);
+        id=END_ID(z);
+        face=((u32)z->f6<<30)>>31;
+        disabled=((u32)((u8 *)z)[0x91]<<28)>>31;
+        } while (0);
         if (id && face && !disabled) {
-            int count=sub_0800A8CC(player,i,0x589);
+            int count;
+            int number = 0x589;
+            count=sub_0800A8CC(player,i,number);
             if (count>0) {
-                sub_080197E0(player,gUnk_08623DF4[0x589]);
+                sub_080197E0(player,((const u16 *)0x08623DF4)[number]);
                 sub_08019860(player,count*500);
             }
             switch (END_NUMBER(id)) {
             case 0x46B:
                 /* This compares player itself to 99 in the ROM. */
-                if (*(u16 *)((u8 *)gUnk_020192E4+(player>99 ? 0xD64 : 0))) {
-                    u16 msg=0x43;
+                if (gEndPS_020192E4[player > 99].life) {
                     sub_080197E0(player,id);
-                    if (player) msg=0x8043;
-                    sub_0801EC58(msg,100,1,0);
+                    sub_0801EC58(player ? 0x8043 : 0x43,100,1,0);
                 }
                 break;
             case 0x51F:
@@ -497,7 +525,7 @@ void sub_0804F7A4(int player)
     }
     for (i=5; i<=9; i++) {
         int opponent=1-player;
-        struct Zone *z=ZB(opponent&1,i);
+        struct Zone *z=EZB(opponent&1,i);
         u16 id=END_ID(z);
         u32 face=((u32)z->f6<<30)>>31;
         u32 disabled=((u32)((u8 *)z)[0x91]<<28)>>31;
@@ -520,13 +548,14 @@ void sub_0804F7A4(int player)
             }
         }
     }
-    if (sub_08009CAC(player,0x5A6)>0) {
-        sub_080197E0(player,gUnk_08623DF4[0x5A6]);
-        sub_08019980(player,200*sub_08009CAC(player,0x5A6));
+    {
+    int number = 0x5A6;
+    if (sub_08009CAC(player,number)>0) {
+        sub_080197E0(player,((const u16 *)0x08623DF4)[number]);
+        sub_08019980(player,200*sub_08009CAC(player,number));
+    }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804F7A4); /* 0x0804F7A4 size 0x4A8 */
 struct FcPlayer {
     u16 life; u8 handCount; u8 pad3[3]; u8 listCount; u8 pad7;
     u8 flags8; u8 flags9; u8 padA; u8 flagsB; u8 flagsC;

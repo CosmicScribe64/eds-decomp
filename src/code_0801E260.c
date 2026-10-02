@@ -26,8 +26,8 @@ extern struct DuelMsg gUnk_02017A30;
 /* Duel command queue at 0x020185C0: canonical layout in duel_ui.h. */
 
 /* Local view: canonical struct DuelCard puts the owner bit at +0x1 bit 4 and
-   flag20 at bit 20; this unit's sub_0801E260 draft reads the zone word's flag at
-   bit 18 instead, so keep a unit-specific view (draft is under #if 0). */
+   flag20 at bit 20; sub_0801E260 reads the zone word's flag at bit 18 instead,
+   so keep a unit-specific view. */
 struct ZoneWord {
     u32 cardId:12;
     u32 unk0_12:6;
@@ -37,7 +37,7 @@ struct ZoneWord {
 
 /* Card command menu at 0x020192E0+0x1B2C (see code_0801CE68). Canonical duel.h
    stops at DuelState.phaseStep +0x1B20, so this is a unit-specific view used only
-   by the sub_0801E260 draft (under #if 0). */
+   by sub_0801E260. */
 struct SelMask {
     u16 flag0:1;
     u16 active:1;
@@ -51,6 +51,26 @@ struct SelMask {
     u16 player:1;                   /* bit 57 */
     u32 zone:7;                     /* bits 58-64 */
     u32 column:8;                   /* bits 65-72 */
+    u32 unk73:23;
+};
+
+/* Same bits as struct SelMask with a u16 column. sub_0801E260's case 7 reads the
+   column through it so the atkSlot bit-field store gets a HImode value and regmove
+   ties the AND to the constant (`movs r1, #7; ands r1, r0`); FAKEMATCH: the u32
+   column gives `ands r1, r0` with the column as destination. */
+struct SelMaskCol {
+    u16 flag0:1;
+    u16 active:1;
+    u16 cursor:4;
+    u16 rows:4;
+    u32 mask:16;
+    u32 state:8;
+    u32 subState:8;
+    u32 unk42:8;
+    u16 timer:7;
+    u16 player:1;
+    u32 zone:7;
+    u16 column:8;                   /* bits 65-72 */
     u32 unk73:23;
 };
 
@@ -78,7 +98,7 @@ struct DuelStateView {
     u8 filler1ACC[0x1B12 - 0x1ACC];
     u8 flag1B12_0:1;                /* 0x1B12 bit 0 */
     u8 unk1B12_1:1;
-    u8 unk1B12_2:3;                 /* 0x1B12 bits 2-4 */
+    u32 unk1B12_2:3;                /* 0x1B12 bits 2-4 (u32: see sub_0801E260) */
     u8 unk1B12_5:1;
     u8 result:2;                    /* 0x1B12 bits 6-7 */
     u8 filler1B13[0x1B16 - 0x1B13];
@@ -91,10 +111,13 @@ struct DuelStateView {
     u8 filler1B22[0x1B28 - 0x1B22];
     u16 selCard;                    /* 0x1B28 */
     u16 unk1B2A;
-    struct SelMask sel;             /* 0x1B2C */
+    union {
+        struct SelMask x;
+        struct SelMaskCol col;
+    } sel;                          /* 0x1B2C */
 };
 extern struct DuelStateView gUnk_020192E0View asm("gUnk_020192E0");
-#define SEL gUnk_020192E0View.sel
+#define SEL gUnk_020192E0View.sel.x
 
 struct Battle {
     u16 unk0_0:6;
@@ -167,23 +190,8 @@ void sub_08077BCC(void);
 void sub_08077B24(u16 bgm);
 
 /* Execute the command chosen in the card command menu (SEL.cursor = 1..12). */
-#if 0 /* NONMATCHING (score 32): NONMATCHING: score 32, every instruction matches except two register swaps. (1)
-       * In the zone-5 path after sub_0801EC58, the reloaded base and the constant 1 sit in r4/r5 the wrong way round.
-       * pl, shared by the 3 flag sites, prefers r4 (expand_preferences via the zone-10 base+0x1B34 in r4), so the
-       * const-1 pseudo skips r4 in pass 0. A block-local pl per site fixes that, but then &0x1B34 (refs 4/len 98, pri
-       * 816) beats the base (7/174, pri 804) for r5. Need the base 3 insns shorter or &0x1B34 2 longer in pre-combine
-       * RTL. (2) In case 7 the column and the constant 7 are swapped in the and. Shape needed: direct gUnk_020192E0
-       * accesses; zones/players through cast macros (ZONEF/ZONEW/PLAYERF); pl = players block-local; s16 zone; zone-5
-       * index p = player&1; idx = column; idx += 5; packings (p<<31) | (ev = idx<<16 | K) | selCard; sub_08007FEC called
-       * as int-returning; cast-literal card tables in case 4 CARD_TYPE, zone-11 CARD_NUMBER, zone-0 switch and the 0x51
-       * lookup (the symbol form only for zone-11 CARD_TYPE). */
-struct ZoneWord1E260 {
-    u32 cardId:12;
-    u32 unk0_12:6;
-    u32 flag0_18:1;                 /* bit 18 */
-    u32 unk0_19:13;
-};
-
+/* Zones and players are reached through casts so the field offsets (+6, +8/+9)
+   stay in the ldrb/strb as in the ROM instead of folding into the base constant. */
 struct ZoneFlags1E260 {
     u32 card;
     u16 serial;
@@ -202,10 +210,16 @@ struct PlayerFlags1E260 {
     u8 unk9_6:2;
 };
 
-#define ZONEF(p, i) ((struct ZoneFlags1E260 *)&gUnk_020192E0View.players[p].zones[i])
-#define ZONEW(p, i) ((struct ZoneWord1E260 *)&gUnk_020192E0View.players[p].zones[i])
-#define PLAYERF(pl, p) ((struct PlayerFlags1E260 *)&(pl)[p])
+#define ZONE_FLAGS(p, i) ((struct ZoneFlags1E260 *)&gUnk_020192E0View.players[p].zones[i])
+#define ZONE_WORD(p, i) ((struct ZoneWord *)&gUnk_020192E0View.players[p].zones[i])
+#define PLAYER_FLAGS(pl, p) ((struct PlayerFlags1E260 *)&(pl)[p])
 
+/* Execute the command chosen in the card command menu (SEL.cursor = 1..12).
+   FAKEMATCH notes: `ev = (zone << 16 | kind)` inside the sub_0801FBCC packings stops
+   fold from floating the kind constant out of the OR chain; per-site `pl` locals keep
+   the constant-1 pseudo from inheriting an r4 preference; `unk1B12_2 > 1u` on the u32
+   view (struct DuelStateView) drops two pre-combine extension insns so the reloaded base wins r5 over
+   &column; sub_08007FEC is called as int-returning (the ROM tests r0 unextended). */
 void sub_0801E260(void)
 {
     u8 buf[4];
@@ -213,7 +227,6 @@ void sub_0801E260(void)
     u32 ev;
     int idx;
     int p;
-    struct DuelPlayerView *pl;
 
     switch (SEL.cursor) {
     case 1:
@@ -257,8 +270,10 @@ void sub_0801E260(void)
             }
             switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
             case 0x47:
-                pl = gUnk_020192E0View.players;
-                PLAYERF(pl, SEL.player & 1)->flag8_4 = 1;
+                {
+                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
+                    PLAYER_FLAGS(pl, SEL.player & 1)->flag8_4 = 1;
+                }
                 sub_08049048(1, 0, 0);
                 return;
             case 0x1A8:
@@ -268,28 +283,32 @@ void sub_0801E260(void)
             }
             break;
         case 10:
-            if (!ZONEF(SEL.player & 1, 10)->flag6_1)
+            if (!ZONE_FLAGS(SEL.player & 1, 10)->flag6_1)
                 sub_0801EC58(SEL.player ? 0x807F : 0x7F, 10, 0, 0);
             sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1) {
-                pl = gUnk_020192E0View.players;
-                PLAYERF(pl, SEL.player & 1)->flag9_5 = 1;
+            if (gUnk_020192E0View.unk1B12_2 > 1u) {
+                {
+                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
+                    PLAYER_FLAGS(pl, SEL.player & 1)->flag9_5 = 1;
+                }
             }
             break;
         case 5:
             p = SEL.player & 1;
             idx = SEL.column;
             idx += 5;
-            if (!ZONEF(p, idx)->flag6_1)
+            if (!ZONE_FLAGS(p, idx)->flag6_1)
                 sub_0801EC58(SEL.player ? 0x807F : 0x7F, SEL.column + SEL.zone, 0, 0);
-            if (ZONEW(SEL.player & 1, SEL.column)->flag0_18) {
+            if (ZONE_WORD(SEL.player & 1, SEL.column)->flag0_18) {
                 sub_080197E0(SEL.player, gUnk_0862467A);
                 sub_08019860(SEL.player, 2000);
             }
             sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1) {
-                pl = gUnk_020192E0View.players;
-                PLAYERF(pl, SEL.player & 1)->flag9_5 = 1;
+            if (gUnk_020192E0View.unk1B12_2 > 1u) {
+                {
+                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
+                    PLAYER_FLAGS(pl, SEL.player & 1)->flag9_5 = 1;
+                }
             }
             break;
         case 0:
@@ -328,7 +347,7 @@ void sub_0801E260(void)
         }
         break;
     case 7:
-        gUnk_02018450.atkSlot = SEL.column;
+        gUnk_02018450.atkSlot = gUnk_020192E0View.sel.col.column;
         gUnk_020192E0View.unk1B16_1 = 2;
         break;
     case 8:
@@ -355,8 +374,6 @@ void sub_0801E260(void)
     SEL.active = 0;
     SEL.subState = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0801E260", sub_0801E260); /* 0x0801E260 size 0x6E4 */
 
 u16 sub_0801E944(void)
 {

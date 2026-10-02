@@ -452,60 +452,35 @@ void sub_0805E054(int a, u16 *p, u16 y, u16 b)
     }
     sub_08075294(0x05000000 + (b >> 4) * 0x20, p + 4, 0x40);
 }
-#if 0 /* NONMATCHING: identical structure; the ROM rematerializes the 0x2000000 add constant for `t` in the inner loop (and 0x1000000 after the else loop) while the build keeps them in r6/r7/r9 (16 bytes shorter); swapping the two increments or the declaration order does not change the CSE */
 void sub_0805E100(int a, int x, int y, int v)
 {
     u16 *dst = (u16 *)((a << 11) + 0x06000000);
-    u32 t;
-    int odd;
-    s16 row;
-    u16 h;
-    h = v / 2;
-    dst = (u16 *)((u8 *)dst + (x / 2) * 2);
-    dst = (u16 *)((u8 *)dst + (y << 5));
-    row = 0;
-    odd = 1 & x;
-    t = h << 24;
-    while (row <= 9) {
-        u16 *p;
-        u16 *next;
-        s8 nrow;
-        u32 u;
+    int row;
+    v /= 2;
+    dst += x / 2;
+    dst += y * 16;
+    for (row = 0; row < 10; row++) {
         int j;
-        if (odd != 0) {
-            *dst = (t >> 24) << 8;
-            t += 0x1000000;
-            next = dst + 16;
-            nrow = row + 1;
+        u16 *p;
+        if (x & 1) {
+            *dst = (u8)v << 8;
+            v++;
             p = dst + 1;
-            u = t + 0x1000000;
-            for (j = 3; j >= 0; j--) {
-                *p = (t >> 24) | ((u >> 24) << 8);
-                u += 0x2000000;
-                t += 0x2000000;
-                p++;
+            for (j = 0; j < 4; j++) {
+                p[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
         } else {
-            next = dst + 16;
-            nrow = row + 1;
-            p = dst;
-            u = t + 0x1000000;
-            for (j = 3; j >= 0; j--) {
-                *p = (t >> 24) | ((u >> 24) << 8);
-                u += 0x2000000;
-                t += 0x2000000;
-                p++;
+            for (j = 0; j < 4; j++) {
+                dst[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
-            dst[4] = t >> 24;
-            t += 0x1000000;
+            dst[4] = (u8)v;
+            v++;
         }
-        dst = next;
-        row = nrow;
+        dst += 16;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E100); /* 0x0805E100 size 0xD0 */
-#endif
 #if 0 /* NONMATCHING: 174 lines; shape right, register allocation differs (t in r7 vs r3, row in r6 vs r7) */
 void sub_0805E1D0(int bg, int x, int y, int tile)
 {

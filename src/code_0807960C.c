@@ -387,7 +387,6 @@ u8 sub_08079F40(u8 *s, u8 a, u8 limit)
         return 0;
     return 1;
 }
-#if 0 /* NONMATCHING: target keeps the loop bound 8 in sl for both loops (one fewer hoisted mask/shift than the build, which hoists color<<16 into r6 and puts i in ip); logic and layout otherwise the same. Tried: goto loops (trick 3) drop all high-register hoisting; loop-bound local folds to 8; 64-bit temp on color<<16 (trick 2) spills color */
 /* Expands an 8x8 1bpp glyph (index *idx into the table at 0x0822BB00) into a 4bpp (depth 4)
  * or 8bpp (otherwise) tile at dst by painting `color` into the set bits. */
 void sub_08079FDC(u32 *dst, u8 *idx, u8 color, u8 depth)
@@ -395,69 +394,64 @@ void sub_08079FDC(u32 *dst, u8 *idx, u8 color, u8 depth)
     u8 *src;
     u16 i;
     u32 w;
-    u16 b;
-    s8 ix = *idx;
+    u16 n = 8;
+    u8 ix = *idx;
 
     if (depth == 4)
         color &= 0xF;
-    src = gUnk_0822BB00 + ix * 8;
+    src = (u8 *)0x0822BB00 + ix * 8;
     if (depth == 8) {
         i = 0;
         do {
             w = dst[0];
-            b = *src;
-            if (b & 0x80)
+            if (*src & 0x80)
                 w = (w & 0xFFFFFF00) + color;
-            if (b & 0x40)
+            if (*src & 0x40)
                 w = (w & 0xFFFF00FF) + (color << 8);
-            if (b & 0x20)
+            if (*src & 0x20)
                 w = (w & 0xFF00FFFF) + (color << 16);
-            if (b & 0x10)
+            if (*src & 0x10)
                 w = (w & 0x00FFFFFF) + (color << 24);
             *dst++ = w;
             w = dst[0];
-            b = *src;
-            if (b & 0x8)
+            if (*src & 0x8)
                 w = (w & 0xFFFFFF00) + color;
-            if (b & 0x4)
+            if (*src & 0x4)
                 w = (w & 0xFFFF00FF) + (color << 8);
-            if (b & 0x2)
+            if (*src & 0x2)
                 w = (w & 0xFF00FFFF) + (color << 16);
-            if (b & 0x1)
+            if (*src & 0x1)
                 w = (w & 0x00FFFFFF) + (color << 24);
             *dst++ = w;
             src++;
             i++;
-        } while (i < 8);
+        } while (i < n);
     } else {
         i = 0;
         do {
             w = dst[0];
-            b = *src;
-            if (b & 0x80)
+            if (*src & 0x80)
                 w = (w & 0xFFFFFFF0) + color;
-            if (b & 0x40)
+            if (*src & 0x40)
                 w = (w & 0xFFFFFF0F) + (color << 4);
-            if (b & 0x20)
+            if (*src & 0x20)
                 w = (w & 0xFFFFF0FF) + (color << 8);
-            if (b & 0x10)
+            if (*src & 0x10)
                 w = (w & 0xFFFF0FFF) + (color << 12);
-            if (b & 0x8)
+            if (*src & 0x8)
                 w = (w & 0xFFF0FFFF) + (color << 16);
-            if (b & 0x4)
+            if (*src & 0x4)
                 w = (w & 0xFF0FFFFF) + (color << 20);
-            if (b & 0x2)
+            if (*src & 0x2)
                 w = (w & 0xF0FFFFFF) + (color << 24);
-            if (b & 0x1)
+            if (*src & 0x1)
                 w = (w & 0x0FFFFFFF) + (color << 28);
             *dst++ = w;
             src++;
             i++;
-        } while (i < 8);
+        } while (i < n);
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_08079FDC); /* 0x08079FDC size 0x1A0 */
 u16 sub_0807A17C(u16 a, u16 b, u16 c)
 {
     if (a != 0)

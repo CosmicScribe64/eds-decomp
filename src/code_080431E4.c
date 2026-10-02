@@ -238,45 +238,21 @@ int sub_08043600(int player, u16 x)
     }
     return total;
 }
-#if 0 /* NONMATCHING: loop-invariant hoisting differs. The ROM keeps only p&1
-       * (r3) and 0x7FF (r2) invariant (spilled around the call), while this
-       * build also hoists p*0xD64 and the table. Tricks tried, none matched: a
-       * goto loop (the compiler still hoists the zone base; 84 lines), the
-       * goto loop plus a ull zone base (72 lines),
-       * `unsigned long long base = 0x0201930C;` with `(u8 *)(u32)base` (76),
-       * inline `(1&player)` and `0x7FF` at each use, and a local base. */
 /* Sum of the "cost" of the player's monster-zone cards that pass sub_08008A6C. */
 int sub_080436B8(int player)
 {
-    u16 total = 0;
+    int total = 0;
     int i;
-    u16 p = 1 & player;
-    u32 m = 0x7FF;
     for (i = 0; i <= 4; i++) {
-        u32 id = ((*(u32 *)((u8 *)gUnk_0201930C + p * 0xD64 + i * 0x94)) << 20) >> 20;
+        u16 id = (*(u32 *)((player & 1) * 0xD64 + i * 0x94 + (u32)gUnk_0201930C) << 20) >> 20;
         if (sub_08008A6C(player, i) != 0) {
-            int c;
-            int t = (gUnk_08621DE0[id & m] & 0x1F00000) >> 20;
-            switch (t) {
-            case 0x15:
-            case 0x16:
-            case 0x17:
-                c = 0;
-                break;
-            case 0x18:
-                c = 10;
-                break;
-            default:
-                c = (gUnk_08621DE0[id & m] & 0x1E000000) >> 25;
-                break;
-            }
-            total += c;
+            int c = GetRecipeCardLevel(id);
+            c += total;
+            total = c;
         }
     }
     return total;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_080436B8); /* 0x080436B8 size 0xA0 */
 /* Draw a row of marker sprites (count at 0x02017A40+0x510; the first 0x02017A40+0x3E1 use tile 0x431E, the rest 0x431D). */
 void sub_08043758(void)
 {

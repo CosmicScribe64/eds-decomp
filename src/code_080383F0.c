@@ -150,48 +150,42 @@ int sub_080383F0(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the constant 1 is shared by all three "1 & x" tests (r7/r4 live across the
-       * call), while the ROM has a separate `movs r0,#1` for the first one. This shifts the
-       * pl/msg/1 registers (r4/r5/r7 vs r7/r4/r4). */
 int sub_080384F4(struct CardRef *ref)
 {
     int r = sub_08076F9C() % 6 + 1;
 
     if (!ref->skip4) {
-        s16 msg;
+        int msg;
         int pl;
+        int i;
         u8 plb;
 
         switch (CARD_NUMBER(ref->id)) {
         case 0x4B3:
             pl = ref->player;
-            break;
             msg = 0xE2;
+            break;
         case 0x4B4:
             pl = 1 - ref->player;
             msg = 0xE3;
             break;
         }
-        if (1 & ((u8 *)ref)[2])
-            msg |= 0x8000;
-        sub_0801EC58(msg, r, 0, 0);
+        /* The assignment in the arm keeps 0x8000 an SImode constant (msg | 0x8000 would be
+         * narrowed to u16) and gives an if/else, so CSE does not share the first "1 &" test. */
+        sub_0801EC58(ref->player ? (msg |= 0x8000) : msg, r, 0, 0);
         sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8012 : 0x12, 0, 0, 0);
-        plb = pl;
-        {
-            int i;
 
-            for (i = 0; i <= 4; i++) {
-                struct DuelZone *z = ZB(pl & 1, i);
+        for (i = 0; i <= 4; i++) {
+            struct DuelZone *z = ZB(pl & 1, i);
 
-                if ((2 & ZFLAGS(z)) != 0 && CARD_WORD(z->card) << 20 != 0)
-                    sub_08017AB4(ref->player, ref->id, (u32)i << 24 >> 16 | plb, (0x30000 | r << 24) >> 16);
+            if ((2 & ZFLAGS(z)) && CARD_WORD(z->card) << 20) {
+                plb = pl; /* hoisted by loop.c after pl & 1, as in the ROM */
+                sub_08017AB4(ref->player, ref->id, (u8)i << 8 | plb, (u8)r << 8 | 3);
             }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080383F0", sub_080384F4); /* 0x080384F4 size 0x110 */
 int sub_08038604(struct CardRef *ref)
 {
     if (!ref->skip4) {

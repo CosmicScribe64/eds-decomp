@@ -620,11 +620,7 @@ u16 sub_08058924(struct AiReq *req, int number)
 }
 int sub_08008B70(int a, int b, int c, int d);
 
-#if 0 /* NONMATCHING (score 31): NONMATCHING (score 31): only the 0x3F1/0x437 case differs: ROM copies h (ldrh
-       * r1; adds r3,r1,#0), ands with a copy of the constant 1 (adds r2,r4,#0; ands r2,r3) and zero-extends (u8)h with
-       * lsl/lsr #24 after the branch; this draft loads the low byte with ldrb instead. Key facts: integer-constant table
-       * form; 0x7FF mask in a u32 m reused as the 0x40E index chain (m &= side; m <<= 1; m += table) FAKEMATCH; zone var
-       * reused for the 0x29F loop; ZP macro with player term first; x shared by 0x3F1 and 0x40E. */
+/* Zone pointer with the player term first (expands h & 1 before h >> 8, as in the ROM). */
 #define ZP(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 /* AI: second "should I play this card" test (same interface as sub_08058514): a switch over the card number that
    checks life-point thresholds / zone contents and asks sub_08058924 whether a matching monster is on the field. */
@@ -637,6 +633,8 @@ int sub_080589C8(struct AiReq *c)
     int x;
     u32 m;
 
+    /* FAKEMATCH: the 0x7FF mask lives in a variable that case 0x40E reuses for its whole index chain, so the
+       mask, switch value and table base get r1/r2/r3 as in the ROM. */
     m = 0x7FF;
     num = ((const u16 *)0x08622AB4)[c->id & m];
     switch (num) {
@@ -732,15 +730,20 @@ int sub_080589C8(struct AiReq *c)
     case 0x3F1:
     case 0x437: {
         u16 h;
-        int pl;
+        /* FAKEMATCH: a hard-register copy makes reload tie the constant 1 (not h) to the and's output, and the
+           empty asm keeps it live so the (u8) zero-extension gets a fresh register. */
+        register int pl asm("r3");
+        int p2;
 
         if (c->side)
             return 0;
         h = c->hC;
-        pl = (u8)h;
-        if ((CARD_WORD(ZP(h & 1, h >> 8)->card) << 20) == 0)
+        pl = h;
+        if ((CARD_WORD(ZP(pl & 1, h >> 8)->card) << 20) == 0)
             break;
-        x = CARD_NUMBER(CARD_ID(CARD_WORD(ZP(pl & 1, h >> 8)->card)));
+        p2 = (u8)pl;
+        asm("" : : "r"(pl));
+        x = CARD_NUMBER(CARD_ID(CARD_WORD(ZP(p2 & 1, h >> 8)->card)));
         if (x == 0x136 || x == 0x405)
             return 0;
         break;
@@ -812,8 +815,6 @@ int sub_080589C8(struct AiReq *c)
         return 1;
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08057EE0", sub_080589C8); /* 0x080589C8 size 0x514 */
 extern const u16 gUnk_08623DF4[];
 void sub_08007558(void *dst, void *src);
 #define PL(p) gUnk_020192E4[(p) & 1]

@@ -212,17 +212,14 @@ int sub_08038604(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: complete translation, 0x58C versus ROM 0x588; 640 differing bytes.
-       * Proper 0x200-byte text frame; loop player scheduling, shared result tails,
-       * count/flag register homes and pool placement still differ. */
 struct CoinListView {
     u8 unk0[5];
     u8 row : 2;
     u8 unk5_2 : 6;
     u16 top;
     u8 unk8[4];
-    s8 cards[0x80];
-    int kinds[0x80];
+    u32 cards[0x80];
+    u16 kinds[0x80];
     u16 count;
 };
 extern struct CoinListView gUnk_0201D810;
@@ -247,6 +244,7 @@ int sub_080386B0(struct CardRef *ref)
 {
     char text[0x100];
     char intermediate[0x100];
+    int i;
 
     if (!ref->skip4) {
         switch (EFF_PHASE) {
@@ -260,14 +258,13 @@ int sub_080386B0(struct CardRef *ref)
             return 0x7F;
         case 0x7F: {
             u8 random = sub_08076F9C() & 1;
-            int i;
 
             sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80E0 : 0xE0, gUnk_0201AE60.flag14, random, 0);
             sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8012 : 0x12, 0, 0, 0);
             if (random == gUnk_0201AE60.flag14) {
                 for (i = 0; i <= 4; i++) {
-                    int p = 1 - ref->player;
-                    struct DuelZone *z = ZB(p & 1, i);
+                    int p = (1 - ref->player) & 1;
+                    struct DuelZone *z = ZB(p, i);
 
                     if (CARD_WORD(z->card) << 20) {
                         sub_08030028(1 - ref->player, i);
@@ -306,26 +303,21 @@ int sub_080386B0(struct CardRef *ref)
             sub_08060308(1, 0, 0);
             return 0x77;
         case 0x77: {
-            int hasOne = 0;
-            int hasTwo = 0;
-            int count;
+            int hasOne;
+            int hasTwo;
 
             if (gUnk_0201AE60.flag14 == 0)
                 goto retA;
-            count = gUnk_0201D810.count;
-            if (count != 0) {
-                u16 *kind = gUnk_0201D810.kinds;
-
-                do {
-                    if (*kind != 1) {
-                        if (*kind == 2)
-                            hasTwo = 1;
-                    } else {
-                        hasOne = 1;
-                    }
-                    kind++;
-                    count--;
-                } while (count != 0);
+            i = 0;
+            hasOne = 0;
+            hasTwo = 0;
+            for (; i < gUnk_0201D810.count; i++) {
+                if (gUnk_0201D810.kinds[i] != 1) {
+                    if (gUnk_0201D810.kinds[i] == 2)
+                        hasTwo = 1;
+                } else {
+                    hasOne = 1;
+                }
             }
             if (hasOne) {
                 if (hasTwo) {
@@ -340,7 +332,7 @@ int sub_080386B0(struct CardRef *ref)
                 ref->targets[0] = 2;
                 return 0x6E;
             }
-            goto retA;
+            return 0xA;
         }
         case 0x76:
             switch (gUnk_0201AE60.flag14) {
@@ -353,7 +345,7 @@ int sub_080386B0(struct CardRef *ref)
             }
             return 0x6E;
         case 0x6E:
-            sub_080753F4(text, gUnk_08083288, gUnk_0822C720[gUnk_08623E38]);
+            sub_080753F4(text, gUnk_08083288, ((const char (*)[0x40])0x0822C720)[gUnk_08623E38]);
             sub_080602A4(0x206, 0x613, 0xB, text);
         ret6D:
             return 0x6D;
@@ -361,7 +353,9 @@ int sub_080386B0(struct CardRef *ref)
             if (sub_08052F38(0xE0) != 0) {
                 int player = gUnk_0201CFB0.w824;
                 int zone = gUnk_0201CFB0.w828 + gUnk_0201CFB0.idx82C;
-                int number = gUnk_08622AB4[CARD_ID11(CARD_WORD(ZB(player & 1, zone)->card))];
+                int pp = player & 1;
+                struct DuelZone *z = ZB(pp, zone);
+                int number = ((const u16 *)0x08622AB4)[CARD_ID11(CARD_WORD(z->card))];
 
                 switch (number) {
                 case 0x22:
@@ -376,7 +370,6 @@ int sub_080386B0(struct CardRef *ref)
             }
             goto ret6D;
         case 0x64: {
-            int i;
 
             for (i = 0; i < gUnk_0201D810.count; i++) {
                 if (gUnk_0201D810.kinds[i] == ref->targets[0]) {
@@ -405,7 +398,7 @@ int sub_080386B0(struct CardRef *ref)
             int p = ref->player;
             u32 card = gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row];
 
-            if (sub_0801970C(p, gUnk_08622AB4[CARD_ID11(card)]))
+            if (sub_0801970C(p, ((const u16 *)0x08622AB4)[CARD_ID11(card)]))
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 0, 0, 0);
             goto retA;
         }
@@ -415,8 +408,6 @@ int sub_080386B0(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080383F0", sub_080386B0); /* 0x080386B0 size 0x588 */
 int sub_08038C38(struct CardRef *ref)
 {
     if (!ref->skip4) {

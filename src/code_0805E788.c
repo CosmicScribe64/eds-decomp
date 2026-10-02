@@ -395,46 +395,44 @@ void sub_0805EEDC(int a, u16 b)
 /* Loads a palette+tile block `hdr` (u16 count of palette halfwords at +0, palette at +8, then a
  * tile count and two tile sets) into the text buffer cell `a`, palette slot `b` and patches the four
  * BG map entries of that cell to palette `b & 15`. */
-#if 0 /* NONMATCHING: register allocation only (ROM: `cnt` r6 / `cell` r5, map base r8, map-entry pointers r5/r4/r3/r1; the build swaps `cnt`/`cell` and spills the map-entry pointers) */
+/* The text/tile buffer at 0x0201CFB8: two 0x400-byte tile sets, then the dirty-flag byte (the same
+ * byte as gUnk_0201CFB0.f808). The second set and the flag are addressed from the global itself, not
+ * from `buf`, so that CSE rebuilds them from the register holding the buffer base (`add r0, sl`). */
+struct TileBufEF00 {
+    u8 a[0x400];
+    u8 b[0x400];
+    u8 f0 : 1;
+    u8 f1 : 1;
+    u8 rest : 6;
+};
 void sub_0805EF00(int a, u16 b, u16 *hdr)
 {
-    u16 off = hdr[0] * 2;
+    int off = hdr[0] * 2;
     u16 *cnt = (u16 *)((u8 *)hdr + (off + 8));
     u8 *src = (u8 *)hdr + (off + 0x10);
-    u8 cell = a << 5;
+    int cell = a << 5;
     u8 *buf = gUnk_0201CFB8;
-    u32 n = *cnt;
+    u16 n = *cnt;
 
     if (hdr != 0) {
-        u8 pal;
-        u16 *m, *e0, *e1, *e2, *e3;
-        s16 a0, a1;
+        u16 pal;
 
         sub_08075294(buf + cell, src, n * 16);
-        sub_08075294(buf + 0x400 + cell, src + *cnt * 16, *cnt * 16);
-        sub_080752B0((void *)(0x05000000 + b * 32), (u8 *)hdr + 8, hdr[0] * 2);
-        pal = ((u32)b << 28) >> 16;
-        m = (u16 *)((u8 *)&gUnk_03000040 + 0x2C1C);
-        a0 = a;
-        a1 = a + 1;
-        e0 = &m[a0 + 0x240];
-        e1 = &m[a1 + 0x240];
-        e2 = &m[a0 + 0x260];
-        e3 = &m[a1 + 0x260];
-        *e0 &= 0xFFF;
-        *e1 &= 0xFFF;
-        *e2 &= 0xFFF;
-        *e3 &= 0xFFF;
-        *e0 |= pal;
-        *e1 |= pal;
-        *e2 |= pal;
-        *e3 |= pal;
-        buf[0x800] &= ~3;
+        sub_08075294(&((struct TileBufEF00 *)gUnk_0201CFB8)->b[cell], src + *cnt * 16, *cnt * 16);
+        sub_080752B0((void *)(0x05000000 + b * 32), hdr + 4, hdr[0] * 2);
+        pal = b << 12;
+        /* BG map entries of the 2x2 block at rows 18-19, column a: palette nibble := b. */
+        gUnk_03000040_m.map[(u16)a + 0x240] &= 0xFFF;
+        gUnk_03000040_m.map[(u16)(a + 1) + 0x240] &= 0xFFF;
+        gUnk_03000040_m.map[(u16)a + 0x260] &= 0xFFF;
+        gUnk_03000040_m.map[(u16)(a + 1) + 0x260] &= 0xFFF;
+        gUnk_03000040_m.map[(u16)a + 0x240] |= pal;
+        gUnk_03000040_m.map[(u16)(a + 1) + 0x240] |= pal;
+        gUnk_03000040_m.map[(u16)a + 0x260] |= pal;
+        gUnk_03000040_m.map[(u16)(a + 1) + 0x260] |= pal;
+        ((struct TileBufEF00 *)gUnk_0201CFB8)->f1 = 0;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805E788", sub_0805EF00); /* 0x0805EF00 size 0x10C */
-#endif
 /* Draws a centred 2-row message box: the string `n` of the table at 0x0822C720 (64 bytes each). */
 void sub_0805F00C(u16 n)
 {

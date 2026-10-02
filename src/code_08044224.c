@@ -241,8 +241,8 @@ static inline int TargetTypeNV(u16 id)
 }
 #define TARGET_TYPE_NV(id) ((u32)TargetTypeNV(id))
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 360): 0x4BC exact: word = (u32 *)((u8 *)&G[0].w.deck[i] + (player & 1) * 0xD64) (wf
-       * 360) */
+#if 0 /* NONMATCHING (score 338): r5: 0x3FA for-loop ending (cse2 path), skipFilter deck index
+       * 0x439/0x400/0x3FA, 0x58D/0x59F assign-inside-if, 0x5EB grouped id; wf 338 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -464,45 +464,18 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         skipFilter = 1;
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = ((1 - player) & 1) * 0xD64;
-        if (i < PP->deckCount) {
-            g = (u32 *)(b + 0x7C4);
-            do {
-                ADD_TARGETB(*(u32 *)((u8 *)g + off), 2);
-                off += 4;
-                i++;
-            } while (i < gUnk_020192E4[(1 - player) & 1].w.deckCount && i <= 4);
-        }
+        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.deckCount && i <= 4; i++)
+            ADD_TARGETB(gUnk_020192E4[(skipFilter - player) & 1].w.deck[i], 2);
         break;
     }
     case 0x400:
     {
         CASE_LOCALS
         skipFilter = 1;
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->graveCount) {
-            g = (u32 *)(b + 0x904);
-            do {
-                ADD_TARGETB(*(u32 *)((u8 *)g + off), 4);
-                off += 4;
-                i++;
-            } while (i < PPL->graveCount);
-        }
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = ((1 - player) & 1) * 0xD64;
-        if (i < PP->graveCount) {
-            g = (u32 *)(b + 0x904);
-            do {
-                ADD_TARGETB(*(u32 *)((u8 *)g + off), 4);
-                off += 4;
-                i++;
-            } while (i < gUnk_020192E4[(1 - player) & 1].w.graveCount);
-        }
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++)
+            ADD_TARGETB(gUnk_020192E4[player & skipFilter].w.graveyard[i], 4);
+        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.graveCount; i++)
+            ADD_TARGETB(gUnk_020192E4[(skipFilter - player) & 1].w.graveyard[i], 4);
         break;
     }
     case 0x410:
@@ -533,11 +506,8 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         skipFilter = 1;
-        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            gUnk_0201D810.cards[gUnk_0201D810.count] = gUnk_020192E4[player & 1].w.deck[i];
-            gUnk_0201D810.areas[gUnk_0201D810.count] = 2;
-            gUnk_0201D810.count = gUnk_0201D810.count + 1;
-        }
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++)
+            ADD_TARGETB(gUnk_020192E4[player & skipFilter].w.deck[i], 2);
         break;
     }
     case 0x443:
@@ -759,9 +729,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->graveCount) {
+        if (i < gUnk_020192E4[player & 1].w.graveCount) {
+            off = (player & 1) * 0xD64;
+            b = (u8 *)gUnk_020192E4;
             g = (u32 *)(b + 0x904);
             do {
                 struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
@@ -776,9 +746,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->graveCount) {
+        if (i < gUnk_020192E4[player & 1].w.graveCount) {
+            off = (player & 1) * 0xD64;
+            b = (u8 *)gUnk_020192E4;
             g = (u32 *)(b + 0x904);
             do {
                 struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
@@ -788,8 +758,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             } while (i < PPL->graveCount);
         }
         break;
-    }
-    case 0x5E7:
+    }    case 0x5E7:
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.graveCount; i++) {
@@ -833,7 +802,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             u32 stats;
             attribute = 0;
-            id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
+            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64));
             switch (number) {
             case 0x5EB:
                 attribute = 1;

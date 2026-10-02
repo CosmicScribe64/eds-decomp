@@ -222,22 +222,19 @@ void sub_080763D0(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* Affine (rotate/scale) sprite, 8bpp+alpha, double-size box: (x, y) is the sprite centre; the switch on the shape/size code subtracts half the sprite size. sa = scale << 16 | angle. */
-#if 0 /* NONMATCHING: 22 diff lines. The OAM count is read through the global
-       * (m assigned after), where the ROM copies m before the first compare.
-       * The scale/angle registers r8/r9 are swapped, and the oam index
-       * association differs. */
 void sub_08076448(u32 yx, u16 shape, u16 attr2, u32 sa) {
-    struct Main *m;
     u16 x = yx;
     u16 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
-    int scale = sa >> 16;
+    /* u32 (not u16) scale: changes the global-alloc priorities so scale takes r8. */
+    u32 scale = sa >> 16;
     u16 angle = sa;
+    /* gMain is referenced directly (no local pointer): GCSE then gives the
+     * ROM's copy of the base address before the first compare. */
     if (gUnk_03000040.oamCount == 0x80)
         return;
-    m = &gUnk_03000040;
-    if (m->affineCount == 0x20)
+    if (gUnk_03000040.affineCount == 0x20)
         return;
     switch (shape) {
     case 0x0000:
@@ -290,18 +287,15 @@ void sub_08076448(u32 yx, u16 shape, u16 attr2, u32 sa) {
         break;
     }
     {
-        u8 *cnt = &m->oamCount;
-        struct OamEntry *e = &m->oam[*cnt];
+        struct OamEntry *e = &gUnk_03000040.oam[gUnk_03000040.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x2700;
-        e->attr1 = (x & 0x1FF) | a1 | (m->affineCount << 9);
+        e->attr1 = (x & 0x1FF) | a1 | (gUnk_03000040.affineCount << 9);
         e->attr2 = attr2 << 1;
-        sub_08076160(m->affineCount, scale, angle);
-        (*cnt)++;
-        m->affineCount++;
+        sub_08076160(gUnk_03000040.affineCount, scale, angle);
+        gUnk_03000040.oamCount++;
+        gUnk_03000040.affineCount++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076448); /* 0x08076448 size 0x1DC */
 
 
 /* AddSprite variant with extra attr1 bits (flip / size). */
@@ -346,20 +340,21 @@ void sub_080766A4(u16 x, s16 y, u16 shape, u16 attr2) {
 }
 
 /* Affine (rotate/scale) sprite, 4bpp, double-size box: (x, y) is the sprite centre; the switch on the shape/size code subtracts half the sprite size. sa = scale << 16 | angle. */
-#if 0 /* NONMATCHING: 14 diff lines. The ROM copies m before the first compare
-       * and computes the OAM entry as index + (m + oam) after the count load. */
 void sub_08076714(u32 yx, u16 shape, u16 attr2, u32 sa) {
-    struct Main *m;
     u16 x = yx;
     u16 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
-    u16 scale = sa >> 16;
-    u16 angle = sa;
+    /* angle is declared before scale but assigned after it: the two tie in
+     * global-alloc priority, so the lower pseudo (angle) takes r8 as in the ROM. */
+    u16 angle, scale;
+    scale = sa >> 16;
+    angle = sa;
+    /* gMain is referenced directly (no local pointer): GCSE then gives the
+     * ROM's copy of the base address before the first compare. */
     if (gUnk_03000040.oamCount == 0x80)
         return;
-    m = &gUnk_03000040;
-    if (m->affineCount == 0x20)
+    if (gUnk_03000040.affineCount == 0x20)
         return;
     switch (shape) {
     case 0x0000:
@@ -412,18 +407,15 @@ void sub_08076714(u32 yx, u16 shape, u16 attr2, u32 sa) {
         break;
     }
     {
-        u8 *cnt = &m->oamCount;
-        struct OamEntry *e = (struct OamEntry *)(*cnt * 8 + (u8 *)m->oam);
+        struct OamEntry *e = &gUnk_03000040.oam[gUnk_03000040.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x300;
-        e->attr1 = (x & 0x1FF) | a1 | (m->affineCount << 9);
+        e->attr1 = (x & 0x1FF) | a1 | (gUnk_03000040.affineCount << 9);
         e->attr2 = attr2;
-        sub_08076160(m->affineCount, scale, angle);
-        (*cnt)++;
-        m->affineCount++;
+        sub_08076160(gUnk_03000040.affineCount, scale, angle);
+        gUnk_03000040.oamCount++;
+        gUnk_03000040.affineCount++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076714); /* 0x08076714 size 0x1DC */
 
 
 

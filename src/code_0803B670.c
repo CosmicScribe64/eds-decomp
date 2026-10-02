@@ -499,29 +499,26 @@ int sub_0803C1D4(struct CardRef *ref, u16 *card)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic verified. The ROM keeps i in r7 plus a stack copy
-       * of i ([sp,0]), (u8)i hoisted into sl, i+1 precomputed in [sp,4], a
-       * copy of j in r5, and '1 & i' via r0 shared with ok=1 (frame 0xC). This
-       * build spills differently (frame 8). */
 int sub_0803C254(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         int i;
 
         for (i = 0; i <= 1; i++) {
-            u8 j;
-            int pl = i;
+            int j;
 
             for (j = 5; j <= 9; j++) {
                 int sj = j;
+                int pl = i;
                 int tp = (u8)ref->targets[0];
                 int tz = ref->targets[0] >> 8;
                 int ok = 1;
-                struct DuelZone *z = ZB(i & 1, j);
+                u8 p = i & 1;
+                struct DuelZone *z = ZB(p, j);
                 u16 id = CARD_ID(CARD_WORD(z->card));
 
                 if (id != 0 && (2 & ZFLAGS(z)) != 0) {
-                    int lvl;
+                    u8 lvl;
 
                     switch ((int)CARD_TYPE(id)) {
                     case 0x15:
@@ -533,12 +530,12 @@ int sub_0803C254(struct CardRef *ref)
                         break;
                     }
                     if (lvl == 3) {
-                        if (sub_0802C080(ref, (u8)sj << 8 | (u8)pl) == 0)
+                        if (sub_0802C080(ref, (u8)pl | (u8)sj << 8) == 0)
                             ok = 0;
                         if (sub_0800CCCC(pl, sj, tp, tz) == 0)
                             ok = 0;
                         if (ok)
-                            sub_08017C0C(((u32)i << 24 >> 8 | (u32)j << 24) >> 16, ref->targets[0]);
+                            sub_08017C0C((u8)i | (u8)j << 8, ref->targets[0]);
                         else
                             sub_08018544(i, j, 1);
                     }
@@ -548,8 +545,6 @@ int sub_0803C254(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803B670", sub_0803C254); /* 0x0803C254 size 0x114 */
 int sub_0803C368(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {

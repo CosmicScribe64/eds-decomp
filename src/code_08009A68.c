@@ -612,21 +612,23 @@ int sub_0800A8CC(int player, int zone, u16 number)
     }
     return count;
 }
-#if 0 /* NONMATCHING: GCC CSEs the zone base across numLinks/links (the ROM recomputes it for links and linkKinds), and register allocation follows. Helper accessors, a numLinks local, ordering and constant-pointer forms all failed. The permuter's best score was 291; it was not applied. */
-/* 1 if zone (player, zone) has a kind-3 link (link = card ID) whose card number is `number`. */
+/* 1 if zone (player, zone) has a kind-3 link (link = card ID) whose card number is `number`.
+ * The count is read through ZB (zone offset first); the body forms the zone pointer from a
+ * separate player pointer, so its address ((player + base) + zone) is not CSE'd with the count's. */
 int sub_0800A9C8(int player, int zone, u16 number)
 {
     int i;
 
     for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
-        if (ZB(player & 1, zone)->linkKinds[i] == 3 && CARD_NUMBER(link) == number)
+        struct DuelZonesPlayer *pl = &gUnk_0201930C[player & 1];
+        struct DuelZone *z = &pl->zones[zone];
+        u16 link = z->links[i];
+
+        if (z->linkKinds[i] == 3 && CARD_NUMBER(link) == number)
             return 1;
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08009A68", sub_0800A9C8); /* 0x0800A9C8 size 0x78 */
 /* Index of the first link of zone (player, zone) whose card has card number `number`
  * (kinds 1/2: linked zone's card; kind 3: the link is a card ID), or -1. */
 int sub_0800AA40(int player, int zone, u16 number)

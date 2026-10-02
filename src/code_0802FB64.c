@@ -591,10 +591,28 @@ int sub_080305EC(struct CardRef *ref)
     sub_0801EC58((((u8 *)ref)[2] & 1) ? 0x8060 : 0x60, 0, 0, 0);
     return 0;
 }
-#if 0 /* NONMATCHING: everything matches structurally (struct at 0x02017E20 with bitfields at
-       * +0x15C and array at +0x164), but old_agbcc hoists the 'counter' address computation
-       * (r5-0x164) above the bitfield RMWs (gcse hoisting, which the ROM does not do) and
-       * puts the ref[2] byte in r4 instead of r3. */
+struct Unk02017FB0_30620 {
+    u8 filler0[0x304];
+    u32 unk304:8;
+    u32 dirtyHand:1;
+    u32 dirtyDeck:1;
+    u32 unk305_2:22;
+};
+extern struct Unk02017FB0_30620 gUnk_02017FB0;
+extern u8 gUnk_02015EE8[];
+/* The effect scratch at 0x02017A40 viewed as a struct. */
+struct Effect30620 {
+    u8 pad0[0x3E0];
+    u8 step;                    /* +0x3E0 */
+    u8 pad3E1[0x53C - 0x3E1];
+    u32 pad0_ : 12;             /* +0x53C */
+    u32 f1 : 8;
+    u32 f2 : 8;
+    u32 f3 : 8;
+    u32 f4 : 8;
+    u32 saved[5];               /* +0x544 */
+};
+#define EFF30620 (*(struct Effect30620 *)gUnk_02017A40)
 int sub_08030620(struct CardRef *ref)
 {
     int i;
@@ -604,33 +622,32 @@ int sub_08030620(struct CardRef *ref)
         if (gUnk_020192E4[ref->player].deckCount <= 4)
             return 0;
         for (i = 0; i <= 4; i++)
-            sub_08007558(&gUnk_02017E20.saved[i], (u8 *)gUnk_020192E4[ref->player].unk7C4 + i * 4);
-        gUnk_02017E20.f1 = 0;
-        gUnk_02017E20.f2 = 0;
-        gUnk_02017E20.f3 = 0;
-        gUnk_02017E20.f4 = 0;
-        gUnk_02017E20.counter -= 1;
+            sub_08007558(&EFF30620.saved[i], (u8 *)gUnk_020192E4[ref->player].unk7C4 + i * 4);
+        EFF30620.f1 = 0;
+        EFF30620.f2 = 0;
+        EFF30620.f3 = 0;
+        EFF30620.f4 = 0;
+        EFF30620.step -= 1;
     case 0x7F:
         if (sub_08053AF8(ref->player) != 0)
             return 0x7E;
         return 0x7F;
     case 0x7E:
         for (i = 0; i <= 4; i++)
-            sub_08007558((u8 *)gUnk_020192E4[ref->player].unk7C4 + i * 4, &gUnk_02017E20.saved[i]);
-        if (1 & ((u8 *)0x02015EE8)[1]) {
+            sub_08007558((u8 *)gUnk_020192E4[ref->player & 1].unk7C4 + i * 4, &EFF30620.saved[i]);
+        if (1 & gUnk_02015EE8[1]) {
             sub_08022A9C(ref->player);
+        r7d:
             return 0x7D;
         }
         return 0;
     case 0x7D:
-        if (!(((u8 *)0x02017FB0)[0x305] & 2))
-            return 0x7D;
+        if (!gUnk_02017FB0.dirtyDeck)
+            goto r7d;
         return 0;
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0802FB64", sub_08030620); /* 0x08030620 size 0x140 */
 int sub_08030760(struct CardRef *ref)
 {
     sub_0801EC58((((u8 *)ref)[2] & 1) ? 0x80D6 : 0xD6, 1, 0, 0);

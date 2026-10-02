@@ -51,7 +51,9 @@ extern struct Pos16 gUnk_081983AC[5];
 extern const u8 *gUnk_081984CC[3]; /* "Win", "Lose", "Draw" */
 struct Bob { u16 x; u16 y; };
 extern struct Bob gUnk_081983C0[];
-extern u8 gUnk_08198508[];
+/* Record scroll offsets [parity][direction - 1][step]; indexed as a real 3-D array so
+ * sub_08003C78 keeps the (direction - 1) unfolded. */
+extern u16 gUnk_08198508[2][2][16];
 extern const u8 *gUnk_081985A0[];
 extern const u8 *gUnk_08198604[];
 extern const u8 gUnk_087E52A4[], gUnk_087E5CF4[], gUnk_087E77B4[];
@@ -383,25 +385,26 @@ u16 sub_08003C58(void)
 
 /* Record-screen input: when a card is selected, animate/scroll it; otherwise
  * LEFT/RIGHT (with R/L) move the selection and confirm. Returns 1 to leave. */
-#if 0 /* NONMATCHING: the extracted direction and explicit scroll branches are
-       * represented, but offset scheduling, register allocation and layout
-       * still differ (candidate size 0x208). */
+/* sub_08003EEC/sub_08003ED4 are defined later in the unit; the original called them
+ * undeclared (implicit int), so their u16 results are tested without narrowing. */
+typedef int (*IntFn_08003C78)(void);
 u16 sub_08003C78(void)
 {
     sub_0800406C();
     if (gRecord.unk0_1) {
-        if (0x1FF8 & *(u16 *)&gRecord) {
-            gRecord.unk0_3 = gRecord.unk0_3 - 1;
-            gMain.bgHofs[1] = *(u16 *)(gUnk_08198508 + (gRecord.unk0_3 * 2 + (gRecord.unk0_1 - 1) * 0x20 + gRecord.unk0_0 * 0x40));
-            gMain.bgHofs[2] = *(u16 *)(gUnk_08198508 + (gRecord.unk0_3 * 2 + (gRecord.unk0_1 - 1) * 0x20 + gRecord.unk0_0 * 0x40));
+        if (gRecord.unk0_3) {
+            gRecord.unk0_3--;
+            gMain.bgHofs[1] = gUnk_08198508[gRecord.unk0_0][gRecord.unk0_1 - 1][gRecord.unk0_3];
+            gMain.bgHofs[2] = gUnk_08198508[gRecord.unk0_0][gRecord.unk0_1 - 1][gRecord.unk0_3];
         } else {
-            int direction = gRecord.unk0_1;
-            /* FAKEMATCH: preserve the extracted two-bit direction. */
-            asm volatile ("" : : "r"(direction));
-            if (direction == 1)
-                gRecord.unk1_5 = gRecord.unk1_5 + 1;
-            else if (direction == 2)
-                gRecord.unk1_5 = gRecord.unk1_5 - 1;
+            switch (gRecord.unk0_1) {
+            case 1:
+                gRecord.unk1_5++;
+                break;
+            case 2:
+                gRecord.unk1_5--;
+                break;
+            }
             gRecord.unk0_1 = 0;
             gRecord.unk0_0 = 1 - gRecord.unk0_0;
             if (gRecord.unk0_0) {
@@ -414,7 +417,7 @@ u16 sub_08003C78(void)
         }
     } else {
         if (gMain.newKeys & 0x110) {
-            if (sub_08003EEC()) {
+            if (((IntFn_08003C78)sub_08003EEC)()) {
                 sub_080040E4(gRecord.unk1_5 + 1, 1 - gRecord.unk0_0);
                 gRecord.unk0_1 = 1;
                 gRecord.unk0_3 = 0x10;
@@ -424,7 +427,7 @@ u16 sub_08003C78(void)
             sub_08077AEC(3);
         }
         if (gMain.newKeys & 0x220) {
-            if (sub_08003ED4()) {
+            if (((IntFn_08003C78)sub_08003ED4)()) {
                 sub_080040E4(gRecord.unk1_5 - 1, 1 - gRecord.unk0_0);
                 gRecord.unk0_1 = 2;
                 gRecord.unk0_3 = 0x10;
@@ -434,13 +437,12 @@ u16 sub_08003C78(void)
             sub_08077AEC(3);
         }
     }
-    if (!(gMain.newKeys & 3))
-        return 0;
-    sub_08077AEC(2);
-    return 1;
+    if (gMain.newKeys & 3) {
+        sub_08077AEC(2);
+        return 1;
+    }
+    return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080034B8", sub_08003C78); /* 0x08003C78 size 0x208 */
 
 u16 sub_08003E80(void)
 {

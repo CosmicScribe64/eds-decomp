@@ -343,34 +343,27 @@ void sub_0807373C(void)
     *(vu16 *)0x04000202 = 0xC0;
 }
 /* Queue `n` bytes (1..0x100) from src for sending on the multi-player link; 0 if the slot is busy. */
-#if 0 /* NONMATCHING: link send. Structure matches (neg/orr slot idiom, hdr, CpuSet dst literal 0x03005B6A); register allocation of the SIOCNT temp/id and of src in ip differs (target keeps a dead zero in r7), as does the placement of the mid-function literal pool */
 /* Queue `n` bytes (1..0x100) from src for sending on the multi-player link; 0 if the slot is busy. */
 u32 sub_08073784(void *src, int n)
 {
     u32 id = (REG_SIOCNT & 0x30) >> 4;
     int slot = (u32)(-id | id) >> 31;
     struct LinkSio *link = &gUnk_03005B60_s;
-    u16 *busy = &link->txBusy[slot];
-    s16 old = *busy;
-    if (old != 0)
+    if (link->txBusy[slot] != 0)
         return 0;
     if ((u32)(n - 1) <= 0xFF) {
-        u16 hdr;
         link->txBlocks[slot] = (n + 0x10) / 16;
-        *busy = n + 1;
-        link->unkAF4[slot] = old;
+        link->txBusy[slot] = n + 1;
+        link->unkAF4[slot] = 0;
         if (n <= 0xE)
-            hdr = 0x3000;
+            link->txHdr = n | 0x3000;
         else
-            hdr = 0x2000;
-        link->txHdr = n | hdr;
+            link->txHdr = n | 0x2000;
         CpuSet(src, gUnk_03005B6A, (n / 2) & 0x1FFFFF);
         sub_08074218(gUnk_03005B6A - 1);
     }
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_08073784); /* 0x08073784 size 0xA8 */
 INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_0807382C); /* 0x0807382C size 0x338 */
 /* Link receive: run the link step, and if slot `id` holds a complete packet (type 0x3000) copy it to dst; returns its length. */
 u16 sub_08073B64(u32 id, void *dst)

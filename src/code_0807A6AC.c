@@ -290,25 +290,19 @@ u32 sub_0807AD40(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u
     }
 }
 /* Same for a source that is a plain srcW-wide halfword array. */
-#if 0 /* NONMATCHING: the same allocation and CSE split as sub_0807AD40. The
-       * target spills srcW to [sp], keeps w in r7 and h in sl, keeps the
-       * `w & 0x1FFFFF` mask (0x1FFFFF reloaded each iteration) and recomputes
-       * srcW*2. The build keeps srcW in sl, spills w and folds the mask away.
-       * All variants tried keep the same split. */
-void sub_0807ADE8(u16 *srcBase, u16 sx, u16 sy, u16 srcW, void *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
+u32 sub_0807ADE8(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
 {
     u16 *src = srcBase + sx + sy * srcW;
-    u8 *dst = (u8 *)dstBase + (sub_0807A490(dx, dy, shift) & 0xFFFE);
-    s16 i;
+    u16 *dst = dstBase + sub_0807A490(dx, dy, shift) / 2;
+    u8 i;
 
     for (i = 0; i < h; i++) {
-        CpuSet(src, dst, w & 0x1FFFFF);
+        s32 size = w * 2;
+        CpuSet(src, dst, (size / 2) & 0x1FFFFF);
         src += srcW;
-        dst += 0x40;
+        dst += 0x20;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807A6AC", sub_0807ADE8); /* 0x0807ADE8 size 0xA0 */
 /* Packs pairs of halfwords into bytes: dst[i] = lo | hi << 8. */
 void sub_0807AE88(u16 *src, u16 *dst, u8 w, u8 h)
 {

@@ -547,147 +547,208 @@ s32 sub_0801A32C(void);
 s32 sub_0801FEA0(struct ActEntry *e, u32 player);
 s32 sub_0802D30C(struct ActEntry *e, u32 player);
 #define LAST0330 (&gAct0330.listB[gAct0330.countB - 1])
-#if 0 /* NONMATCHING: 1142 lines; first full draft (same 0x100 frame and case order); case bodies differ in size */
-/* Effect chain resolution, one step per call: for each queued entry look up its two handlers (table at
- * 0x0819A9D4), run them, then log the chain over the link and hand control to the players (hypothesis). */
+#if 0 /* NONMATCHING (score 8): score 8: only &countB address reg differs in cases 3/5 (ROM r2, ours r0 via
+       * local-alloc). Keys: every case ends in return 1 (new return label defeats cross-jumping of identical step++
+       * tails); u32 bitfield views for entry +4 flags and 0x02017FB0+0x308 (lsl/sign tests); one function-scope u32 r
+       * shared by case 1 (sub_08047058 result) and cases 3/5 (countB) puts countB in r4; if/else with two fn calls each
+       * with its own if (cross-jump merges from bl); default stores 3D2 via *(u8 *)& so the zero is not hoisted */
+/* Unit-local views for sub_08020330: the ROM tests the entry flags at +4 and the link flags at
+ * 0x02017FB0+0x308 as u32-container bitfields (lsl/sign tests), as in code_08020AF4. */
+struct Ent0330 {
+    u16 card;
+    u16 flag2_0:1;
+    u16 rest2:15;
+    u32 flag4_0:1;
+    u32 flag4_1:1;
+    u32 rest4:14;
+    u16 w6;
+    u16 w8;
+    u8 fillerA[0x14 - 0xA];
+};
+typedef u16 (*Fn0330)(struct Ent0330 *e, struct Ent0330 *prev);
+struct St0330 {
+    struct Ent0330 listA[32];
+    struct Ent0330 listB[16];   /* +0x280 */
+    u16 countB;                 /* +0x3C0 */
+    u8 pad3C2[0x3D0 - 0x3C2];
+    u8 active:1;                /* +0x3D0 */
+    u8 step:7;
+    u8 idx;                     /* +0x3D1 */
+    u8 b3D2;
+    u8 b3D3;
+    u8 pad3D4[0x3E4 - 0x3D4];
+    u8 b3E4;
+    u8 b3E5;
+    u8 pad3E6[0x480 - 0x3E6];
+    Fn0330 fnA;                 /* +0x480 */
+    Fn0330 fnB;                 /* +0x484 */
+    u8 b488_0:1;
+    u8 b488_1:7;
+    u8 pad489[0x490 - 0x489];
+    u8 b490;
+    u8 b491_lo:4;
+    u8 b491_mid:3;
+    u8 b491_hi:1;
+};
+extern struct St0330 gSt0330 asm("gUnk_02017A40");
+struct Lnk0330 {
+    u8 filler0[0x308];
+    u32 f0:1, f1:1, f2:1, f3:1, f4:1, f5:1, f6:1, f7:1;
+};
+extern struct Lnk0330 gLnk0330 asm("gUnk_02017FB0");
+#define S gSt0330
+#define LAST (S.listB[S.countB - 1])
 int sub_08020330(void)
 {
-    switch (gAct0330.step) {
+    u32 r;
+
+    switch (S.step) {
     case 0:
-        gAct0330.idx = 0;
-        gAct0330.step++;
+        S.idx = 0;
+        S.step++;
     case 1: {
-        struct ActEntry *e;
-        s32 r = sub_08047058(gAct0330.listB[gAct0330.idx].card);
+        r = sub_08047058(S.listB[S.idx].card);
         if (r == -1) {
-            gAct0330.fnA = NULL;
-            gAct0330.fnB = NULL;
+            S.fnA = NULL;
+            S.fnB = NULL;
         } else {
-            gAct0330.fnA = gUnk_0819A9D4[r].fnA;
-            gAct0330.fnB = gUnk_0819A9D4[r].fnB;
+            S.fnA = (Fn0330)gUnk_0819A9D4[r].fnA;
+            S.fnB = (Fn0330)gUnk_0819A9D4[r].fnB;
         }
-        if (gAct0330.listB[gAct0330.idx].flag4_0)
-            gAct0330.fnA = NULL;
-        e = &gAct0330.listB[gAct0330.idx];
-        if (e->flag4_1)
-            gAct0330.fnB = NULL;
-        sub_080197C0(e->flag2_0, e->card);
-        gUnk_02017FB0.filler308[0] &= ~2 & ~8;
-        gAct0330.b3E4 = 0;
-        gAct0330.b3E5 = 0;
-        gAct0330.step++;
-        break;
+        if (S.listB[S.idx].flag4_0)
+            S.fnA = NULL;
+        if (S.listB[S.idx].flag4_1)
+            S.fnB = NULL;
+        sub_080197C0(S.listB[S.idx].flag2_0, S.listB[S.idx].card);
+        gLnk0330.f1 = 0;
+        gLnk0330.f3 = 0;
+        S.b3E4 = 0;
+        S.b3E5 = 0;
+        S.step++;
+        return 1;
     }
     case 2:
-        if (gAct0330.fnA == NULL) {
-            gAct0330.step += 2;
-            break;
+        if (S.fnA == NULL) {
+            S.step += 2;
+            return 1;
         }
-        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]))
-            sub_080229BC(0xF091, &gAct0330.listB[gAct0330.idx], 0x14);
-        gAct0330.step++;
+        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]))
+            sub_080229BC(0xF091, &S.listB[S.idx], 0x14);
+        S.step++;
     case 3:
-        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]) == 0) {
-            if (gAct0330.fnA(&gAct0330.listB[gAct0330.idx],
-                             gAct0330.countB > 1 ? &gAct0330.listB[gAct0330.countB - 2] : NULL))
-                gUnk_02017FB0.filler308[0] |= 8;
+        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
+            r = S.countB;
+            if (r > 1) {
+                if (S.fnA(&S.listB[S.idx], &S.listB[r - 2]))
+                    gLnk0330.f3 = 1;
+            } else {
+                if (S.fnA(&S.listB[S.idx], NULL))
+                    gLnk0330.f3 = 1;
+            }
         }
-        if (gUnk_02017FB0.filler308[0] & 8)
-            gAct0330.step++;
-        break;
+        if (gLnk0330.f3)
+            S.step++;
+        return 1;
     case 4:
-        if (gAct0330.fnB == NULL) {
-            gAct0330.step += 2;
-            break;
+        if (S.fnB == NULL) {
+            S.step += 2;
+            return 1;
         }
-        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]))
-            sub_080229BC(0xF081, &gAct0330.listB[gAct0330.idx], 0x14);
-        gAct0330.step++;
+        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]))
+            sub_080229BC(0xF081, &S.listB[S.idx], 0x14);
+        S.step++;
     case 5:
-        if ((u16)sub_0801FA48(&gAct0330.listB[gAct0330.idx]) == 0) {
-            if (gAct0330.fnB(&gAct0330.listB[gAct0330.idx],
-                             gAct0330.countB > 1 ? &gAct0330.listB[gAct0330.countB - 2] : NULL))
-                gUnk_02017FB0.filler308[0] |= 2;
+        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
+            r = S.countB;
+            if (r > 1) {
+                if (S.fnB(&S.listB[S.idx], &S.listB[r - 2]))
+                    gLnk0330.f1 = 1;
+            } else {
+                if (S.fnB(&S.listB[S.idx], NULL))
+                    gLnk0330.f1 = 1;
+            }
         }
-        if (gUnk_02017FB0.filler308[0] & 2)
-            gAct0330.step++;
-        break;
+        if (gLnk0330.f1)
+            S.step++;
+        return 1;
     case 6:
-        gAct0330.idx++;
-        if (gAct0330.idx < gAct0330.countB) {
-            gAct0330.step = 1;
-            break;
+        S.idx++;
+        if (S.idx < S.countB) {
+            S.step = 1;
+            return 1;
         }
-        gAct0330.step++;
+        S.step++;
     case 7:
         if (gUnk_02015EE8.link) {
-            s16 i;
-            u8 buf[0x100];
-            sub_0802297C(0xF061, gAct0330.countB, 0, 0);
-            for (i = 0; i < gAct0330.countB; i++) {
-                *(s16 *)buf = i;
-                sub_08075294(buf + 2, &gAct0330.listB[i], 0x14);
+            int i;
+            u16 buf[0x80];
+            sub_0802297C(0xF061, S.countB, 0, 0);
+            for (i = 0; i < S.countB; i++) {
+                buf[0] = i;
+                sub_08075294(buf + 1, &S.listB[i], 0x14);
                 sub_080229BC(0xF062, buf, 0x16);
             }
-            sub_0802297C(0xF063, gAct0330.countB, 0, 0);
-            gUnk_02017FB0.filler308[0] &= 0x7F;
+            sub_0802297C(0xF063, S.countB, 0, 0);
+            gLnk0330.f7 = 0;
         }
-        gAct0330.step++;
-        break;
+        S.step++;
+        return 1;
     case 8:
         sub_0801A7B4(&gUnk_02017CC0, 0);
         gUnk_02017CC0.step++;
-        break;
+        return 1;
     case 9:
         if (sub_0801A32C())
-            gAct0330.step++;
-        break;
+            S.step++;
+        return 1;
     case 10:
-        if (gUnk_02015EE8.link && !(gUnk_02017FB0.filler308[0] >> 7))
-            break;
-        gAct0330.b488 &= ~1;
-        gAct0330.step++;
+        if (gUnk_02015EE8.link && !gLnk0330.f7)
+            return 1;
+        S.b488_0 = 0;
+        S.step++;
     case 11:
-        if (sub_0802D30C(LAST0330, 1 - LAST0330->flag2_0)) {
-            gAct0330.b490 = 0;
-            gAct0330.b491 &= 0xF0 & 0x7F;
+        if (sub_0802D30C((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
+            S.b490 = 0;
+            S.b491_lo = 0;
+            S.b491_hi = 0;
         } else {
-            gAct0330.step++;
+            S.step++;
         }
-        gAct0330.step++;
-        break;
+        S.step++;
+        return 1;
     case 12:
-        if ((u16)sub_0801FEA0(LAST0330, 1 - LAST0330->flag2_0)) {
-            if (gAct0330.b491 & 0x80)
-                gAct0330.step = 1;
+        if ((u16)sub_0801FEA0((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
+            if (S.b491_hi)
+                S.step = 1;
             else
-                gAct0330.step++;
+                S.step++;
         }
-        break;
+        return 1;
     case 13:
-        if (sub_0802D30C(LAST0330, LAST0330->flag2_0)) {
-            gAct0330.b490 = 0;
-            gAct0330.b491 &= 0x7F;
+        if (sub_0802D30C((struct ActEntry *)&LAST, LAST.flag2_0)) {
+            S.b490 = 0;
+            S.b491_hi = 0;
         } else {
-            gAct0330.step++;
+            S.step++;
         }
-        gAct0330.step++;
-        break;
+        S.step++;
+        return 1;
     case 14:
-        if ((u16)sub_0801FEA0(LAST0330, LAST0330->flag2_0)) {
-            if (gAct0330.b491 & 0x80)
-                gAct0330.step = 1;
+        if ((u16)sub_0801FEA0((struct ActEntry *)&LAST, LAST.flag2_0)) {
+            if (S.b491_hi)
+                S.step = 1;
             else
-                gAct0330.step++;
+                S.step++;
         }
-        break;
+        return 1;
     default:
-        gAct0330.flag = 0;
-        gAct0330.b3D2 = 1;
-        gAct0330.b3D3 = 0;
-        break;
+        S.active = 0;
+        *(u8 *)&S.b3D2 = 1;
+        S.b3D3 = 0;
+        return 1;
     }
-    return 1;
 }
+#undef S
+#undef LAST
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_08020330); /* 0x08020330 size 0x7C4 */

@@ -241,4 +241,223 @@ int sub_0804D298(int player)
     return 1;
 }
 
-INCLUDE_ASM("asm/nonmatching/code_0804CB58", sub_0804D320); /* 0x0804D320 size 0x84C */
+u16 sub_0804A998(int player);
+void sub_08042AB0(int player, int kind, u32 arg);
+void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
+int sub_0800C8BC(int player, int zone);
+void sub_08017F98(int player, int zone);
+void sub_08018664(int player, int zone, u16 *args);
+void sub_08018690(int arg0, int player, int zone, u16 *args);
+/* Battle zone copy (0x94 bytes): +0/+2 the card word as two u16 args, +3 bit 0, bits 1-3 (a slot), bit 4. */
+struct D3Zone { u16 w0; u8 b2; u8 f3_0 : 1; u8 slot : 3; u8 f3_4 : 1; u8 f3_5 : 3; u8 pad[0x94 - 4]; };
+/* Battle state at 0x02018450 with the zone copies at +0x20 and the two pending (player | slot << 8) words. */
+struct D3Battle {
+    u16 lo : 1;
+    u16 direct : 1;     /* +0 bit 1 */
+    u16 mid : 4;
+    u16 atkSlot : 3;
+    u16 defSlot : 3;
+    u16 hi : 4;
+    u16 cardId;
+    u8 pad4[4];
+    struct BSide side[2];       /* +0x8 */
+    struct D3Zone zones[2];     /* +0x20 */
+    u8 pad148[8];
+    u16 pend0;                  /* +0x150: attacker side (p | atkSlot << 8), 0xFFFF = none */
+    u16 pend1;                  /* +0x152: defender side ((1 - p) | defSlot << 8) */
+};
+#define D3 (*(struct D3Battle *)&gUnk_02018450)
+/* Player flag byte +8 (stride 0xD64). Indexed through a cast pointer to a struct holding the array, so the base
+ * 0x020192E4 is loaded before the index is computed (ROM order); a plain array index loads it last. */
+struct D3PF { u8 pad[8]; u8 f0 : 1; u8 f1 : 1; u8 f2 : 1; u8 f3 : 1; u8 rest : 4; u8 pad2[0xD64 - 9]; };
+struct D3Duel { struct D3PF pl[2]; };
+#define D3PF(i) (((struct D3Duel *)gUnk_020192E4)->pl[(i) & 1])
+/* Field zone at 0x0201930C + off; the base is gUnk_020192E0 + 0x2C so CSE reuses the 0x020192E0 register from
+ * the step test where one is live (ROM: adds r1, r7, #0; adds r1, #0x2C). */
+struct D3DZone { u32 w0; u16 w4; u8 b6; };
+#define D3ZONE(off) ((struct D3DZone *)((off) + (int)(gUnk_020192E0 + 0x2C)))
+/* Battle step after damage: per-card effects for the attacker's card (switch 1), the attacker side's destroyed
+ * handling (block 1), the defender's card (switch 2) and the defender side's destroyed handling (block 2); then
+ * advances the step. Returns 1 without work for a direct attack, or when a step is already set (re-sending the
+ * pending words through sub_08042AB0). */
+int sub_0804D320(int p)
+{
+    int k;
+    int done;
+    /* One function-scope pointer for both zone copies: its refs/live length put it ahead of 1 - p in global
+     * allocation (ROM: z in r5, 1 - p in r6 in block 2); a block-local z loses r5 to 1 - p. */
+    u16 *z;
+
+    if (D3.direct)
+        return 1;
+    if (CB_STEP) {
+        if (*(s32 *)&D3.pend0 != -1)
+            sub_08042AB0(1 - p, 0x13, D3.pend1 << 16 | D3.pend0);
+        return 1;
+    }
+    switch (CB_KEY(D3.side[p].cardId)) {
+    case 0xFF:
+        {
+            u32 ev = p << 31;
+            u32 b = D3.atkSlot << 16;
+            b |= 0x24400000;
+            ev |= b;
+            ev |= D3.side[p].cardId;
+            sub_0801FBCC(ev, ((u8)p | D3.atkSlot << 8) | ((u8)(1 - p) | D3.defSlot << 8) << 16);
+        }
+        break;
+    case 0x188:
+    case 0x18E:
+        if (!sub_0804A998(p)) {
+            sub_080197E0(p, D3.side[p].cardId);
+            sub_0801EC58(p != 1 ? 0x8095 : 0x95, D3.defSlot, 5, 0);
+        }
+        break;
+    case 0x199:
+        if (!sub_0804A998(p))
+            sub_080197E0(p, D3.side[p].cardId);
+        break;
+    case 0x5F3:
+        if ((int)(D3.side[1 - p].raw << 28) < 0) {
+            int side = p & 1;
+            int s1 = D3.atkSlot * 0x94 + side * 0xD64;
+            if (D3ZONE(s1)->w0 << 20 != 0) {
+                sub_080197E0(p, D3.side[p].cardId);
+                sub_08017AB4(p, (u8)p | D3.atkSlot << 8, (u8)p | D3.atkSlot << 8, 0x10C);
+            }
+        }
+        break;
+    }
+    D3.pend0 = 0xFFFF;
+    if ((int)(D3.side[p].raw << 28) < 0) {
+        done = 0;
+        if (CB_KEY(D3.side[1 - p].cardId) == 0x2F9)
+            D3PF(1 - p).f3 = 1;
+        k = CB_KEY(D3.side[p].cardId);
+        if ((k == 0x2DA || k == 0x536) && sub_0800A430(p, D3.atkSlot) != 0xFFFF) {
+            z = (u16 *)&D3.zones[p];
+            sub_08017F98(p, D3.atkSlot);
+            sub_0801EC58(p ? 0x80A4 : 0xA4, D3.atkSlot, z[0], z[1]);
+            done = 1;
+        }
+        if (CB_KEY(D3.side[1 - p].cardId) != 0xFF && CB_KEY(D3.side[p].cardId) != 0xFF) {
+            if (!done) {
+                /* A switch, not `k >= 0x4E6 && k <= 0x4E8`: the ROM reloads the key and tests both bounds. */
+                switch (CB_KEY(D3.side[p].cardId)) {
+                case 0x4E6:
+                case 0x4E7:
+                case 0x4E8:
+                    sub_080197C0(p, D3.side[p].cardId);
+                    sub_08017AB4(p, D3.side[p].cardId, (u8)(1 - p) | D3.defSlot << 8, 9);
+                    break;
+                }
+                switch (CB_KEY(D3.side[1 - p].cardId)) {
+                case 0x52F:
+                    D3.zones[p].f3_0 = 1;
+                    D3.zones[p].slot = D3.defSlot;
+                    break;
+                case 0x53C:
+                    D3.zones[p].f3_4 = 1;
+                    break;
+                }
+                sub_08018690(1 - p, p, D3.atkSlot, (u16 *)&D3.zones[p]);
+                D3.pend0 = (u8)p | D3.atkSlot << 8;
+            }
+        } else if (!done)
+            sub_08018664(p, D3.atkSlot, (u16 *)&D3.zones[p]);
+    }
+    switch (CB_KEY(D3.side[1 - p].cardId)) {
+    case 0xFF:
+        {
+            u32 ev = ((1 - p) & 1) << 31;
+            u32 b = D3.atkSlot << 16;
+            b |= 0x24400000;
+            ev |= b;
+            ev |= D3.side[1 - p].cardId;
+            sub_0801FBCC(ev, ((u8)p | D3.atkSlot << 8) | ((u8)(1 - p) | D3.defSlot << 8) << 16);
+        }
+        break;
+    case 0x419:
+        if (!sub_0804A998(p) && (int)(D3.side[p].raw << 28) >= 0) {
+            u32 ev = ((1 - p) & 1) << 31;
+            u32 b = D3.defSlot << 16;
+            b |= 0x24400000;
+            ev |= b;
+            ev |= D3.side[1 - p].cardId;
+            sub_0801FBCC(ev, ((u8)p | D3.atkSlot << 8) | ((u8)(1 - p) | D3.defSlot << 8) << 16);
+        }
+        break;
+    case 0x189:
+        if (!sub_0804A998(p) && sub_0800C8BC(p, D3.atkSlot) != 7) {
+            sub_080197E0(1 - p, D3.side[1 - p].cardId);
+            sub_0801EC58(p ? 0x8095 : 0x95, D3.atkSlot, 3, 0);
+        }
+        break;
+    case 0x261:
+        if (!sub_0804A998(p) && sub_0800C8BC(p, D3.atkSlot) != 2) {
+            sub_080197E0(1 - p, D3.side[1 - p].cardId);
+            sub_0801EC58(p ? 0x8097 : 0x97, D3.atkSlot, 1, 0);
+        }
+        break;
+    case 0x4B1:
+        if ((int)(D3.side[1 - p].raw << 28) >= 0) {
+            int side = (1 - p) & 1;
+            int s1 = D3.defSlot * 0x94 + side * 0xD64;
+            if (D3ZONE(s1)->b6 & 1) {
+                sub_080197E0(1 - p, D3.side[1 - p].cardId);
+                sub_0801EC58(p != 1 ? 0x807E : 0x7E, D3.defSlot, 0, 0);
+            }
+        }
+        break;
+    case 0x5F3:
+        if ((int)(D3.side[p].raw << 28) < 0) {
+            int side = (1 - p) & 1;
+            int s1 = D3.defSlot * 0x94 + side * 0xD64;
+            if (D3ZONE(s1)->w0 << 20 != 0) {
+                sub_080197E0(1 - p, D3.side[1 - p].cardId);
+                sub_08017AB4(1 - p, (u8)(1 - p) | D3.defSlot << 8, (u8)(1 - p) | D3.defSlot << 8, 0x10C);
+            }
+        }
+        break;
+    }
+    D3.pend1 = 0xFFFF;
+    if ((int)(D3.side[1 - p].raw << 28) < 0) {
+        done = 0;
+        if (CB_KEY(D3.side[p].cardId) == 0x2F9)
+            D3PF(p).f3 = 1;
+        k = CB_KEY(D3.side[1 - p].cardId);
+        if ((k == 0x2DA || k == 0x536) && sub_0800A430(1 - p, D3.defSlot) != 0xFFFF) {
+            z = (u16 *)&D3.zones[1 - p];
+            sub_08017F98(1 - p, D3.defSlot);
+            sub_0801EC58(p != 1 ? 0x80A4 : 0xA4, D3.defSlot, z[0], z[1]);
+            done = 1;
+        }
+        if (CB_KEY(D3.side[1 - p].cardId) != 0xFF && CB_KEY(D3.side[p].cardId) != 0xFF) {
+            if (!done) {
+                switch (CB_KEY(D3.side[1 - p].cardId)) {
+                case 0x4E6:
+                case 0x4E7:
+                case 0x4E8:
+                    /* (sic) player p, as in the ROM */
+                    sub_080197C0(p, D3.side[1 - p].cardId);
+                    sub_08017AB4(1 - p, D3.side[1 - p].cardId, (u8)p | D3.atkSlot << 8, 9);
+                    break;
+                }
+                switch (CB_KEY(D3.side[p].cardId)) {
+                case 0x52F:
+                    D3.zones[1 - p].f3_0 = 1;
+                    D3.zones[1 - p].slot = D3.atkSlot;
+                    break;
+                case 0x53C:
+                    D3.zones[1 - p].f3_4 = 1;
+                    break;
+                }
+                sub_08018690(1 - p, 1 - p, D3.defSlot, (u16 *)&D3.zones[1 - p]);
+                D3.pend1 = (u8)(1 - p) | D3.defSlot << 8;
+            }
+        } else if (!done)
+            sub_08018664(1 - p, D3.defSlot, (u16 *)&D3.zones[1 - p]);
+    }
+    CB_STEP++;
+    return 0;
+}

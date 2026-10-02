@@ -31,7 +31,8 @@ struct Unk02013D90 {
     u8 filler4[0x28];
     s32 unk2C;              /* +0x2C: number shown by sub_0800642C */
     s32 unk30;              /* +0x30: number shown by sub_0800646C */
-    u8 filler34[8];
+    s32 unk34;              /* +0x34: scroll position */
+    s32 unk38;              /* +0x38: scroll target */
     s32 unk3C;              /* +0x3C: written by sub_08005860 from the text height */
 };
 
@@ -287,7 +288,304 @@ void sub_080059B4(u32 bg, u16 pos, u16 size, u16 tile, u16 colors, u16 lineHeigh
         for (col = 0; col < w; col++)
             gMain.bgMapBuffer[bg][(row + y) * 32 + x + col] = tile++;
 }
-INCLUDE_ASM("asm/nonmatching/code_08005500", sub_08005A70); /* 0x08005A70 size 0x960 */
+void sub_080734D4(void);
+void sub_080752D0(u8 *dst, const u8 *src);   /* StrCpy */
+void sub_080752E8(u8 *dst, const u8 *src);   /* StrCat */
+void sub_08074B08(u8 a, u8 b);
+void sub_080750E0(int x, int y, u16 attr, int value); /* DrawNumber */
+extern const u8 gUnk_08636348[];
+extern const u8 gUnk_086366A8[];
+extern const u8 gUnk_08636368[];
+extern const u8 gUnk_08636728[];
+extern const u8 gUnk_08636388[];
+extern const u8 gUnk_086367A8[];
+extern const u8 gUnk_08637394[];
+extern const u8 gUnk_08637454[];
+extern const u8 *const gUnk_08198950[];
+extern const u8 *const gUnk_0819897C[];
+extern const u8 *const gUnk_081988D0[];
+extern const u8 *const gUnk_08198934[];
+extern const u8 gUnk_08081538[];
+extern const u8 gUnk_0808153C[];
+extern const u8 gUnk_08081540[];
+extern const u8 gUnk_08081544[];
+extern const u8 gUnk_08081548[];
+extern const u8 gUnk_0808155C[];
+extern const u8 gUnk_08081564[];
+extern const u8 gUnk_08081574[];
+extern const u8 gUnk_0808157C[];
+extern const u8 gUnk_08081500[];
+extern const u8 gUnk_0808158C[];
+
+/* Card stats word (0x08621DE0) and card number (0x08622AB4) by card ID. The constant-address
+ * forms make GCC reload the table base at each use, as the ROM does. */
+#define STATS_5A70(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define TYPE_5A70(id) ((STATS_5A70(id) & 0x1F00000) >> 20)
+#define NUMBER_5A70(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+
+/* The switches on the card type go through this inline: inlined RTL keeps the stats address as
+ * (plus reg const), the same form the Icon/Level inlines use, so CSE shares the address register. */
+static inline int Type5A70(u16 id)
+{
+    return TYPE_5A70(id);
+}
+
+static inline int Icon5A70(u16 id)
+{
+    switch ((int)TYPE_5A70(id)) {
+    case 21:
+    case 22:
+        return (STATS_5A70(id) & 0xE0000) >> 17;
+    default:
+        return 0;
+    }
+}
+
+static inline int Level5A70(u16 id)
+{
+    switch ((int)TYPE_5A70(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 10;
+    default:
+        return (STATS_5A70(id) & 0x1E000000) >> 25;
+    }
+}
+
+/* Shown ATK/DEF (0 for spell/trap/ritual types, 4000 for type 24). The u16 return type gives the
+ * inline its own result register (r0) and the copy into the argument register that the ROM has. */
+static inline u16 Atk5A70(u16 id)
+{
+    switch ((int)TYPE_5A70(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return ((STATS_5A70(id) << 14) >> 23) * 10;
+    }
+}
+
+static inline u16 Def5A70(u16 id)
+{
+    switch ((int)TYPE_5A70(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return (STATS_5A70(id) & 0x1FF) * 10;
+    }
+}
+
+/* Same as GetCardSubtype in code_08006878. */
+static inline int Subtype5A70(u16 id)
+{
+    switch (NUMBER_5A70(id)) {
+    case 1910:
+        return 3;
+    case 1911:
+    case 1912:
+        return 1;
+    }
+    switch ((int)TYPE_5A70(id)) {
+    case 22:
+        return 7;
+    case 21:
+        return 8;
+    case 23:
+        return 9;
+    default:
+        return (STATS_5A70(id) & 0xC0000) >> 18;
+    }
+}
+
+/* BG map entry (x, y) of gMain.bgMapBuffer[bg]. Written directly (not through an inline taking
+ * bg), so the constant bg folds into the gMain offset (0x0300245C for bg 4). */
+#define TILE_5A70(bg, x, y) (gMain.bgMapBuffer[bg][(u16)(x) + (u16)(y) * 32])
+
+static inline u32 Attr5A70(u16 id)
+{
+    return STATS_5A70(id) >> 29;
+}
+
+/*
+ * Card detail screen text and icons: the card name (centred when gUnk_02013D90.flags bit 0 is
+ * set), the type/attribute palette and OBJ tiles, the spell/trap icon; then, unless flag bit 0
+ * is set, either the token layout (attribute icon, level stars, type line, ATK/DEF numbers)
+ * or the type/subtype line and the card description. Resets the description scroll.
+ */
+void sub_08005A70(u16 id)
+{
+    const u8 *name;
+    int len, n;
+    int x, y;
+    u16 lh;
+    int i, j;
+    u16 tile;
+    u8 buf[0x80];
+
+    name = (const u8 *)0x0822C720 + id * 64;
+    len = sub_080753CC(name);
+    x = 4;
+    y = 2;
+    lh = 12;
+    if (len > 36) {
+        y = 4;
+        lh = 10;
+    }
+    if (gUnk_02013D90.flags & 1)
+        x = 120 - ((len * lh) >> 1);
+
+    switch (Type5A70(id)) {
+    case 21:
+        sub_080752B0((void *)0x05000220, gUnk_08636348, 0x20);
+        sub_080752B0((void *)0x06010400, gUnk_086366A8, 0x80);
+        if (Icon5A70(id)) {
+            /* The base is loaded before the inline runs, so it is assigned first. */
+            const u8 *p = gUnk_08637394;
+            p += (Icon5A70(id) - 1) * 32;
+            sub_080752B0((void *)0x05000240, gUnk_08637454, 0x20);
+            sub_080752B0((void *)0x06010480, p, 0x20);
+        }
+        break;
+    case 22:
+        sub_080752B0((void *)0x05000220, gUnk_08636368, 0x20);
+        sub_080752B0((void *)0x06010400, gUnk_08636728, 0x80);
+        if (Icon5A70(id)) {
+            const u8 *p = gUnk_08637394;
+            p += (Icon5A70(id) - 1) * 32;
+            sub_080752B0((void *)0x05000240, gUnk_08637454, 0x20);
+            sub_080752B0((void *)0x06010480, p, 0x20);
+        }
+        break;
+    case 23:
+        break;
+    case 24:
+        sub_080752B0((void *)0x05000220, gUnk_08636388, 0x20);
+        sub_080752B0((void *)0x06010400, gUnk_086367A8, 0x80);
+        break;
+    default:
+    {
+        u32 attr = STATS_5A70(id) >> 29;
+
+        /* Nested ifs: a single && chain folds into one (attr - 1) <= 5 range test. */
+        if (attr != 0) {
+            if (attr <= 6 && TYPE_5A70(id) <= 20) {
+                sub_080752B0((void *)0x05000220, gUnk_08198950[attr], 0x20);
+                sub_080752B0((void *)0x06010400, gUnk_0819897C[attr], 0x80);
+            }
+        }
+        break;
+    }
+    }
+
+    sub_080734D4();
+    sub_080059B4(0, 0, 0x220, 0x1E4, 0x807, lh, (u16)x | (y << 16), name, 1, 1);
+    if (gUnk_02013D90.flags & 1)
+        return;
+
+    if ((u16)(NUMBER_5A70(id) - 0x780) <= 0x4F) {
+        sub_080752B0((void *)0x05000020, gUnk_08198950[Attr5A70(id)], 0x20);
+        sub_080752B0((void *)0x06004400, gUnk_0819897C[Attr5A70(id)], 0x80);
+        TILE_5A70(0, 13, 2) = 0x1020;
+        TILE_5A70(0, 14, 2) = 0x1021;
+        TILE_5A70(0, 13, 3) = 0x1022;
+        TILE_5A70(0, 14, 3) = 0x1023;
+        for (i = 0; i < Level5A70(id); i++)
+            TILE_5A70(0, i + 15, 3) = 3;
+        sub_080752D0(buf, gUnk_08081538);
+        sub_080752E8(buf, gUnk_081988D0[Type5A70(id)]);
+        sub_080752E8(buf, gUnk_0808153C);
+        sub_0807501C(4, 0x14, 0xA08, buf);
+        sub_0807501C(3, 0x13, 0xA07, buf);
+        sub_08074B08(0x11, 0x10);
+        n = sub_080753CC(gUnk_08081540);
+        sub_0807501C(4, 0x20, 0xA0D, gUnk_08081540);
+        sub_0807501C(3, 0x1F, 0xA05, gUnk_08081540);
+        sub_080750E0((n + 4) * 5 + 4, 0x20, 0xA08, Atk5A70(id));
+        sub_080750E0((n + 4) * 5 + 3, 0x1F, 0xA07, Atk5A70(id));
+        n = sub_080753CC(gUnk_08081544);
+        sub_0807501C(4, 0x2C, 0xA0B, gUnk_08081544);
+        sub_0807501C(3, 0x2B, 0xA03, gUnk_08081544);
+        sub_080750E0((n + 4) * 5 + 4, 0x2C, 0xA08, Def5A70(id));
+        sub_080750E0((n + 4) * 5 + 3, 0x2B, 0xA07, Def5A70(id));
+        sub_08075114((void *)0x06008900, 9);
+        tile = 0x248;
+        for (i = 0; i <= 15; i++)
+            for (j = 0; j <= 16; j++)
+                TILE_5A70(4, j + 13, i + 2) = tile++;
+        sub_080059B4(4, 0x120D, 0x212, 0x224, 0x806, 10, 0x30003, gUnk_08081548, 0, 11);
+        gMain.bgVofs[3] = 0;
+        gUnk_02013D90.unk38 = 0;
+        gUnk_02013D90.unk34 = 0;
+    } else {
+        sub_080752D0(buf, gUnk_08081538);
+        switch (Type5A70(id)) {
+        case 21:
+        case 22:
+            sub_080752E8(buf, gUnk_081988D0[Type5A70(id)]);
+            if (Icon5A70(id))
+                sub_080752E8(buf, gUnk_08198934[Icon5A70(id)]);
+            break;
+        case 23:
+        case 24:
+            sub_080752E8(buf, gUnk_081988D0[Type5A70(id)]);
+            break;
+        default:
+            sub_080752E8(buf, gUnk_081988D0[Type5A70(id)]);
+            switch (Subtype5A70(id)) {
+            case 0:
+                break;
+            case 1:
+                sub_080752E8(buf, gUnk_0808155C);
+                break;
+            case 2:
+                switch (NUMBER_5A70(id)) {
+                case 0x32C:
+                case 0x4D9:
+                case 0x536:
+                case 0x5F6:
+                    sub_080752E8(buf, gUnk_08081564);
+                    break;
+                default:
+                    sub_080752E8(buf, gUnk_08081574);
+                    break;
+                }
+                break;
+            case 3:
+                if (NUMBER_5A70(id) == 0x2DA)
+                    sub_080752E8(buf, gUnk_0808157C);
+                else
+                    sub_080752E8(buf, gUnk_08081500);
+                break;
+            }
+            break;
+        }
+        sub_080752E8(buf, gUnk_0808153C);
+        len = sub_080753CC(buf);
+        lh = 10;
+        if (len > 22)
+            lh = 8;
+        /* The (u16) keeps CSE from sharing the 9 with the last argument. */
+        sub_080059B4(0, 0x20D, 0x212, 0x224, 0x807, lh, ((u16)(9 - (lh >> 1)) << 16) | 4, buf, 1, 9);
+        sub_080059B4(4, 0x40D, 0x1812, 0x248, 0x907, 10, 0x20004, (const u8 *)0x082461A0 + id * 480, 1, 0);
+        if (TYPE_5A70(id) > 22)
+            sub_080059B4(4, 0x120D, 0x211, 0x369, 0x806, 10, 0x30003, gUnk_0808158C, 0, 11);
+        /* Duplicated in both branches: each copy reuses the 0 of the last call's arguments and
+         * cross-jumping merges the stores. */
+        gMain.bgVofs[3] = 0;
+        gUnk_02013D90.unk38 = 0;
+        gUnk_02013D90.unk34 = 0;
+    }
+}
 
 /* Draws a decimal number with digit sprites (tile 0x3030 + digit), right to left from x + 0x14. */
 void sub_080063D0(int x, int y, int value)

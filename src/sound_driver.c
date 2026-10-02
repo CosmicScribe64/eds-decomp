@@ -538,8 +538,11 @@ scale:
     out->volume = (out->volume * track->volume) >> 4;
 }
 
-#if 0 /* NONMATCHING: typed main sequencer. The candidate is 0x7DC bytes with a 0x70-byte stack
-       * frame, and the target is 0x7CC bytes. */
+#if 0 /* NONMATCHING (score 26): NONMATCHING (score 26): structured rewrite. Generic s32 temps a (r4) and b (r5)
+       * reused across the whole function are essential. Remaining: reset loop (for i=0..9, reversed by loop.c) hoists a
+       * dead QI zero (r7) and the 0xFE constant, and the post-loop 0x04000072 zero lands in r1 instead of r7. int temps
+       * avoid HImode/QImode narrowing of masks and MMIO values; chained t[4]=t[6]=t[8]=t[5]=t[7]=t[9]=0x33 routing;
+       * array-decl vs pointer-arith table forms steer constant-pool load placement. */
 struct SoundBgmTrack {
     u16 pitch;
     u8 instrument;
@@ -558,670 +561,414 @@ struct SoundBgmTrack {
     u8 routing;
     u8 unk15[3];
 };
-/* Preserve the two fields aliased by PCM command F0 at output[9] + 0xB/0xC.
- * The compiler supplies the remaining 4-byte cursor spill in the 0x70 frame. */
-struct SoundTickFrame {
-    struct SoundChannelParams output[10];
-    const u8 *songData;
-    struct SoundBgmTrack *lastTrack;
-    struct SoundBgmTrack *firstTrack;
-    u8 *route1;
-    struct SoundChannelParams *lastOutput;
-    u8 *route2;
-    u8 *route3;
+struct SoundTickOut {
+    s16 pitch;
+    u8 envelope;
+    u8 volume;
+    u8 dirty;
+    u8 command;
+    u16 sampleId;
 };
 extern const u16 gUnk_08139F50[];
 extern const u16 gUnk_081AA20C[];
 extern const s16 gUnk_081ABC4C[];
 void sub_0807D6B4(s32 index, struct SoundChannelParams *output);
 void sub_0807E918(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note);
+struct SoundDriverTick {
+    struct SoundDriver base;
+    u8 routing;
+};
 typedef char bgm_track_size_check[sizeof(struct SoundBgmTrack) == 0x18 ? 1 : -1];
-typedef char tick_frame_size_check[sizeof(struct SoundTickFrame) == 0x6C ? 1 : -1];
-typedef char tick_song_offset_check[(u32)&((struct SoundTickFrame *)0)->songData == 0x50 ? 1 : -1];
-typedef char tick_cursor_offset_check[(u32)&((struct SoundTickFrame *)0)->lastTrack == 0x54 ? 1 : -1];
 
-void sub_0807DB58(struct SoundDriver *p) {
-    u16 *flags;
-    struct SoundTickFrame frame;
-    struct SoundPcmVoice *var_r4_7;
-    struct SoundChannelParams *var_r7;
-    struct SoundChannelParams *var_r7_2;
-    s16 temp_r4_6;
-    s16 temp_r5_5;
-    s16 temp_r5_6;
-    const struct SoundSample *const *var_r0_2;
-    s32 temp_r4;
-    s32 temp_r5;
-    s32 var_r3;
-    s32 var_r4_2;
-    s32 var_r4_4;
-    s32 var_r4_5;
-    s32 var_r5;
-    s32 var_r5_3;
-    s32 var_r9;
-    s32 var_r9_2;
-    s32 var_r9_3;
-    s32 var_r9_4;
-    s32 var_r9_5;
-    s32 var_r9_6;
-    s8 *temp_r0;
-    s8 temp_r1_6;
-    struct SoundTrack *var_r4_6;
-    struct SoundBgmTrack *var_r6;
-    struct SoundBgmTrack *var_r6_2;
-    u32 temp_r0_2;
-    u16 temp_r0_3;
-    u16 temp_r0_6;
-    u16 temp_r1;
-    u16 temp_r1_7;
-    s32 temp_r3;
-    u16 temp_r5_4;
-    u16 temp_r5_7;
-    u16 var_r0;
-    u16 var_r1;
-    u32 var_r3_2;
-    u16 var_r5_2;
-    u16 var_r5_4;
-    const u8 *temp_r2_2;
-    const u8 *temp_r2_3;
-    u8 *temp_r4_2;
-    u8 *temp_r4_3;
-    u8 *temp_r4_4;
-    struct SoundBgmTrack *var_r6_3;
-    u8 temp_r0_4;
-    u32 temp_r0_5;
-    u32 temp_r0_7;
-    u8 temp_r1_2;
-    u8 temp_r1_3;
-    u8 temp_r1_4;
-    u8 temp_r1_5;
-    u8 temp_r2;
-    u8 temp_r2_4;
-    u8 temp_r4_5;
-    u8 temp_r5_2;
-    u8 temp_r5_3;
-    u8 temp_r5_8;
-    u8 temp_r6;
-    u8 var_r4;
-    u32 var_r4_3;
-    struct SoundChannelParams *var_r7_3;
-    struct SoundChannelParams *var_r7_4;
+void sub_0807DB58(struct SoundDriver *p)
+{
+    struct SoundTickOut out[10];
+    struct SoundTickOut *o;
+    struct SoundBgmTrack *track;
+    const u8 *songData;
+    const u8 *cmdp;
+    s32 i;
+    s32 a;
+    s32 b;
+    u16 flags;
+    u8 oldVolume;
+    u32 pos;
 
-    /* Flowgraph is not reducible, falling back to gotos-only mode. */
-    temp_r4 = p->targetVolume << 8;
-    temp_r5 = temp_r4 - (*(u16 *)&p->fadeTimer);
-    flags = &p->flags;
-    temp_r3 = 0xFBF7 & *flags;
-    *flags = temp_r3;
-    temp_r6 = p->volume;
-    if (temp_r5 == 0) {
-        goto block_8;
+    a = p->targetVolume << 8;
+    b = a - *(u16 *)&p->fadeTimer;
+    p->flags &= 0xFBF7;
+    oldVolume = p->volume;
+    if (b != 0) {
+        if (b > 0) {
+            b -= p->fadeSpeed << 4;
+            if (b < 0)
+                b = 0;
+        } else {
+            b += p->fadeSpeed << 4;
+            if (b > 0)
+                b = 0;
+        }
+        *(u16 *)&p->fadeTimer = a - b;
+        if (oldVolume != p->volume)
+            p->flags |= 8;
+    } else if (oldVolume & 0xF) {
+        p->flags |= 0x400;
+    }
+
+    if ((p->flags & 0x100) && oldVolume == 0) {
+        o = &out[9];
+        for (i = 9; i >= 0; i--) {
+            ((u32 *)o)[0] = 0;
+            ((u32 *)o)[1] = 0;
+            o--;
+        }
+    } else {
+        flags = p->flags;
+        songData = p->songData;
+        track = (struct SoundBgmTrack *)p->bgmTracks;
+        if (flags & 1) {
+            o = out;
+            for (i = 9; i >= 0; i--) {
+                track->flags = 0;
+                track++;
+                ((u32 *)o)[0] = 0;
+                o->dirty = 1;
+                o->command = 0x40;
+                o++;
+            }
+            {
+                s32 t = flags & ~0x4081;
+                p->flags = t;
+            }
+            p->status = -1;
+        } else {
+            if (!(flags & 0xC0))
+                return;
+            if (!(flags & 0x4000)) {
+                p->flags = flags | 0x4000;
+            reset:
+                p->status = 0;
+                track = (struct SoundBgmTrack *)p->bgmTracks;
+                track[0].routing = 0x11;
+                track[1].routing = 0x22;
+                track[2].routing = 0x44;
+                track[3].routing = 0x88;
+                track[4].routing = track[6].routing = track[8].routing = track[5].routing = track[7].routing = track[9].routing = 0x33;
+                *(vu8 *)0x04000081 = 0xFF;
+                *(vu16 *)0x04000082 = 0x330E;
+                for (i = 0; i < 10; i++) {
+                    track->flags &= 0xFE;
+                    if (track->flags & 0x40)
+                        track->flags |= 0x80;
+                    track->flags &= 0xC0;
+                    track->position = 0;
+                    track->returnPosition = 0;
+                    *(u16 *)&track->instrument = 0;
+                    *(u16 *)&track->vibratoPhase = 0;
+                    track++;
+                }
+                ((struct SoundBgmTrack *)p->bgmTracks)[1].instrument = 0x80;
+                ((struct SoundBgmTrack *)p->bgmTracks)[0].instrument = 0x80;
+                *(vu16 *)0x04000072 = 0;
+                sub_0807D518(p, 0, 0);
+            }
+            p->status++;
+            o = &out[9];
+            track = &((struct SoundBgmTrack *)p->bgmTracks)[9];
+            for (i = 9; i >= 0; i--, track--, o--) {
+                ((u32 *)o)[0] = 0;
+                ((u32 *)o)[1] = 0;
+                if (track->flags & 0x80) {
+                    if (!(track->flags & 1)) {
+                        track->flags |= 1;
+                        pos = 0;
+                        goto note_off;
+                    }
+                    if (--track->delay == 0) {
+                        pos = track->position;
+                        loop:
+                            cmdp = songData + track->songOffset + pos;
+                            pos++;
+                            a = cmdp[0];
+                            if (a > 0xFC) {
+                                if (a == 0xFF) {
+                                    p->flags |= 1;
+                                } else if (a == 0xFE) {
+                                    goto reset;
+                                } else {
+                                    track->flags &= 0x40;
+                                    if (*(u16 *)&o->dirty != 0)
+                                        goto next;
+                                }
+                                track->channelVolume = 0;
+                                *(u16 *)&o->envelope = 0;
+                                o->pitch = track->pitch;
+                                o->command = 0x40;
+                                o->dirty = 0x40;
+                                goto next;
+                            } else if (a > 0xEF) {
+                                if (a == 0xF3) {
+                                    track->songOffset += pos;
+                                    pos = 0;
+                                } else if (a == 0xF2) {
+                                    pos++;
+                                    b = cmdp[1] - 0x40 + (s16)track->pitch;
+                                    o->sampleId = track->instrument;
+                                    o->pitch = b;
+                                    o->command = 1;
+                                } else if (a > 0xF0) {
+                                    pos++;
+                                    track->vibratoDepth = cmdp[1] >> 1;
+                                    track->flags |= 0x20;
+                                } else if (a == 0xF0) {
+                                    pos++;
+                                    b = cmdp[1];
+                                    if (i > 3) {
+                                        a = b & 0xF;
+                                        o[1].volume = b >> 4;
+                                        o[1].dirty = 1;
+                                        goto set_volume;
+                                    }
+                                    track->routing = b;
+                                }
+                            } else if (a > 0xDF) {
+                            note_off:
+                                a = 0;
+                                o->pitch = track->pitch;
+                                o->command = 0x40;
+                            set_volume:
+                                track->channelVolume = a;
+                                o->envelope = track->instrument;
+                                o->dirty = 1;
+                            } else if (a > 0xCF) {
+                                a = a & 0xF;
+                                pos++;
+                                track->pitch = o->pitch = cmdp[1] << 5;
+                                o->command = 1;
+                                if (a == track->channelVolume)
+                                    goto check_loop;
+                                goto set_volume;
+                            } else if (a > 0xBF) {
+                                a = a & 0xF;
+                                o->pitch = track->pitch;
+                                o->command = 1;
+                                goto set_volume;
+                            } else if (a > 0x9F) {
+                                u8 ins;
+                                track->channelVolume = a & 0xF;
+                                ins = cmdp[1];
+                                o->sampleId = ins;
+                                track->instrument = ins;
+                                pos++;
+                                b = 0;
+                                if (a > 0xAF) {
+                                    b = (s8)cmdp[2] << 5;
+                                    pos++;
+                                }
+                                track->pitch = b;
+                                o->pitch = b;
+                                *(u16 *)&o->envelope = *(u16 *)&track->instrument;
+                                o->command = 0x80;
+                            } else if (a > 0x8F) {
+                                u8 count;
+                                track->returnSongOffset = track->songOffset;
+                                track->returnPosition = pos + 3;
+                                b = p->currentBgm * 12 + i + 2;
+                                {
+                                    const u16 *tbl = (const u16 *)gUnk_080E09D0;
+                                    track->songOffset = tbl[b];
+                                }
+                                count = cmdp[3];
+                                track->loopCounter = count;
+                                pos = cmdp[1] | (cmdp[2] << 8);
+                                a = a & 0xF;
+                                if (a == 0xF)
+                                    goto read_delay;
+                                track->loopCounter = count + 1;
+                                goto wave;
+                            } else if (a > 0x7F) {
+                                a = a & 0xF;
+                            wave:
+                                if (a > 3) {
+                                    a -= 4;
+                                    sub_0807D518(p, a, track->channelVolume);
+                                }
+                                o->envelope = a;
+                                track->instrument = a;
+                            }
+                        check_loop:
+                            if (track->returnPosition != 0) {
+                                if (--track->loopCounter == 0) {
+                                    track->songOffset = track->returnSongOffset;
+                                    pos = track->returnPosition;
+                                }
+                            }
+                        read_delay:
+                            cmdp = songData + track->songOffset + pos;
+                            a = cmdp[0];
+                            pos++;
+                            if (a > 0xEF) {
+                                a = (a & 0xF) << 8;
+                                a += cmdp[1];
+                                pos++;
+                            }
+                            track->position = pos;
+                            track->delay = a;
+                            if ((u16)a == 0)
+                                goto loop;
+                    }
+                }
+                {
+                    b = track->flags;
+                    if (b & 4) {
+                        a = track->fadeCounter - 1;
+                        if (a <= 0) {
+                            a = 0;
+                            {
+                                s32 t = b & 0xFB;
+                                track->flags = t;
+                            }
+                            o->command = 0x40;
+                        }
+                        track->fadeCounter = a;
+                        track->channelVolume = (track->fadeVolume * a) >> 2;
+                        o->pitch = track->pitch;
+                        *(u16 *)&o->envelope = *(u16 *)&track->instrument;
+                        o->dirty = 1;
+                    }
+                    if (b & 0x20) {
+                        if (track->vibratoDepth == 0) {
+                            track->flags &= 0xDF;
+                            track->vibratoPhase = 0;
+                            a = 0;
+                        } else {
+                            track->vibratoPhase += 0x18;
+                            a = (gUnk_081ABC4C[track->vibratoPhase] * track->vibratoDepth) >> 12;
+                        }
+                        o->pitch = track->pitch + a;
+                        *(u16 *)&o->envelope = *(u16 *)&track->instrument;
+                        o->sampleId = track->instrument;
+                        o->command = 1;
+                    }
+                }
+                o->volume = (track->channelVolume * p->volume) >> 4;
+                if ((p->flags & 0x408) && track->channelVolume != 0) {
+                    if (o->command == 0)
+                        o->pitch = track->pitch;
+                    o->envelope = track->instrument;
+                    o->dirty = 1;
+                }
+            next:;
+            }
+            track = (struct SoundBgmTrack *)p->bgmTracks;
+            ((struct SoundDriverTick *)p)->routing = track[0].routing | track[1].routing | track[2].routing | track[3].routing;
+        }
+    }
+
+    if (p->flags & 0x40) {
+        struct SoundTrack *se;
+        if ((s8)--p->sePriority < 0)
+            p->sePriority = 0;
+        se = p->seTracks;
+        sub_0807D6B4(0, (struct SoundChannelParams *)&out[1]);
+        sub_0807D6B4(1, (struct SoundChannelParams *)&out[3]);
+        sub_0807D6B4(2, (struct SoundChannelParams *)&out[9]);
+        sub_0807D6B4(3, (struct SoundChannelParams *)&out[8]);
+        sub_0807D6B4(4, (struct SoundChannelParams *)&out[7]);
+        sub_0807D6B4(5, (struct SoundChannelParams *)&out[6]);
+        b = 0;
+        for (i = 5; i >= 0; i--) {
+            b |= se->flags;
+            se++;
+        }
+        if (!(b & 0x80)) {
+            p->sePriority = 0;
+            p->flags &= 0xFFBF;
+        }
+    } else {
+        p->sePriority = 0;
+    }
+    *(vu8 *)0x04000081 = ((struct SoundDriverTick *)p)->routing;
+
+    o = out;
+    if (*(u16 *)&o[0].dirty != 0) {
+        b = gUnk_081AA20C[o[0].pitch];
+        if (o[0].dirty != 0) {
+            {
+                s32 t = (o[0].volume << 12) | o[0].envelope;
+                *(vu16 *)0x04000062 = t;
+            }
+            *(vu16 *)0x04000064 = b;
+        } else {
+            *(vu16 *)0x04000064 = b & 0x7FF;
+        }
+    }
+    if ((b = *(u16 *)&o[1].dirty) != 0) {
+        b = o[1].pitch;
+        if (b < 0 || !(b & 0x4000))
+            b = gUnk_081AA20C[b];
+        else
+            b = (b & ~0x4000) | 0x8000;
+        if (o[1].dirty != 0) {
+            {
+                s32 t = (o[1].volume << 12) | o[1].envelope;
+                *(vu16 *)0x04000068 = t;
+            }
+            *(vu16 *)0x0400006C = b;
+        } else {
+            *(vu16 *)0x0400006C = b & 0x7FF;
+        }
+    }
+    if (*(u16 *)&o[2].dirty != 0) {
+        b = gUnk_081AA20C[o[2].pitch] & 0x7FF;
+        if (o[2].volume == 0) {
+            *(vu16 *)0x04000072 = 0;
+        } else {
+            sub_0807D518(p, o[2].envelope, o[2].volume);
+            *(vu16 *)0x04000072 = 0x2000;
+        }
+        *(vu16 *)0x04000074 = b;
+    }
+    if ((b = *(u16 *)&o[3].dirty) != 0) {
+        a = o[3].volume << 12;
+        if (!(b & 0x202)) {
+            *(vu16 *)0x04000078 = a;
+            *(vu16 *)0x0400007C = gUnk_08139F50[o[3].pitch];
+        } else {
+            *(vu16 *)0x04000078 = a;
+            *(vu16 *)0x0400007C = o[3].pitch;
+        }
+    }
+
+    {
+        struct SoundPcmVoice *voice;
+        o += 9;
+        voice = &gUnk_030053AC[5];
+        for (i = 5; i >= 0; i--) {
+            b = o->command;
+            if (b != 0) {
+                if (b & 0x80) {
+                    sub_0807E918(voice, o->sampleId, o->volume, o->pitch);
+                } else if (b & 0x40) {
+                    voice->flags = 0;
+                } else {
+                    const struct SoundSample *s;
+                    if (o->sampleId & 0x8000)
+                        s = gUnk_08088A20[o->sampleId & 0x3FFF];
+                    else
+                        s = gUnk_0811B420[o->sampleId];
+                    *(u16 *)&voice->stepAndFraction = (*(gUnk_081A960C + o->pitch) * s->rate) >> 12;
+                }
+            }
+            if (o->dirty != 0)
+                voice->volume = o->volume;
+            voice--;
+            o--;
+        }
     }
-    if (temp_r5 <= 0) {
-        goto block_4;
-    }
-    var_r5 = temp_r5 - (p->fadeSpeed * 0x10);
-    if (var_r5 >= 0) {
-        goto block_6;
-    }
-    goto block_5;
-block_4:
-    var_r5 = temp_r5 + (p->fadeSpeed * 0x10);
-    if (var_r5 <= 0) {
-        goto block_6;
-    }
-block_5:
-    var_r5 = 0;
-block_6:
-    (*(u16 *)&p->fadeTimer) = (u16) (temp_r4 - var_r5);
-    if (temp_r6 == p->volume) {
-        goto block_11;
-    }
-    var_r1 = *flags;
-    var_r0 = 8;
-    goto block_10;
-block_8:
-    if (!(0xF & temp_r6)) {
-        goto block_11;
-    }
-    var_r1 = 0x400;
-    var_r0 = temp_r3;
-block_10:
-    *flags = var_r0 | var_r1;
-block_11:
-    if (!(0x100 & *flags)) {
-        goto block_16;
-    }
-    if (temp_r6 != 0) {
-        goto block_16;
-    }
-    var_r7 = &frame.output[9];
-    var_r9 = 9;
-loop_14:
-    *(u32 *)var_r7 = 0;
-    *(u32 *)&var_r7->dirty = 0;
-    var_r7--;
-    var_r9 -= 1;
-    if (var_r9 >= 0) {
-        goto loop_14;
-    }
-    goto block_101;
-block_16:
-    temp_r1 = p->flags;
-    frame.songData = p->songData;
-    var_r6 = ((struct SoundBgmTrack *)p->bgmTracks);
-    frame.firstTrack = var_r6;
-    if (!(1 & temp_r1)) {
-        goto block_20;
-    }
-    var_r7_2 = &frame.output[0];
-    var_r9_2 = 9;
-loop_18:
-    var_r6->flags = 0;
-    var_r6++;
-    *(u32 *)var_r7_2 = 0;
-    var_r7_2->dirty = 1;
-    var_r7_2->command = 0x40;
-    var_r7_2++;
-    var_r9_2 -= 1;
-    if (var_r9_2 >= 0) {
-        goto loop_18;
-    }
-    p->flags = temp_r1 & 0xFFFFBF7E;
-    p->status = -1U;
-    goto block_101;
-block_20:
-    if (0xC0 & temp_r1) {
-        goto block_22;
-    }
-    return;
-block_22:
-    frame.lastOutput = &frame.output[9];
-    temp_r4_2 = &((struct SoundBgmTrack *)p->bgmTracks)[1].routing;
-    frame.route1 = temp_r4_2;
-    temp_r4_3 = temp_r4_2 + 0x18;
-    frame.route2 = temp_r4_3;
-    temp_r4_4 = temp_r4_3 + 0x18;
-    frame.route3 = temp_r4_4;
-    frame.lastTrack = (struct SoundBgmTrack *)(temp_r4_4 + 0x7C);
-    if (temp_r1 & 0x4000) {
-        goto block_29;
-    }
-    p->flags = temp_r1 | 0x4000;
-block_24:
-    p->status = 0;
-    var_r6_2 = frame.firstTrack;
-    var_r6_2->routing = 0x11;
-    *frame.route1 = 0x22;
-    *frame.route2 = 0x44;
-    *frame.route3 = 0x88;
-    frame.lastTrack->routing = 0x33;
-    ((struct SoundBgmTrack *)p->bgmTracks)[7].routing = 0x33;
-    temp_r0 = (s8 *)&((struct SoundBgmTrack *)p->bgmTracks)[7] - 0x1C;
-    *temp_r0 = 0x33;
-    ((struct SoundBgmTrack *)p->bgmTracks)[8].routing = 0x33;
-    ((struct SoundBgmTrack *)p->bgmTracks)[6].routing = 0x33;
-    *(temp_r0 - 0x18) = 0x33;
-    *(vu8 *)0x04000081 = 0xFFU;
-    *(vu16 *)0x04000082 = 0x330E;
-    var_r9_3 = 9;
-loop_25:
-    temp_r2 = 0xFE & var_r6_2->flags;
-    var_r6_2->flags = temp_r2;
-    if (!(0x40 & temp_r2)) {
-        goto block_27;
-    }
-    var_r6_2->flags = temp_r2 | 0x80;
-block_27:
-    var_r6_2->flags &= 0xC0;
-    var_r6_2->position = 0;
-    var_r6_2->returnPosition = 0;
-    *(u16 *)&var_r6_2->instrument = 0;
-    *(u16 *)&var_r6_2->vibratoPhase = 0;
-    var_r6_2++;
-    var_r9_3 -= 1;
-    if (var_r9_3 >= 0) {
-        goto loop_25;
-    }
-    ((struct SoundBgmTrack *)p->bgmTracks)[1].instrument = 0x80;
-    ((struct SoundBgmTrack *)p->bgmTracks)[0].instrument = 0x80;
-    *(vu16 *)0x04000072 = 0;
-    sub_0807D518(p, 0U, 0U);
-block_29:
-    p->status += 1;
-    var_r7_3 = frame.lastOutput;
-    var_r6_3 = frame.lastTrack;
-    var_r9_4 = 9;
-loop_30:
-    *(u32 *)var_r7_3 = 0;
-    *(u32 *)&var_r7_3->dirty = 0;
-    temp_r1_2 = var_r6_3->flags;
-    if (0x80 & temp_r1_2) {
-        goto block_32;
-    }
-    goto block_84;
-block_32:
-    if (1 & temp_r1_2) {
-        goto block_34;
-    }
-    var_r6_3->flags = (u8) (temp_r1_2 | 1);
-    var_r3 = 0;
-    goto block_58;
-block_34:
-    temp_r0_2 = var_r6_3->delay - 1;
-    var_r6_3->delay = temp_r0_2;
-    if ((temp_r0_2 << 0x10) == 0) {
-        goto block_36;
-    }
-    goto block_84;
-block_36:
-    var_r3_2 = var_r6_3->position;
-block_37:
-    temp_r2_2 = &(&frame.songData[var_r6_3->songOffset])[var_r3_2];
-    var_r3 = var_r3_2 + 1;
-    temp_r4_5 = temp_r2_2[0];
-    if ((s32) temp_r4_5 <= 0xFC) {
-        goto block_45;
-    }
-    if (temp_r4_5 != 0xFF) {
-        goto block_40;
-    }
-    p->flags |= 1;
-    goto block_44;
-block_40:
-    if (temp_r4_5 != 0xFE) {
-        goto block_42;
-    }
-    goto block_24;
-block_42:
-    var_r6_3->flags = (u8) (0x40 & var_r6_3->flags);
-    if ((*(u16 *)&var_r7_3->dirty) == 0) {
-        goto block_44;
-    }
-    goto block_98;
-block_44:
-    var_r6_3->channelVolume = 0U;
-    *(u16 *)&var_r7_3->envelope = 0;
-    var_r7_3->pitch = (u16) var_r6_3->pitch;
-    var_r7_3->command = 0x40U;
-    var_r7_3->dirty = 0x40;
-    goto block_98;
-block_45:
-    if ((s32) temp_r4_5 <= 0xEF) {
-        goto block_57;
-    }
-    if (temp_r4_5 != 0xF3) {
-        goto block_48;
-    }
-    var_r6_3->songOffset = (u16) (var_r6_3->songOffset + var_r3);
-    var_r3 = 0;
-    goto block_77;
-block_48:
-    if (temp_r4_5 != 0xF2) {
-        goto block_50;
-    }
-    var_r3 += 1;
-    var_r7_3->sampleId = (s16) var_r6_3->instrument;
-    var_r7_3->pitch = (s16) (((s16) var_r6_3->pitch - 0x40) + temp_r2_2[1]);
-    var_r7_3->command = 1U;
-    goto block_77;
-block_50:
-    if ((s32) temp_r4_5 <= 0xF0) {
-        goto block_52;
-    }
-    var_r3 += 1;
-    var_r6_3->vibratoDepth = (u8) ((u8) temp_r2_2[1] >> 1);
-    var_r6_3->flags = (u8) (var_r6_3->flags | 0x20);
-    goto block_77;
-block_52:
-    if (temp_r4_5 == 0xF0) {
-        goto block_54;
-    }
-    goto block_77;
-block_54:
-    var_r3 += 1;
-    temp_r5_2 = temp_r2_2[1];
-    if (var_r9_4 <= 3) {
-        goto block_56;
-    }
-    var_r4 = temp_r5_2 & 0xF;
-    *((u8 *)var_r7_3 + 0xB) = (s8) ((s32) temp_r5_2 >> 4);
-    *((u8 *)var_r7_3 + 0xC) = 1;
-    goto block_59;
-block_56:
-    var_r6_3->routing = temp_r5_2;
-    goto block_77;
-block_57:
-    if ((s32) temp_r4_5 <= 0xDF) {
-        goto block_60;
-    }
-block_58:
-    var_r4 = 0;
-    var_r7_3->pitch = (u16) var_r6_3->pitch;
-    var_r7_3->command = 0x40U;
-block_59:
-    var_r6_3->channelVolume = var_r4;
-    var_r7_3->envelope = (u8) var_r6_3->instrument;
-    var_r7_3->dirty = 1;
-    goto block_77;
-block_60:
-    if ((s32) temp_r4_5 <= 0xCF) {
-        goto block_63;
-    }
-    var_r4 = temp_r4_5 & 0xF;
-    var_r3 += 1;
-    temp_r0_3 = temp_r2_2[1] << 5;
-    var_r7_3->pitch = temp_r0_3;
-    var_r6_3->pitch = temp_r0_3;
-    var_r7_3->command = 1U;
-    if (var_r4 == var_r6_3->channelVolume) {
-        goto block_77;
-    }
-    goto block_59;
-block_63:
-    if ((s32) temp_r4_5 <= 0xBF) {
-        goto block_65;
-    }
-    var_r4 = temp_r4_5 & 0xF;
-    var_r7_3->pitch = (u16) var_r6_3->pitch;
-    var_r7_3->command = 1U;
-    goto block_59;
-block_65:
-    if ((s32) temp_r4_5 <= 0x9F) {
-        goto block_69;
-    }
-    var_r6_3->channelVolume = (u8) (temp_r4_5 & 0xF);
-    temp_r0_4 = temp_r2_2[1];
-    var_r7_3->sampleId = (s16) temp_r0_4;
-    var_r6_3->instrument = temp_r0_4;
-    var_r3 += 1;
-    var_r5_2 = 0;
-    if ((s32) temp_r4_5 <= 0xAF) {
-        goto block_68;
-    }
-    var_r5_2 = (s8)temp_r2_2[2] << 5;
-    var_r3 += 1;
-block_68:
-    var_r6_3->pitch = var_r5_2;
-    var_r7_3->pitch = var_r5_2;
-    *(u16 *)&var_r7_3->envelope = *(u16 *)&var_r6_3->instrument;
-    var_r7_3->command = 0x80U;
-    goto block_77;
-block_69:
-    if ((s32) temp_r4_5 <= 0x8F) {
-        goto block_72;
-    }
-    var_r6_3->returnSongOffset = var_r6_3->songOffset;
-    var_r6_3->returnPosition = (u16) (var_r3 + 3);
-    var_r6_3->songOffset = (u16) gUnk_080E09D0[p->currentBgm].offset[var_r9_4];
-    temp_r1_3 = temp_r2_2[3];
-    var_r6_3->loopCounter = temp_r1_3;
-    var_r3 = temp_r2_2[1] | ((u8) temp_r2_2[2] << 8);
-    var_r4_2 = temp_r4_5 & 0xF;
-    if (var_r4_2 == 0xF) {
-        goto block_80;
-    }
-    var_r6_3->loopCounter = (u8) (temp_r1_3 + 1);
-    goto block_74;
-block_72:
-    if ((s32) temp_r4_5 <= 0x7F) {
-        goto block_77;
-    }
-    var_r4_2 = temp_r4_5 & 0xF;
-block_74:
-    if (var_r4_2 <= 3) {
-        goto block_76;
-    }
-    var_r4_2 -= 4;
-    sub_0807D518(p, (u32) var_r4_2, (u32) var_r6_3->channelVolume);
-block_76:
-    var_r7_3->envelope = (s8) var_r4_2;
-    var_r6_3->instrument = (u8) var_r4_2;
-block_77:
-    if (var_r6_3->returnPosition == 0) {
-        goto block_80;
-    }
-    temp_r0_5 = var_r6_3->loopCounter - 1;
-    var_r6_3->loopCounter = temp_r0_5;
-    if ((temp_r0_5 << 0x18) != 0) {
-        goto block_80;
-    }
-    var_r6_3->songOffset = (u16) var_r6_3->returnSongOffset;
-    var_r3 = (s32) var_r6_3->returnPosition;
-block_80:
-    temp_r2_3 = &(&frame.songData[var_r6_3->songOffset])[var_r3];
-    var_r4_3 = temp_r2_3[0];
-    var_r3_2 = var_r3 + 1;
-    if ((s32) var_r4_3 <= 0xEF) {
-        goto block_82;
-    }
-    var_r4_3 = ((0xF & var_r4_3) << 8) + temp_r2_3[1];
-    var_r3_2 += 1;
-block_82:
-    var_r6_3->position = var_r3_2;
-    var_r6_3->delay = (u16) var_r4_3;
-    if ((var_r4_3 << 0x10) != 0) {
-        goto block_84;
-    }
-    goto block_37;
-block_84:
-    temp_r5_3 = var_r6_3->flags;
-    if (!(4 & temp_r5_3)) {
-        goto block_88;
-    }
-    var_r4_4 = var_r6_3->fadeCounter - 1;
-    if (var_r4_4 > 0) {
-        goto block_87;
-    }
-    var_r4_4 = 0;
-    var_r6_3->flags = (u8) (0xFB & temp_r5_3);
-    var_r7_3->command = 0x40U;
-block_87:
-    var_r6_3->fadeCounter = (s8) var_r4_4;
-    var_r6_3->channelVolume = (u8) ((s32) (var_r6_3->fadeVolume * var_r4_4) >> 2);
-    var_r7_3->pitch = (u16) var_r6_3->pitch;
-    *(u16 *)&var_r7_3->envelope = *(u16 *)&var_r6_3->instrument;
-    var_r7_3->dirty = 1;
-block_88:
-    if (!(temp_r5_3 & 0x20)) {
-        goto block_93;
-    }
-    temp_r2_4 = var_r6_3->vibratoDepth;
-    if (temp_r2_4 != 0) {
-        goto block_91;
-    }
-    var_r6_3->flags = (u8) (0xDF & var_r6_3->flags);
-    var_r6_3->vibratoPhase = temp_r2_4;
-    var_r4_5 = 0;
-    goto block_92;
-block_91:
-    var_r6_3->vibratoPhase = (u8) (var_r6_3->vibratoPhase + 0x18);
-    var_r4_5 = (s32) (var_r6_3->vibratoDepth * gUnk_081ABC4C[var_r6_3->vibratoPhase]) >> 0xC;
-block_92:
-    var_r7_3->pitch = (s16) (var_r6_3->pitch + var_r4_5);
-    *(u16 *)&var_r7_3->envelope = *(u16 *)&var_r6_3->instrument;
-    var_r7_3->sampleId = (s16) var_r6_3->instrument;
-    var_r7_3->command = 1U;
-block_93:
-    var_r7_3->volume = (s8) ((s32) (p->volume * var_r6_3->channelVolume) >> 4);
-    if (!(0x408 & p->flags)) {
-        goto block_98;
-    }
-    if (var_r6_3->channelVolume == 0) {
-        goto block_98;
-    }
-    if (var_r7_3->command != 0) {
-        goto block_97;
-    }
-    var_r7_3->pitch = (u16) var_r6_3->pitch;
-block_97:
-    var_r7_3->envelope = (u8) var_r6_3->instrument;
-    var_r7_3->dirty = 1;
-block_98:
-    var_r9_4 -= 1;
-    var_r6_3--;
-    var_r7_3--;
-    if (var_r9_4 < 0) {
-        goto block_100;
-    }
-    goto loop_30;
-block_100:
-    (*((u8 *)p + 0x198)) = (u8) (frame.firstTrack->routing | *frame.route1 | *frame.route2 | *frame.route3);
-block_101:
-    temp_r0_6 = 0x40 & p->flags;
-    if (temp_r0_6 == 0) {
-        goto block_108;
-    }
-    temp_r0_7 = p->sePriority - 1;
-    p->sePriority = temp_r0_7;
-    if ((s32) (temp_r0_7 << 0x18) >= 0) {
-        goto block_104;
-    }
-    p->sePriority = 0;
-block_104:
-    var_r4_6 = p->seTracks;
-    sub_0807D6B4(0, &frame.output[1]);
-    sub_0807D6B4(1, &frame.output[3]);
-    sub_0807D6B4(2, &frame.output[9]);
-    sub_0807D6B4(3, &frame.output[8]);
-    sub_0807D6B4(4, &frame.output[7]);
-    sub_0807D6B4(5, &frame.output[6]);
-    var_r5_3 = 0;
-    var_r9_5 = 5;
-loop_105:
-    var_r5_3 |= var_r4_6->flags;
-    var_r4_6++;
-    var_r9_5 -= 1;
-    if (var_r9_5 >= 0) {
-        goto loop_105;
-    }
-    temp_r1_4 = 0x80 & var_r5_3;
-    if (temp_r1_4 != 0) {
-        goto block_109;
-    }
-    p->sePriority = temp_r1_4;
-    p->flags &= 0xFFBF;
-    goto block_109;
-block_108:
-    p->sePriority = (u8) temp_r0_6;
-block_109:
-    *(vu8 *)0x04000081 = (u8) (*((u8 *)p + 0x198));
-    if ((*(u16 *)&frame.output[0].dirty) == 0) {
-        goto block_113;
-    }
-    temp_r5_4 = gUnk_081AA20C[(s16)frame.output[0].pitch];
-    if ((u8) (*(u16 *)&frame.output[0].dirty) == 0) {
-        goto block_112;
-    }
-    *(vu16 *)0x04000062 = (frame.output[0].volume << 0xC) | frame.output[0].envelope;
-    *(vu16 *)0x04000064 = temp_r5_4;
-    goto block_113;
-block_112:
-    *(vu16 *)0x04000064 = (u16) (temp_r5_4 & 0x7FF);
-block_113:
-    if ((*(u16 *)&frame.output[1].dirty) == 0) {
-        goto block_121;
-    }
-    temp_r5_5 = frame.output[1].pitch;
-    if ((s32) temp_r5_5 < 0) {
-        goto block_116;
-    }
-    if (0x4000 & temp_r5_5) {
-        goto block_117;
-    }
-block_116:
-    var_r5_4 = gUnk_081AA20C[(s16)temp_r5_5];
-    goto block_118;
-block_117:
-    var_r5_4 = (temp_r5_5 & 0xFFFFBFFF) | 0x8000;
-block_118:
-    if ((u8) (*(u16 *)&frame.output[1].dirty) == 0) {
-        goto block_120;
-    }
-    *(vu16 *)0x04000068 = (frame.output[1].volume << 0xC) | frame.output[1].envelope;
-    *(vu16 *)0x0400006C = var_r5_4;
-    goto block_121;
-block_120:
-    *(vu16 *)0x0400006C = (u16) (var_r5_4 & 0x7FF);
-block_121:
-    if ((*(u16 *)&frame.output[2].dirty) == 0) {
-        goto block_126;
-    }
-    temp_r5_6 = 0x7FF & gUnk_081AA20C[(s16)frame.output[2].pitch];
-    temp_r1_5 = frame.output[2].volume;
-    if (temp_r1_5 != 0) {
-        goto block_124;
-    }
-    *(vu16 *)0x04000072 = (s16) temp_r1_5;
-    goto block_125;
-block_124:
-    sub_0807D518(p, (u32) frame.output[2].envelope, (u32) frame.output[2].volume);
-    *(vu16 *)0x04000072 = 0x2000;
-block_125:
-    *(vu16 *)0x04000074 = temp_r5_6;
-block_126:
-    temp_r5_7 = (*(u16 *)&frame.output[3].dirty);
-    if (temp_r5_7 == 0) {
-        goto block_130;
-    }
-    temp_r4_6 = frame.output[3].volume << 0xC;
-    if (temp_r5_7 & 0x202) {
-        goto block_129;
-    }
-    *(vu16 *)0x04000078 = temp_r4_6;
-    *(vu16 *)0x0400007C = gUnk_08139F50[(s16)frame.output[3].pitch];
-    goto block_130;
-block_129:
-    *(vu16 *)0x04000078 = temp_r4_6;
-    *(vu16 *)0x0400007C = (u16) frame.output[3].pitch;
-block_130:
-    var_r7_4 = &frame.output[9];
-    var_r4_7 = &gUnk_030053AC[5];
-    var_r9_6 = 5;
-loop_131:
-    temp_r5_8 = var_r7_4->command;
-    if (temp_r5_8 == 0) {
-        goto block_140;
-    }
-    temp_r1_6 = 0x80 & temp_r5_8;
-    if (temp_r1_6 == 0) {
-        goto block_134;
-    }
-    sub_0807E918(var_r4_7, (u16)var_r7_4->sampleId, var_r7_4->volume, (s16)var_r7_4->pitch);
-    goto block_140;
-block_134:
-    if (!(temp_r5_8 & 0x40)) {
-        goto block_136;
-    }
-    var_r4_7->flags = temp_r1_6;
-    goto block_140;
-block_136:
-    temp_r1_7 = var_r7_4->sampleId;
-    if (!(0x8000 & temp_r1_7)) {
-        goto block_138;
-    }
-    var_r0_2 = &gUnk_08088A20[0x3FFF & temp_r1_7];
-    goto block_139;
-block_138:
-    var_r0_2 = &gUnk_0811B420[(u16)var_r7_4->sampleId];
-block_139:
-    *(u16 *)&var_r4_7->stepAndFraction = (s16) ((s32) ((*var_r0_2)->rate * gUnk_081A960C[(s16)var_r7_4->pitch]) >> 0xC);
-block_140:
-    if (var_r7_4->dirty == 0) {
-        goto block_142;
-    }
-    var_r4_7->volume = (u8) var_r7_4->volume;
-block_142:
-    var_r4_7--;
-    var_r7_4--;
-    var_r9_6 -= 1;
-    if (var_r9_6 >= 0) {
-        goto loop_131;
-    }
-    return;
 }
 #endif
-INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807DB58);
+INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807DB58); /* 0x0807DB58 size 0x7CC */
 
 void sub_0807E324(void)
 {

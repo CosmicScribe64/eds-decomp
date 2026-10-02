@@ -4,7 +4,7 @@ type: tool
 status: solid
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Working without the ROM
 
@@ -26,7 +26,7 @@ Goal: let GitHub-connected agents and CI work on the matching decomp without the
 - Native mode: a bare `debian:trixie-slim` container ran `tools/setup_native.sh`, then `check_all.py` natively. Result in the log entry for this date.
 
 ## Still local-only
-`make compare` (full-ROM SHA-1, which also covers data, the header and the link layout) and anything that reads game data (`tools/extract_cards.py`, `tools/disasm.py`, graphics/text tools). Run a full compare after merging batches of agent PRs.
+`make compare` (full-ROM SHA-1, which also covers data, the header and the link layout) and anything that reads game data (`tools/extract_cards.py`, `tools/disasm.py`, graphics/text tools). Run a full compare after merging batches of agent PRs. Strictly, `make compare` needs `assets/`, not the ROM: `make setup` extracts the data once, and a clean build still matched after the ROM was deleted (2026-10-02, [[assets]]). The assets are game data, so they stay local like the ROM.
 
 > [!question] Open decision (the user's)
 > Publishing `asm/` (disassembly derived from the game's code) is standard practice for public decomps (pret, zeldaret, decomp.dev projects), but it is derived work. The ROM and assets stay out regardless.

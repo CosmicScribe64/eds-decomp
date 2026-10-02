@@ -1,18 +1,18 @@
 ---
 title: Graphics formats
 type: data
-status: draft
+status: solid
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Graphics formats
 
 Summary (verified): EDS makes no BIOS decompression calls. The only SWIs are CpuFastSet, CpuSet and Div ([[bios-swi-stubs]]). Almost all graphics are stored raw. Only two formats are compressed:
-1. LZSS (Okumura-style, with the custom decoder [[lzss-decompress]]). It is used only for the dialogue-scene bitmaps, their sprite sheets and the dialogue-box strip, about 0.7 MiB in total.
+1. LZSS (Okumura-style, with the custom decoder [[lzss-decompress]]). It is used only for the dialogue-scene bitmaps, their sprite sheets and the dialogue box, about 0.7 MiB in total ([[scene-sets]]).
 2. 6bpp packing for card art ([[card-art]]).
 
-Everything else is one of the raw containers below. Where they sit in the ROM is on [[rom-map]].
+Everything else is one of the raw containers below. Where they sit in the ROM is on [[rom-map]]. Since 2026-10-02 every graphics byte extracts to PNG, JASC-PAL or JSON and builds back byte-identical ([[assets]]). That round trip is the strongest check of the formats on this page.
 
 ## Format inventory
 
@@ -20,13 +20,14 @@ In the V/H column, V means verified and H means hypothesis.
 
 | Format | Where | Count | Loader | V/H |
 |---|---|---|---|---|
-| LZSS blob `{u32 packedSize; stream}` | `0x0870C640`–`0x087BDAA8`, `0x0874C650`, `0x0874D5B0` | 57 blobs in scene sets (31 bitmaps + 26 OBJ sheets), plus 2 | [[lzss-decompress]] `0x0807A1A8` | V |
-| Scene set (Mode 4) | descriptors `0x081976A0` (31 × 0x14) | 31 | `0x08000420`, `0x08000570`, `0x08000708` | V |
-| Image pack (palette + tiles + sparse map) | graphics banks A and B, card frames | ~100 found by scan | `sub_08072EB0`, `sub_08072FAC` (8bpp BG) | V |
-| Mode-4 bitmap (240×160 8bpp + 256-colour palette) | `0x0871CE50`…, `0x086A12EC`, `0x086B8568`, `0x087C29D4` | 8 | via tables such as `0x08198440` | V |
+| LZSS blob `{u32 packedSize; stream}` | `0x0870C640`–`0x087BDAA8`, `0x0874C650`, `0x0874D5B0` | 59: 31 scene bitmaps, 26 OBJ sheets, the dialogue box and its header strip | [[lzss-decompress]] `0x0807A1A8` | V |
+| Scene set (Mode 4) | descriptors `0x081976A0` (31 × 0x14) | 31 | `0x08000420`, `0x08000570`, `0x08000708`; see [[scene-sets]] | V |
+| Image pack (palette + tiles + sparse map) | card frames, graphics banks A and B | 133 (7 + 85 + 41) | 8bpp: `sub_08072EB0`, `sub_08072FAC`; 4bpp: `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C`, `sub_080733F4` | V |
+| Sprite animation stream | bank A | 6 | `sub_0807695C`, `sub_080769DC`, `sub_08076A20` | V |
+| Mode-4 bitmap (240×160 8bpp + 256-colour palette) | `0x0871CE50`…, `0x086A12EC`, `0x086B8568`, `0x087C29D4`, `0x087EA718` | 9 | via tables such as `0x08198440` | V |
 | Card art (6bpp, 72×80, 64 colours) | `0x082A6500` | 820 | see [[card-art]] | V |
 | 1bpp fonts | `0x081C0000`–`0x0822C300` | 8 fonts | see [[font]] | V |
-| Raw palettes (0x20 / 0x200) and raw 4bpp/8bpp tile and map blocks (0x800, 0x2000) | graphics banks A and B | many | various (e.g. `LoadSystemFontGfx`, [[video-helpers]]) | V (sizes), H (individual use) |
+| Raw palettes, 4bpp/8bpp tile blocks and BG maps | graphics banks A and B, small graphics | 141 palettes, 250 tile blocks, 23 maps | various (e.g. `LoadSystemFontGfx`, [[video-helpers]]) | V (bytes, sizes), H (some sheet arrangements and preview palettes) |
 
 ## LZSS
 ```
@@ -35,26 +36,26 @@ u8  stream[packedSize]  // flag byte, LSB first: 1 = literal byte, 0 = 2-byte ba
                         // ref b0,b1: pos = b0 | (b1 & 0xF0) << 4 ; len = (b1 & 0x0F) + 3
                         // 4 KiB ring buffer, first write at 0xFEE, pre-filled with 0 (the ring is 0x02030000)
 ```
-This is Haruhiko Okumura's classic LZSS (N = 4096, F = 18, THRESHOLD = 2). It is not BIOS LZ77, which has a `0x10` header byte and a big-endian 12-bit displacement. The unpacked size is not stored: callers know it (0x4B00, 0x5A00, 0x2000, 0x3C00, 0x1680). Many blobs (17 of 57) decode to size+1 because a trailing literal is padding. Decode with `python3 tools/lzss.py <addr> [out.bin]`.
+This is Haruhiko Okumura's classic LZSS (N = 4096, F = 18, THRESHOLD = 2). It is not BIOS LZ77, which has a `0x10` header byte and a big-endian 12-bit displacement. The unpacked size is not stored: callers know it (0x4B00, 0x5A00, 0x2000, 0x3C00, 0x1680). 17 of the 59 blobs decode to one byte more than the image: 16 of the 240×96 bitmaps (0x5A01) and set 25's sprite sheet (0x2001). Decode with `python3 tools/lzss.py <addr> [out.bin]`.
+
+> [!warning] Contradiction
+> This page said the size+1 blobs end in "a trailing literal [that] is padding". Re-encoding the streams (gfx_scenes plugin, 2026-10-02) shows something else. The stream's last match is one byte longer, for example `(2049, 4)` where the other streams end with `(2049, 3)`. So the compressor's input file was one byte longer than the image. The extra byte is 0x18 for the bitmaps and 0x01 for the sprite sheet. Resolved in favour of the re-encoding, which reproduces every stream byte for byte. The asset keeps the byte as `trailing_bytes` and appends it before compressing.
 
 > [!warning] False positives
 > A plausible `u32` size followed by a stream that happens to parse is common in u16 tables. `0x08624CF4` inside the card-number map looked like a valid blob ([[rom-map]] correction). Only trust blobs that a descriptor or a loader's literal pool points at.
 
-## Scene sets (dialogue "bust-up" scenes)
-The dialogue screens run in BG mode 4 (8bpp bitmap, 2 pages). Descriptor table at `0x081976A0`, 31 × 0x14:
+### The original compressor
+All 59 streams (342,467 tokens) are regenerated byte for byte by `lz_encode()` in `tools/assetfmt/gfx_scenes.py`. The original tool was Okumura's `LZSS.C` (binary match tree, one tree per first byte, bytes 1–17 compared, the first node with a strictly longer match wins, a full 18-byte match replaces the old node, farthest distance 4078), with three differences:
+1. **No pre-inserted strings.** Okumura inserts the 18 "space" strings before the text, and this tool does not. The first byte is always a literal, and no match ever points into the zero-filled ring.
+2. **0xFF past the end.** Near the end of the input, comparisons read 0xFF for the bytes after the last one, where Okumura reads stale ring data. The match length is still clamped to the bytes that are left. This only changes which of several equal matches is picked in the last 17 bytes.
+3. **Window removal by age-ordered merge.** When the oldest position leaves the window and its node has two children, the tool merges the two subtrees like a treap, keeping the older node on top at every step. Okumura promotes the in-order predecessor instead. A node that replaced an identical 18-byte string takes that node's age.
 
-```c
-struct SceneSet {           // 0x14 bytes
-    const u32 *bitmapLz;    // LZSS: 240x80 (0x4B00, sets 0,1,3,4) or 240x96 (0x5A00) 8bpp, linear rows
-    const u16 *bgPal;       // raw 256 colours (0x200)
-    const u16 *objPal;      // raw 256 colours, or NULL (sets 0-4)
-    const u32 *objTilesLz;  // LZSS 0x2000: OBJ tiles, copied to 0x06014000 in 16 x 0x200 chunks; NULL for sets 0-4
-    const void *anim;       // animation/sprite script in .rodata 2 (e.g. 0x08197954), NULL for sets 0-4
-};
-```
-- The loaders (`0x08000420` and two twins at `0x08000570` and `0x08000708`) decode the bitmap into an EWRAM buffer. `sub_080008A4(page, …, size)` then copies it to page 0 (`0x06000000`) or page 1 (`0x0600A000`). The lower screen area comes from the dialogue-box bitmap (LZSS `0x0874C650`, 240×64 = 0x3C00, table `0x08139F5C`), which is copied to `0x06005A00`/`0x0600FA00`, that is, rows 96–159 of each page.
-- Set 0 (240×80) is a duel-arena view, and set 5 (`0x08197704`, 240×96) is Tea in front of a card-art backdrop (both rendered). The rest of 0–4 are probably venue backgrounds and the rest of 5–30 duelist portraits (H).
-- V: all 31 descriptors decode (checked by `tools/verify_rom_map.py`), and sets 0, 5 and the dialogue box were rendered as linear 8bpp bitmaps.
+How this was found: each candidate rule was scored against every token of every stream. Okumura's predecessor rule mismatched 3,817 tokens (about 1%, starting just after the first 4 KiB). Joining the subtrees mismatched 2,079, merging by position 188, and merging by inherited age 0.
+
+For edits, `lz_encode_optimal()` (the shortest parse for this format) is about 1.6% smaller than the original encoder. The asset build uses it only when the original-style output no longer fits the slot ([[assets]]).
+
+## Scene sets
+Moved to [[scene-sets]]: the descriptor struct, the set-to-character table, the ROM order, OBJ tile placement (2D mapping, 16 tiles per row at `0x06014000 + row * 0x400`), palette banks from the animation templates, and the dialogue box and header strip.
 
 ## Image pack
 A self-describing raw container: palette, tiles, and a sparse tile map. Each count is stored 4 times (four identical u16), which makes packs easy to scan for.
@@ -63,24 +64,79 @@ A self-describing raw container: palette, tiles, and a sparse tile map. Each cou
 u16 nColors, nColors, nColors, nColors;
 u16 palette[nColors];                 // BGR555; bit 15 is often set, and ignored
 u16 nTiles,  nTiles,  nTiles,  nTiles;
-u8  tiles[nTiles][64];                // 8bpp 8x8 (a 4bpp variant with [32] also exists)
+u8  tiles[nTiles][64];                // 8bpp 8x8; the 4bpp variant has [32]
 u16 nCells,  nCells,  nCells,  nCells;
 struct { u16 pos; u16 tile; } cell[nCells];   // pos = x | (y << 8), on a 32-wide map
 ```
-Loaders `sub_08072EB0` (6 callers) and `sub_08072FAC` (4 callers, `LoadBgImage` on [[video-helpers]]) are identical except for the map buffer (`0x03000C5C` versus `0x0300045C`). Each one:
+The 8bpp loaders `sub_08072EB0` (6 callers) and `sub_08072FAC` (4 callers, `LoadBgImage` on [[video-helpers]]) are identical except for the map buffer (`0x03000C5C` versus `0x0300045C`). Each one:
 - copies the palette to `0x05000000 + palIdx*2`;
 - copies the tiles to `0x06004000 + tileBase*32`, adding `palIdx` to every non-zero pixel byte (so colour 0 stays transparent);
 - writes `mapBuffer[mapBase + (pos & 0x3F) + (pos >> 8)*32] = tile + tileBase/2` for each cell;
 - returns `nTiles`.
 
-Examples (all rendered): the 7 card frames `0x08625460`… (32 colours, 144 tiles, a 12×12-tile frame); `0x087D4B24` (254 colours, 583 tiles, 600 cells = a full 30×20 sky BG); `0x087C0CD4` (4bpp, 16 colours, a coin). The 4bpp variant (for example `0x087C056C`, `0x087E795C`…) parses only with 32-byte tiles. Its loader has not been identified (H). `python3 tools/scan_objpack.py [start end]` lists every pack. It has a few false positives inside the font bank.
+The 4bpp packs share the format with 32-byte tiles. Their loaders are `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C` and `sub_080733F4` (gfx_banks plugin, 2026-10-02). That answers the open question about the 4bpp loader.
+
+**Packs follow exactly from their picture (verified on all 133).** The original converter:
+- cut the picture into 8×8 blocks in row-major order, and gave an all-zero (transparent) block no cell;
+- shared one tile between identical blocks, numbering tiles in order of first use, so no pack has a duplicate tile or a zero tile;
+- wrote cells in row-major order, with no flip or palette bits.
+
+The asset build therefore re-derives the palette, tiles and cells from a PNG, and an edited pack may shrink but not grow.
+
+Examples (all rendered): the 7 card frames `0x08625460`… (8bpp 104×144, 13×18 tiles, a blank art window); `0x087D4B24` (254 colours, 583 tiles, 600 cells = a full 30×20 sky BG); `0x087C0CD4` (4bpp, 16 colours, a coin).
+
+> [!warning] Contradiction
+> This page described a card frame as "32 colours, 144 tiles, a 12×12-tile frame". The tile and cell counts are right (144 each), but the cell positions span x 0–12 and y 0–17 (checked on 2026-10-02 by parsing `0x08625460`). The frame is therefore 13×18 tiles (104×144 px), and the 90 blank blocks, mostly the art window, have no cell. The gfx_banks plugin renders it the same way. Resolved in favour of the cell positions.
+
+`python3 tools/scan_objpack.py [start end]` lists packs, with two caveats:
+- It labels four 4bpp packs as 8bpp (`0x0867E244`, `0x0868C9F8`, `0x0869D758`, `0x08707B28`), because it tries 64-byte tiles first. Each of them is loaded by a 4bpp loader.
+- Its hit at `0x087F4480` is a false positive inside tile data, as are a few hits in the font bank.
+
+## Sprite animation stream
+Six streams in bank A, read by `sub_0807695C`, `sub_080769DC` and `sub_08076A20`:
+```
+u16 palette[16]                         // to OBJ palette 15
+u16 n
+struct { u16 size; u16 b; } g[n]        // size = attr1 size bits (0x8000 = 32x32, 0xC000 = 64x64); b equals size in all 6 (use unknown)
+n x { u16 nTiles; u8 tiles[nTiles][32]; }   // 4bpp, OBJ 1D order, loaded from tile 1
+u16 nFrames
+nFrames x { u16 pieces; struct { u16 graphic; s16 dx; s16 dy; } piece[pieces]; }
+```
+The streams are:
+- `0x0868CAC0`: an explosion;
+- `0x0868DB94` and `0x0868EC38`: green and orange tile patterns;
+- `0x08690D0C`: a whirlwind from a card slot;
+- `0x08694EA8`: the deck being dealt;
+- `0x0869771C`: smoke and a hat.
+
+Each parses exactly up to the next label, with 2 alignment bytes after `0x08694EA8`.
 
 ## Mode-4 bitmaps
-Raw 240×160 8bpp (0x9600 bytes), each paired with a raw 256-colour palette. The table at `0x08198440` holds 5 × `{u16 *pal; u8 *bitmap}` for `0x0871CE50`…`0x08742E50`, and one of those is the character-select screen. Other bitmaps are `0x086A12EC` (palette `0x086AA8EC`), `0x086B8568` and `0x087C29D4` (palette `0x087CBFD4`).
+Raw 240×160 8bpp (0x9600 bytes), each paired with a raw 256-colour palette.
+- The table at `0x08198440` holds 5 × `{u16 *pal; u8 *bitmap}` for the 5 duelist-select screens at `0x0871CE50`…`0x08742E50`.
+- Bank A: `0x086A12EC`, a corridor (palette `0x086AA8EC`, `sub_08028AEC`), and `0x086B8568`, the Millennium eye (palette `0x086C1B68`, `sub_080263C8`).
+- Bank B: `0x087C29D4`, the stone frame of the delete-save prompt (palette `0x087CBFD4`, `sub_0800553C`). Its text is the OBJ sheet `0x087CC1D4`.
+- Bank B: `0x087EA718`, the calendar (palette `0x087F3D18`, `sub_0800257C`). The label `0x087F1798` is its rows 120–159, which the code also reads on their own.
+
+## Tiles, maps and OBJ mapping (bank findings, verified by rendering)
+- **2D OBJ mapping.** Many screens use 2D OBJ mapping, with rows of 32 4bpp tiles. Blocks copied as one piece into OBJ VRAM look right at 32 tiles wide: `0x08639E1C`, `0x08698C9C`, `0x0869AD3C`, `0x087CC1D4`, `0x087DE878`, `0x087F4118`, `0x087F5DF8`, `0x087F7E18`. `sub_08077CEC` and `sub_08028AB8`/`sub_0807CC78` copy rows of 16 or `width` tiles into 2D VRAM, so their sources are that wide. Screens that set DISPCNT bit 6 use 1D 32×32, 32×16 or 32×64 sprites.
+- **8bpp OBJ tiles.** `0x0871B850` (opponent select) and `0x087F4DD8` (calendar icons).
+- **Labels inside items.**
+  - `0x08637374` is `0x08637394 − 0x20`, for 1-based indexing of 6 small icons, and it falls inside the pack `0x086372D8`.
+  - `0x086F17D4`, `0x086F17E0`, `0x086F17E8` and `0x086F1B10` are positions inside one 30×20 map at `0x086F17B0`.
+  - `0x086F41A0` is inside the 0x2000 charblock `0x086F4060`.
+- **Overlapping palettes.** `0x086AAAEC`…`0x086AAC20` are 16-colour OBJ palettes stored with sizes 0x14, 0x1C, 0x24 and 0x08. Each 0x20-byte load also reads the start of the next one.
+- **Interleaved icon groups.** The 0xC0-byte groups in `0x08704EE8`…`0x08706E68` hold {16-colour palette, 4-tile 16×16 icon, palette}. `0x08705488` holds {pal, 4 tiles, pal, 6 tiles, pal}.
+- **Read past the bank.** `0x087F7E18` is read as 0x800 bytes, but only 0x750 are in the bank. The last 0xB0 come from the zero padding `0x087F8568`–`0x08800000`, so that padding must stay zero.
+- **False pointers.** The aligned words at `0x081A9340`, `0x081A9344` and `0x081A934C`, inside the sound lookup tables, look like pointers into the banks but are not.
+- **Hypotheses.**
+  - The preview palette of each extracted tile sheet was chosen from the loader or by eye; the real bank comes from OAM or map entries at run time. Some sheets probably still use the wrong one (`0x08704F08`, `0x0868149C`).
+  - A few sheet arrangements are guesses (`0x08706F28`…`0x087076A8`, `0x0868149C`, `0x08684EFC`). The bytes are exact either way.
 
 ## Method
 - **SWI absence:** `tools/verify_rom_map.py` checks that the only `svc` + `bx lr` stubs are 0x0C, 0x0B and 0x06.
 - **Finding the LZSS decoder:** searched `.text` literal pools for the Okumura constant `0xFEE`. It occurs only at `0x0807A220`, inside `0x0807A1A8`. Its 10 `bl` callers are all scene loaders (`python3 tools/blrefs.py 0x0807A1A8`).
-- **Formats:** read from the loader disassembly (`tools/cs.py`), then confirmed by rendering with `tools/render_gfx.py` (`pack`, `bitmap lz:<addr>`, `card`), with Pillow installed in a throwaway container and PNGs kept outside the repo.
+- **Formats:** read from the loader disassembly (`tools/cs.py`), then confirmed by rendering with `tools/render_gfx.py` (`pack`, `bitmap lz:<addr>`, `card`), with Pillow in a throwaway container and PNGs kept outside the repo.
+- **Round trip (2026-10-02):** the gfx_banks and gfx_scenes plugins extract all 562 bank items and 35 scene assets and build them back byte-identical (`verify` 83/83 for the whole manifest). Edit tests changed one pixel, palette entry or map entry and checked that exactly the expected bytes changed. Notes: `build/assetwf/gfx_banks/NOTES.md`, `build/assetwf/gfx_scenes/NOTES.md`.
 
-Related: [[rom-map]], [[card-art]], [[font]], [[lzss-decompress]], [[text-system]].
+Related: [[rom-map]], [[scene-sets]], [[card-art]], [[font]], [[lzss-decompress]], [[text-system]], [[assets]].

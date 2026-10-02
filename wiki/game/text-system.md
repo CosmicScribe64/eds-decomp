@@ -4,19 +4,26 @@ type: game
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Text system
 
 **Summary (verified):** all game text is **English, single-byte ASCII**. The ROM holds no other language. No bytes ≥ 0x80 appear in any string, and a search for common French/German/Spanish/Italian words finds nothing. The rendering engine, though, is the Japanese one. It still handles **Shift-JIS** double-byte text, ships three kanji fonts, and has a table that maps ASCII to full-width characters. The Latin fonts cover **CP1252** (0x80–0xFF includes €, À–ÿ). There are two unrelated markup systems: `$` codes in dialogue and `@` codes in duel/system prompts.
+
+> [!warning] Contradiction
+> The summary above says no byte ≥ 0x80 appears in any string. The `tables_code` converter, which types every byte of `.rodata` 1 (2026-10-02), finds two exceptions, both re-checked in the ROM for this page:
+> - **Three Japanese debug `printf` strings** in Shift-JIS at `0x080876B4`, `0x080876D4` and `0x080876F8`. They are buffer-save and buffer-output log messages, the only Japanese text in the ROM.
+> - **Glyph strings** at `0x08086470`… for `sub_0805EE30`, which use bytes 0x81 and 0xC4 as custom glyphs.
+>
+> All player-visible text is still English ASCII. Resolved: the summary holds for game text, not for every string.
 
 ## Text locations
 
 | What | Where | Layout | See |
 |---|---|---|---|
 | Menu, duel prompts, debug `printf` strings | `.rodata` 1, `0x08080A20`–`0x08087FB4` | NUL-terminated C strings. Code refers to each one directly from its literal pool (about 470 strings) | [[rom-map]] |
-| Event/tournament names, debug menu | `.rodata` 2: `0x081980D8` (`"Weekly Yu-Gi-Oh!"`, `"National Championship - 1st Round"`…), `0x081A73A0` (`"Menu"`, `"Get all card"`, `"Get a pack"`, `"Next Level"`, `"License"`, `"TITLE"`) | C strings in fixed-size slots | [[debug-menu]] |
-| **Dialogue** | `0x0813ADF4`–`0x0819739C`, terminated by `0xFFFFFFFF` | 490 × 0x304 `{u16 eventId; u16 speakerCharId; char text[0x300]}`, zero-padded, longest text 341 bytes | below |
+| Event/tournament names, debug menu | `0x081980D8` (calendar events in the scene/list range: `"Weekly Yu-Gi-Oh!"`, `"National Championship - 1st Round"`…), and in `.rodata` 2 `0x081A73A0` (`"Menu"`, `"Get all card"`, `"Get a pack"`, `"Next Level"`, `"License"`, `"TITLE"`) | C strings in fixed-size slots | [[debug-menu]] |
+| **Dialogue** | `0x0813ADF4`–`0x0819739C`, then a terminator record (`0x0819739C`, 0x304 bytes, event = speaker = 0xFFFF, empty text) | 490 × 0x304 `{u16 eventId; u16 speakerCharId; char text[0x300]}`, zero-padded, longest text 341 bytes | below |
 | **Character names** | `0x08139F64`–`0x0813ADD4` | 28 × 0x84 `{u32 id; char name[0x40]; char shortName[0x40]}`, record 0 blank | [[duelist-table]] |
 | Card names | `0x0822C720` + id × 0x40 | fixed slots, id 1..820 | [[card-name-table]] |
 | Card descriptions | `0x082461A0` + id × 0x1E0 | fixed slots, plain ASCII, **no control codes** | [[card-descriptions]] |

@@ -4,7 +4,7 @@ type: data
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Booster packs
 
@@ -39,6 +39,8 @@ struct PackInfo {           /* 0x48 bytes */
 
 The cover images run from `0x0864073C` (Vol.1) in steps of `0x1880`. The names are the original OCG set abbreviations, typos included ("Survant", "CursrOfAnubis", "Celemony").
 
+**36 cover slots, 23 used.** The cover block holds 36 covers (`0x0864073C`–`0x0867793C`). Each is 56×112 px, 8bpp, 7 tiles wide, and is drawn with the shop BG palette `0x0863CC7C`. The 23 PackInfo entries use slots 0–8, 11–13, 17 and 21–30. Slots 9, 10, 14–16, 18–20 and 31–35 are covers that no table points to (gfx_banks converter, slot numbers re-checked against the PackInfo pointers on 2026-10-02). They may belong to packs 801/802/901–903 or to cut packs (hypothesis). They extract as PNGs with the rest of bank A ([[assets]]).
+
 ## Pack contents at `0x081A562C`
 | Field | Value |
 |---|---|
@@ -53,7 +55,9 @@ struct PackSlots {                 /* 0x40 bytes */
 };
 ```
 
-Display order of all 28 IDs: `u16[28]` at `0x080819BE` (1–7, 41, 21, 11, 22, 12, 23, 33, 501–509, 801, 802, 901–903).
+Display order of all 28 IDs: `u16[28]` at `0x080819BE` (1–7, 41, 21, 11, 22, 12, 23, 33, 501–509, 801, 802, 901–903). A second list of 27 pack IDs, `u16[27]` at `0x081A5758`, is called `pack_unlock_ids` by the table converter (the role is a hypothesis).
+
+**ROM layout (verified by an exact re-pack, 2026-10-02).** `0x081A452C`–`0x081A562C` holds, for each pack in table order, its non-empty slot lists, then 0 or 2 bytes of padding to a 4-byte boundary, then its `PackSlots`. An empty slot is `{NULL, 0}`. Packs 11, 12, 501, 502, 503, 505, 507, 802, 901 and 902 have the 2-byte pad. The contents extract to `tables/rodata2/booster_packs.json` ([[assets]]). Slot lists may change size if everything still fits before `0x081A562C`, but the number of packs is fixed at 28.
 
 ### Rarity roll (`sub_08062A0C`)
 - It draws `r = rand() % 180`, or `% 270` when buying the same pack again.
@@ -93,6 +97,6 @@ Example: Vol.1 slot 4 holds {Dark Magician, Gaia The Fierce Knight}, and slot 5 
 - The pack names were found by a string search for "Expert Pack". Stepping back and forth in 0x48 increments then located `0x080865DC`, which has 5 code references.
 - The `image` pointers were checked and are 8bpp tile data 0x1880 apart. An earlier guess that they pointed to pack contents was wrong.
 - `sub_08062AF4` loads `0x081A562C` and scans 28 8-byte entries for a matching `u16` ID at +4. Disassembling it and its helpers `sub_08062A0C`, `sub_080629F0`, and `sub_08062AD4` gave the slot layout and the thresholds.
-- Reproduce: `python3 tools/extract_cards.py packs`.
+- Reproduce: `python3 tools/extract_cards.py packs`, or read `assets/tables/rodata2/booster_packs.json` after `make setup`.
 
 Related: [[deck-lists]], [[card-id-map]], [[card-data-functions]].

@@ -4,7 +4,7 @@ type: overview
 status: solid
 confidence: high
 sources: []
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Wiki Index
 
@@ -23,7 +23,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[game-overview]]: what EDS is, and the major systems.
 - [[program-flow]]: boot → `GameInit` → `MainLoop`; the scene and step-runner system; scene table.
 - [[cards]]: card model (1-based alphabetical IDs vs. classic "card numbers", kinds, types).
-- [[sound-engine]]: custom Konami driver (PSG + 6 PCM voices, ARM mixer, song/SE tables).
+- [[sound-engine]]: custom Konami driver (PSG + 6 PCM voices, ARM mixer); samples, wave-RAM patterns, noise presets, pitch table. *verified data*
 - [[text-system]]: ASCII text, Shift-JIS-capable renderer, `$`/`@` markup codes.
 
 ## Data
@@ -36,8 +36,10 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[duelist-table]]: 28 duelists at `0x08139F64`.
 - [[deck-lists]]: opponent decks, alternate decks, initial-deck pools.
 - [[booster-packs]]: pack info and contents, rarity thresholds.
-- [[special-card-lists]]: AI priority lists (hypothesis) and the 60 notable cards.
-- [[graphics-formats]]: raw tiles, LZSS for dialogue scenes, 6bpp card art.
+- [[special-card-lists]]: AI priority lists (hypothesis), the 60 notable cards, the Forbidden/Limited list, fusion recipes.
+- [[graphics-formats]]: image packs, sprite streams, Mode-4 bitmaps, raw tiles and maps; LZSS and its reconstructed compressor; 6bpp card art. *verified (round trip)*
+- [[scene-sets]]: the 31 dialogue bust-up scenes (descriptor, set-to-character table, OBJ tiles, animation) and the dialogue box. *verified*
+- [[sound-sequence-format]]: SE and BGM tables and bytecodes (every opcode), loop mechanism, driver lookup tables. *verified*
 - [[font]]: eight 1bpp fonts at `0x081C0000` (3 Shift-JIS kanji, 5 CP1252 Latin).
 
 ## Functions
@@ -65,7 +67,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[compiler-flags]]: exact agbcc flags per code region.
 
 ## Tools
-- [[assets]]: `make setup` extracts the game data from your ROM into editable files (JSON, CSV, PNG) and the build reads them back. *verified*
+- [[assets]]: `make setup` extracts all 83 data ranges from your ROM into editable files (JSON, CSV, text, PNG, WAV, PAL) and the build reads them back byte-identical; plugin mechanism, every format family, edit constraints. *verified*
 - [[rom-free-workflow]]: checking and permuting without the ROM (target bytes from the original assembly, `config/symbols.txt`, native setup, CI gate) for GitHub agents. *verified*
 - [[agent-tooling]]: current lead-only continuation and no-restart policy; historical parallel tooling, handoffs, matching helpers and verification.
 - [[toolchain]]: Docker image, disassembler, build, check tools.

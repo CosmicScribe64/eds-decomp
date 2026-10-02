@@ -4,7 +4,7 @@ type: data
 status: solid
 confidence: high
 sources: [rom-analysis, web-card-references]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Password table
 
@@ -43,10 +43,17 @@ Cards without a password include most fusion and ritual monsters, ritual spells,
 
 `FF` entries can never match, because every digit is 0–9.
 
+## Editing
+The table extracts to `cards/passwords.csv` ([[assets]]) with the columns `id,password,number,name`. `id` is the card ID (the row position). `password` is 8 digits, or empty for "no password" (`FF FF FF FF`). `number` and `name` are notes. Edit the file as text: a spreadsheet program strips the leading zero of passwords such as `08353769`. A field that ever holds non-BCD bytes is written as `raw:xxxxxxxx`; none do in the USA ROM.
+
+## Quirk: an out-of-bounds read lands here
+`gUnk_08623326`, used in [[code-0806c4e4]], is `gCardIdToNumber[0x439]`: the inlined card-number lookup for the constant ID 0x439 (1081), far past the 821-entry ID-to-number table at `0x08622AB4`. The read lands on bytes 2–3 of card 129's password (Curse of Fiend, `12 47 04 47`), giving u16 0x4704. The code compares that value with the God card numbers 1910–1912 and, finding no match, reads the type from the equally out-of-bounds stat word. Changing Curse of Fiend's password therefore changes that check. Verified on 2026-10-02 from the ROM bytes and the matched source.
+
 ## Method
 - Searched for each known password in three encodings: BCD big-endian, BCD little-endian, and binary u32. Only BCD big-endian hit, once per card: BEWD at `ROM+0x623268` = `0x08623120 + 82*4`, Dark Magician at `ROM+0x623378` = `+150*4`, and so on.
 - The table's boundaries meet the ID-to-number table (after 2 bytes of padding) and the number-to-ID table exactly. See the per-card data block section of [[card-table]].
 - The disassembly of `sub_0807C304` confirms the byte order and the 821-entry bound.
 - `python3 tools/extract_cards.py --verify` checks 4 passwords.
+- The `tables_game` converter round-trips all 821 entries (2026-10-02).
 
 Related: [[card-id-map]], [[card-table]], [[cards]].

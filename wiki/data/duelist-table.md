@@ -4,7 +4,7 @@ type: data
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Duelist table
 
@@ -50,6 +50,9 @@ IDs 1–24 are the opponents. Their decks sit in the main deck table at the same
 - A separate string pool at `0x08081260`–`0x080813A4` lists the same 24 full names in **reverse** order ("Duel Computer", "Trusdale", "Maximillion Pegasus", … "Yugi Muto"), followed by "Draw", "Lose", "Win", "[ Unknown ]". It's probably a `const char *[]` for a records/statistics screen (hypothesis).
 - `0x0808180E`–`0x0808198C`: 24 groups of 7 `u16`s built around `duelistId*1000` (1014, 1013, 1012, 1011, 1010, 1004, 1017, then 2014, …). These may be per-duelist script/portrait/text IDs (hypothesis).
 - Story dialogue with `$`-codes (for example `$r5`, `$c`, `$p`) starts right after this table.
+- **Portraits.** `GetBustupSet` (`sub_08001C78`) maps a character ID to its dialogue scene set. Every opponent 1–24 and Umbra/Lumis (38, 39) has one; Yugi's set 6 is also the default. The IDs 32–35 and 37, which are not in this table, select the five background scenes 0–4. Full table: [[scene-sets]].
+- **Duel BGM.** `0x08198F20` maps each opponent ID to a song (`{duelist; u16 bgm}`, read by [[code-0801e260]]). See [[sound-engine]].
+- The table extracts to `text/duelists.json` ([[assets]]).
 
 ## Method
 - A string search for "Yugi Muto" found the two copies at `ROM+0x139FEC` and `ROM+0x13A02C`.

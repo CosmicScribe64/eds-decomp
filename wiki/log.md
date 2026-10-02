@@ -692,3 +692,62 @@ updated: 2026-09-29
 - [[agent-tooling]]: a score of 0 is not a match (normalisation drops branch targets); the `park` / `base.c` gotcha; Docker outages printed `score: 0 (MATCH)`; shared-scratchpad helper collisions. [[overview]]: progress, giants left, next-largest functions.
 - Reported for cleanup, outside the wiki: `struct Unk02017E20` is unused in `src/code_0802FB64.c`; `src/code_08039638.c` has a local `EffState` with a 0x14-byte CardRef (compiled 0x10); `src/code_080361D0.c` declares `sub_08019820(int)` but the callee is `(int, u16)`; the `sub_08000AC8` prototype differs between units; `wf.py check` should fail when Docker or the compile fails. `sub_0800257C` ([[code-08002388]]) has been C since 2026-09-30 but its row is still stale.
 - `scripts/wiki_lint.py`: no broken links, orphans, index gaps or frontmatter problems.
+
+## [2026-10-02] progress | Asset pipeline complete: 83 assets, all editable and round-tripping
+- Commit `2cf1b05` (with the plugin mechanism from `4a58b22`): every non-code byte now extracts to an editable format and builds back byte-identical. There are 83 assets, `fallback.txt` is empty, and only the 156-byte Nintendo logo stays raw. Six plugins in `tools/assetfmt/`: `sound_samples`, `sound_seq`, `gfx_scenes`, `gfx_banks`, `tables_game` and `tables_code`. A fresh clone with only the ROM ran `make setup` and `make compare` (`eds.gba: OK`) and still matched after the ROM was deleted. Re-run for this entry: `tools/assets.py check` (83 assets) and `verify` (83/83). Sources: `build/assetwf/<family>/NOTES.md`.
+- [[assets]] rewritten:
+  - the plugin mechanism (`register(A)`, `EDS_ASSET_MANIFEST` / `EDS_ASSETS_DIR` / `EDS_ASSETS_OUT`, `--only`);
+  - one table per format family (asset, files, how to edit, constraints);
+  - verification and edit tests;
+  - limitations: fixed slots, raw cross-asset pointers, and tool gaps (`--only` rewrites `fallback.txt`, stale files are not removed, `out_path` keeps the extension);
+  - future work: relocatable layout, merged table+track assets.
+- New pages:
+  - [[sound-sequence-format]]: the SE and song tables, every SE and BGM opcode, the loop mechanism and quirks, and the four driver lookup tables with formulas.
+  - [[scene-sets]]: the descriptor, set-to-character table, ROM order, OBJ tile placement and palette banks, animation lists, and the dialogue box and header strip.
+- Data folded in:
+  - [[sound-engine]]: data section rewritten; sample rate (9,998 Hz at pitch 0), bank statistics, amplitude headroom, wave-RAM patterns, noise presets, `lockTicks` and the +0x195 lock counter; BGM per opponent. Open questions on the bytecode and the channel assignment answered.
+  - [[graphics-formats]]: 133 image packs with the 4bpp loaders, the pack encoder rules, the sprite animation stream, 9 Mode-4 bitmaps, OBJ-mapping and bank findings, `scan_objpack.py` caveats. New "The original compressor" section (an Okumura `LZSS.C` variant that reproduces all 59 streams). Scene-set detail moved to [[scene-sets]].
+  - [[lzss-decompress]]: a note on the encoder.
+  - [[rom-map]]:
+    - `.rodata` 1 contents (sine table `0x08087BA4`, 320 values; animation step arrays; Shift-JIS debug strings; hiragana table; unreferenced items);
+    - exact sound row boundaries;
+    - the scene/list range contents (fusion lists, calendar events, BGM per opponent, image-pack lists);
+    - effect-table fields, pointer-table contents and deck header;
+    - a new `.rodata` 2 sub-table list;
+    - sound lookup tables split into four;
+    - graphics rows with item counts and bank contents (36 booster covers, delete-save and calendar bitmaps, 8bpp OBJ tiles).
+    - Two open questions answered.
+  - [[deck-lists]]: header struct, editing (0x920-byte budget, re-pack), starter-pool field bits 25–31.
+  - [[password-table]]: `cards/passwords.csv`, and the out-of-bounds read `gUnk_08623326` (`gCardIdToNumber[0x439]`) landing on Curse of Fiend's password.
+  - [[special-card-lists]]: the Forbidden/Limited list `0x081A78B4` (47 entries, limits 0/1/2), the AI scan list `0x0819DD64`, the fusion recipe lists `0x0819A7C8` (52) and `0x0819A970` (3).
+  - [[function-pointer-tables]]: named step tables from the converters.
+  - [[booster-packs]]: 36 cover slots, 23 used and 13 unreferenced (re-checked); pack layout confirmed by re-pack.
+  - [[cards]]: effect handler fields and slot names.
+  - [[rom-header]]: `header.json` and the `"auto"` checksum (formula re-checked).
+  - [[duelist-table]]: portraits and duel BGM.
+  - [[text-system]]: the dialogue terminator record.
+- Contradictions flagged with `> [!warning] Contradiction`, all resolved in favour of the decoded, round-tripping data:
+  - [[sound-engine]]: pitch table "u16 per note" → per 1/32 semitone, starting at `0x081A8A0C`, not `0x081A8D48`; SE halfword "flags", "about 48 entries" → `lockTicks`, exactly 48.
+  - [[graphics-formats]]: the size+1 LZSS streams end in a lengthened final match, not a padding literal; card frames are 13×18 tiles, not 12×12.
+  - [[scene-sets]]: the `anim` pointer targets a track list in the scene/list range, not ".rodata 2".
+  - [[deck-lists]]: `u32 count` → `u16 count; u16 pad` (matched source).
+  - [[rom-map]], sound rows: bank-1 PCM table 28 entries, not 26; song data ends at `0x0811B417`, not `0x0811B415`; `0x08139F50` is the noise preset table.
+  - [[rom-map]], `.rodata` 2: the three "0x2800 tilemap" blocks are HBlank warp tables (the third is 0x1400); the sound lookup range is four tables.
+  - [[function-pointer-tables]]: the 77-, 29- and 22-entry runs each span several step tables.
+  - [[text-system]]: three Shift-JIS debug strings and custom-glyph strings contain bytes ≥ 0x80.
+- Verified against the ROM for this entry:
+  - the pitch and PSG-frequency formulas (all values; the frequency table needs the exact C2);
+  - sine truncation (both tables);
+  - deck header pads;
+  - SE table count, song and SE data ends, bank-1 NULL entries, noise values;
+  - header checksum;
+  - fusion terminators;
+  - card-frame cell extent;
+  - booster cover references.
+- Also updated:
+  - [[sound-driver]]: `sub_0807D6B4` and `sub_0807DB58` now match (commits `acd0f2c`, `01c08ce`), 30/30 C; write-up pending.
+  - [[decomp-workflow]], [[rom-free-workflow]]: the build no longer needs the ROM after `make setup`.
+  - [[open-questions]]: three answered; new ones on unreferenced data, unused driver tables and the hiragana table.
+  - [[overview]]: 1,975/1,976 functions with only `sub_08044224` left; assets complete; milestones.
+  - [[index]]: the new pages.
+- `scripts/wiki_lint.py`: no broken links, orphans, index gaps or frontmatter problems.

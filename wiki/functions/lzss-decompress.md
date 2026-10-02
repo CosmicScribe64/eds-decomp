@@ -4,7 +4,7 @@ type: function
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # LZSS decompressor (`sub_0807A1A8`)
 
@@ -20,6 +20,8 @@ updated: 2026-10-01
 This is the game's **only** LZ-family decoder. It implements Okumura LZSS with a 4 KiB ring, a first write position of `0xFEE`, a flag byte read LSB first (1 = literal), and 2-byte references `pos = b0 | (b1&0xF0)<<4`, `len = (b1&0xF)+3`. The ring buffer is EWRAM `0x02030000`. The stream format is on [[graphics-formats]].
 
 Callers read the blob header themselves, as two halfwords (`ldrh [p,#2] << 16 | ldrh [p]`), and pass `src = blob + 4`. The decoder then consumes exactly `packedSize` bytes. It never checks the output size.
+
+**The encoder side is known too.** The original compressor was a variant of Okumura's `LZSS.C`: no pre-inserted space strings, 0xFF read past the end of the input, and age-ordered subtree merging when a node leaves the window. `tools/assetfmt/gfx_scenes.py` reproduces it, regenerating all 59 streams byte for byte, so the scene graphics can be edited as PNGs ([[graphics-formats#The original compressor]], [[scene-sets]], [[assets]]). That work also showed that the size+1 streams are not padded; their last match is one byte longer.
 
 ## Callers / Callees
 - Called by 10 `bl` sites, all in the three dialogue-scene loaders `0x08000420`, `0x08000570` and `0x08000708` (`0x0800044C`, `0x0800047A`, `0x080004B2`, `0x0800059C`, `0x080005CC`, `0x080005F8`, `0x08000628`, `0x08000730`, `0x08000766`, `0x08000786`).
@@ -61,9 +63,9 @@ void LZSSDecompress(const u8 *src, u8 *dst, s32 size)
 The things to watch were the stack slot for `flags`, the `size--` placement before the literal branch, and the ring re-read in the copy loop. The details that decided the match are listed under Matching source below.
 
 ## Method
-The only `0xFEE` literal in `.text` is at `0x0807A220`. Disassembled with `tools/dr python3 tools/cs.py t 0x0807A1A8 0xF0`, and callers found with `python3 tools/blrefs.py 0x0807A1A8`. The reference decoder `tools/lzss.py` reproduces the expected sizes for all 59 scene blobs.
+The only `0xFEE` literal in `.text` is at `0x0807A220`. Disassembled with `tools/dr python3 tools/cs.py t 0x0807A1A8 0xF0`, and callers found with `python3 tools/blrefs.py 0x0807A1A8`. The reference decoder `tools/lzss.py` reproduces the expected sizes for all 59 scene blobs, and the asset plugin's decoder and encoder round-trip all 59 exactly (2026-10-02).
 
-Related: [[graphics-formats]], [[rom-map]].
+Related: [[graphics-formats]], [[scene-sets]], [[rom-map]].
 
 ## Matching source (2026-10-01)
 `sub_0807A1A8` is byte-matching C; see [[code-0807960c]] for the three details that mattered: `u16` ring/position/byte locals, declaration order, and the match length kept in the loop condition. The "Equivalent C (sketch)" above is behaviourally the same as the matched source.

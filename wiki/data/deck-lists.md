@@ -1,21 +1,27 @@
 ---
 title: Deck Lists (opponent decks and initial-deck pools)
 type: data
-status: draft
+status: solid
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Deck Lists
 
 Every deck is stored as a **sorted `u16[]` of card numbers** (not card IDs; see [[card-id-map]]), with a separate `{pointer, count}` header table. The card lists are packed back-to-back in `0x0819D34C`–`0x0819DC6C`, with no terminators.
 
 ```c
-struct DeckRef {                 /* 8 bytes */
+struct DeckRef {                 /* 8 bytes; `struct DeckList` in src/code_080590E4.c */
     const u16 *cards;            /* card numbers, ascending */
-    u32 count;                   /* 40..42 */
+    u16 count;                   /* 40..42 */
+    u16 pad;                     /* always 0 */
 };
 ```
+
+> [!warning] Contradiction
+> This page declared `u32 count`. The matched source `src/code_080590E4.c` declares `struct DeckList { const u16 *ids; u16 n; u16 pad; }`, and the deck converter writes that layout back byte-identical. A ROM check on 2026-10-02 found every pad halfword zero in both header tables, which is why the old `u32` reading gave the same counts. Resolved in favour of the matched source.
+
+**Editing.** The deck lists extract to `tables/deck_lists.json` ([[assets]]), with one `[number, "name"]` list per deck. The build re-packs the lists back to back in ROM order and rewrites both header tables. Decks may grow or shrink as long as all 31 lists fit in the 0x920-byte region (1,168 cards, all used by the original data). The number of header entries (25 and 6) is fixed. The ROM lists are sorted, but the game doesn't seem to need that, and the build does not sort.
 
 ## Opponent decks at `0x0819DC6C`
 | Field | Value |
@@ -84,7 +90,7 @@ struct StarterPool {
     u32 pickA    : 5;         /* bits 10-14 cards taken for choice 0 */
     u32 pickB    : 5;         /* bits 15-19 choice 1 */
     u32 pickC    : 5;         /* bits 20-24 choice 2 */
-    u32 flag     : 1;         /* bit 25: set on groups 0 and 4 (meaning unknown) */
+    u32 flag     : 7;         /* bits 25-31: 1 on groups 0 and 4, 0 elsewhere (meaning unknown) */
 };
 ```
 The builder copies the pool into a stack buffer, shuffles it (`poolSize*4` random swaps), and takes the first `pick[choice]` cards, where `choice = arg % 3`. **Each choice sums to exactly 40 cards**, which confirms the field split. Groups 0–4 and 8–10 use the same pick counts for all three choices. The choices differ only in which level-4 monster pool (groups 5–7) contributes 6 cards instead of 3.
@@ -108,6 +114,7 @@ The builder copies the pool into a stack buffer, shuffles it (`poolSize*4` rando
 - Searched for pointers into that range. They all come from the two header tables above, and each header's count field (40–42) matches the run lengths.
 - Deck themes were checked by eye against the duelists' well-known anime/manga decks: Kaiba's Blue-Eyes, Mai's Harpies, Weevil's insects, Pegasus's Toons, and so on.
 - The starter pools were found through code references (the reference at `0x080049F8` points to `0x08198744`), and the three 40-card sums confirmed the field split.
-- Reproduce: `python3 tools/extract_cards.py decks` and `python3 tools/extract_cards.py starter`.
+- Reproduce: `python3 tools/extract_cards.py decks` and `python3 tools/extract_cards.py starter`, or read `assets/tables/deck_lists.json` and the `starter deck pool` items in `assets/tables/scene_scripts_and_lists/tables.json` after `make setup`.
+- The header layout and the pack order were confirmed on 2026-10-02 by the exact re-pack in `tools/assetfmt/tables_game.py`.
 
 Related: [[duelist-table]], [[booster-packs]], [[special-card-lists]], [[card-id-map]].

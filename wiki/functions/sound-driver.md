@@ -4,11 +4,14 @@ type: function
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Konami sound driver (`0x0807D3D0`–`0x0807EACF`)
 
-`src/sound_driver.c` contains **28 of 30 functions in byte-matching C**, with two assembly fallbacks. The complete unit is 0x1700 bytes and passes `tools/dr python3 tools/check.py sound_driver`. The per-function checker reports 30/30 because it includes those two fallbacks; C coverage is 28/30. The compiler is `agbcc -O2 -mthumb-interwork -fhex-asm -fprologue-bugfix`, as configured in `config/cflags.txt` ([[compiler-flags]]).
+> [!note] Status update (2026-10-02)
+> Both remaining functions now match: `sub_0807D6B4` (commit `acd0f2c`) and `sub_0807DB58` (commit `01c08ce`). `src/sound_driver.c` has no `INCLUDE_ASM` left, so it is **30/30 in C**. Their match notes are not written up on this page yet. The bytecodes they decode are on [[sound-sequence-format]]. The rest of this page describes the state before those matches.
+
+`src/sound_driver.c` contained **28 of 30 functions in byte-matching C**, with two assembly fallbacks. The complete unit is 0x1700 bytes and passes `tools/dr python3 tools/check.py sound_driver`. The per-function checker reports 30/30 because it includes those two fallbacks; C coverage is 28/30. The compiler is `agbcc -O2 -mthumb-interwork -fhex-asm -fprologue-bugfix`, as configured in `config/cflags.txt` ([[compiler-flags]]).
 
 The source replaces the previously all-assembly driver unit. Proposed descriptive names below are documentation names; the linked symbols retain their original `sub_08XXXXXX` names. The separate ARM mixer remains in `asm/sound_mixer_arm.s`; see [[sound-mixer]]. The game's wrappers are described in [[sound-api]].
 
@@ -21,8 +24,8 @@ All entries are Thumb functions. Sizes include each function's literal pool and 
 | `sub_0807D3D0` | 0x148 | matching C | Configures Timer0, FIFO DMA and interrupts; copies the inner mixer to IWRAM and clears PCM voices/buffers. |
 | `sub_0807D518` | 0x60 | matching C | Loads four wave-RAM words, toggles driver flag 0x200, and selects the next wave bank. |
 | `sub_0807D578` | 0x13C | matching C | Initializes sound hardware and driver state, optionally installs the DMA1 handler, clears tracks, and calls DMA setup. |
-| `sub_0807D6B4` | 0x4A4 | assembly | Updates an SE track and decodes its bytecode. |
-| `sub_0807DB58` | 0x7CC | assembly | Advances the sequencer and programs PSG/PCM channels. |
+| `sub_0807D6B4` | 0x4A4 | matching C (2026-10-02) | Updates an SE track and decodes its bytecode ([[sound-sequence-format#SE track bytecode]]). |
+| `sub_0807DB58` | 0x7CC | matching C (2026-10-02) | Advances the sequencer and programs PSG/PCM channels ([[sound-sequence-format#BGM track bytecode]]). |
 | `sub_0807E324` | 0x8C | matching C | DMA1 IRQ: advances the read position by 16 and restarts both FIFO DMAs at the 0x2C0-byte wrap. |
 | `sub_0807E3B0` | 0x28 | matching C | Calls the sequencer and ARM mixer unless driver flag 0x2000 pauses them. |
 | `sub_0807E3D8` | 0x17C | matching C | Starts the pending SE, arbitrating slot masks and priorities. |

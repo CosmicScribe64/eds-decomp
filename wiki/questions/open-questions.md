@@ -4,7 +4,7 @@ type: question
 status: draft
 confidence: low
 sources: []
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Open questions
 
@@ -21,9 +21,12 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [x] ~~Where does code end and data begin?~~ `.text` ends at `0x08080A20`, after the 8-byte linker veneer. See [[rom-map]].
 - [x] ~~Which sound engine: m4a or a custom Konami one?~~ Custom Konami driver. See [[sound-engine]].
 - [x] ~~Are graphics compressed?~~ No BIOS compression. A custom LZSS is used for dialogue scenes only; card art is 6bpp-packed. See [[graphics-formats]].
-- [ ] About 30% of the uncompressed graphics banks is unlabelled, and so are the three 0x2800-byte blocks at `0x0819DD94`. See [[rom-map]].
-- [ ] Which function loads the 4bpp image packs?
-- [ ] How is the song sequence bytecode encoded, and how are tracks assigned to PSG or PCM? See [[sound-engine]].
+- [x] ~~About 30% of the uncompressed graphics banks is unlabelled, and so are the three 0x2800-byte blocks at `0x0819DD94`.~~ The asset converters itemise every bank (562 items), and the blocks are HBlank warp tables. See [[rom-map]], [[graphics-formats]].
+- [x] ~~Which function loads the 4bpp image packs?~~ `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C` and `sub_080733F4`. See [[graphics-formats]].
+- [x] ~~How is the song sequence bytecode encoded, and how are tracks assigned to PSG or PCM?~~ See [[sound-sequence-format]]: every song has ten tracks in a fixed channel order.
+- [ ] Some data has no reference from code or data: OAM entries `0x081A6154`–`0x081A6434`, sprite templates `0x081979DC`, scroll waves `0x081987B0`, the track list `0x081999C4`, several small `.rodata` 1 items, and 13 of the 36 booster-pack covers. Are they leftovers, or reached through computed addresses? See [[rom-map]], [[booster-packs]].
+- [ ] Is the sound driver's nibble volume-scale table (`0x081A7A0C`) or vibrato-step table (`0x081AB70C`) used at all? What is the second u16 (`b`) of each sprite-stream graphic entry? What does the 2-bit `env` field of the SE tone commands do audibly? See [[sound-sequence-format]], [[graphics-formats]].
+- [ ] Is the 86-entry folded-hiragana table at `0x080874A8` a sort map? It has no label. See [[rom-map]].
 
 ## Program structure
 - [ ] What is the Timer2 counter at `0x030051FC` for? See [[interrupt-handlers]].

@@ -73,10 +73,11 @@ s32 sub_0807548C(s32 value); /* round(value / 2), including signed division */
 static inline int GetCardType(u16 id) { return (CARD_STATS(id) & 0x1F00000) >> 20; }
 #define CARD_TYPE(id) GetCardType(id)
 static inline u16 GetCardNumber(int id) { return ((const u16 *)0x08622AB4)[id & 0x7FF]; }
-static inline u16 GetCardNumberS(int id) { return *(gUnk_08622AB4 + (id & 0x7FF)); }
+/* The equip switch reads the number table through its symbol, so one register holds the
+ * table address across the case bodies; elsewhere the ROM reloads a cast address. */
+static inline u16 GetCardNumberSym(int id) { return *(gUnk_08622AB4 + (id & 0x7FF)); }
 #define CARD_NUMBER(id) GetCardNumber(id)
 #define ZONE_DISABLED(p, s) (((struct ZoneDisabled *)ZB(p, s))->flags & 8)
-#define ZONE_VALUE(p, s) (((struct ZoneAuxBits *)((u8 *)ZB(p, s) + 0x90))->value)
 static inline u16 GetZoneAuxValue(struct DuelZone *z) { return ((struct ZoneAuxBits *)((u8 *)z + 0x90))->value; }
 /* FAKEMATCH: keep the full-word read from the immutable ROM stats table. The ROM
  * reads a whole stats word here. Ordinary nonvolatile expressions narrow it to the
@@ -99,13 +100,6 @@ static inline int BaseDefense(u16 id)
     }
 }
 
-static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (struct DuelZone *)((u8 *)&gUnk_020192E0 + 0x2C + (slot * 0x94 + (player & 1) * 0xD64)); }
-
-/* Kept inactive between matching passes so this unit remains usable. */
-#if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
-       * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
-       * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 62): switch(out->type) case 13 */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -126,17 +120,10 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
     if (!out->id) return;
     {
         int type = CARD_TYPE(out->id);
-        {
-            /* FAKEMATCH: keep the first type mask independent of the attribute merge. */
-            int mask = 31;
-            asm("" : "+r"(mask));
-            type &= mask;
-            ((u8 *)out)[2] = type;
-        }
-        asm("" : "+r"(type));
+        type &= 31;
+        ((u8 *)out)[2] = type;
         {
             int attr = GetCardAttribute(out->id) << 5;
-            asm("" : "+r"(attr)); /* FAKEMATCH: shift the attribute before remasking type. */
             ((u8 *)out)[2] = (type & 31) | attr;
         }
     }
@@ -188,8 +175,6 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             switch (CARD_NUMBER(link)) {
             case 0x105:
                 otherAtk += (value + 1) * 700;
-                /* FAKEMATCH: preserve the separate first +700 link tail. */
-                asm("" : : "r"(otherAtk));
                 break;
             case 0x1AC:
                 if (ZB(player & 1, slot)->linkKinds[i] >> 8) atkDoubles++;
@@ -234,9 +219,9 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             if (!ZONE_DISABLED(lp & 1, ls) && !sub_08008524(0, 0x601) &&
                 !sub_08008524(1, 0x601) && !(*((u8 *)gUnk_0201930C + 0x1AA1) & 3) &&
                 (!immune || CARD_TYPE(linkedId) != 22)) {
-                switch (GetCardNumberS(linkedId)) {
+                switch (GetCardNumberSym(linkedId)) {
                 case 0x47:
-                    if (GetCardNumberS(out->id) == 0x115) { out->atk = 0; out->def = 2000; }
+                    if (GetCardNumberSym(out->id) == 0x115) { out->atk = 0; out->def = 2000; }
                     break;
                 case 300: if (out->type == 15) { equipAtk += 300; equipDef += 300; } break;
                 case 301: if (out->attr == 2) { equipAtk += 400; equipDef -= 200; } break;
@@ -255,7 +240,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 314: if (out->type == 1) { equipAtk += 300; equipDef += 300; } break;
                 case 315: if (out->type == 19) { equipAtk += 300; equipDef += 300; } break;
                 case 316:
-                    if ((u16)(GetCardNumberS(out->id) - 61) <= 1 || GetCardNumberS(out->id) == 0x4E1) equipAtk += 500;
+                    if ((u16)(GetCardNumberSym(out->id) - 61) <= 1 || GetCardNumberSym(out->id) == 0x4E1) equipAtk += 500;
                     break;
                 case 318: if (out->type == 12) { equipAtk += 300; equipDef += 300; } break;
                 case 320: equipAtk += 700; break;
@@ -303,9 +288,10 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                     equipAtk += sub_08008B70(lp, 0, 0, 0) * 500;
                     equipDef += sub_08008B70(lp, 0, 0, 0) * 500;
                     break;
-                case 1540: if (GetCardNumberS(out->id) == 0x53B) equipAtk += 300; break;
+                case 1540: if (GetCardNumberSym(out->id) == 0x53B) equipAtk += 300; break;
                 case 1550:
                     if (out->type == 15) { out->type = 1; equipAtk += 500; equipDef += 500; }
+                    /* lp % 2, not lp & 1: the byte-wide AND would share its constant 1 with the store below. */
                     if (ZB(lp % 2, ls)->serial > (u32)newest) out->type = 1;
                     break;
                 }
@@ -322,7 +308,11 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             }
             break;
         case 4: if (!immune) out->atk += link; break;
-        case 8: { int t = BaseAttack(link) + addAtk; addAtk = t; } { int t = BaseDefense(link) + addDef; addDef = t; } break;
+        case 8:
+            /* The sums go through a temporary: the ROM adds base stat + total, in that order. */
+            { int t = BaseAttack(link) + addAtk; addAtk = t; }
+            { int t = BaseDefense(link) + addDef; addDef = t; }
+            break;
         case 9: addAtk -= (value + 1) * 500; addDef -= (value + 1) * 500; break;
         case 10: equipAtk += 200; break;
         case 11: equipAtk += value * 300; break;
@@ -455,7 +445,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                     addAtk += gUnk_080816C8[n - 1125][out->attr] * 500;
                     addDef -= gUnk_080816C8[n - 1125][out->attr] * 400;
                     break;
-                case 1069: if (((struct ZoneFlags *)GetFieldTarget(player, slot))->flags & 1) addDef += 500; break;
+                case 1069: if (((struct ZoneFlags *)&gUnk_020192E0.players[player & 1].zones[slot])->flags & 1) addDef += 500; break;
                 }
             }
         }
@@ -487,8 +477,4 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
         int temp = out->def, attack = out->atk; out->atk = temp; out->def = attack;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800AB08", sub_0800ABC8); /* 0x0800ABC8 size 0x1CCC */
-
-#endif
 

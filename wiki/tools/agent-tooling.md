@@ -4,7 +4,7 @@ type: tool
 status: solid
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Agent tooling
 
@@ -37,7 +37,15 @@ Score = differing normalized lines + 4 x |size delta| (the same metric as the sc
 The size delta does not count the zero `.align 2, 0` pad that the function table includes after a function ending
 on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad showed as `-2 bytes`, held such
 functions at score 8, and made `apply` refuse them ([[code-08019554]], `sub_0801A130`).
-Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01: see [[log]]).
+Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01, waves 2-3 and the giants on 2026-10-02: see [[log]]).
+
+**Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `sub_080471E8` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[code-08046738]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
+
+**Parking twice.** `park` merges three ways against the copy's `base.c` and does not refresh `base.c` afterwards, so a second park of the same function conflicts with the first. Agents on the giants worked around this by copying `src/<unit>.c` to `base.c` after each park, once a diff showed only their draft block had changed (`syncbase.py` for `sub_0804FC4C`, `park.sh` for `sub_08044224`, which also checks that nobody else touched the unit).
+
+**Pitfalls reported by wave 2-3 agents (2026-10-01/02):**
+- While the Docker daemon was down, `wf.py check` printed the connection error and then `score: 0 (MATCH)` (`sub_0805FD28`, `sub_08036A68`). Checks made at that time were not re-confirmed, so treat a 0 printed next to an error as a failed build. `apply` still re-checks the whole unit. `wf.py score` has also printed `score: None` (`sub_080616D0`).
+- Helper scripts with common names in the shared scratchpad (`try.sh`, `put.py`) were overwritten by other agents. At least two runs wrote into another function's `build/wf/<func>/unit.c` (`sub_08017314`/`sub_08073784`, `sub_08052B78`/`sub_0800D398`, and stray `WF-END` lines in `build/wf/sub_0800D398/`). Keep per-function helpers in `build/wf/<func>/`.
 `apply` accepts empty `asm("" : ...)` constraints and `register ... asm("rN")` bindings but rejects any other asm string, including `asm("gUnk_...")` / `__asm__` symbol-alias declarations inside the markers; wave agents used a cast of an existing symbol or a function-pointer cast macro instead (`sub_0806704C`, `sub_0806710C`, `sub_08070F18`, `sub_0806F934`).
 
 ## Running agents

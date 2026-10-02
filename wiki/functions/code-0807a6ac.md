@@ -1,14 +1,14 @@
 ---
 title: code_0807A6AC (tilemap / palette / easing utilities) decompilation status
 type: function
-status: draft
+status: solid
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # BG tilemap, palette-fade and easing helpers in code_0807A6AC (`0x0807A6AC`-`0x0807B6B8`)
 
-The unit is `src/code_0807A6AC.c` (42 functions, 0x100C bytes), compiled with `old_agbcc -O2`. **40 of 42 are C and byte-matching** after workflow waves 1-2 (2026-10-01: `0x0807A754`, `0x0807B628` in wave 1, `0x0807AEF0` in wave 2), and 2 stay `INCLUDE_ASM` (`0x0807AD40`, `0x0807ADE8`, each with its best attempt under `#if 0 /* NONMATCHING */`). The unit still links to the exact target bytes. Names below are proposals, and the code keeps `sub_08XXXXXX`.
+The unit is `src/code_0807A6AC.c` (42 functions, 0x100C bytes), compiled with `old_agbcc -O2`. **42/42 functions in C** after workflow waves 2-3 (2026-10-01: `0x0807AEF0`, `0x0807AD40`, `0x0807ADE8` in wave 2; none in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 39/42 (`0x0807A754`, `0x0807B628` added in wave 1). The unit still links to the exact target bytes. Names below are proposals, and the code keeps `sub_08XXXXXX`.
 
 This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]) and the sound driver. It is a small graphics-utility library used by menus and duel screens. It provides rectangle fills and copies on BG screenblocks (32-entry rows, with the 64-wide "second screenblock" wrap at column 0x20), palette fades toward a target colour, rotation/scale objects, fixed-point helpers and tiny state machines. Related: [[video-helpers]].
 
@@ -29,8 +29,8 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | `0x0807AC00` | 0x5C | matching | `SetRectPalette(dst, w, h, pal)` | replaces the top nibble of every entry |
 | `0x0807AC5C` | 0x2C | matching | `SetTileNumber(bg, x, y, tile)` | keeps the top 6 attribute bits, sets the tile |
 | `0x0807AC88` | 0xB8 | matching | `DrawNumber3(bg, base, x, y, num, pal, _, mode)` | 3 decimal digits right to left (mode 1 skips zero digits) |
-| `0x0807AD40` | 0xA8 | nonmatching | `CopyBitmapBlock(...)` | h rows of `CpuSet` between two bitmaps, offsets from `sub_0807A490(x, y, shift) & 0xFFFE` |
-| `0x0807ADE8` | 0xA0 | nonmatching | `CopyBitmapBlockFlat(...)` | source is a plain srcW-wide array |
+| `0x0807AD40` | 0xA8 | **matching** (wave 2, 2026-10-01) | `CopyBitmapBlock(...)` | h rows of w halfwords copied with `CpuSet` between two bitmaps (source stride `srcW`, destination stride 0x20 halfwords); both start at `base + sub_0807A490(x, y, shift) / 2` (the helper's byte offset as a halfword index) |
+| `0x0807ADE8` | 0xA0 | **matching** (wave 2, 2026-10-01) | `CopyBitmapBlockFlat(...)` | same, but the source is a plain srcW-wide halfword array (`srcBase + sx + sy * srcW`) |
 | `0x0807AE88` | 0x68 | matching | `PackBytePairs(src, dst, w, h)` | `dst[i] = (src[2i] & 0xFF) \| (src[2i+1] & 0xFF) << 8` |
 | `0x0807AEF0` | 0x10C | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `LoadPackedImage6bpp(idx, dst, bank)` | unpacks 6-bit pixels (record idx of 0x10E0 bytes at `0x082A6500`, 720 x 6 bytes -> 720 x 8 bytes) to 8 bpp; copies a 64-colour palette (`0x08608360 + idx*0x80`) to `PLTT + ((bank&0x3FF)*64 + 0x80)*2`; ORs the sub-palette bits into every pixel byte |
 | `0x0807AFFC` | 0x14 | matching | `LoadPackedImage6bppWrap` | wrapper narrowing args to u16 and calling `sub_0807AEF0` |
@@ -87,7 +87,7 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 
 ## Nonmatching notes
 
-The remaining five drafts were re-checked by hand (2026-09-30, clean-up pass). No permuter job for this unit has a score-0
+All entries below are historical: the whole unit is in C since wave 2 (2026-10-01). The remaining five drafts were re-checked by hand (2026-09-30, clean-up pass). No permuter job for this unit has a score-0
 `output-0-*` result, so none were applied; the parked drafts below include the improvements the score-50/200 runs
 pointed at. The remaining blockers concern compiler allocation and loop scheduling.
 
@@ -97,7 +97,11 @@ pointed at. The remaining blockers concern compiler allocation and loop scheduli
     target keeps `half` in `[sp]` (reloaded per row), `next = i+1` in `[sp+8]` and the row stride `(0x10-half)*4`
     in `[sp+4]` (`sub sp,#12`) and recomputes `v = tile|tile<<16` per row. Adding an explicit `next`/`v` and
     changing `half`'s type did not raise register pressure enough to force the spills.
-- `0x0807AD40` / `0x0807ADE8`: target spills `srcBase`/`srcW` to `[sp]`, keeps the `w & 0x1FFFFF` mask (0x1FFFFF
+
+> [!warning] Contradiction
+> The next note and this section's introduction (2026-09-30 clean-up pass) put the `0x0807AD40` / `0x0807ADE8` blockers down to compiler allocation and loop scheduling, with source order, type and offset-local variants all leaving the same split. The wave 2 matches (2026-10-01, `build/wf/sub_0807AD40/NOTES.md`, `build/wf/sub_0807ADE8/NOTES.md`) came from the source: a `u32` return type with no value (`pop {r1}`), `/ 2` on the real u16 return of `sub_0807A490` instead of `& 0xFFFE`, and the CpuCopy16 size shape. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2, see below): `0x0807AD40` / `0x0807ADE8`: target spills `srcBase`/`srcW` to `[sp]`, keeps the `w & 0x1FFFFF` mask (0x1FFFFF
   rebuilt in the loop) and reloads the 0xFFFE mask from the literal pool per call; the build keeps the base in
   `r7`, spills the other value and CSEs the masks. Source order/type/off-local variants all leave the same split.
 - Historical `0x0807AEF0` (matched in wave 2, see below): the `0x3F`/`0xFC0` masks **do** need to be locals (`u16 m6, m12`) so they hoist into `r8`/`r9`
@@ -111,7 +115,7 @@ pointed at. The remaining blockers concern compiler allocation and loop scheduli
 
 ## Open questions
 
-> [!question] `sub_0807A490(x, y, shift)` (in the previous unit) returns a byte offset into a tiled bitmap; its exact meaning (hypothesis: 8x8-tile offset for a bitmap of width `1 << shift` tiles) was not verified.
+> [!question] `sub_0807A490(x, y, shift)` (in the previous unit) returns a byte offset into a tiled bitmap; its exact meaning (hypothesis: 8x8-tile offset for a bitmap of width `1 << shift` tiles) was not verified. Its return type is `u16` (matched definition in `src/code_0807960C.c`; the wave 2 crop-copy matches depend on it).
 > [!question] The callers of the palette-fade and callback-queue helpers are in menu/duel code; the fields written by the callers (`step` in particular) were not traced.
 
 Related: [[decomp-workflow]], [[compiler-flags]].
@@ -122,11 +126,11 @@ Related: [[decomp-workflow]], [[compiler-flags]].
 
 ## Private crop-helper audit
 
-`sub_0807ADE8` consumes its fifth argument, the destination base, from the adjusted stack after the coordinate helper call. Explicit word parameters preserve the caller interface, but `crop_rows_{resume,roles}.py` did not match. One fixed-register candidate overwrote dy with width before consuming dy; it is unsafe and rejected. No candidate from this grid is enabled or counted. Evidence under `build/bigguns-lead2/`.
+Historical (the function matched in wave 2 with the ordinary C below): `sub_0807ADE8` consumes its fifth argument, the destination base, from the adjusted stack after the coordinate helper call. Explicit word parameters preserve the caller interface, but `crop_rows_{resume,roles}.py` did not match. One fixed-register candidate overwrote dy with width before consuming dy; it is unsafe and rejected. No candidate from this grid is enabled or counted. Evidence under `build/bigguns-lead2/`.
 
 ## Workflow waves 1-2 matches (2026-10-01)
 
-Working notes: `build/wf/<func>/NOTES.md`.
+Working notes: `build/wf/<func>/NOTES.md` (for the wave 2 crop copies added on 2026-10-02: `build/wf/sub_0807AD40/NOTES.md`, `build/wf/sub_0807ADE8/NOTES.md`).
 
 ### `sub_0807A754` (`FillTiles32`, 0xB4, start score 61; wave 1, ordinary C)
 
@@ -142,3 +146,13 @@ Twin of `sub_0805DF34` ([[code-0805d58c]]); its matched body was ported (mask lo
 - Use the `u32 dst` parameter directly (cast at each use, `dst += 2`); a separate `u16 *dst = (u16 *)dstAddr` copy moves the `adds r7, r1, #0` later in the prologue.
 - The ROM keeps the second-loop counter in ip (0x3F3F in r2, 0xB3F in r3). No ordinary form reproduced that: a shared counter for both loops outranks dst (gets r7); u16/int/for/while/do/index forms keep it in r2. FAKEMATCH: `register u32 i asm("ip")`. With the pin, a `for` keeps its entry test (`cmp/bhi`), so the loop is a do-while, and the bound is a local `lim = 0xB3F` set before the loop so the literal loads first, as in the ROM.
 - Cleanup idea: find why global alloc gives the counter ip (it must be allocated after the 0x3F3F/0xB3F invariants and see r4-r6 as unavailable), perhaps via an inline helper shared with `sub_0805DF34`.
+
+### `sub_0807AD40` (`CopyBitmapBlock`, 0xA8, start score 81; wave 2, ordinary C)
+
+- The ROM's `pop {r1}` epilogue: the function is declared `u32` but returns no value. A `void` function pops into r0.
+- The `0xFFFE` mask reloaded from the pool after each call: the source is not `& 0xFFFE` but `srcBase + sub_0807A490(...) / 2` on `u16 *` pointers, with `sub_0807A490` returning `u16` (its real type; the unit's prototype said `u32` and is now `u16 sub_0807A490(u16, u16, u8)`). Combine turns `(x >> 1) << 1` into `x & 0xFFFE` after CSE has run, so every use loads the constant again. This also removes a call-crossing pseudo and fixes the allocation (srcBase spilled to `[sp]`, srcW in r9).
+- The kept `w & 0x1FFFFF` mask with 0x1FFFFF hoisted to r8: the CpuCopy16 shape `s32 size = w * 2; CpuSet(src, dst, (size / 2) & 0x1FFFFF);` inside the row loop, as in `CopyRows` (`0x0807A908`). `u32 size` swaps the dst and i registers (16); a plain `w & 0x1FFFFF` folds the mask away.
+
+### `sub_0807ADE8` (`CopyBitmapBlockFlat`, 0xA0, start score 71; wave 2, ordinary C)
+
+Ported unchanged from the matched `sub_0807AD40`: `u32` return type with no value, `u16 *` pointers with `dstBase + sub_0807A490(...) / 2`, and the CpuCopy16 size shape; the source pointer is `srcBase + sx + sy * srcW`. Matched on the first try.

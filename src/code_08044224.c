@@ -173,9 +173,8 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 4321): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
-       * deck/grave loops with ROM address forms (0x02019AA8/0x02019BE8 views, TargetCard bitfields); GCSE/loop/regalloc
-       * still differ; see build/wf/sub_08044224/NOTES.md */
+#if 0 /* NONMATCHING (score 4033): attribute=0 before the id read in 0x5EB lowers its priority so number gets r4
+       * (dispatch matches) */
 struct TargetCard {
     u32 id:12;
     u32 owner:1;
@@ -980,8 +979,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
             u32 stats;
-            id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
             attribute = 0;
+            id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
             switch (number) {
             case 0x5EB:
                 attribute = 1;

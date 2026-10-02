@@ -258,20 +258,24 @@ void sub_08049450(void)
         break;
     }
 }
-#if 0 /* NONMATCHING (score 44): NONMATCHING: score 44. Fixes found: u32 flags with (u16)(flags|C) truncations
-       * and one raw flags|=0x1800 (sub_08007834 path) give the ROM's lsl/lsr pattern; asm barrier hides flags==0 from
-       * CSE path-following there; int return; sub_08008860 called through int cast; final type switch on int t (signed
-       * bgt/blt); 0x47 test via gUnk_020192E4[p&1].rest[0]; fresh local e2 for the bit1 test (keeps ldr+ldr+add).
-       * Remaining: card-table address lands in r2 instead of r1 (3 places), pb=(e+4)+p*0xD64 operand order, 0x1800
-       * constant reg after the asm barrier. */
 struct Flags514 { u8 f0 : 1; u8 bit1 : 1; u8 phase : 3; u8 rest : 3; };
+/* sub_08008860 returns int (see src/code_08007994.c); this unit declares it u16. */
 #define CN8860(p) (((int (*)(int))sub_08008860)(p))
 /*
- * Usability flags for card `id` held by `player`.
+ * Usability flags for card `id` held by `player`. Only when the duel phase (0x020192E0+0x1B12
+ * bits 2-4) is 2 or 4: traps (type 0x16) get 0x10 (+0x40 when sub_0802CFA0 allows it), with
+ * card numbers 0x520 and 0x605-0x608 special-cased; magic (0x15) gets 0x10; other cards go
+ * through sub_08054398 / sub_08007834 and the sub_08047170 / sub_08047114 masks, then card
+ * numbers 0x47 / 0x1A8 add 0x40. The shared tail adds 0x40 for trap subtype 5, drops it when
+ * either side has card 0x49C, and clears 0x10/0x40 for spells and traps when player byte +7
+ * bits 6-7 are set.
+ *
+ * The explicit `(u16)(flags | C)` forms and the one plain `flags |= 0x1800` are not
+ * interchangeable here: the ROM keeps the lsl/lsr truncation after every OR except that one.
  */
 int sub_08049514(u16 id, int player)
 {
-    u32 flags;
+    u16 flags;
     u8 *e;
     struct CardRef ref; /* FAKEMATCH: unused, but the ROM reserves its 0x14-byte stack slot */
     u32 n;
@@ -300,7 +304,12 @@ int sub_08049514(u16 id, int player)
                 flags &= 0xFFEF;
                 break;
             case 0x520:
-                pb = e + 4 + (player & 1) * 0xD64;
+                {
+                    /* e + 4 first, as a separate term (also fixes later reload registers) */
+                    u8 *zb = e + 4;
+                    int s1 = (player & 1) * 0xD64;
+                    pb = (u8 *)(s1 + (int)zb);
+                }
                 if ((pb[9] << 26) < 0 || (pb[8] << 27) < 0)
                     flags &= 0xFFBF;
                 break;
@@ -313,7 +322,6 @@ int sub_08049514(u16 id, int player)
         default:
             if (sub_08054398(player, id) != 0) {
                 if (sub_08007834(id) != 0) {
-                    asm("" : "+r"(flags)); /* FAKEMATCH: hide flags == 0 from CSE */
                     flags |= 0x1800;
                     if ((u16)sub_08047170(0) == 0)
                         flags = 0;
@@ -356,7 +364,7 @@ int sub_08049514(u16 id, int player)
         }
         break;
     }
-    e2 = gUnk_020192E0;
+    e2 = gUnk_020192E0; /* a fresh base: the ROM reloads 0x020192E0 and adds 0x1B12 here */
     if (((struct Flags514 *)(e2 + 0x1B12))->bit1 == 0) {
         u32 st = ((const u32 *)0x08621DE0)[0x7FF & id];
         if (((st & 0x1F00000) >> 20) == 0x16 && ((st & 0xE0000) >> 17) == 5 &&
@@ -381,8 +389,6 @@ int sub_08049514(u16 id, int player)
     }
     return flags;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049514); /* 0x08049514 size 0x36C */
 #if 0 /* NONMATCHING: register allocation only. The ROM keeps id in r7 and zone in r4 and saves only r8; the build keeps id in r8/r9, spills the 0x7FF mask and hoists the constant 1 into r4. The switch decision tree and every body are identical. */
 /*
  * Usability lookup for the spell/trap command menu: given a card id, a player and a spell/trap

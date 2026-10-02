@@ -4,11 +4,11 @@ type: function
 status: draft
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # code_08072FAC: image-pack loaders, map helpers and the multi-player link layer (`0x08072FAC`-`0x080740BC`)
 
-`src/code_08072FAC.c` (19 functions, 0x1110 bytes). **14 / 19 are C and byte-matching** after 2026-10-01 (`sub_0807332C` by the permuter just before workflow wave 1, `sub_080730A8` in wave 1); 5 stay `INCLUDE_ASM` (3 with a near-miss attempt under `#if 0 /* NONMATCHING */`: `sub_080735D4`, `sub_08073784`, `sub_08073F04`; 2 not attempted: `sub_0807382C`, `sub_08073C10`). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues [[code-08071f40]] (whose `sub_08072EB0` is the same loader with map buffer `0x03000C5C`); the link state is the `LinkSio` block of [[code-080740bc]] / [[code-080750e0]] (`0x03005B60`), and `sub_080740BC` (link step, in [[code-080740bc]]) is the receive pump these functions call.
+`src/code_08072FAC.c` (19 functions, 0x1110 bytes). **16/19 functions in C** after workflow waves 2-3 (2026-10-01: `0x080735D4`, `0x08073784` in wave 2; none in wave 3); 3 stay `INCLUDE_ASM` (`sub_08073F04` with a near-miss attempt under `#if 0 /* NONMATCHING */`; `sub_0807382C`, `sub_08073C10` not attempted). Before wave 2: 14/19 (`sub_0807332C` by the permuter just before workflow wave 1, `sub_080730A8` in wave 1). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues [[code-08071f40]] (whose `sub_08072EB0` is the same loader with map buffer `0x03000C5C`); the link state is the `LinkSio` block of [[code-080740bc]] / [[code-080750e0]] (`0x03005B60`), and `sub_080740BC` (link step, in [[code-080740bc]]) is the receive pump these functions call.
 
 ## Functions
 
@@ -26,9 +26,9 @@ updated: 2026-10-01
 | `0x08073500` | 0x58 | **matching** | `FillMapRect(row, col, w, h)` | fills a `w x h` block of the map buffer with the halfword at `gUnk_081A7760` (row stride 0x40 bytes) |
 | `0x08073558` | 0x1C | **matching** | `CopyCanvasToVram` | `CopyDoubleWords(0x06004400, 0x02010014, 0x1C00)` |
 | `0x08073574` | 0x60 | **matching** | `ResetTextBgs` | `ClearBgMaps`, `sub_08075630`, `SetTextLimits(0, 0x27E)`, BG2/BG3 reference points 0, affine matrices = identity (`0x100`), `BG0CNT = 4` |
-| `0x080735D4` | 0x168 | nonmatching (CSE/regalloc) | `LinkInstall(slotA, slotB)` | `IME=0; IE &= 0xFF3F; IME=1`, clears `LinkSio` (CpuSet fill, 0xB38 bytes), sets the 3 buffer pointers (`+0xA30/A34/A38 = +0xA54/A84/AB4`), `+0xA28[2] = 0xFF`, `RCNT = 0xC000`, SIOCNT = 0x1000 -> 0 -> 3 -> `\|= 0x2000`, `RCNT = 0`, `state = 0xC`, `+0xA40 = 0x1000`, stores `slotA/slotB` at `+0/+4`, `IE \|= 0x80` (SERIAL), `*slotA = *slotB = sub_08075F74 \| 1`, `SIOCNT \|= 0x4000` (IRQ enable), and if `+0xB0C` bit 2 is clear also enables Timer3 (`IE \|= 0x40`) |
+| `0x080735D4` | 0x168 | **matching** (wave 2, 2026-10-01) | `LinkInstall(slotA, slotB)` | `IME=0; IE &= 0xFF3F; IME=1`, clears `LinkSio` (CpuSet fill, 0xB38 bytes), sets the 3 buffer pointers (`+0xA30/A34/A38 = +0xA54/A84/AB4`), `+0xA28[2] = 0xFF`, `RCNT = 0xC000`, SIOCNT = 0x1000 -> 0 -> 3 -> `\|= 0x2000`, `RCNT = 0`, `state = 0xC`, `+0xA40 = 0x1000`, stores `slotA/slotB` at `+0/+4`, `IE \|= 0x80` (SERIAL), `*slotA = *slotB = sub_08075F74` (Thumb address, so the pool literal has bit 0 set), `SIOCNT \|= 0x4000` (IRQ enable), and if `+0xB0C` bit 2 is clear also enables Timer3 (`IE \|= 0x40`) |
 | `0x0807373C` | 0x48 | **matching** | `LinkDisableIrq` | `IME=0; IE &= 0xFF3F; *slotB = 0; *slotA = 0; IME=1; SIOCNT = 0x2000; IF = 0xC0` (used by `LinkInit` / `LinkShutdown` / `LinkSyncFinish`) |
-| `0x08073784` | 0xA8 | nonmatching (regalloc) | `LinkSend(src, n)` | `slot = (SIOCNT & 0x30) != 0` (player id); returns 0 if `+0xAF8[slot]` (busy) is set; if `1 <= n <= 0x100`: `+0xAF0[slot] = (n+0x10)/16` (block count), `+0xAF8[slot] = n + 1`, `+0xAF4[slot] = 0`, header `0x03005B68 = n \| (n <= 14 ? 0x3000 : 0x2000)`, `CpuSet(src, 0x03005B6A, n/2)`, `sub_08074218(0x03005B68)` (checksums/builds the packet); returns 1 |
+| `0x08073784` | 0xA8 | **matching** (wave 2, 2026-10-01) | `LinkSend(src, n)` | `slot = (SIOCNT & 0x30) != 0` (player id); returns 0 if `+0xAF8[slot]` (busy) is set; if `1 <= n <= 0x100`: `+0xAF0[slot] = (n+0x10)/16` (block count), `+0xAF8[slot] = n + 1`, `+0xAF4[slot] = 0`, header `0x03005B68 = n \| (n <= 14 ? 0x3000 : 0x2000)`, `CpuSet(src, 0x03005B6A, n/2)`, `sub_08074218(0x03005B68)` (checksums/builds the packet); returns 1 |
 | `0x0807382C` | 0x338 | not attempted | `LinkPoll` (hypothesis) | per-frame link state machine: reads `sub_080740BC`, dispatches on the packet type nibble (`0x1000/0x2000/0x3000/0x8000/0xA000...`), reassembles multi-block messages into `0x03006650..` |
 | `0x08073B64` | 0xAC | **matching** | `LinkRecvSlot(id, dst)` | runs `sub_080740BC`; if slot `id` has data and its type is `0x3000` copies the 7-halfword packet to `0x03005D6C + id*0x202`, then `(len & 0x1FF)/2` halfwords to `dst`; clears `+0xAF8[id]`/`+0xAF4[id]`; returns the length |
 | `0x08073C10` | 0x2F4 | not attempted | `LinkRecvAll` (hypothesis) | receive with debug prints (`gUnk_080876B4/D4/F8` via `sub_0801A7DC`) for each of 2 slots; size-driven CpuSet copies |
@@ -83,9 +83,13 @@ Tiles go to `0x06004000 + tileBase*32` (charblock 1). The 6 variants differ only
 - `0x080731D0`, `0x0807326C`, `0x080733F4` are now matching (the split shift `((pos & 0xFF00) >> 1) >> 2` plus routing the map base through a pointer/assignment makes old_agbcc hoist the literal ahead of the palette bank and keep `0xFF00` in `ip`; see the `FAKEMATCH` comments in the source).
 - Historical (both matched 2026-10-01, see below): `0x080730A8`, `0x0807332C`: the target re-loads the map literal inside the loop (no hoist) and keeps `0xFF00` in `ip`; with `(u16 *)0x0300045C` (integer literal) the hoist disappears but the mask lands in r5. `0x0807332C`: target keeps `row` in `sl` and hoists `row*0x800 + 0x0300045C`; built spills it to the stack.
 - Historical `0x0807332C` fresh sibling batch: an initialized row constraint to sl corrects all other callee-saved register roles. Reuse that row variable for the map base, keep a named 0xFF00 mask in ip, read the initial cell count into r5, and use a single guarded do/while loop. The best private candidate has eight diff lines. The initial `mov sl,r0` occurs after argument narrowing, and the mask is built in r5 instead of r0. Attempts with explicit word-argument narrowing and scratch staging were worse, so none were activated. Evidence: `build/manual_late_next/sub_0807332C.rowdo.best.c` / `.rowdo.diff`. Runtime narrowing and five-argument ABI must remain intact in future experiments.
-- `0x080735D4`: structure identical; the target derives `0xA84`/`0xAB4` as `r2 + 0x30` from the `0xA54` literal and keeps the base in r4 (copy in r5), while the built version uses separate literals.
+
+> [!warning] Contradiction
+> The next note and the old table status "nonmatching (CSE/regalloc)" (2026-10-01 and earlier) blame CSE and register allocation for `0x080735D4`. The wave 2 match (2026-10-01, `build/wf/sub_080735D4/NOTES.md`) found four source-level mistakes in the draft (fill-source width, two store orders, and a hand-written `| 1`); with those fixed, the `0xA54`-relative derivations matched without any CSE change. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2, see below): `0x080735D4`: structure identical; the target derives `0xA84`/`0xAB4` as `r2 + 0x30` from the `0xA54` literal and keeps the base in r4 (copy in r5), while the built version uses separate literals.
 - `0x08073F04`: first C attempt (from the m2c draft). The target keeps the packet base `0x03006676` in r4 and derives the `LinkSio` base as `r4 - 0xB16`; the attempt materialised `0x03005B60` and other constants separately and spilled them to r8/sl, so the loop body and header field accesses still differ.
-- `0x08073784`: the target keeps the source pointer in `ip` and has a dead `movs r7,#0`; mid-function literal pool. The `ip`-vs-low-reg choice for `src` and the SIOCNT temp/id register roles did not change across sio-temp, declaration-order, `unkAF4 = 0` and direct-index shapes.
+- Historical (matched in wave 2, see below; the fix was the busy-test and header-store shape, not allocation): `0x08073784`: the target keeps the source pointer in `ip` and has a dead `movs r7,#0`; mid-function literal pool. The `ip`-vs-low-reg choice for `src` and the SIOCNT temp/id register roles did not change across sio-temp, declaration-order, `unkAF4 = 0` and direct-index shapes.
 
 Related: [[code-08071f40]], [[code-080740bc]], [[code-080750e0]], [[code-0807b6b8]], [[graphics-formats]], [[decomp-workflow]], [[compiler-flags]].
 
@@ -101,3 +105,23 @@ Working notes: `build/wf/sub_080730A8/NOTES.md`.
 - The tile destination was computed as a call argument; a named `u8 *dst` local between `tiles` and `hdrC`, exactly as in matched `sub_0807326C`, fixes it.
 - The index was built as `((dc << 16) | (dr << 21)) >> 16` with ints, giving `asrs` instead of `lsrs`. What matched: int `col`/`row`/`col0`/`row0`, then u16 temporaries `u16 dc = col - col0; u16 dr = row - row0; idx = dc | (dr << 5);`. Combine turns the two zero-extends into the target's `lsl 16 / lsl 21 / orr / lsr 16`. With the u16 temporaries the named `dst` no longer spills `palIdx<<16` (it stays in sl). The map base is the integer literal `(u16 *)0x0300245C`.
 - Failed: u16 `col/row/col0/row0` (90); an int index expression without the u16 temporaries (`lsl 5 / orr / lsl16 / lsr16`, 90).
+
+## Wave 2 matches (2026-10-01)
+
+Both match in ordinary C. Working notes: `build/wf/sub_080735D4/NOTES.md`, `build/wf/sub_08073784/NOTES.md`.
+
+### `sub_080735D4` (`LinkInstall`, 0x168, start score 100; ordinary C)
+
+The old note blamed register allocation; the parked draft had four source-level mistakes instead:
+1. The `CpuSet` fill source is a `u32 zero` (ROM `str r0,[sp]`), not a `u8` (`strb`).
+2. `REG_SIOCNT |= 0x2000` comes before `REG_RCNT = 0` (volatile store order).
+3. `irqSlotA = a` is stored before `irqSlotB = b`.
+4. `*a = (u32)sub_08075F74` without `| 1`: the pool literal is the symbol, and the assembler sets the Thumb bit.
+
+With all four fixed, the reg+const derivations matched as well (`0xA84`/`0xAB4` from the `0xA54` literal, `REG_IME` as `RCNT + 0xD4`). They followed from the store order and register pressure, not from a CSE problem.
+
+### `sub_08073784` (`LinkSend`, 0xA8, start score 84; ordinary C)
+
+- The draft read the busy flag through a local pointer into an `s16 old` and stored `old` back. The ROM reads `link->txBusy[slot]` directly and later stores a literal `0` to `unkAF4[slot]`; CSE knows the loaded value is 0 on the fall-through path, so the store uses the loaded register (r6). The dead `movs r7,#0` is what remains of the zero temporary, and it pushes `src` into ip. Writing `= 0` and dropping the `busy`/`old` locals fixed the r4/r5 roles, the `ldrh r6` and the `(link + off) + slot` address order.
+- The header was a `u16 hdr` if/else, which jump.c turned into `hdr = 0x2000; if (...) hdr = 0x3000`. The ROM has two full stores, `if (n <= 0xE) link->txHdr = n | 0x3000; else link->txHdr = n | 0x2000;`. Cross-jumping merges their tails, which explains the reload temporaries (r0 in one branch, r2 in the other) copied into r1 and the mid-function literal pool after the `b`.
+- `n | (cond ? 0x3000 : 0x2000)` came close but swapped r0 and r1. Matched in 3 experiments.

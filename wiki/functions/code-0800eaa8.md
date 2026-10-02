@@ -1,10 +1,10 @@
 ---
 title: Unit code_0800EAA8 (duel script-command handlers)
 type: function
-status: draft
+status: solid
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Unit code_0800EAA8
 
@@ -14,7 +14,7 @@ Duel "script command" handlers. The dispatcher `sub_0801ECA8` switches on
 command block at `0x020185C0` and clears the "command running" flag (bit 5 of byte `0x020185C0+0x80D`)
 when it is done. See [[code-08010bdc]] (sibling handlers), [[code-0800d8a4]].
 
-Unit status: `unit bytes MATCH`, **21/22 functions in C**; 1 remains `INCLUDE_ASM`. Verified with `tools/check.py code_0800EAA8`.
+Unit status: `unit bytes MATCH`, **22/22 functions in C** after workflow wave 2 (2026-10-01: `0x0800EE50` in wave 2); none stay `INCLUDE_ASM`. Before wave 2: 21/22. Verified with `tools/check.py code_0800EAA8`.
 
 ## Shared headers
 
@@ -57,7 +57,7 @@ Local views kept (canonical declaration differs; see the comments in `src/code_0
 | `0x0800ED1C` | 0x3C | matching | Clear a zone's `numLinks` | |
 | `0x0800ED58` | 0x74 | matching | Transfer link arrays/count between command zones; clear source count and running bit | |
 | `0x0800EDCC` | 0x84 | matching | Append `(arg2<<8)|player` and `arg4` to the marked-card queue | |
-| `0x0800EE50` | 0xE8 | asm | Remove a marked-card queue entry matching `(arg2<<8)|player` | |
+| `0x0800EE50` | 0xE8 | **matching** (wave 2, 2026-10-01; FAKEMATCH) | Remove a marked-card queue entry matching `(arg2<<8)|player` | |
 | `0x0800EF38` | 0x1C0 | matching | Multi-frame place-card state machine (areas 11→14, link-duel check) | |
 | `0x0800F0F8` | 0x19C | matching | Draw `arg4` cards (deck→hand animation); empty deck sets player `+0x07` bit 0 | |
 | `0x0800F294` | 0x13C | matching | Take `arg2` cards, animate area 13→14, commit | |
@@ -100,3 +100,17 @@ Local views kept (canonical declaration differs; see the comments in `src/code_0
 - `sub_0800ED58`, Thumb, `0x74` bytes, matching C. It transfers the two 32-halfword link arrays and link count between the acting player's source and destination zones, then clears the source count and command-running bit. An empty r6 clobber keeps the source in r5 and the destination in r6.
 
 The compiler hints emit no instructions. Each conversion passed a whole-unit byte comparison with the baserom; remaining assembly functions retain their original bytes. Earlier notes describing these functions as allocation near misses are resolved by the matching C above.
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/sub_0800EE50/NOTES.md`.
+
+### `sub_0800EE50` (0xE8, start score 86; FAKEMATCH)
+
+The parked attempt hoisted the masked player bit out of the queue loop and was 4 bytes longer; the ROM hoists only the `cmd` load and keeps `mov #0x80; lsl #8; and` inside the loop. Three fixes, in order:
+
+1. The else arm recomputes `lsl r0, r2, #8`. Wrapping the whole key in `(u16)(((u8)arg2 << 8) | (cmd & 0x8000 ? 1 : 0))` produces this: fold distributes the compare into both arms of the conditional, each arm zero-extends its value, and combine folds that extension into a second shift (86 -> 61).
+2. The AND must stay in SImode. A plain `cmd & 0x8000` on the u16 field was shortened to HImode (extra `lsl/lsr #16`); an int-typed mask variable, or `(s16)cmd & 0x8000`, keeps it in SImode (42).
+3. FAKEMATCH: the mask is a statement expression `({ int mask = 0x8000; asm volatile("" : "+r"(mask)); mask; })` inside the condition. In its first pass loop.c judged the constant not worth hoisting; its second pass (on the shorter loop) hoisted the constant and the AND. The volatile asm blocks the second-pass hoist (score 0).
+
+Failed: a non-volatile asm (42; loop.c treats it as an invariant set), the mask+asm as a statement at the top of the loop body (36; the constant then lands before the arg2 load), a plain mask variable in the loop (52), `(s16)cmd < 0` / `cmd >> 15` (61), `cmd & ~0x7FFF` (43), bitfield player views (44-50), a separate `u16 key` local (104-135), an int `cmd` local before the loop (99).

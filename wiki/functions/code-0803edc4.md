@@ -1,16 +1,16 @@
 ---
 title: Unit code_0803EDC4 (duel target selectors, part 2)
 type: function
-status: draft
+status: solid
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Unit code_0803EDC4
 
 `0x0803EDC4`-`0x0803FE6F`, Thumb, `old_agbcc -O2`. Source: `src/code_0803EDC4.c`. Continues [[code-0803dd7c]] (same target pickers: `int pick(struct CardRef *ref)` returns 1 when the targets are filled in, 0 while waiting; step byte at `0x02017A40 + 0x3E5`; the common helper is `sub_0803DDAC(ref, player, zone)`, which adds a target if accepted; see that page). `CardRef` is the one from [[code-08030b88]] with three target slots.
 
-Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC-byte unit), 11/12 functions in C after workflow wave 1 (2026-10-01, `sub_0803EE6C` added; `sub_0803FC88` was enabled earlier); `sub_0803F034` stays `INCLUDE_ASM` (attempt under `#if 0`). Verification log: `build/middle_experiments/sub_0803FC88/unit-check.log`.
+Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC-byte unit), **12/12 functions in C** after workflow waves 2-3 (2026-10-02: `0x0803F034` in wave 3); none stay `INCLUDE_ASM`, so the unit is complete in C. After wave 1: 11/12 (2026-10-01, `sub_0803EE6C` added; `sub_0803FC88` was enabled earlier). Verification log of the earlier state: `build/middle_experiments/sub_0803FC88/unit-check.log`.
 
 ## Functions
 
@@ -18,7 +18,7 @@ Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC
 |---|---|---|---|
 | `0x0803EDC4` | 0xA8 | matching | prompt `gUnk_0808405C`, keys `0xD2 << 16`, add the cursor position (`sub_0803DDAC` accepts, else `sub_08077AEC(3)`) |
 | `0x0803EE6C` | 0x1C8 | **matching** (wave 1, 2026-10-01) | AI: adds the first two occupied unflagged spell/trap zones (5-9); player 0: 4 steps 0..3 (`sub_0802D800` gate, prompts `gUnk_080840A4` / `gUnk_080840D8`, keys `0x20002` twice, the second pick must differ from `targets[0]`). Matched once the real second parameter `arg` was restored (see below) |
-| `0x0803F034` | 0x310 | **nonmatching (asm)** | `(ref, arg)`; AI: up to two picks, preferring player-1 zones whose card number is in 0x10-0x14 (`gUnk_02015EE8+4 & 0x200` enables it), else `sub_0805748C(0, i > 0 ? 0 : -1, 1, 1)`; the second pick must differ from `targets[0]`; player 0: 6-step machine (`sub_0802CE38` gate, `sub_08008860(0) + (1)` count, prompts `gUnk_0808410C` / `0808413C` / `08084178`, keys `0xF000F0`). Draft in `#if 0`; the ROM keeps `ref` in r6, `i` in r7 and the constants (1, 0xFFFF, zone base) in r8/sl/ip, ours does not |
+| `0x0803F034` | 0x310 | **matching** (wave 3, 2026-10-02; FAKEMATCH) | `(ref, arg)`; AI: up to two picks, preferring player-1 zones whose card number is in 0x10-0x14 (`gUnk_02015EE8+4 & 0x200` enables it), else `sub_0805748C(0, i > 0 ? 0 : -1, 1, 1)`; the second pick must differ from `targets[0]`; player 0: 6-step machine (`sub_0802CE38` gate, `sub_08008860(0) + (1)` count, prompts `gUnk_0808410C` / `0808413C` / `08084178`, keys `0xF000F0`). See Wave 3 matches below (historical: the ROM keeps `ref` in r6, `i` in r7 and the constants 1, 0xFFFF, zone base in r8/sl/ip, which the old draft did not) |
 | `0x0803F344` | 0x2AC | matching | AI: `sub_0805748C(0, -1, 1, 1)` result as target 0; player 0: card-dependent prompt (0x280 / 0x403 / 0x42C+0x5EA / other, each guarded by `sub_080088A4(1 - player, ...)`), step 1: keys 0xF0<<16 or 0xE0<<16 by card, then the pick is validated with `sub_0802B1B8` and per card (0x42C: not card 0x547; 0x42C/0x4DC: face-down flag 2) |
 | `0x0803F5F0` | 0xAC | matching | prompt `gUnk_08084290` only if `sub_080088A4(p, 1, 0)` (else done at once), keys 0xE0 |
 | `0x0803F69C` | 0x9C | matching | prompt `gUnk_080842CC`, keys `0x900090`, `sub_0803DDAC` result ignored, returns 1 |
@@ -40,13 +40,13 @@ Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC
 - **Two-copy `1 & ref->player`**: `pl = 1 & ((u8 *)ref)[2]; one = 1;` then `one - ref->player` (bitfield read) in the same function, see `0x0803F344`.
 
 ## Open problems
-`0x0803F034` (AI arm register assignment). `0x0803EE6C` (cursor-offset reload and r1/r2 temporaries) was resolved in wave 1; see below.
+None: the unit is complete in C. Historical: `0x0803F034` (AI arm register assignment) was resolved in wave 3 and `0x0803EE6C` (cursor-offset reload and r1/r2 temporaries) in wave 1; see the sections below.
 
 ### Bounded experiments
 
 Fresh isolated compilation of `sub_0803EE6C` is 0x1CC rather than the ROM's 0x1C8, with 150 differing bytes. The old "12 diff lines, only temporaries" annotation understates the present discrepancy: case 1 reloads 0x828 after forming 0x824, whereas the ROM advances the same r5 offset by four. Cursor-array forms, p-first/z-first loads, cancellation-zero forms, and initialized offset/input/read-write constraints did not settle the function. A raw target-count clear reaches the right size but substitutes an immediate AND for the ROM's negative-mask sequence, so that is not a matching recipe. Scripts: `build/middle_experiments/two_pick_cursor*.py`.
 
-`sub_0803F034`'s initial occupied-card test reads zone `i`, while its inner card-number lookup reads zone `j`; preserve this ROM behavior. Fresh baseline is 0x300 versus ROM 0x310. The ROM retains the normalized 12-bit id in r9, one in r8, sentinel in sl and zone base in ip, and spills the first-target read inside the `i != 0` branch. Initialized id/sentinel constraints and a conditional first-target load reduce instruction-layout discrepancies, but still change saved registers, frame size and branch tails. A private string-replacement defect in the first invariant grid was corrected before evaluating its follow-up; no production draft was changed or candidate accepted. Named-register/lifetime grids remained nonmatching. Instruction-sequence ranking in the private harness is only a search aid; it never replaces exact byte comparison. Scripts: `build/middle_experiments/ai_two_pick_invariants.py`, `ai_two_pick_register_life.py`.
+Historical (`sub_0803F034` matched in wave 3, see below): `sub_0803F034`'s initial occupied-card test reads zone `i`, while its inner card-number lookup reads zone `j`; preserve this ROM behavior. Fresh baseline is 0x300 versus ROM 0x310. The ROM retains the normalized 12-bit id in r9, one in r8, sentinel in sl and zone base in ip, and spills the first-target read inside the `i != 0` branch. Initialized id/sentinel constraints and a conditional first-target load reduce instruction-layout discrepancies, but still change saved registers, frame size and branch tails. A private string-replacement defect in the first invariant grid was corrected before evaluating its follow-up; no production draft was changed or candidate accepted. Named-register/lifetime grids remained nonmatching. Instruction-sequence ranking in the private harness is only a search aid; it never replaces exact byte comparison. Scripts: `build/middle_experiments/ai_two_pick_invariants.py`, `ai_two_pick_register_life.py`.
 
 Fresh `sub_0803FC88` baseline was 0x1D0 against ROM 0x1E8 (299 differing bytes), so its old "only increment tails" annotation was also stale. Initialized per-arm step offsets passed through empty read/write constraints stopped complete increment merging and restored the separate 0x824/0x828 cursor literals. Keeping the resulting pointer in initialized r0, expressing case 1's failures as explicit returns to `ret0`, and retaining initialized sound id 3 separately in case 3 reached the exact 0x1E8 size with six differing bytes: two reversed address-add operands and the shared increment/reset literal-register choices (`build/middle_experiments/sub_0803FC88/six-byte.c`). Staged/cast additions and extra common/reset offset constraints did not settle those bytes. This intermediate recipe was never enabled; the final accepted version is described below. Scripts: `three_pick_tails.py`, `three_pick_finish.py`, `three_pick_adds.py` in `build/middle_experiments`.
 
@@ -63,3 +63,18 @@ A later follow-up on `sub_0803EE6C` tried staged cursor pointers, field-mask ord
 - In the ROM r1 is occupied at case 0: the function has a **second parameter** `arg`, live in r1 from entry and passed on to `sub_0802D800(ref, arg)` (the r1 move is a no-op, so no instruction shows it). Case 0 therefore takes r2, and case 1 takes r5, then `r5+4` and `r5+8`, which is the ROM's advance instead of a second literal.
 - Fix: `int sub_0803EE6C(struct CardRef *ref, int arg)`, with case 0 calling `((CondFunc_0803EE6C)sub_0802D800)(ref, arg)`. The unit's existing prototype for `sub_0802D800` takes only ref, so the call goes through a typedef cast; if that prototype is widened to `(ref, int)`, the cast can go.
 - General lesson: if a reload temporary lands one register off, look for a hidden live value, such as an unused-looking incoming argument passed on to a callee. See [[matching-tricks#Register allocation priority and reload rotation]].
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/sub_0803F034/NOTES.md` (scripts `exp.py`, `prio.sh` for the global-alloc priority table, `built.sh`).
+
+### `sub_0803F034` (0x310, start score 177; FAKEMATCH)
+
+`prep.json` first recorded score 0 because of a transient scoring glitch; the real starting draft scored 177. The AI arm was rewritten from the assembly, then the remaining differences were fixed one by one:
+- Zone reads: the occupancy test reads zone `i` as a full word, `*(u32 *)ZB(1, i) << 20 >> 20` (the `.card.id` bitfield gave `ldrh`); the inner test is `i != 0`, and `m` is an `int` -1/0.
+- Card-number range 0x10-0x14 as a GNU case range, `switch (no) { case 0x10 ... 0x14: ... }`, which gives `cmp #0x14; bgt; cmp #0x10; blt`. The `if` forms fold to `<= 15`, or to `sub; cmp #4; bhi` with `&&`.
+- Sentinel: `int none = 0xFFFF;` declared inside the loop and used in both `cand == none` tests. loop.c hoists it into sl, while `cand = 0xFFFF` stays a fresh literal load. `u16 cand` gives the ROM's `lsr 8; lsl 24; lsr 24` for `(u8)(cand >> 8)`.
+- `ref->targets[0] == (u16)((u8)j << 8 | 1)`: the explicit cast keeps `targets[0]` a separate pseudo (spilled to `[sp]`, hence `sub sp,#4`), and its extra pre-combine insns rank `i` above the hoisted constant 1 in global-alloc priority (`i` r7, 1 r8). A plain compare folds the load into the `cmp`.
+- Human arm: `int s = es[0x3E5];` before `u8 *e2 = es;` fixes the reload round-robin (cursor 0x824/0x828 registers, the increments, and case 3 cross-jumping into case 0); case 2 uses `int n`, not `s16`.
+- One shared `return 1`: the AI arm ends with `goto ret1;` to a label in case 5, so the single `r0 = 1` block sits after case 5 as in the ROM. Otherwise the AI-end copy survives cross-jumping and every `return 1` jumps there.
+- FAKEMATCH: case 5's failure sound is `u32 se = 3; asm("" : "+r"(se)); sub_08077AEC(se);`. The empty constraint keeps this call from being cross-jumped into case 2's identical sound call (the ROM has both), as with the initialized sound id of `0x0803FC88` above. Every plain-C form of case 5 scored 76.

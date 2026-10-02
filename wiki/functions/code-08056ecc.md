@@ -4,11 +4,11 @@ type: function
 status: draft
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # code_08056ECC: duel AI helpers (`0x08056ECC`-`0x08057EE0`)
 
-`src/code_08056ECC.c` (19 functions, 0x1014 bytes). 17 / 19 are C and byte-matching; 2 stay `INCLUDE_ASM` (`sub_08056ECC`, `sub_08057C94`), each with its best attempt under `#if 0 /* NONMATCHING */`. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals, and the code keeps `sub_08XXXXXX`. All of this is probably the CPU opponent's decision code (hypothesis). Neighbours: [[code-080609c4]] (board drawing) and [[code-08009a68]] (per-player lists/zones). See also `src/code_0800C894.c`: `sub_0800C894` is zone ATK, `sub_0800C8A8` is zone DEF, and `sub_0800ABC8` is card info.
+`src/code_08056ECC.c` (19 functions, 0x1014 bytes). **18/19 functions in C** after workflow waves 2-3 (2026-10-02: `0x08057C94` in wave 3); 1 stays `INCLUDE_ASM` (`sub_08056ECC`, best attempt under `#if 0 /* NONMATCHING */`). Before wave 3: 17/19. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals, and the code keeps `sub_08XXXXXX`. All of this is probably the CPU opponent's decision code (hypothesis). Neighbours: [[code-080609c4]] (board drawing) and [[code-08009a68]] (per-player lists/zones). See also `src/code_0800C894.c`: `sub_0800C894` is zone ATK, `sub_0800C8A8` is zone DEF, and `sub_0800ABC8` is card info.
 
 ## Functions
 
@@ -29,7 +29,7 @@ updated: 2026-10-01
 | `0x08057A80` | 0x12C | matching | `BestAttackTarget(a, out)` | direct attack (return 1, `f1 \| f2`, `diff = ATK`) when `sub_0804A3D8(1, a)` or no defenders and the card is not 0x5F3; otherwise scans zones 0-4 with `EvalAttack`, keeping the plan with the larger `diff` (tie: larger DEF) |
 | `0x08057BAC` | 0xA4 | matching | `ZoneWeakerThan(value, zone)` | compares player 0's zone value (ATK if face-down, else DEF scaled by `(handicap + 5) / 16` when `handicap <= 10` and the zone flag bit 1 is clear) with `value`; ties favour the side with more monsters |
 | `0x08057C50` | 0x44 | matching | `AnyZoneWeakerThan(value)` | 1 if player 0 has no monsters or some occupied zone satisfies `ZoneWeakerThan` |
-| `0x08057C94` | 0x174 | nonmatching | `ChooseAttacker` | collects player 1's eligible zones (`sub_0804A528`), bubble-sorts them by ATK ascending (swap blocked when the later card is number 0x226/0x2E8/0x2F9), then takes the first whose `BestAttackTarget` succeeds and stores the plan at `0x02015F0C` (`f2 = 1`) |
+| `0x08057C94` | 0x174 | **matching** (wave 3, 2026-10-01) | `ChooseAttacker` | collects player 1's eligible zones (`sub_0804A528`), bubble-sorts them by ATK ascending (swap blocked when the later card is number 0x226/0x2E8/0x2F9), then takes the first whose `BestAttackTarget` succeeds and stores the plan at `0x02015F0C` (`f2 = 1`) |
 | `0x08057E08` | 0x34 | matching | `DuelStateSave` | DMA word copy `0x020192E4` -> `0x02015F14`, 0xD86 words (both `DuelPlayer`s + globals) |
 | `0x08057E3C` | 0x34 | matching | `DuelStateRestore` | the reverse copy |
 | `0x08057E70` | 0x70 | matching | `DropUnplayableZones` | player 1 zones whose card fails `sub_08007590(number, 0)`: `f6_0 = 0, f6_1 = 1, f7_2 = 0` and their bit cleared in the zone mask `+0x26` |
@@ -62,8 +62,23 @@ updated: 2026-10-01
 - Earlier `s16 count` attempts reproduced the forward loop but hoisted the table; a two-minute register-allocation permuter found no improvement from that draft. A table-pointer read/write barrier reached an eight-line miss. The scoped base/offset approach above resolved the remaining count-copy, literal-order, and commutative-add differences.
 - `0x0805748C` is matching: reuse the verified `0x08057550` sibling, with `bestIdx = -1`, then `best = bestIdx`, and the greater-than comparison. Assigning the initial score through `bestIdx` reproduces the ROM high-register copy; separate `best = -1` copies from r0 instead. Initialize the iterator before `pl = 1; pl &= p`. Only the initialized parity constraint to r8 is needed (documented `FAKEMATCH`); both accumulator constraints were removed after whole-unit checks. No empty barriers or assembly instructions are used. Checked with `tools/check.py code_08056ECC`: 19/19 functions and all 0x1014 unit bytes MATCH.
 - `0x08057550` (solved): the product-hoist is defeated by pinning both the accumulators and the parity: `register int bestIdx asm("r10") = -1; register int best asm("r9") = 99999; register int pl asm("r8");` then `int i = 0;` (init before `pl`) and `pl = 1; pl &= p;` (`pl = p & 1` emits a shorter/shifted form). With every callee-saved reg spoken for, LICM can no longer hoist `pl * 0xD64` and the loop body matches exactly. The sibling now matches using the same initialization pattern and only the parity constraint, as described above.
-- `0x08057C94`: whole structure matches (bubble sort, switch tree, plan copy). The ROM spills `n`, `done`, `last` and keeps the `0x2E8` switch constant hoisted in `sl`, while the build keeps `n`/`last` in `sl`/`r9`.
+- Historical (matched in wave 3, see below): `0x08057C94`: whole structure matches (bubble sort, switch tree, plan copy). The ROM spills `n`, `done`, `last` and keeps the `0x2E8` switch constant hoisted in `sl`, while the build keeps `n`/`last` in `sl`/`r9`.
 - `0x08056ECC`: control flow reproduced (two nested `switch`es, loops, inlined `CardValue` / `CardDefValue`); the build is 0x48 bytes shorter because the `0x7FF` mask and the tables stay in hoisted registers in the ROM (so `(w << 20 >> 20) & 0x7FF` is not fused) and the allocation differs.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/sub_08057C94/NOTES.md`.
+
+### `sub_08057C94` (0x174, start score 116; ordinary C)
+
+The parked draft had the whole structure, with three differences. The `0x2E8` switch constant was not hoisted into `sl`, because loop.c's `13 * savings * life >= insn_count` test failed (life 4 against 57+ insns). The registers differed: the ROM keeps i, j and k all in r5, the PRE copy of j+1 in r1, the switch value in r2, `ok` in r3 and `a` in r8, and spills n, done and last. And the zone address came out as `mov; mul; ldr` instead of the ROM's `mov r0,#0x94; ldr r1,=0x0201A070; mul`. Fixes, in order:
+1. A `u16 idb` card id gives the HImode `0x7FF` constant (`ldr rX; add r0,rX,#0; and`).
+2. In the sort's inner loop `for (i = 0; i < last; i++)`, write `next = i + 1; b = cand[next];` and store `cand[i + 1] = a`. GCSE PRE then makes the ROM's end-of-block copies (`add r1,r5,#0` / `add r5,r1,#0`), and the constant's lifetime becomes 5, so loop.c hoists `0x2E8`.
+3. Write the collecting loop as `cand[n] = i; n++` (a giv-reduced pointer, which initialises i first).
+4. **Use one counter variable `i` for all three loops** (score 147 -> 2). There is then one call-crossing pseudo, which lands in r5, and the rest of the allocation falls into place.
+5. **Add an unused `ida = CARD_ID(CARD_WORD(ZB(1, a)->card));` before idb** (2 -> 0). Its dead load is deleted, but CSE has already bound idb's `0x94` and zone-base loads to the registers set for ida, which gives the order `0x94`, base, `mul`. The source comments this dead local but does not mark it FAKEMATCH.
+
+Failed: struct-indexed, constant-pointer and reordered `ZB` forms, and `->card.id` bitfield access, did not change the mov/ldr/mul order. `asm volatile("" ::: "r1")` / `"r5"` clobbers to steer the index and the copy broke the hoisting (116).
 
 ## Open questions
 

@@ -1,16 +1,16 @@
 ---
 title: Unit code_08040EBC (duel target-selection prompts, part 2)
 type: function
-status: draft
+status: solid
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Unit code_08040EBC
 
 `0x08040EBC`-`0x08041F9B`, Thumb, `old_agbcc -O2`. Source: `src/code_08040EBC.c`. Continues [[code-0803fe70]] (same "selector" family: `int f(struct CardRef *ref)`, step byte `0x02017A40 + 0x3E5`, prompt text via `sub_080602A4(0x206, 0x712, 0xB, text)`, cursor at `gUnk_0201CFB0 + 0x824/0x828/0x82C`, `sub_0803DDAC(ref, player, zone)` adds the picked zone, `sub_08077AEC(3)` plays the "cannot pick" sound, and the cancel bit is `gMain+6 & 2`). The last function is a different kind (a validity test that fills a `CardRef`).
 
-Unit status: `unit bytes MATCH` (0x10E0 bytes), **13/14 functions in C** after workflow wave 1 (2026-10-01, `sub_0804112C` added); `sub_08041898` stays `INCLUDE_ASM` (best attempt under `#if 0`). Rechecked with `tools/check.py code_08040EBC` on 2026-09-30 after enabling `sub_0804158C`.
+Unit status: `unit bytes MATCH` (0x10E0 bytes), **14/14 functions in C** after workflow waves 2-3 (2026-10-01: `0x08041898` in wave 2); none stay `INCLUDE_ASM`, so the unit is complete in C. After wave 1: 13/14 (2026-10-01, `sub_0804112C` added). Rechecked with `tools/check.py code_08040EBC` on 2026-09-30 after enabling `sub_0804158C`.
 
 | Address | Size | Status | Purpose (hypotheses) |
 |---|---|---|---|
@@ -23,7 +23,7 @@ Unit status: `unit bytes MATCH` (0x10E0 bytes), **13/14 functions in C** after w
 | `0x0804158C` | 0x110 | matching | steps 0-2: `sub_08022678(p, 9, 0, 0)`, `sub_0803DD7C(ref, DG.w1B64 + 1)`, prompt `gUnk_08083E14`; later steps: keys `0xE000E0`, `sub_0802B558(ref, w)` accepts -> `sub_0803DDAC` |
 | `0x0804169C` | 0x140 | matching | `(ref, a)`: 4 steps, gate `sub_0802FCEC(ref, a, 0)`, prompts `gUnk_08084B6C` / `gUnk_08084BA0`, keys `0xE000E`; step 3 refuses the target equal to `ref->targets[0]` |
 | `0x080417DC` | 0xBC | matching | prompt `gUnk_08084BD4`, keys `0xE00000`; the cursor zone must hold a card and differ from `ref->pos >> 8` |
-| `0x08041898` | 0x328 | **nonmatching (asm)** | 6-step machine with a saved level at `0x02017A40+0x3E6`: prompt `gUnk_08083FD0`; keys `0xE000E0`, the level of the picked card must be `<= sub_08009DEC(ref->player)`, add target + level; `sub_08075434(buf, gUnk_08084C3C, level)` prompt; list viewer `sub_0802AF34(p, -1, 0x5FC, 0)`, message 0xD4 (0x80D4 for player 1) with the viewer card halves, counts the saved level down; step 5 `gUnk_08084C84` prompt with the remaining count, returns 1 when 0. C attempt (complete) under `#if 0` |
+| `0x08041898` | 0x328 | **matching** (wave 2, 2026-10-01) | 6-step machine with a saved level at `0x02017A40+0x3E6`: prompt `gUnk_08083FD0`; keys `0xE000E0`, the level of the picked card must be `<= sub_08009DEC(ref->player)`, add target + level; `sub_08075434(buf, gUnk_08084C3C, level)` prompt; list viewer `sub_0802AF34(p, -1, 0x5FC, 0)`, message 0xD4 (0x80D4 for player 1) with the viewer card halves, counts the saved level down; step 5 `gUnk_08084C84` prompt with the remaining count, returns 1 when 0. Ordinary C, see Wave 2 matches below |
 | `0x08041BC0` | 0xA0 | matching | prompt `gUnk_08084C98`, keys `0xE0000` |
 | `0x08041C60` | 0xA0 | matching | prompt `gUnk_08084CEC`, keys `0x20002` |
 | `0x08041D00` | 0xC4 | matching | prompt `gUnk_08084D20`, keys `0xF000F0`, `sub_0802C674(ref, w)` accepts the cursor zone |
@@ -49,9 +49,14 @@ Everything in [[code-0803fe70]] applies. This unit adds:
 - **Cancellation pointer before zero also fixes earlier switch registers** (`0x0804158C`): initialize `u8 *e2 = gUnk_02017A40; u8 *q = e2 + 0x3E5; int z = 0;`, then `*q = z; return z;`. Reusing [[code-0803fe70]]'s pointer-before-zero pattern reproduces the cancellation address in r1, zero in r0, and its direct epilogue branch. It also gives the ROM's initial switch value r2 / base copy r3, resolving the apparent unrelated register mismatch without any asm constraint or ABI change. The earlier `*(e2 + 0x3E5) = z` form computes the pointer after initializing zero and differs by 14 bytes; named switch/base-register constraints do not fix that source-order cause. Complete `0x10E0`-byte unit verified exact.
 
 ## Open problems
-`0x08040EBC`, `0x08040110`, and `0x08040CA8` now match; their former scratch-register issues are resolved by the verified compiler hints above and in [[code-0803fe70]]. `0x0804158C` now matches through the cancellation-pointer declaration order above. Formerly remaining in `0x0804112C` (resolved in wave 1, see below): the two `sub_0803DE40` call sites use different registers in the ROM (case 1: r5/r4, case 3: r4/r3), so gcc does not merge them, but our C does merge them. The ROM also merges the text calls into case 2. Remaining in `0x08041898`: the `CARD_LEVEL` value in r0 is copied to r4, and the return-0 block is shared.
+None: the unit is complete in C since wave 2 (`0x08041898`, see below). The notes in this section are historical.
 
-The bounded follow-ups of 2026-09-30 stayed isolated. `sub_0804112C` prompt-pointer/goto sharing (with declaration-order and initialized-pointer variants) did not improve its 280 differing-byte baseline. For `sub_08041898`, an initialized first-level local with an empty read/write constraint recovers the first level calculation and copy to r4; later CardLevel-to-argument setup, return-block placement, and case-5 count setup still differ. Explicit shared return labels/zero constraints and first/second-level input constraints did not yield an exact match. A named r0 count used directly as a later call argument can be overwritten by preparation of argument zero; do not use that variant as a valid C proposal. Scratch scripts: `build/middle_experiments/selector_prompt_share.py`, `selector_level*.py`. Active source remains the original guarded drafts and assembly fallbacks.
+`0x08040EBC`, `0x08040110`, and `0x08040CA8` now match; their former scratch-register issues are resolved by the verified compiler hints above and in [[code-0803fe70]]. `0x0804158C` now matches through the cancellation-pointer declaration order above. Formerly remaining in `0x0804112C` (resolved in wave 1, see below): the two `sub_0803DE40` call sites use different registers in the ROM (case 1: r5/r4, case 3: r4/r3), so gcc does not merge them, but our C does merge them. The ROM also merges the text calls into case 2. Historical (matched in wave 2): remaining in `0x08041898` were the `CARD_LEVEL` value in r0 copied to r4, and the shared return-0 block.
+
+> [!warning] Contradiction
+> The 2026-09-30 follow-up below says that for `sub_08041898` "explicit shared return labels/zero constraints ... did not yield an exact match". The wave 2 match (2026-10-01, `build/wf/sub_08041898/NOTES.md`) does use one shared label, `ret0:`, but placed inside case 5 before its `return 0` (case 1's paths `goto ret0`); with the label in case 4 no combination worked. The level copy came from a `u8` inline with per-arm returns, not from a constraint. Resolved in favour of the matched source.
+
+The bounded follow-ups of 2026-09-30 stayed isolated. `sub_0804112C` prompt-pointer/goto sharing (with declaration-order and initialized-pointer variants) did not improve its 280 differing-byte baseline. For `sub_08041898`, an initialized first-level local with an empty read/write constraint recovers the first level calculation and copy to r4; later CardLevel-to-argument setup, return-block placement, and case-5 count setup still differ. Explicit shared return labels/zero constraints and first/second-level input constraints did not yield an exact match. A named r0 count used directly as a later call argument can be overwritten by preparation of argument zero; do not use that variant as a valid C proposal. Scratch scripts: `build/middle_experiments/selector_prompt_share.py`, `selector_level*.py`. (Historical: at that time the active source kept the guarded drafts and assembly fallbacks.)
 
 ## Card-scan interface reconciliation
 
@@ -69,3 +74,15 @@ The difference was cross-jump layout. The ROM merges case 0's prompt call into c
 4. The packed position comparison is `(u16)((u8)p | (u8)zn << 8) != ref->targets[0]`. The pre-shifted form `((p<<24)>>8 | zn<<24)>>16` puts `lsr #8` before `lsl r1,r3,#24`; swapping the OR operands or dropping the `(u16)` cast is worse (8-10).
 
 The earlier note that prompt-pointer/goto sharing did not help still holds: the fix is the per-case statement order and return placement, not shared labels. See [[matching-tricks#Switches, branches and shared tails]].
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/sub_08041898/NOTES.md` (variants in `exp/`, scored by `run.sh`; `gen.py` enumerates return/goto combinations; `-dg`/`-dJ` dumps printed with `build/wf/sub_0804AC18/rtl.py`).
+
+### `sub_08041898` (0x328, start score 85; ordinary C)
+
+About 40 single variants plus two enumerations of 64 return/goto combinations each. Four differences:
+1. Case 1 read `p` as `u16` (`ldrh`); `u32 p` and `int pl = 1 & p`, as in the neighbouring selectors, fix it.
+2. Level in r0 plus the copies `adds r4,r0,#0` / `adds r1,r0,#0`: a `static inline u8 CardLevelU8(u32 id)` with a `return` in each switch arm. The inline result is a QImode pseudo, combine leaves the widening at the use as `(set (reg:SI) (subreg:SI (reg:QI)))`, and global.c gives no copy preference through a subreg source, so the level stays in r0 and the copy survives. Every other form scored 87: int/u16/s16/s8/u32 inline returns, a single-`return` inline, the `CARD_LEVEL` macro into a local of any width, `u8 lvl = CardLevel(id)` with an int inline. (A `u16` per-arm-return inline scored 18.)
+3. Case 5's `adds r2,r0,#0` for the second count read comes from **post-reload CSE** (`reload_cse_regs`): the second `zero_extend` load becomes a register copy only when no CODE_LABEL lies between the two loads. `if (*(es + 0x3E6) != 0) { ... }` keeps the fall-through label-free; `if (n == 0) return 1;` does not. Failed: an int/u8/u16 local (gets r2 directly through the hard-register copy preference), a `register asm("r0")` pin (wrong code, r0 is clobbered before the copy), reusing the switch variable.
+4. The shared `mov r0,#0; b end` after case 4's increment: put `ret0:` inside case 5 before its `return 0`, and send case 1's no-input and failure paths there with `goto ret0`. In `find_cross_jump`, an i1 that hits a CODE_LABEL lowers `minimum`, so case 5's `r0 = 0` merges into case 4's copy, and case 4's copy (no label) cannot merge into case 5's. With `ret0:` in case 4 (the old draft) the merge went the other way, whatever the returns. See [[matching-tricks#Switches, branches and shared tails]].

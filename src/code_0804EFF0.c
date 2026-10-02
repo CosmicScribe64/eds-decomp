@@ -630,9 +630,9 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 656): per-case return 0 tails; prologue and cases 0-3,5-11,21,100,102,120-122 match;
-       * player made opaque (set twice) so player&1 survives; remaining: case 4 loop mult CSE, case 20 regs, 101/110/111
-       * allocation and reload rotation; see build/wf/sub_0804FC4C/NOTES.md */
+#if 0 /* NONMATCHING (score 588): NONMATCHING: state machine audited against the ROM; cases
+       * 0-11,21,100,102,120-122 match; remaining diffs in cases 20,101,110 (+3 insns),111 (-1 insn): register
+       * allocation/CSE */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -685,7 +685,7 @@ int sub_0804FC4C(void)
     }
     case 4:
         for (;FC_CURSOR<FC_PLAYER(player).listCount;FC_CURSOR++) {
-            u32 c=FC_PLAYER(player).cardList[FC_CURSOR]; if (c==0x402) {
+            u32 c=FC_PLAYER(player&1).cardList[FC_CURSOR]; if (c==0x402) {
                 u16 msg;
                 sub_080197E0(player,gUnk_0862457C[0]);
                 msg=0xCF;

@@ -322,18 +322,24 @@ void sub_08067474(u8 *idx)
         sub_08077AEC(0);
     }
 }
-#if 0 /* NONMATCHING: same control flow; target keeps the default path's extraction separate from case 1's (different register for the table literal: r2 vs r1) so they are not cross-jumped together; built merges them (-0x14 bytes) */
+#define TBL_8067540 ((const u8 *)0x086EF3B0) /* 0x400-byte tile blocks; [7] and [8] are the special panels */
+/* The same word as St3C.u.w seen as one 18-bit field: the panel number is its top 3 bits (15-17). */
+struct St3C_18 {
+    u8 pad0[0x1C3C];
+    u32 lo18 : 18;
+    u32 hi : 14;
+};
 /* Load the 2 x 0x400-byte tile blocks of the selected panel (hypothesis) into OBJ VRAM 0x06010800 and set the window. */
 void sub_08067540(void)
 {
     struct St3C *st;
     const u8 *src;
     u8 *dst = (u8 *)0x06010800;
-    s8 i;
+    u8 i;
     st = &gUnk_0201DB20_w;
     switch (st->mode) {
     default:
-        src = gUnk_086EF3B0[st->u.w.sel];
+        src = TBL_8067540 + st->u.w.sel * 0x400;
         break;
     case 1:
         switch (st->u.w.sel) {
@@ -342,28 +348,27 @@ void sub_08067540(void)
             src = gUnk_086F0FB0;
             break;
         default:
-            src = gUnk_086EF3B0[gUnk_0201DB20_w.u.w.sel];
+            src = TBL_8067540 + gUnk_0201DB20_w.u.w.sel * 0x400;
             break;
         }
         break;
     case 2:
-        if (st->u.w.sel == 6) {
+        /* the panel compare goes through the 18-bit view (lsr #29 of the shared lsl #14); the index rereads sel */
+        if ((((struct St3C_18 *)st)->lo18 >> 15) == 6) {
             src = gUnk_086F13B0;
             break;
         }
-        src = gUnk_086EF3B0[st->u.w.sel];
+        src = TBL_8067540 + st->u.w.sel * 0x400;
         break;
     }
     for (i = 0; i <= 1; i++) {
         CpuFastSet(src, dst, 0x80);
-        dst += 0x400;
         src += 0x200;
+        dst += 0x400;
     }
     *(u16 *)0x04000042 = 0xF0;
     *(u16 *)0x04000046 = (gUnk_0201DB20_w.u.b.win << 11) | 0x70;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_08067540); /* 0x08067540 size 0xF0 */
 /* Set the WIN1 window registers for the deck-edit card view (hypothesis). */
 void sub_08067630(void)
 {

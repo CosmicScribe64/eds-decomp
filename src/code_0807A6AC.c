@@ -271,29 +271,24 @@ void sub_0807AC88(u8 bg, u16 base, u8 x, u8 y, u16 num, u8 pal, u32 unused, u8 m
     }
     }
 }
-u32 sub_0807A490(u16 x, u16 y, u8 shift);
+u16 sub_0807A490(u16 x, u16 y, u8 shift);
 
 /* Copies a w x h block of halfword rows between two bitmaps; the byte offset
- * of a (x, y) position comes from sub_0807A490(x, y, shift). */
-#if 0 /* NONMATCHING: allocation and CSE differ. The target spills srcBase to
-       * [sp] (keeps srcW in r9 and w in r7, reloads the 0xFFFE mask from the
-       * literal pool for each call, and builds 0x1FFFFF inside the loop). The
-       * build keeps srcBase in r7, spills srcW and CSEs the 0xFFFE mask. All
-       * source-order and type variants tried leave the same allocation split. */
-void sub_0807AD40(void *srcBase, u16 sx, u16 sy, u16 srcW, void *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
+ * of a (x, y) position comes from sub_0807A490(x, y, shift). The u32 return
+ * type (no value) gives the `pop {r1}` epilogue. */
+u32 sub_0807AD40(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
 {
-    u8 *src = (u8 *)srcBase + (sub_0807A490(sx, sy, shift) & 0xFFFE);
-    u8 *dst = (u8 *)dstBase + (sub_0807A490(dx, dy, shift) & 0xFFFE);
-    s16 i;
+    u16 *src = srcBase + sub_0807A490(sx, sy, shift) / 2;
+    u16 *dst = dstBase + sub_0807A490(dx, dy, shift) / 2;
+    u8 i;
 
-    for (i = 0; h > i; i++) {
-        CpuSet(src, dst, w & 0x1FFFFF);
-        src += srcW * 2;
-        dst += 0x40;
+    for (i = 0; i < h; i++) {
+        s32 size = w * 2;
+        CpuSet(src, dst, (size / 2) & 0x1FFFFF);
+        src += srcW;
+        dst += 0x20;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807A6AC", sub_0807AD40); /* 0x0807AD40 size 0xA8 */
 /* Same for a source that is a plain srcW-wide halfword array. */
 #if 0 /* NONMATCHING: the same allocation and CSE split as sub_0807AD40. The
        * target spills srcW to [sp], keeps w in r7 and h in sl, keeps the

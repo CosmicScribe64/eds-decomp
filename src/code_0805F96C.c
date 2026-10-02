@@ -395,9 +395,6 @@ void sub_0805FD28(u16 a, u16 b, const u8 *s)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0805F96C", sub_0805FD28); /* 0x0805FD28 size 0x17C */
 
-#if 0 /* NONMATCHING: control flow, values and literals match, but register allocation differs
-       * (target spills the tile counter to [sp], keeps r in r7, rematerializes the 0x0201AE60
-       * literal) */
 /* Draws one scan row `row` of the text box frame (top border, h text rows, bottom border) into the
    BG map at 0x03002C5C; rows outside 0..0x13 are clipped. Frame tiles 0x82CE-0x82D6, text tiles 0x82D7+. */
 void sub_0805FEA4(u32 row)
@@ -407,13 +404,14 @@ void sub_0805FEA4(u32 row)
     u16 idx;
     u32 q;
     int j;
-    s16 k;
-    int base = 0x82CE;
-    s16 text = 0x82D7;
-    u16 *m = gUnk_03002C5C;
+    int k;
+    int base;
+    u16 text;
     q = gUnk_0201AE60.x + 0xFFFF;
     q += (t - 4) * 32;
     idx = q;
+    base = 0x82CE;
+    text = 0x82D7;
     if (r <= 0x13) {
         for (j = 0; j < gUnk_0201AE60.w + 2; j++)
             gUnk_03000040_m2.map[idx + j] = 0;
@@ -428,12 +426,12 @@ void sub_0805FEA4(u32 row)
     }
     r++;
     idx += 0x20;
-    for (k = 0; k < gUnk_0201AE60.h; k++) {
+    for (j = 0; j < gUnk_0201AE60.h; j++) {
         if (r <= 0x13) {
-            m[idx] = base + 3;
-            for (j = 1; j <= gUnk_0201AE60.w; j++)
-                m[idx + j] = text++;
-            m[idx + gUnk_0201AE60.w + 1] = base + 5;
+            gUnk_03000040_m2.map[idx] = base + 3;
+            for (k = 1; k <= gUnk_0201AE60.w; k++)
+                gUnk_03000040_m2.map[idx + k] = text++;
+            gUnk_03000040_m2.map[idx + gUnk_0201AE60.w + 1] = base + 5;
         }
         r++;
         idx += 0x20;
@@ -451,8 +449,6 @@ void sub_0805FEA4(u32 row)
             gUnk_03000040_m2.map[idx + j] = 0;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805F96C", sub_0805FEA4); /* 0x0805FEA4 size 0x1D8 */
 /* Scrolls the text box down one row; returns 1 at the end. */
 int sub_0806007C(void)
 {

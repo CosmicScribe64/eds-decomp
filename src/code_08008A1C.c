@@ -520,38 +520,35 @@ void sub_0800935C(u16 at, u16 target, u16 kind)
     z2->linkInfo[n] = kind;
     z2->numLinks++;
 }
-#if 0 /* NONMATCHING: the switch tree and all loads match (each field read where used, no
-       * shared pointer). Only register allocation differs: the ROM keeps target in sl and
-       * player in r8, and GCC swaps them. Advisor confirmed this is the right shape. */
 /* Remove one link from zone `loc` ((zone << 8) | player): the first link whose kind
  * (low byte of linkInfo) is `kind` and, unless `kind` is a special kind, whose target
- * is `target`. */
+ * is `target`. Each field is read through ZB_PZ where used. `int player` (no u8
+ * zero-extend of player & 1) lets loop.c's first pass hoist zone * 0x94, and the
+ * duplicated call keeps the second pass's loop large enough that the links[i]
+ * address in the default case stays in the loop, as in the ROM. */
 void sub_08009424(u16 loc, u16 target, u16 kind)
 {
-    u16 player = (u8)loc;
+    int player = (u8)loc;
     int zone = loc >> 8;
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        struct DuelZone *z = ZB(player & 1, zone);
-
-        if ((u8)z->linkInfo[i] == kind) {
+    for (i = 0; i < ZB_PZ(player & 1, zone)->numLinks; i++) {
+        if ((u8)ZB_PZ(player & 1, zone)->linkInfo[i] == kind) {
             switch (kind) {
             case 4: case 5: case 6: case 7:
             case 9: case 10: case 11: case 12:
-                break;
+                sub_080082A0(player, zone, i);
+                return;
             default:
-                if (z->links[i] != target)
-                    continue;
+                if (ZB_PZ(player & 1, zone)->links[i] == target) {
+                    sub_080082A0(player, zone, i);
+                    return;
+                }
                 break;
             }
-            sub_080082A0(player, zone, i);
-            return;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_08009424); /* 0x08009424 size 0xC0 */
 
 /* Card number of the face-up Field card (zone 10) of either player, or 0. */
 /* The ROM callers consume the zero-extended card number as a word. */

@@ -663,55 +663,41 @@ int sub_0803D3D0(u16 num)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D3D0); /* 0x0803D3D0 size 0x90 */
-#if 0 /* NONMATCHING: logic verified, with the same structure as sub_0803D3D0
-       * (do-while loops, hoisted table entry in ip). The x/y register order
-       * and literal load order differ. */
+struct FusList_3D460 {
+    u8 pad[0x502];
+    u8 cnt : 2;
+    u8 rest : 6;
+    u8 pad2;
+    u16 list[3];
+};
+#define FL_3D460 ((struct FusList_3D460 *)gUnk_02017A40)
+
 void sub_0803D460(u16 num)
 {
-    u16 i;
+    int i;
 
-    i = 0;
-    if (((u32)gUnk_02017A40[0x502] << 30) != 0) {
-        u16 *p = (u16 *)&gUnk_02017A40[0x504];
+    for (i = 0; i < FL_3D460->cnt; i++) {
+        if (FL_3D460->list[i] != 0) {
+            int y = CARD_NUMBER(FL_3D460->list[i]);
+            int x = CARD_NUMBER(num);
 
-        do {
-            u16 w = *p;
-
-            if (w != 0) {
-                int x, y;
-
-                y = CARD_NUMBER(w);
-                x = CARD_NUMBER(num);
-
-                if (x > 0x7CF)
-                    x -= 0x7D0;
-                if (y > 0x7CF)
-                    y -= 0x7D0;
-                if (x == y) {
-                    *p = 0;
-                    return;
-                }
+            if (x > 0x7CF)
+                x -= 0x7D0;
+            if (y > 0x7CF)
+                y -= 0x7D0;
+            if (y == x) {
+                FL_3D460->list[i] = 0;
+                return;
             }
-            p++;
-            i++;
-        } while (i < (int)((u32)gUnk_02017A40[0x502] << 30 >> 30));
+        }
     }
     if (sub_0803CB28(CARD_NUMBER(num)) == 0)
         return;
-    i = 0;
-    if (((u32)gUnk_02017A40[0x502] << 30) != 0) {
-        do {
-            u16 *q = &((u16 *)&gUnk_02017A40[0x504])[i];
-            s16 w = *q;
-
-            if (w != 0 && sub_0803CB28(CARD_NUMBER(w)) != 0) {
-                *q = 0;
-                return;
-            }
-            i++;
-        } while (i < (int)((u32)gUnk_02017A40[0x502] << 30 >> 30));
+    for (i = 0; i < FL_3D460->cnt; i++) {
+        if (FL_3D460->list[i] != 0 && sub_0803CB28(CARD_NUMBER(FL_3D460->list[i])) != 0) {
+            FL_3D460->list[i] = 0;
+            return;
+        }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D460); /* 0x0803D460 size 0x11C */
 INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D57C); /* 0x0803D57C size 0x800 */

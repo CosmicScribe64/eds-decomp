@@ -545,62 +545,107 @@ static inline int GetSpellSubtype(u32 stats)
 }
 
 /* Draw the card detail layout for `id` at slot `a`: palette/tile map setup, type icons, ATK/DEF, level stars (hypothesis). */
-#if 0 /* NONMATCHING: the call sequence and first half agree. The target keeps `a` in sl and `id` in
-       * a stack slot (reloaded per use) and hoists a*4 (r9)/a*0x30 (r8) plus the 0x0300045C base
-       * (ip) out of the tile-map fill loop. The built code keeps `a` in r9 and `id` in sl and
-       * allocates the high registers and frame differently. Tried local reuse, removing locals
-       * and declaration order (tricks 4/6). The a/id swap is the first diff. */
+extern const u32 gUnk_081989A8[];
+extern const u32 gUnk_081989D0[];
+extern const u32 gUnk_081989EC[];
+extern u16 gUnk_0300045C[];
+
+/* ATK * 10 / DEF * 10 as u16 (as in sub_0802A188): the result lands in r0 and is copied to r2. */
+static inline u16 F604_Atk10(const u32 *p, u16 id)
+{
+    switch ((int)((*p & 0x1F00000) >> 20)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 4000;
+    default:
+        return ((CARD_STATS(id) << 14) >> 23) * 10;
+    }
+}
+
+static inline u16 F604_Def10(u16 id)
+{
+    switch ((int)CARD_TYPE(id)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 4000;
+    default:
+        return (CARD_STATS(id) & 0x1FF) * 10;
+    }
+}
+
+/* Level (0 for Magic/Trap/Ticket, 10 for Divine). The u8 type local and u8 return add zero
+ * extensions that combine deletes only after loop.c: they raise the first loop pass's insn
+ * count so the card-stats address is hoisted in pass 2 and the (a * 4 + 2) << 5 chain stays
+ * in the star loop, as in the ROM. */
+static inline u8 F604_Level(u16 id)
+{
+    u8 type = CARD_TYPE(id);
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 10;
+    default:
+        return (CARD_STATS(id) & 0x1E000000) >> 25;
+    }
+}
+
 void sub_08062604(int a, u16 id)
 {
-    s16 i;
-    s16 k;
-    u16 t;
-    u16 *p;
-    s16 sub;
+    int i;
+    int k;
+    u32 t;
     const u32 *st;
     t = 7;
     if (gUnk_02015160.w112 == CARD_NUMBER(id))
         t = 0xF;
     sub_08074B08(0x18, 2);
-    sub_0807501C(2, 6, t | 0xA00, (const void *)(0x0822C720 + id * 0x40));
-    sub_08075114((void *)(0x06004800 + a * 0x30 * 32), 0);
+    /* DrawText takes a u16 colour (as declared in code_08002388); this unit's prototype says u32,
+     * so call through the real signature (the u16 conversion gives the ROM's constant copy). */
+    ((void (*)(int, int, u16, const void *))sub_0807501C)(2, 6, t | 0xA00, (const void *)(0x0822C720 + id * 0x40));
+    /* Tile base 0x40 of char block 0x06004000: CSE keeps a * 0x30 for the fill loop below. */
+    sub_08075114((void *)(0x06004000 + (a * 0x30 + 0x40) * 32), 0);
     for (i = 0; i <= 1; i++) {
-        s16 v = a * 0x30 + 0x40;
-        u16 *q = &gMain.bgMap[0][(a * 4 + i) * 3 + 32];
-        for (k = 0x17; k >= 0; k--) {
-            *q = v + i * 24;
-            v++;
-            q++;
+        for (k = 0; k < 24; k++) {
+            /* The index in its own local puts the table base load after a * 4 in the loop body,
+             * which gives the ROM's hoist order (a * 4 copy before the 0x0300045C base). */
+            int idx = (a * 4 + i) * 32 + 3 + k;
+            gUnk_0300045C[idx] = a * 0x30 + 0x40 + k + i * 24;
         }
     }
     st = &CARD_STATS(id);
     switch ((int)((*st & 0x1F00000) >> 20)) {
     case 0x15:
         sub_0807326C(((u16)(a * 4 + 2) << 5) + 3, (a + 5) * 16, a * 4 + 0x300, (const void *)0x08636CD8);
-        sub = GetSpellSubtype(*st);
-        if (sub != 0)
-            sub_0807326C((((u16)(a * 4 + 2) << 5) + 5), (a + 10) * 16, a * 4 + 0x320, (const void *)((const u32 *)0x081989D0)[sub]);
+        if (GetSpellSubtype(*st) != 0)
+            sub_0807326C((((u16)(a * 4 + 2) << 5) + 5), (a + 10) * 16, a * 4 + 0x320, (const void *)gUnk_081989D0[GetSpellSubtype(CARD_STATS(id))]);
         break;
     case 0x16:
-        sub = GetSpellSubtype(*st);
         sub_0807326C(((u16)(a * 4 + 2) << 5) + 3, (a + 5) * 16, a * 4 + 0x300, (const void *)0x08636DA0);
-        if (sub != 0)
-            sub_0807326C((((u16)(a * 4 + 2) << 5) + 5), (a + 10) * 16, a * 4 + 0x320, (const void *)((const u32 *)0x081989D0)[sub]);
+        if (GetSpellSubtype(*st) != 0)
+            sub_0807326C((((u16)(a * 4 + 2) << 5) + 5), (a + 10) * 16, a * 4 + 0x320, (const void *)gUnk_081989D0[GetSpellSubtype(CARD_STATS(id))]);
         break;
     case 0x18:
         break;
     default: {
-        u16 r = (a * 4 + 2) << 5;
-        sub_0807326C(r + 3, (a + 5) * 16, a * 4 + 0x300, (const void *)((const u32 *)0x081989A8)[CARD_STATS(id) >> 29]);
-        sub_0807326C(r + 5, (a + 10) * 16, a * 4 + 0x320, (const void *)((const u32 *)0x081989EC)[CARD_TYPE(id)]);
+        const u32 *p;
+        u32 r = (u16)(a * 4 + 2) << 5;
+        sub_0807326C(r + 3, (a + 5) * 16, a * 4 + 0x300, (const void *)gUnk_081989A8[*(p = &CARD_STATS(id)) >> 29]);
+        sub_0807326C(r + 5, (a + 10) * 16, a * 4 + 0x320, (const void *)gUnk_081989EC[(*p & 0x1F00000) >> 20]);
         sub_0807326C(r + 8, 0xF0, 0x340, (const void *)0x0863CA1C);
-        sub_08072C0C((u16)(((a * 4 + 2) << 5) + 9) | 0x70000, (u16)(a * 8 + 0x1A0) | 0x40000, GetCardAtk10(id), 0);
-        sub_08072C0C((u16)(((a * 4 + 3) << 5) + 9) | 0x70000, (u16)(a * 8 + 0x1C8) | 0x40000, GetCardDef10(id), 0);
-        for (i = 0; i < GetCardLevel(id); i++)
+        sub_08072C0C((u16)(((a * 4 + 2) << 5) + 9) | 0x70000, (u16)(a * 8 + 0x1A0) | 0x40000, F604_Atk10(p, id), 0);
+        sub_08072C0C((u16)(((a * 4 + 3) << 5) + 9) | 0x70000, (u16)(a * 8 + 0x1C8) | 0x40000, F604_Def10(id), 0);
+        for (i = 0; i < F604_Level(id); i++)
             sub_08072E98(0, (u16)(i + 0xE + ((a * 4 + 2) << 5)), 2);
         break;
     }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080619E8", sub_08062604); /* 0x08062604 size 0x3EC */

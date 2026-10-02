@@ -167,13 +167,16 @@ void sub_08077BCC(void);
 void sub_08077B24(u16 bgm);
 
 /* Execute the command chosen in the card command menu (SEL.cursor = 1..12). */
-#if 0 /* NONMATCHING (score 255): NONMATCHING: rewritten (2026-10-02): structure now matches except the zone-0
-       * 0x51 subState-0 fail path (ROM keeps its own active/subState clear, mine is cross-jumped). Needed: direct
-       * gUnk_020192E0 accesses (base = GCSE reaching reg r5), zone/player access through casts to local view structs
-       * (ZONEF/ZONEW/PLAYERF) so the +6/+8/+9 field offsets stay in the ldrb, a block-local players pointer at each flag
-       * site, s16 zone, zone-5 index as p = player&1; idx = column; idx += 5, sub_0801FBCC packings as (p<<31) | (ev =
-       * idx<<16 | K) | selCard (stops fold floating K), sub_08007FEC called as int-returning, and the 6F8 card lookup
-       * through the cast literal 0x08622AB4. Remaining: reload-register rotation (case-6 head etc.). */
+#if 0 /* NONMATCHING (score 32): NONMATCHING: score 32, every instruction matches except two register swaps. (1)
+       * In the zone-5 path after sub_0801EC58, the reloaded base and the constant 1 sit in r4/r5 the wrong way round.
+       * pl, shared by the 3 flag sites, prefers r4 (expand_preferences via the zone-10 base+0x1B34 in r4), so the
+       * const-1 pseudo skips r4 in pass 0. A block-local pl per site fixes that, but then &0x1B34 (refs 4/len 98, pri
+       * 816) beats the base (7/174, pri 804) for r5. Need the base 3 insns shorter or &0x1B34 2 longer in pre-combine
+       * RTL. (2) In case 7 the column and the constant 7 are swapped in the and. Shape needed: direct gUnk_020192E0
+       * accesses; zones/players through cast macros (ZONEF/ZONEW/PLAYERF); pl = players block-local; s16 zone; zone-5
+       * index p = player&1; idx = column; idx += 5; packings (p<<31) | (ev = idx<<16 | K) | selCard; sub_08007FEC called
+       * as int-returning; cast-literal card tables in case 4 CARD_TYPE, zone-11 CARD_NUMBER, zone-0 switch and the 0x51
+       * lookup (the symbol form only for zone-11 CARD_TYPE). */
 struct ZoneWord1E260 {
     u32 cardId:12;
     u32 unk0_12:6;
@@ -227,7 +230,7 @@ void sub_0801E260(void)
     case 4:
         if (SEL.zone != 11)
             break;
-        if (CARD_TYPE(gUnk_020192E0View.selCard) <= 20)
+        if (((((const u32 *)0x08621DE0)[gUnk_020192E0View.selCard & 0x7FF] & 0x1F00000) >> 20) <= 20)
             sub_080471E8(0, 0);
         else
             sub_08049048(0, 0, 0);
@@ -252,7 +255,7 @@ void sub_0801E260(void)
                 sub_08049048(1, 0, 0);
                 return;
             }
-            switch (CARD_NUMBER(gUnk_020192E0View.selCard)) {
+            switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
             case 0x47:
                 pl = gUnk_020192E0View.players;
                 PLAYERF(pl, SEL.player & 1)->flag8_4 = 1;
@@ -290,7 +293,7 @@ void sub_0801E260(void)
             }
             break;
         case 0:
-            switch (CARD_NUMBER(gUnk_020192E0View.selCard)) {
+            switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
             case 0x51:
             case 0x186:
                 switch (SEL.subState) {

@@ -148,129 +148,187 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 u16 sub_0805163C(u16 a, u16 b);
 
-#if 0 /* NONMATCHING: logically complete draft, but agbcc register allocation and scheduling differ
-       * throughout (the ROM keeps the duel-state base in r8 and the player in r4), and the
-       * build is 0x14 bytes short. The hand scan, zone scan and per-step flow are all present. */
+#if 0 /* NONMATCHING (score 156): Rewritten from the asm (score 156). Prologue, jump table, case 0/1 zone loops
+       * and found blocks match up to registers. Forms that matter: D50 = *(struct *)&gUnk_020192E0 accessed directly
+       * (GCSE makes the r8 base copy); zone loop pointer via integer macro (z*0x94 + (p&1)*0xD64 + (u32)gUnk_0201930C)
+       * gives (t1+t2)+K with K hoisted; found-block zone access via a true ARRAY_REF (struct wrapper around
+       * gUnk_0201930C) gives i*0x94 first; hand loops 'i = 0; ps = P50; for (; i < ps[p&1].handCount; i++)' load the sym
+       * before the multiply; subtype via static inline (u16 id) with a switch (21,22) and switch(sub){case 2..4: ok=0}.
+       * Remaining: case 2 should be 'while (D50.idx <= 4) { u8 n = D50.idx; z = (n*0x94 + p*0xD64 +
+       * (u32)D50.players[0].zones); ... D50.idx = n + 1; }' (gives r8+0x1B21/r8+0x2C) but that raises the base pseudo's
+       * refs so global-alloc gives it r7 instead of r8 (ROM: zone-loop p*0xD64 gets r7). Also the ROM recomputes 1-p for
+       * the second call in the case-1 hand-found block, and its case-2 loop keeps movs #0x94 in the loop (loop.c
+       * threshold). */
+struct S50Card { u32 id:12; u32 b12:6; u32 f18:1; u32 b19:13; };
+struct S50Zone {
+    struct S50Card card;    /* +0x00 */
+    u16 serial;             /* +0x04 */
+    u16 f6_0:1;
+    u16 f6_1:1;             /* +0x06 bit 1 */
+    u16 f6_2:4;
+    u16 cnt:4;              /* +0x06 bits 6..9 */
+    u16 f6_10:6;
+    u8 pad8[0x94 - 8];
+};
+struct S50Player {
+    u16 lp;
+    u8 handCount;
+    u8 pad3[0x28 - 3];
+    struct S50Zone zones[11];   /* +0x28 */
+    struct S50Card hand[80];    /* +0x684 */
+    u8 padx[0xD64 - 0x684 - 80 * 4];
+};
+struct S50Duel {
+    u32 unk0;
+    struct S50Player players[2];
+    u8 pad[0x1B10 - 4 - 2 * 0xD64];
+    u16 w1B10;
+    u8 f0:1;
+    u8 turn:1;
+    u8 f2:6;
+    u8 pad13[0x1B20 - 0x1B13];
+    u8 step;
+    u8 idx;
+};
+#define D50 (*(struct S50Duel *)&gUnk_020192E0)
+#define P50 ((struct S50Player *)gUnk_020192E4)
+struct S50ZP { struct S50Zone zones[11]; u8 rest[0xD64 - 11 * 0x94]; };
+struct S50All { struct S50ZP pl[2]; };
+#define ZP50 ((*(struct S50All *)gUnk_0201930C).pl)
+#define Z50(p, z) (ZP50[(p) & 1].zones[z])
+#define ZONE50(p, z) ((struct S50Zone *)((z) * 0x94 + ((p) & 1) * 0xD64 + (u32)gUnk_0201930C))
+
+static inline int S50Sub(u16 id)
+{
+    u32 st = ((const u32 *)0x08621DE0)[id & 0x7FF];
+    switch ((int)((st & 0x1F00000) >> 20)) {
+    case 21:
+    case 22:
+        return (st & 0xE0000) >> 17;
+    default:
+        return 0;
+    }
+}
+
 /* Per-card effect step machine (steps at 0x020192E0+0x1B20). Returns 1 when done. */
 int sub_08050A70(void)
 {
     char buf[0x80];
-    struct DuelSel *d = &gUnk_020192E0;
-    struct Player *ps = gUnk_020192E4;
-    int p = (u32)(d->b1B12 << 30) >> 31;
-    u32 i;
-    u8 *z;
-    u32 w;
-    s16 id;
-    switch (d->step) {
+    int p = D50.turn;
+    int i;
+    struct S50Player *ps;
+
+    switch (D50.step) {
     case 0:
-        for (i = 0; i < ps[p & 1].handCount; i++) {
-            if ((int)(ps[p & 1].hand[i] << 13) < 0) {
+        i = 0;
+        ps = P50;
+        for (; i < ps[p & 1].handCount; i++) {
+            struct S50Card c = ps[p & 1].hand[i];
+            if (c.f18) {
                 sub_080197E0(p, gUnk_0862467A);
                 sub_080193D4(p, i, 0, 1);
                 return 0;
             }
         }
         for (i = 5; i <= 10; i++) {
-            z = (u8 *)&gUnk_0201930C + p * 0xD64 + i * 0x94;
-            w = *(u32 *)z;
-            id = (w << 20) >> 20;
-            if (id != 0 && (int)(w << 13) < 0) {
+            struct S50Zone *z = ZONE50(p, i);
+            struct S50Card c = z->card;
+            if (c.id != 0 && c.f18) {
                 int ok = 1;
-                if (z[6] & 2) {
-                    u32 st = gUnk_08621DE0[id & 0x7FF];
-                    u32 t = (st & 0x1F00000) >> 20;
-                    u32 sub = (t <= 0x16 && t >= 0x15) ? (st & 0xE0000) >> 17 : 0;
-                    if (sub <= 4 && sub >= 2)
+                if (z->f6_1) {
+                    switch (S50Sub(c.id)) {
+                    case 2:
+                    case 3:
+                    case 4:
                         ok = 0;
+                    }
                 }
                 if (ok) {
-                    z[2] = -5 & z[2];
+                    Z50(p, i).card.f18 = 0;
                     sub_080197E0(p, gUnk_0862467A);
                     sub_08018544(p, i, 0);
                     return 0;
                 }
             }
         }
-        d->step++;
+        D50.step++;
         return 0;
     case 1:
-        for (i = 0; i < ps[(1 - p) & 1].handCount; i++) {
-            if ((int)(ps[(1 - p) & 1].hand[i] << 13) < 0) {
+        i = 0;
+        ps = P50;
+        for (; i < ps[(1 - p) & 1].handCount; i++) {
+            struct S50Card c = ps[(1 - p) & 1].hand[i];
+            if (c.f18) {
                 sub_080197E0(1 - p, gUnk_0862467A);
                 sub_080193D4(1 - p, i, 0, 1);
                 return 0;
             }
         }
         for (i = 5; i <= 10; i++) {
-            z = (u8 *)&gUnk_0201930C + (1 ^ p) * i * 0x94 + 0xD64;
-            w = *(u32 *)z;
-            id = (w << 20) >> 20;
-            if (id != 0 && (int)(w << 13) < 0) {
+            struct S50Zone *z = ZONE50(1 - p, i);
+            struct S50Card c = z->card;
+            if (c.id != 0 && c.f18) {
                 int ok = 1;
-                if (z[6] & 2) {
-                    u32 st = gUnk_08621DE0[id & 0x7FF];
-                    u32 t = (st & 0x1F00000) >> 20;
-                    u32 sub = (t <= 0x16 && t >= 0x15) ? (st & 0xE0000) >> 17 : 0;
-                    if (sub <= 4 && sub >= 2)
+                if (z->f6_1) {
+                    switch (S50Sub(c.id)) {
+                    case 2:
+                    case 3:
+                    case 4:
                         ok = 0;
+                    }
                 }
                 if (ok) {
-                    u8 *z2 = (u8 *)&gUnk_0201930C + ((1 - p) & 1) * 0xD64 + i * 0x94;
-                    z2[2] = -5 & z2[2];
+                    Z50(1 - p, i).card.f18 = 0;
                     sub_080197E0(1 - p, gUnk_0862467A);
                     sub_08018544(1 - p, i, 0);
                     return 0;
                 }
             }
         }
-        if (p != 0)
-            d->step++;
-        d->step++;
-        d->b1B21 = 0;
+        if (p)
+            D50.step++;
+        D50.step++;
+        D50.idx = 0;
         return 0;
-    case 2:
-        if (d->b1B21 > 4)
-            break;
-        do {
-            z = (u8 *)&gUnk_0201930C + p * 0xD64 + d->b1B21 * 0x94;
-            w = *(u32 *)z;
-            id = (w << 20) >> 20;
-            if (id != 0 && (((*(u16 *)(z + 6) << 22) >> 28) > 1)) {
-                sub_080753F4(buf, gUnk_08085D94, gUnk_0822C720 + id * 0x40);
-                sub_08075434(buf, buf, ((*(u16 *)(z + 6) << 22) >> 28) - 1);
+    case 2: {
+        u8 *pi = &D50.idx;
+        for (; *pi <= 4; (*pi)++) {
+            struct S50Zone *z = (struct S50Zone *)(*pi * 0x94 + p * 0xD64 + (u32)D50.players[0].zones);
+            struct S50Card c = z->card;
+            if (c.id != 0 && z->cnt > 1) {
+                sub_080753F4(buf, gUnk_08085D94, gUnk_0822C720 + c.id * 0x40);
+                sub_08075434(buf, buf, z->cnt - 1);
                 sub_080602A4(0x206, 0x712, 0xB, buf);
-                d->b1B21++;
+                (*pi)++;
                 return 0;
             }
-            d->b1B21++;
-        } while (d->b1B21 <= 4);
-        break;
+        }
+        D50.step++;
+        return 0;
+    }
     case 3:
-        sub_0801EC58((d->b1B12 & 2) ? 0x8002 : 2, 0, 0, 0);
-        break;
+        sub_0801EC58((D50.turn) ? 0x8002 : 2, 0, 0, 0);
+        D50.step++;
+        return 0;
     case 4:
-        sub_0801EC58((d->b1B12 & 2) ? 0x8003 : 3, 0, 0, 0);
-        break;
+        sub_0801EC58((D50.turn) ? 0x8003 : 3, 0, 0, 0);
+        D50.step++;
+        return 0;
     default:
         if (!(gUnk_02015EE8.b1 & 1)) {
-            u8 t = 2 & d->b1B12;
-            if (t == 0) {
-                gUnk_02015EF0.b0 = t;
-                gUnk_02015EF0.b1 = t;
+            if (!D50.turn) {
+                gUnk_02015EF0.b0 = 0;
+                gUnk_02015EF0.b1 = 0;
             }
         }
         if (gUnk_02015EE8.b1 & 1)
             sub_0802297C(0xF002, 0, 0, 0);
-        d->w1B10++;
+        D50.w1B10++;
         return 1;
     }
-    d->step++;
-    return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_08050A70); /* 0x08050A70 size 0x3D8 */
 #endif
+INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_08050A70); /* 0x08050A70 size 0x3D8 */
 /* ROM table views at fixed addresses preserve the target lookup allocation. */
 u16 sub_08050E48(void)
 {

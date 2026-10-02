@@ -256,9 +256,9 @@ void sub_08008CFC(int player, int zone, u16 banish)
     sub_08008278(player, zone);
 }
 
-#if 0 /* NONMATCHING: the instruction sequence matches apart from register allocation. The
-       * ROM keeps p in r7, z in r6, base in r2; GCC uses p=r6, z=r5, base=r7 (and
-       * computes p+1 earlier). The jump-table switch and link/linkInfo reads match. */
+/* Same definition as the ZB_PZ further down (identical redefinition): zone * 0x94 is emitted first. */
+#define ZB_PZ(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+
 /* Drop every link pointing to zone (player, zone): scan both players' monster zones
  * and remove links whose kind is 1, 2, 5, 7 or 10 and whose target word is (player, zone). */
 void sub_08008D3C(int player, int zone)
@@ -267,13 +267,13 @@ void sub_08008D3C(int player, int zone)
 
     for (p = 0; p <= 1; p++) {
         for (z = 0; z <= 4; z++) {
-            for (i = 0; i < ZB(p & 1, z)->numLinks; i++) {
-                u16 link = ZB(p & 1, z)->links[i];
-                u8 kind = ZB(p & 1, z)->linkInfo[i];
+            for (i = 0; i < ZB_PZ(p & 1, z)->numLinks; i++) {
+                u16 link = ZB_PZ(p & 1, z)->links[i];
+                u8 kind = ZB_PZ(p & 1, z)->linkInfo[i];
 
                 switch (kind) {
                 case 1: case 2: case 5: case 7: case 10:
-                    if (link == ((u8)player | ((u8)zone << 8)))
+                    if (link == (u16)((u8)player | ((u8)zone << 8)))
                         sub_080082A0(p, z, i);
                     break;
                 default:
@@ -284,8 +284,6 @@ void sub_08008D3C(int player, int zone)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_08008D3C); /* 0x08008D3C size 0x108 */
 
 /* Send a zone's card to the graveyard, drop links to it, then clear the zone. */
 void sub_08008E44(int player, int zone)

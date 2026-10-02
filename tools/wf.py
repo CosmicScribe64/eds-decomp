@@ -9,6 +9,10 @@ Run on the host (it calls tools/dr for compiling):
   python3 tools/wf.py score <func>          # just the score line
   python3 tools/wf.py perm  <func> [--minutes M] [-j J]
                                             # permuter on the working copy (outputs in build/permuter/<func>/)
+  python3 tools/wf.py dump  <func> [-dg -dl ...]
+                                            # agbcc RTL dumps of the working copy into build/wf/<func>/dump/
+                                            # (default -dg -dl -df: .greg has global-alloc priorities, .lreg
+                                            # local-alloc, .flow live lengths; -dL loop, -dJ cross-jump, -da all)
   python3 tools/wf.py apply <func>          # merge the working copy into src/<unit>.c (3-way, under a lock),
                                             # keep it only if the whole unit matches; else revert
   python3 tools/wf.py park  <func> "<note>" # store the working copy's function as the unit's
@@ -248,6 +252,24 @@ def cmd_perm(func, minutes, j):
               f'diff it against {d}/base.c to see what changed')
 
 
+def cmd_dump(func, flags):
+    unit = FUNCS[func]['unit']
+    d = f'{wdir(func)}/dump'
+    os.makedirs(d, exist_ok=True)
+    for f in os.listdir(d):
+        os.remove(f'{d}/{f}')
+    open(f'{d}/unit.c', 'w').write(strip_markers(open(f'{wdir(func)}/unit.c').read(), func))
+    sys.path.insert(0, 'tools')
+    import check
+    cc, cflags = check.unit_cflags(unit)
+    script = (f'set -e; cpp -nostdinc -undef -I include -I /opt/agbcc/include -iquote . {d}/unit.c -o {d}/unit.i; '
+              f'cd {d}; /opt/agbcc/bin/{cc} {" ".join(cflags)} {" ".join(flags)} unit.i -o unit.s')
+    r = subprocess.run([DR, 'sh', '-c', script], capture_output=True, text=True)
+    print((r.stdout + r.stderr)[-2000:])
+    print(f'dumps in {d}/:', ' '.join(sorted(os.listdir(d))))
+    print('Dumps cover every function of the unit; search for ";; Function ' + func + '".')
+
+
 def cmd_apply(func):
     unit = FUNCS[func]['unit']
     src = f'src/{unit}.c'
@@ -333,6 +355,8 @@ def main():
         print(f'score: {s}')
     elif cmd == 'perm':
         cmd_perm(func, float(opt('--minutes', 15)), int(opt('-j', 2)))
+    elif cmd == 'dump':
+        cmd_dump(func, [x for x in a[2:] if x.startswith('-d')] or ['-dg', '-dl', '-df'])
     elif cmd == 'apply':
         cmd_apply(func)
     elif cmd == 'park':

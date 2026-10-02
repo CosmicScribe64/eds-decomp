@@ -217,9 +217,15 @@ void sub_08005818(void)
  * 399 chars, or text that ends below row 0xBF, is re-rendered with tighter spacing;
  * the last fallbacks drop the shadow and use a fixed line height of 8.
  */
-#if 0 /* NONMATCHING: control flow and codegen are right, but register
-       * allocation of the six unpacked locals differs (the target spills
-       * width, this build spills color). */
+/*
+ * FAKEMATCH: the original calls sub_08074B38 as if it took full-width int arguments
+ * (its real body never truncates width/height). Calling it through the shared u8
+ * prototype makes agbcc copy width/height into fresh pseudos at the second call,
+ * which moves them to other registers.
+ */
+typedef void (*TextWinFunc_08005860)(u32 width, u32 height, u16 wrap, u32 spacing);
+#define SetupWin_08005860 ((TextWinFunc_08005860)sub_08074B38)
+
 void sub_08005860(u16 size, u32 pos, const u8 *str, u16 colors, int lineHeight, u16 wrap)
 {
     u32 color = (u8)colors;
@@ -228,9 +234,13 @@ void sub_08005860(u16 size, u32 pos, const u8 *str, u16 colors, int lineHeight, 
     u32 height = (u8)(size >> 8);
     u32 x = (u16)pos;
     u32 y = (u16)(pos >> 16);
+    u32 attr;
 
+    /* FAKEMATCH: an extra (code-free) use of color raises its global-alloc priority
+     * above width/height, so color gets r9, height sl and width is spilled to the stack. */
+    asm("" : : "r"(color));
     if (sub_080753CC(str) < 400) {
-        sub_08074B38(width, height, wrap, 2);
+        SetupWin_08005860(width, height, wrap, 2);
         sub_0807501C(x + 1, y + 1, shadowColor | ((u8)lineHeight << 8), str);
         sub_0807501C(x, y, color | ((u8)lineHeight << 8), str);
         gUnk_02013D90.unk3C = (gTextWork.penY - lineHeight) & (gTextWork.penY - lineHeight + 1);
@@ -238,25 +248,26 @@ void sub_08005860(u16 size, u32 pos, const u8 *str, u16 colors, int lineHeight, 
             return;
     }
 
-    sub_08074B38(width, height, wrap, 1);
+    SetupWin_08005860(width, height, wrap, 1);
     sub_0807501C(x + 1, y + 1, shadowColor | ((u8)lineHeight << 8), str);
     sub_0807501C(x, y, color | ((u8)lineHeight << 8), str);
     gUnk_02013D90.unk3C = (gTextWork.penY - lineHeight) & (gTextWork.penY - lineHeight + 1);
     if (gTextWork.penY < 0xC0)
         return;
 
-    sub_08074B38(width, height, wrap, 1);
-    sub_0807501C(x, y, color | (8 << 8), str);
+    /* No shadow, fixed line height 8. attr is a u32 so the 0x800 stays a full-width
+     * register and the orr ties to it, as in the original. */
+    SetupWin_08005860(width, height, wrap, 1);
+    attr = color | (8 << 8);
+    sub_0807501C(x, y, attr, str);
     gUnk_02013D90.unk3C = (gTextWork.penY - 8) & (gTextWork.penY - 8 + 1);
     if (gTextWork.penY < 0xC0)
         return;
 
-    sub_0807501C(x, y, color | (8 << 8), str);
-    sub_08074B38(width, height, wrap, 0);
+    SetupWin_08005860(width, height, wrap, 0);
+    sub_0807501C(x, y, attr, str);
     gUnk_02013D90.unk3C = (gTextWork.penY - 8) & (gTextWork.penY - 8 + 1);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08005500", sub_08005860); /* 0x08005860 size 0x154 */
 /*
  * Renders `str` into a text window of size.w x size.h tiles (via sub_08005860), clears the
  * tiles at `tile`, and maps them row by row into gMain.bgMapBuffer[bg] at (pos.x, pos.y).

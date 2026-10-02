@@ -117,17 +117,26 @@ void sub_0805D58C(void)
 #else
 INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805D58C); /* 0x0805D58C size 0x17C */
 #endif
-#if 0 /* NONMATCHING: same loads and control flow, register assignment differs (ROM: pl r7, zone r6, row r9, base r8; build r6/r7/r8/r9), and the frame-table index is summed as (cnt*2 + row*48) vs ((row*24 + cnt)*2) */
+/* Card slot record: 0x94 bytes per zone, 0xD64 bytes per player side, at 0x0201930C. */
+struct Zone708 { u32 w; u8 pad[0x94 - 4]; };
+struct Side708 { struct Zone708 z[23]; u8 pad[0xD64 - 23 * 0x94]; };
+/* Same table as gUnk_081A4474, as [row][frame]: a real 2D array gives the ROM's (frame*2 + row*48) + base. */
+extern const u16 gAnimFrames_081A4474[][24];
 void sub_0805D708(void)
 {
     struct ScrFlags *sc = &gUnk_0201CFB0;
     struct Sel *q = &sc->sel;
-    s8 pl = q->pl;
-    int zone = q->zone;
-    int flag = *(u8 *)&q->h;
-    int row = q->h >> 8;
-    int id = CARD_ID(*(u32 *)((pl & 1) * 0xD64 + (u32)gUnk_0201930C + zone * 0x94));
-    u8 *step = &sc->step;
+    u8 pl, zone;
+    u8 flag;
+    int row;
+    int id;
+    u8 *step;
+    pl = q->pl;
+    zone = q->zone;
+    flag = *(u8 *)&q->h;
+    row = q->h >> 8;
+    id = CARD_ID(((struct Side708 *)gUnk_0201930C)[pl & 1].z[zone].w);
+    step = &sc->step;
     switch (*step) {
     case 0:
         sub_08077AEC(6);
@@ -136,32 +145,32 @@ void sub_0805D708(void)
         (*step)++;
         /* fall through */
     case 1:
-        if (sc->cnt <= 0x17) {
-            u16 a = sub_080623AC(pl, 0, zone);
+        if (gUnk_0201CFB0.cnt <= 0x17) {
+            int a = sub_080623AC(pl, 0, zone);
             int b = sub_080623EC(pl, 0, zone);
-            u16 attr = gUnk_081A4474[row * 24 + sc->cnt];
-            u32 c;
+            /* FAKEMATCH: `pl = row` (row <= 0xFF) reuses pl as the row index; it keeps pl live
+               past the second call, which puts pl in r7 and zone in r6 as in the ROM. */
+            u16 attr = gAnimFrames_081A4474[pl = row][gUnk_0201CFB0.cnt];
             if (attr & 0x1000) {
-                attr = (s16)attr + (sub_08062140(id) + 0x1000);
                 attr &= 0xEFFF;
+                {
+                    /* An int temporary keeps the (s16) sign extension and the call + 0x1000 order. */
+                    int k = sub_08062140(id) + 0x1000;
+                    int s = (s16)attr + k;
+                    attr = s;
+                }
             }
-            c = 0x1000000;
-            if (flag != 0)
-                c += 0x20;
-            sub_08076714((b << 16) | a, 0x80, attr | 0x400, c);
-            sc->cnt++;
-            if (sc->cnt <= 0x17)
+            sub_08076714((b << 16) | a, 0x80, attr | 0x400, flag ? 0x1000020 : 0x1000000);
+            gUnk_0201CFB0.cnt++;
+            if (gUnk_0201CFB0.cnt <= 0x17)
                 return;
         }
         /* fall through */
     default:
-        sc->f0 = 0;
+        gUnk_0201CFB0.f0 = 0;
         break;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805D708); /* 0x0805D708 size 0x140 */
-#endif
 void sub_0805D848(void)
 {
     struct PickBits *src = &PICK_BITS;

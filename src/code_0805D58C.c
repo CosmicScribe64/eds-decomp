@@ -69,54 +69,74 @@ extern const u8 gUnk_08608360[];
 extern const u16 gUnk_082A6500[];
 
 extern const u16 gUnk_081A44D4[];
-#if 0 /* NONMATCHING: logic identical; the ROM keeps &gUnk_0201CFB0 in r8 (pl r7, zone r6, fb r9, flag/row/id spilled) and computes q=base+0x834 via `add r2,r8`; the build folds q to a literal `base+0x834` and re-assigns pl/zone/fb differently (same size) */
+/* Card slot record: 0x94 bytes per zone, 0xD64 bytes per player side, at 0x0201930C. */
+struct Zone58C { u32 w; u8 b4; u8 b5; u8 f0 : 1; u8 fb : 1; u8 rest : 6; u8 pad[0x94 - 7]; };
+struct Side58C { struct Zone58C z[23]; u8 pad[0xD64 - 23 * 0x94]; };
+/* gUnk_081A4474 as [set][frame] and gUnk_081A44D4 as [flag][frame]: real 2D arrays give the
+   ROM's (frame*2 + set*48) + base address order. */
+extern const u16 gAnimFrames_081A4474[][24];
+extern const u16 gAnimScale_081A44D4[][10];
 void sub_0805D58C(void)
 {
     struct ScrFlags *sc = &gUnk_0201CFB0;
     struct Sel *q = &sc->sel;
-    int pl = q->pl;
-    int zone = q->zone;
-    int cardoff = (pl & 1) * 0xD64 + zone * 0x94;
-    int flag = *(u8 *)&q->h;
-    int fb = (gUnk_0201930C[cardoff + 6] >> 1) & 1;
-    int row = q->h >> 8;
-    u8 id = CARD_ID(*(u32 *)((u32)gUnk_0201930C + cardoff));
-    u8 *step = &sc->step;
+    u8 pl, zone;
+    int z;
+    u8 flag;
+    int side;
+    int fb;
+    int a, b;
+    int row;
+    int id;
+    u8 *step;
+    pl = q->pl;
+    /* Loading zone through an int temporary shortens zone's live range by one insn before
+       combine, so zone is allocated before pl (zone r6, pl r7 as in the ROM). */
+    z = q->zone;
+    zone = z;
+    flag = *(u8 *)&q->h;
+    side = pl & 1;
+    /* Pointer arithmetic (symbol last) puts the base literal after the offset, as in the ROM. */
+    fb = ((struct Zone58C *)(side * 0xD64 + zone * 0x94 + (u32)gUnk_0201930C))->fb;
+    row = q->h >> 8;
+    id = CARD_ID(((struct Side58C *)gUnk_0201930C)[side].z[zone].w);
+    step = &sc->step;
     switch (*step) {
     case 0:
         sub_08077AEC(6);
         sub_08060FD0(pl, zone);
         sc->cnt = 0;
         (*step)++;
-        /* fallthrough */
+        /* fall through */
     case 1:
-        if (sc->cnt <= 9) {
-            int a = sub_080623AC(pl, 0, zone);
-            int b = sub_080623EC(pl, 0, zone);
+        if (gUnk_0201CFB0.cnt <= 9) {
             u16 attr;
-            if (row == 0)
-                attr = gUnk_081A4474[fb * 24];
-            else
-                attr = gUnk_081A4474[fb * 24 + (sc->cnt * 24) / 10];
+            a = sub_080623AC(pl, 0, zone);
+            b = sub_080623EC(pl, 0, zone);
+            attr = gAnimFrames_081A4474[fb][0];
+            if (row != 0)
+                attr = gAnimFrames_081A4474[fb][(gUnk_0201CFB0.cnt * 24) / 10];
             if (attr & 0x1000) {
                 attr &= 0xEFFF;
-                attr = (s16)attr + (sub_08062140(id) + 0x1000);
+                {
+                    /* An int temporary keeps the (s16) sign extension and the call + 0x1000 order. */
+                    int k = sub_08062140(id) + 0x1000;
+                    int s = (s16)attr + k;
+                    attr = s;
+                }
             }
             sub_08076714((b << 16) | a, 0x80, attr | 0x400,
-                         0x1000000 | gUnk_081A44D4[sc->cnt + flag * 10]);
-            sc->cnt += 1;
-            if (sc->cnt <= 9)
+                         0x1000000 | gAnimScale_081A44D4[flag][gUnk_0201CFB0.cnt]);
+            gUnk_0201CFB0.cnt++;
+            if (gUnk_0201CFB0.cnt <= 9)
                 return;
         }
-        /* fallthrough */
+        /* fall through */
     default:
-        sc->f0 = 0;
+        gUnk_0201CFB0.f0 = 0;
         break;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805D58C); /* 0x0805D58C size 0x17C */
-#endif
 /* Card slot record: 0x94 bytes per zone, 0xD64 bytes per player side, at 0x0201930C. */
 struct Zone708 { u32 w; u8 pad[0x94 - 4]; };
 struct Side708 { struct Zone708 z[23]; u8 pad[0xD64 - 23 * 0x94]; };

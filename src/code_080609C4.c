@@ -553,18 +553,24 @@ loop_10:
 #endif
 INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_080612F4); /* 0x080612F4 size 0x28C */
 /* Per-frame draw of the duel board markers: zone cursor effects, hand strip cursor sprites, then the optional callback. */
-#if 0 /* NONMATCHING: structure matches; ROM multiplies z*0x94 before p*0xD64 (pl computed first), saves only r8/r9 (ours also sl) and hoists g+4 into r9 (105 differing lines) */
+/* Per-player state block (0xD64 bytes) at gUnk_020192E0 + 4; only the +0x26 bitmask is used here. */
+struct PS580 {
+    u8 pad0[0x26];
+    u16 u26;
+    u8 pad28[0xD64 - 0x28];
+};
+#define G580 ((struct DuelGlobals *)&gUnk_020192E0)
+/* Per-frame board overlay: act on the cursor zone (row 0 occupied / row 5) via sub_080612F4, draw an animated cursor
+   sprite on each monster zone not flagged in the player's +0x26 mask, then run the optional callback at +0x85C. */
 void sub_08061580(void)
 {
     u32 p;
     u32 z0;
     u32 zn;
     s32 i;
-    u16 x;
+    u32 x;
     u32 y;
     u16 t;
-    int pl;
-    struct DuelGlobals *g;
 
     if ((*(u8 *)&gUnk_0201CFB0 & 6) == 6) {
         p = gUnk_0201CFB0.w824;
@@ -572,24 +578,25 @@ void sub_08061580(void)
         zn = z0 + gUnk_0201CFB0.w82C;
         switch (z0) {
         case 0:
-            pl = 1 & p;
-            if (*(u32 *)ZB(pl, zn) << 20 != 0)
+            /* Explicit (p * 0xD64 + z * 0x94 + base): the ZB() operand order multiplies p first. */
+            if (*(u32 *)((1 & p) * 0xD64 + zn * 0x94 + (u32)gUnk_0201930C) << 20 != 0)
                 sub_080612F4(p, zn, 0);
             break;
         case 5:
             sub_080612F4(p, zn, 5);
             break;
         }
-        g = &gUnk_020192E0;
-        if ((*((u8 *)g + 0x1B12) & 0x1C) == 0xC) {
+        if (G580->f1B12_2 == 3) {
             for (i = 0; i <= 4; i++) {
-                if (sub_0804A528(g->f1B12_1, i, 0) != 0) {
-                    if (((*(u16 *)((u8 *)g + 4 + (1 & g->f1B12_1) * 0xD64 + 0x26) >> i) & 1) == 0) {
-                        x = sub_080623AC(g->f1B12_1, 0, i);
-                        y = sub_080623EC(g->f1B12_1, 0, i);
+                if (sub_0804A528(G580->f1B12_1, i, 0) != 0) {
+                    /* Base through the gUnk_020192E0 cast so CSE derives it as (sym + 4) and loop hoists it. */
+                    if (((((struct PS580 *)((u8 *)&gUnk_020192E0 + 4))[1 & G580->f1B12_1].u26 >> i) & 1) == 0) {
+                        x = sub_080623AC(G580->f1B12_1, 0, i);
+                        y = sub_080623EC(G580->f1B12_1, 0, i);
                         x += 8;
                         y += 8;
-                        x |= y << 16;
+                        y <<= 16; /* separate shift keeps the OR result in x's register */
+                        x |= y;
                         t = gUnk_081A427C[(gMain.frameCounter >> 3) & 7] + 0x5600;
                         sub_080761F0(x, 0x40, t);
                     }
@@ -600,8 +607,6 @@ void sub_08061580(void)
             gUnk_0201CFB0.cb85C();
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_08061580);
 /* Draw the small card sprites of each player's hand/deck strip (row 0xB), skipping the one under the cursor. */
 struct HandRow616 {
     struct DuelCard c[80];

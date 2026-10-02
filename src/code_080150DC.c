@@ -256,19 +256,19 @@ void sub_080153D4(void)
  * 0x67 the grid is scaled by the curve gUnk_08081768 (1.0 == 0x100, i.e. /256)
  * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
  */
-#if 0 /* NONMATCHING: register allocation only. old_agbcc keeps a copy of &gUnk_020185C0 in a
-       * register (adds r5,r4,#0) and reuses it for cases 2-4 and the step++ tails. It also
-       * hoists the timer address &gUnk_020185C0+0x80C into r9 inside the step 6 grid loop.
-       * The ROM rematerializes both literals at each use (and spills i*32 to the stack
-       * instead). Everything else matches instruction for instruction. Tried re-reading
-       * fields, explicit address casts, return vs break, and hoisted outer-loop locals; the
-       * copy persists. */
+/*
+ * Grid zoom-in effect, table variant. Like sub_080150DC, but once the timer passes
+ * 0x67 the grid is scaled by the curve gUnk_08081768 (1.0 == 0x100, i.e. /256)
+ * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
+ */
 void sub_08015720(void)
 {
     int i, j;
-    u32 x, y;
-    int scale;
+    int x, y, dx, dy, k;
     int ta, tb, tc, td;
+
+    /* FAKEMATCH: the (u8) timer casts and gDuelCmdT16 keep the grid loop long enough
+     * that loop.c leaves the timer address in it (see gDuelCmdT16 above). */
 
     switch (gUnk_020185C0.step) {
     case 0:
@@ -299,20 +299,24 @@ void sub_08015720(void)
         break;
     case 6:
         for (i = 0; i <= 4; i++) {
-            int y0 = i * 32 + 2;
-            int tile = (u16)(i * 2 + 1) << 5;
             for (j = 0; j <= 3; j++) {
                 x = j * 32 + 0x44;
-                y = y0;
-                if ((ta = gUnk_020185C0.timer) > 0x67) {
-                    scale = gUnk_08081768[ta - 0x68];
-                    x = (x - 0x68) * scale / 256 + 0x68;
-                    y = (y - 0x40) * scale / 256 + 0x40;
+                y = i * 32 + 2;
+                if ((ta = (u8)gDuelCmdT16.timer) > 0x67) {
+                    dx = x - 0x68;
+                    dy = y - 0x40;
+                    k = ta - 0x68;
+                    dx *= gUnk_08081768[k];
+                    dy *= gUnk_08081768[k];
+                    dx /= 256;
+                    dy /= 256;
+                    x = dx + 0x68;
+                    y = dy + 0x40;
                 }
-                tb = gUnk_020185C0.timer;
+                tb = (u8)gDuelCmdT16.timer;
                 if (tb < 16) {
                     REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
+                    REG_BLDALPHA = (u8)tb | ((u8)(16 - tb) << 8);
                 } else if (tb > 0x67) {
                     REG_BLDCNT = 0xF40;
                     REG_BLDALPHA = (u8)(0x78 - tb) | ((u8)(tb - 0x68) << 8);
@@ -320,11 +324,11 @@ void sub_08015720(void)
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = gUnk_020185C0.timer;
+                tc = (u8)gDuelCmdT16.timer;
                 if (tc < 16)
-                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + tile, gUnk_081A4424[tc] << 16);
+                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[(u8)tc] << 16);
                 else
-                    sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + tile);
+                    sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
         td = gUnk_020185C0.timer;
@@ -345,8 +349,6 @@ void sub_08015720(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080150DC", sub_08015720); /* 0x08015720 size 0x30C */
 /*
  * Grid fade effect (sibling of sub_08014C30). Steps 2-4 call sub_08061A1C / sub_08061D24 /
  * sub_08061E54. Step 5 draws the 4x5 sprite grid growing from the top (y * timer / 16) with

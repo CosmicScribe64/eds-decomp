@@ -472,7 +472,6 @@ u16 sub_0806D198(void)
     }
     return 1;
 }
-#if 0 /* NONMATCHING: byte size matches (0x344) but register allocation differs. The ROM keeps INIT in r5 and the three count-column bases (&count[0][0..2]) in sl/r9/r8, recomputing &INIT.row per use; agbcc hoists &INIT.row and tests the owned bitfield with ands rather than lsls. */
 struct InitState {
     u8 pad[0x620]; u16 col[3];
     u8 pad626[0x630 - 0x626];
@@ -488,10 +487,7 @@ struct InitState {
     u8 dirty6:1; u8 rest6:7; u8 b1BB7;
     u8 pad1BB8[0x1C1C - 0x1BB8]; u8 cursor, previous;
 };
-extern struct InitState gUnk_0201DB20_init asm("gUnk_0201DB20");
 struct InitMain { u8 pad[0x40E]; u16 flags; };
-extern struct InitMain gUnk_03000040_init asm("gUnk_03000040");
-extern u16 gUnk_08622AB4[];
 extern u8 gUnk_0201F6D8[];
 struct PanelFlags { u8 active:1; u8 mode:4; u8 rest:3; u8 pad[7]; };
 void sub_08075278(void *, u32);
@@ -503,14 +499,18 @@ void sub_0806710C(void);
 void sub_08065F34(u16, u16, u16 *);
 void sub_08066244(void *);
 void sub_080666AC(void *);
-#define INIT gUnk_0201DB20_init
+#define INIT (*(struct InitState *)&gUnk_0201DB20)
+struct TrunkEntryInit { u16 owned : 10; u8 f1 : 2; u8 f2 : 2; u8 f3 : 2; };
+struct TrunkInit { u8 pad0[8]; struct TrunkEntryInit e[1]; };
+#define TRUNK_INIT ((struct TrunkInit *)gUnk_02011C20)
+/* Integer-address indexing, as in the twin sub_08070A1C (code_0807093C). */
+#define CARD_NUMBER_INIT(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 int sub_0806D1D8(void)
 {
     u16 i, j;
-    u16 *count0, *count1, *count2;
     struct PanelFlags *panel;
     sub_08075278(&INIT, 0x1C5C);
-    gUnk_03000040_init.flags = 1;
+    ((struct InitMain *)&gUnk_03000040)->flags = 1;
     REG16(0x12) = 0; REG16(0x10) = 0;
     REG16(0x16) = 0; REG16(0x14) = 0;
     REG16(0x1A) = 0; REG16(0x18) = 0;
@@ -532,21 +532,15 @@ int sub_0806D1D8(void)
     sub_0807B0EC(0, 0, 0, (u8 *)&INIT + 0x628);
     sub_080788A0((u8 *)&INIT + 0x640);
     sub_0807B534((u8 *)&INIT + 0x18B0);
-    count0 = &INIT.count[0][0];
-    count2 = &INIT.count[0][2];
-    count1 = &INIT.count[0][1];
-    for (i = 1; gUnk_08622AB4[i & 0x7FF] != 0xFFFF; ) {
-        if ((u16)(gUnk_08622AB4[i & 0x7FF] - 0x780) > 0x4F) {
-            struct TrunkEntry *entry = (struct TrunkEntry *)(gUnk_02011C20_words + i);
-            if (entry->owned)
-                sub_08068DA4(i, 0, INIT.row[0], count0[INIT.row[0] * 3]++);
-            if (entry->main || entry->extra)
-                sub_08068DA4(i, 1, INIT.row[1], count1[INIT.row[1] * 3]++);
-            if (entry->side)
-                sub_08068DA4(i, 2, INIT.row[2], count2[INIT.row[2] * 3]++);
+    for (i = 1; i <= 0x334 && CARD_NUMBER_INIT(i) != 0xFFFF; i++) {
+        if ((u16)(CARD_NUMBER_INIT(i) - 0x780) > 0x4F) {
+            if (TRUNK_INIT->e[i].owned)
+                sub_08068DA4(i, 0, INIT.row[0], INIT.count[INIT.row[0]][0]++);
+            if (TRUNK_INIT->e[i].f1 || TRUNK_INIT->e[i].f3)
+                sub_08068DA4(i, 1, INIT.row[1], INIT.count[INIT.row[1]][1]++);
+            if (TRUNK_INIT->e[i].f2)
+                sub_08068DA4(i, 2, INIT.row[2], INIT.count[INIT.row[2]][2]++);
         }
-        i++;
-        if (i > 0x334) break;
     }
     sub_0806710C();
     sub_08065F34(INIT.count[INIT.row[INIT.cursor]][INIT.cursor], INIT.col[INIT.cursor], INIT.slide);
@@ -560,5 +554,3 @@ int sub_0806D1D8(void)
     panel->active = 0; panel->mode = 0;
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806C4E4", sub_0806D1D8); /* 0x0806D1D8 size 0x344 */

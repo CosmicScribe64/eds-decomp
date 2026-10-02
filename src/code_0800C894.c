@@ -154,65 +154,103 @@ u32 sub_0800C8A8(u32 player, u32 slot)
     return info.unk8;
 }
 
-#if 0 /* NONMATCHING: complex function with many register allocation and loop structure differences */
+#if 0 /* NONMATCHING (score 24): Rewritten from asm. Keys: u16 best (re-read ldrh, bls); loop1 zone via
+       * ZONE(player,i) so CSE path-following turns (p&1)*0xD64 into a copy of the entry off; loop3 zone written
+       * (p&1)*0xD64 + s*0x94 (fold swaps, so 0x94/slot chain hoists before 0xD64 and the threshold runs out); u8
+       * *flags=&gUnk_0201ADAD before loop3; staged zones/so locals in entry; separate z locals per loop. Remaining:
+       * loop3 guard/body reload regs (slot*0x94 r1 vs r4, base r4 vs r1). */
+struct C8BCZone {
+    u32 card;               /* +0x00: bits 0-11 card id, bit 17 tested */
+    u16 unk4;               /* +0x04 */
+    u8 flags6;              /* +0x06: bit 1 face up */
+    u8 filler7[3];
+    u16 links[32];          /* +0x0A */
+    u16 linkKinds[32];      /* +0x4A */
+    u16 numLinks;           /* +0x8A */
+    u8 filler8C[4];
+    u32 unk90;              /* +0x90 */
+};
+struct C8BCZoneB {
+    u8 filler0[0xA];
+    u8 linkBytes[64];       /* +0x0A */
+};
+#define C8BC_ZONE(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define C8BC_ZONE2(p, s) ((struct C8BCZone *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
+#define C8BC_ZONEB2(p, s) ((struct C8BCZoneB *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
+#define C8BC_ZONEB(p, s) ((struct C8BCZoneB *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define C8BC_LINKED(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + (p) * 0xD64)))
+#define C8BC_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define C8BC_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 u32 sub_0800C8BC(s32 player, s32 slot)
 {
     u32 off;
-    u32 cardId;
-    u32 var_sl;
-    u32 var_r7;
-    s32 i, j;
+    u32 id;
+    u16 best;
+    u32 result;
+    int i, j;
+    struct C8BCZone *z;
+    u8 *zones;
+    u32 so;
 
     off = (player & 1) * 0xD64;
-    cardId = (*(u32 *)&gUnk_0201930C[slot * 0x94 + off] << 20) >> 20;
-    if (cardId == 0) {
+    zones = gUnk_0201930C;
+    so = slot * 0x94;
+    best = 0;
+    z = (struct C8BCZone *)(zones + (so + off));
+    id = (z->card << 20) >> 20;
+    if (id == 0)
         return 0;
-    }
-    var_sl = 0;
-    var_r7 = (gUnk_08621DE0[cardId & 0x7FF] & 0x01F00000) >> 20;
-    if (slot <= 4 && (gUnk_0201930C[slot * 0x94 + off + 6] & 2)) {
-        for (i = 0; i <= 4; i++) {
-            u32 cid;
-            cid = (*(u32 *)&gUnk_0201930C[i * 0x94 + off] << 20) >> 20;
-            if (cid != 0 && gUnk_08622AB4[cid & 0x7FF] == 0x2FA
-                && (s32)(*(u32 *)&gUnk_0201930C[i * 0x94 + off] << 14) < 0
-                && (gUnk_0201930C[i * 0x94 + off + 6] & 2)
-                && *(u32 *)&gUnk_0201930C[i * 0x94 + off + 4] > var_sl) {
-                var_sl = *(u32 *)&gUnk_0201930C[i * 0x94 + off + 4];
-                var_r7 = 0xA;
-            }
-            for (j = 0; j <= 1; j++) {
-                u8 cid2;
-                cid2 = (*(u32 *)&gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64] << 20) >> 20;
-                if (cid2 != 0 && gUnk_08622AB4[cid2 & 0x7FF] == 0x479
-                    && (gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64 + 6] & 2)
-                    && !(gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64 + 0x91] & 8)
-                    && *(u32 *)&gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64 + 4] > var_sl) {
-                    var_sl = *(u32 *)&gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64 + 4];
-                    var_r7 = (*(u32 *)&gUnk_020195F0[i * 0x94 + (j & 1) * 0xD64 + 0x90] << 14) >> 27;
-                }
-            }
+    result = (C8BC_STATS(id) & 0x1F00000) >> 20;
+    if (slot > 4 || !(z->flags6 & 2))
+        return result;
+    for (i = 0; i <= 4; i++) {
+        u32 w;
+        u32 cid;
+        struct C8BCZone *z;
+        z = C8BC_ZONE(player, i);
+        w = z->card;
+        cid = (w << 20) >> 20;
+        if (cid != 0 && C8BC_NUMBER(cid) == 0x2FA && (s32)(w << 14) < 0
+            && (z->flags6 & 2) && z->unk4 > best) {
+            best = z->unk4;
+            result = 10;
         }
-        for (i = 0; i < *(u16 *)&gUnk_0201930C[slot * 0x94 + off + 0x8A]; i++) {
-            u16 ref = *(u16 *)&gUnk_0201930C[slot * 0x94 + off + 0xA + i * 2];
-            u32 tp = ref & 1;
-            u32 ts = ref >> 8;
-            s16 tcid;
-            u8 *tz = &gUnk_0201930C[ts * 0x94 + tp * 0xD64];
-            if (gUnk_0201930C[slot * 0x94 + off + 0x4A + i * 2] != 1) continue;
-            tcid = (*(u32 *)tz << 20) >> 20;
-            if (tcid != 0
-                && !(tz[0x91] & 8)
-                && sub_08008524(0, 0x601) == 0
-                && sub_08008524(1, 0x601) == 0
-                && !(gUnk_0201ADAD & 3)
-                && gUnk_08622AB4[tcid & 0x7FF] == 0x60E
-                && *(u32 *)&tz[4] > var_sl) {
-                var_r7 = 1;
+        for (j = 0; j <= 1; j++) {
+            z = (struct C8BCZone *)(gUnk_020195F0 + ((j & 1) * 0xD64 + i * 0x94));
+            cid = (z->card << 20) >> 20;
+            if (cid != 0 && C8BC_NUMBER(cid) == 0x479 && (z->flags6 & 2)
+                && !(((u8 *)z)[0x91] & 8) && z->unk4 > best) {
+                best = z->unk4;
+                result = (z->unk90 << 14) >> 27;
             }
         }
     }
-    return var_r7;
+    {
+    u8 *flags = &gUnk_0201ADAD;
+    for (i = 0; i < C8BC_ZONE2(player, slot)->numLinks; i++) {
+        u16 link;
+        u8 kind;
+        int lz, lp;
+        struct C8BCZone *t;
+        u16 tid;
+
+        link = C8BC_ZONE2(player, slot)->links[i];
+        kind = C8BC_ZONE2(player, slot)->linkKinds[i];
+        lz = link >> 8;
+        lp = C8BC_ZONEB2(player, slot)->linkBytes[i * 2] & 1;
+        t = C8BC_LINKED(lp, lz);
+        tid = (t->card << 20) >> 20;
+        if (kind == 1 && tid != 0
+            && !(((u8 *)t)[0x91] & 8)
+            && sub_08008524(0, 0x601) == 0
+            && sub_08008524(1, 0x601) == 0
+            && !(*flags & 3)
+            && C8BC_NUMBER(tid) == 0x60E
+            && t->unk4 > best)
+            result = 1;
+    }
+    }
+    return result;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800C8BC); /* 0x0800C8BC size 0x234 */

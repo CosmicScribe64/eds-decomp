@@ -130,10 +130,11 @@ void sub_08017ADC(u32 player, u16 id, u16 pos, u16 a);
 #define CMD_PLAYER() ((gUnk_020185C0.cmd & 0x8000) != 0)
 #define CUR_PLAYER() (gUnk_020192E4_lp[CMD_PLAYER()])
 
-#if 0 /* NONMATCHING (score 104): NONMATCHING: zone loop now recomputes player*0xD64 per iteration like the ROM
-       * (base struct array + direct indexing); remaining diffs are register allocation in the zone-loop address setup
-       * (r3/r2 swapped, extra mov r1,sl), the CARD_NUMBER lookup operand order, and the final link loop (ROM
-       * rematerialises player*0xD64 with muls r1,r7 and keeps n in r1). */
+#if 0 /* NONMATCHING (score 68): NONMATCHING: zone loop recomputes player*0xD64 per iteration (base struct var
+       * hoisted, id/stId read via (u8*)gUnk_0201930C_z + j*0x94 + player*0xD64 so the sum is j94+pD64); final loop
+       * duplicates the ROM's second mul via an asm-opaque player copy (FAKEMATCH) used in the count test. Remaining:
+       * zone-loop header reload regs (extra mov r2,sl => +2 bytes and pool pad), CARD_NUMBER lookup r0/r1 swap, stId
+       * table-load regs, p2 copy placed before i=0. */
 struct Zone08013CDC {
     u32 id:12;
     u32 unk0_12:20;
@@ -188,8 +189,8 @@ void sub_08013CDC(void)
         struct ZonesPlayer08013CDC *zp = &base[player];
         mon = &zp->zones[j];
         st = &zp->zones[j + 5];
-        id = ((struct DuelCard *)&gUnk_0201930C_z[player].zones[j])->id;
-        stId = ((struct DuelCard *)&gUnk_0201930C_z[player].zones[j + 5])->id;
+        id = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + j * 0x94 + player * 0xD64))->id;
+        stId = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + 0x2E4 + j * 0x94 + player * 0xD64))->id;
 
         if (id) {
             mon->flag7_2 = 0;
@@ -238,13 +239,14 @@ void sub_08013CDC(void)
         }
     }
 
-    for (i = 0; i < gUnk_020192E0.players[player].countB84; i++) {
-        u16 *link = &gUnk_020192E0.players[player].arrCC4[i];
-        u16 v = *link;
-        if (*(u8 *)link == 2) {
-            u8 n = v >> 8;
-            if (n <= 4)
-                *link = ((u8)(n + 1) << 8) | 2;
+    {
+        u32 p2 = player;
+        asm("" : "+r"(p2));
+        for (i = 0; i < gUnk_020192E0.players[p2].countB84; i++) {
+            u16 v = gUnk_020192E0.players[player].arrCC4[i];
+            if ((u8)gUnk_020192E0.players[player].arrCC4[i] == 2 && (u8)(v >> 8) <= 4)
+                gUnk_020192E0.players[player].arrCC4[i] = ((u8)((v >> 8) + 1) << 8) | 2;
+
         }
     }
     gUnk_020185C0.running = 0;

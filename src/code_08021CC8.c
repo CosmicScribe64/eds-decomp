@@ -236,38 +236,33 @@ u32 sub_08021DA8(int player, u16 number)
         return 1;
     }
 }
-#if 0 /* NONMATCHING (score 37): NONMATCHING: player made opaque in the CPU branch (asm +r) so player&1 is
-       * recomputed per pass like the ROM; i pinned to r4; inner loop as explicit if(j < *p1) + do-while where
-       * p1=&players[1].handCount (pool form, hoisted in loop pass 2 after the step address as in the ROM). Left:
-       * do-while keeps the inner count load inside the loop (ROM hoists it: needs a rotated for/while, VTOP); a for-loop
-       * with the same count expression either matches the hoisted p1 movable (pool form, count merged) or never hoists
-       * p1 (plain form, cse associates it to the hand base). */
 #define EC_ID(w) (((w) << 20) >> 20)
+/* The hand counts are read as an array behind a pointer to gUnk_020192E0.players: agbcc then loads the
+ * 0x020192E4 base before computing the index (the loop-bottom tests), unlike gUnk_020192E0.players[k]. */
+struct EC_Players { struct DuelPlayer p[2]; };
+#define EC_PLAYERS (((struct EC_Players *)gUnk_020192E0.players)->p)
 u32 sub_08021EC8(int player)
 {
-    register int i asm("r4");
-    int j;
+    int i;
 
     switch (gUnk_020192E0.step) {
     case 0:
         gUnk_020192E0.result = 0;
-        for (i = 0; i < (gUnk_020192E0.players + (player & 1))->handCount; i++) {
+        for (i = 0; i < EC_PLAYERS[player & 1].handCount; i++) {
             union DuelCardWord *c = &(gUnk_020192E0.players + (player & 1))->hand[i];
             if (((CSTATS[c->w << 21 >> 21] & 0x1F00000) >> 20) == 22 && !c->c.flag18) {
                 if (player) {
+                    /* FAKEMATCH: makes player & 1 loop-variant so it is recomputed every pass, as in the ROM */
                     asm("" : "+r"(player));
                     gUnk_020192E0.result = 1;
-                    {
-                    u8 *p1 = &gUnk_020192E0.players[1].handCount;
-                    j = 0;
-                    if (j < *p1) {
-                        do {
-                            if (((CSTATS[EC_ID((&gUnk_020192E0.players[1].hand[j])->w) & 0x7FF] & 0x1F00000) >> 20) == 22) {
-                                sub_080193D4(1, j, 1, 1);
-                                return 1;
-                            }
-                        } while (++j < gUnk_020192E0.players[1].handCount);
-                    }
+                    i = 0;
+                    /* FAKEMATCH: lengthens i's live range by one insn, so the 0xD64 constant is allocated first (r3) and i gets r4 */
+                    asm("");
+                    for (; i < EC_PLAYERS[1].handCount; i++) {
+                        if (((CSTATS[EC_ID((&gUnk_020192E0.players[1].hand[i])->w) & 0x7FF] & 0x1F00000) >> 20) == 22) {
+                            sub_080193D4(1, i, 1, 1);
+                            return 1;
+                        }
                     }
                     gUnk_020192E0.result = 0;
                     return 1;
@@ -312,8 +307,6 @@ u32 sub_08021EC8(int player)
         return 0;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08021CC8", sub_08021EC8); /* 0x08021EC8 size 0x20C */
 u32 sub_080220D4(int unused, u16 card)
 {
     char buf[0x80];

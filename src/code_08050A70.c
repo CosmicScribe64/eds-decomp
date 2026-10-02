@@ -522,36 +522,32 @@ int sub_0805146C(void)
     ((struct DG2 *)&gUnk_020192E0)->b1B21 = 0;
     return 0;
 }
-#if 0 /* NONMATCHING: the prologue and hoisting order differ (ROM loads base first, keeps idx*0xD64
-       * in r2, 0x7FF mask in r6) */
-/* Count of selectable hand cards; flag != 0 restricts to type <= 0x14. */
+static inline int W515Type(u16 id)
+{
+    return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+}
+/* Count hand cards of `player` whose word has neither bit 17 nor bit 18; flag != 0 also requires
+ * type <= 0x14. flag 0: just the hand count. */
 int sub_080515A4(int player, u16 flag)
 {
-    s16 n = 0;
+    int six;
     int i;
-    struct Player *base = gUnk_020192E4;
-    int off;
-    u32 *p;
-    s16 mask;
-    int cnt;
+    int count = 0;
+    int n;
+
     if (flag == 0)
-        return base[player & 1].handCount;
-    off = player & 1;
-    off *= 0xD64;
-    cnt = *((u8 *)base + off + 2);
-    p = (u32 *)((u8 *)base->hand + off);
-    mask = 0x7FF;
-    for (i = 0; i < cnt; i++, p++) {
-        u32 id = (*p << 20) >> 20;
-        if (((((const u32 *)0x08621DE0)[id & mask]) & 0x1F00000) >> 20 <= 0x14 || flag == 0) {
-            if (!(((u8 *)p)[2] & 6))
-                n++;
+        return gUnk_020192E4[player & 1].handCount;
+    n = gUnk_020192E4[player & 1].handCount;
+    for (i = 0; i < n; i++) {
+        u32 *p = &gUnk_020192E4[player & 1].hand[i];
+        if ((u32)W515Type((*p << 20) >> 20) <= 20 || flag == 0) {
+            /* FAKEMATCH: the mask goes through a temporary (permuter find); it swaps count (r5) and the base (r6). */
+            if (!(((u8 *)p)[2] & (six = 6)))
+                count++;
         }
     }
-    return n;
+    return count;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_080515A4); /* 0x080515A4 size 0x98 */
 
 /* Returns 1 when player 0 hands over the selected card (a: type <= 0x14 only). */
 u16 sub_0805163C(u16 a, u16 b)

@@ -236,13 +236,16 @@ u32 sub_08021DA8(int player, u16 number)
         return 1;
     }
 }
-#if 0 /* NONMATCHING (score 128): NONMATCHING: structure right (for loops, rotated tests, inner-loop strength
-       * reduction); differs in regalloc: ROM keeps player in r2, constant 1 hoisted in r7, base in r8 only (we need
-       * r8+r9), and recomputes player&1 each pass (we CSE it into r3); inner loop count reloaded via hand ptr - 0x682 */
+#if 0 /* NONMATCHING (score 37): NONMATCHING: player made opaque in the CPU branch (asm +r) so player&1 is
+       * recomputed per pass like the ROM; i pinned to r4; inner loop as explicit if(j < *p1) + do-while where
+       * p1=&players[1].handCount (pool form, hoisted in loop pass 2 after the step address as in the ROM). Left:
+       * do-while keeps the inner count load inside the loop (ROM hoists it: needs a rotated for/while, VTOP); a for-loop
+       * with the same count expression either matches the hoisted p1 movable (pool form, count merged) or never hoists
+       * p1 (plain form, cse associates it to the hand base). */
 #define EC_ID(w) (((w) << 20) >> 20)
 u32 sub_08021EC8(int player)
 {
-    int i;
+    register int i asm("r4");
     int j;
 
     switch (gUnk_020192E0.step) {
@@ -252,12 +255,19 @@ u32 sub_08021EC8(int player)
             union DuelCardWord *c = &(gUnk_020192E0.players + (player & 1))->hand[i];
             if (((CSTATS[c->w << 21 >> 21] & 0x1F00000) >> 20) == 22 && !c->c.flag18) {
                 if (player) {
+                    asm("" : "+r"(player));
                     gUnk_020192E0.result = 1;
-                    for (j = 0; j < (gUnk_020192E0.players + 1)->handCount; j++) {
-                        if (((CSTATS[EC_ID((gUnk_020192E0.players + 1)->hand[j].w) & 0x7FF] & 0x1F00000) >> 20) == 22) {
-                            sub_080193D4(1, j, 1, 1);
-                            return 1;
-                        }
+                    {
+                    u8 *p1 = &gUnk_020192E0.players[1].handCount;
+                    j = 0;
+                    if (j < *p1) {
+                        do {
+                            if (((CSTATS[EC_ID((&gUnk_020192E0.players[1].hand[j])->w) & 0x7FF] & 0x1F00000) >> 20) == 22) {
+                                sub_080193D4(1, j, 1, 1);
+                                return 1;
+                            }
+                        } while (++j < gUnk_020192E0.players[1].handCount);
+                    }
                     }
                     gUnk_020192E0.result = 0;
                     return 1;

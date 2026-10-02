@@ -512,8 +512,6 @@ void sub_080769DC(struct SprAnim *a) {
     }
 }
 
-#if 0 /* NONMATCHING (score 28): inline A20_SetSize(int i, u16 sz) for the size switch stops the 0x4433 literal
-       * hoisting (score 218->28); left: switch index copy (ROM ldrh r0; adds r1,r0,#0; compares on r1) */
 struct OamBitsA20 {
     u32 y:8;
     u32 affineMode:2;
@@ -540,8 +538,18 @@ static inline u16 A20_Read16(u8 **pp) {
     *pp += 2;
     return v;
 }
-/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-static inline void A20_SetSize(int i, u16 sz) {
+/* Set OAM entry i's size bits from the frame table entry base[0x22 + fmt*4] (0/0x4000/0x8000/0xC000).
+ * Being an inline lets integrate.c fold the 0x4433 offsets into the adds, so loop.c does not hoist them. */
+static inline void A20_SetSize(int i, struct SprAnim *a, u16 fmt) {
+    u8 *p = a->base;
+    u16 sz, t;
+    p += 0x22;
+    p += fmt * 4;
+    t = *(u16 *)p;
+    /* FAKEMATCH: keeps the ROM's `ldrh r0; adds r1, r0, #0` copy, with every compare on the copy */
+    asm("" : "+r"(t));
+    sz = t;
+    asm("" : "+r"(sz));
     switch (sz) {
     case 0:
         gMainA20.oam[i].size = 0;
@@ -557,7 +565,7 @@ static inline void A20_SetSize(int i, u16 sz) {
         break;
     }
 }
-/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
+/* Emit the OAM entries of the current animation frame at (x, y) plus per-piece offsets (hypothesis). */
 void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
     u8 *cur = a->cur;
     int i, next;
@@ -594,18 +602,13 @@ void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
         gMainA20.oam[i].tileNum = fmt * len + 1;
         gMainA20.oam[i].paletteNum = 15;
         gMainA20.oam[i].priority = 0;
-        p = a->base;
-        p += 0x22;
-        p += fmt * 4;
-        A20_SetSize(i, *(u16 *)p);
+        A20_SetSize(i, a, fmt);
     }
     if (flag != 0) {
         a->cur = cur;
         a->unkA++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076A20); /* 0x08076A20 size 0x1CC */
 
 #if 0 /* NONMATCHING (score 50): oam.x = (s16)x gives the ROM's lsl#23/lsr#23 x mask; inline BEC_SetSize(int i,
        * u16 sz) for the size switch stops the 0x4433 literal hoisting (score 201->50); left: switch index copy (ROM ldrh

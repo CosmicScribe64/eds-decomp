@@ -697,89 +697,110 @@ void sub_08057E3C(void);
 int sub_08008524(int, u16);
 int sub_08008860(int);
 
-#if 0 /* NONMATCHING: sub_0805BC24 has the same structure and control flow, but register allocation differs (loop counters r4/r5, id r4/r5, r8/r9 roles), as do the sl/ip constants */
+#if 0 /* NONMATCHING (score 46): NONMATCHING: score 46 (from 351). Same structure; fixed: int i/int sum, union
+       * word read + bitfield stores (BcZone) for the case-8 zone loop (gives SR), zones/src locals after sub_08057E08,
+       * ((const u16 *)0x08623DF4)[k] int-cast table (lsl first), success store via u8 *w deref (address before value),
+       * gUnk_02015F00.pad byte. Left: zone-loop preheader order (ROM: base, src->ip, giv inits, -4096->sl, -9, end;
+       * build hoists -4096/-9 before the inits and swaps ip/sl), reload regs in case 4 (r0 vs r7), success ior operand
+       * tie, loop-increment reload regs. */
+struct BcZone {
+    u32 id : 12;
+    u32 rest : 20;
+    u8 unk4[2];
+    u8 f6_0 : 1;
+    u8 f6_1 : 1;
+    u8 f6_2 : 6;
+    u8 pad7[0x91 - 7];
+    u8 f91_0 : 3;
+    u8 f91_3 : 1;
+    u8 f91_4 : 4;
+    u8 pad92[2];
+};
 int sub_0805BC24(void)
 {
-    s16 i;
-    int r6;
-    u16 sum;
-    int j;
-    s16 k;
+    int i;
+    int ok;
+    int sum;
+    int k;
     struct ZoneInfo info;
     gUnk_02015F00.foundFlag = 0;
     for (i = 0; i <= 8; i++) {
-        r6 = 1;
+        ok = 1;
         switch (i) {
         case 0:
             if (gUnk_020192E0.f1B10 == 0)
-                r6 = 0;
+                ok = 0;
             if (gUnk_020192E0.fD70 & 0x10)
-                r6 = 0;
+                ok = 0;
             if (gUnk_020192E0.lp1 <= 5000)
-                r6 = 0;
+                ok = 0;
             if (sub_08008A1C(1) <= 1)
-                r6 = 0;
+                ok = 0;
             if (sub_08056E04(1, 0x290) == -1 && gUnk_020192E0.lp0 > gUnk_020192E0.lp1)
-                r6 = 0;
+                ok = 0;
             if (sub_08056E04(1, 0x1A3) == -1)
-                r6 = 0;
+                ok = 0;
             if (sub_08056E68(1, 0x17B) != -1)
                 break;
             continue;
         case 1:
             if (gUnk_020192E0.f1B10 == 0)
-                r6 = 0;
+                ok = 0;
             if (sub_08008A1C(1) == 0)
-                r6 = 0;
+                ok = 0;
             k = 0x34D;
             if (sub_08056E04(1, k) == -1)
-                r6 = 0;
-            if (sub_08054398(1, gUnk_08623DF4[k]) == 0)
-                r6 = 0;
+                ok = 0;
+            if (sub_08054398(1, ((const u16 *)0x08623DF4)[k]) == 0)
+                ok = 0;
             sub_0801A7E8();
             break;
         case 2:
             if (gUnk_020192E0.f1B10 == 0)
-                r6 = 0;
+                ok = 0;
             k = 0x58A;
             if (sub_08008524(0, k) > 0)
-                r6 = 0;
+                ok = 0;
             if (sub_08008524(1, k) > 0)
-                r6 = 0;
+                ok = 0;
             if (sub_080086CC(1, 0x1FF) == 0)
-                r6 = 0;
+                ok = 0;
             if (sub_08008A1C(1) <= 1)
-                r6 = 0;
+                ok = 0;
             if (sub_08056E04(1, 0x4DD) != -1)
                 break;
             continue;
-        case 3:
+        case 3: {
+            int c;
+            int r;
             if (sub_08008A1C(1) <= 1)
-                r6 = 0;
+                ok = 0;
             if (sub_08056E04(1, 0x13D) == -1)
-                r6 = 0;
+                ok = 0;
             if (sub_080086CC(0, 0x3D) != 0)
                 break;
-            k = 0x4E1;
-            if (sub_080086CC(0, k) != 0)
+            c = 0x4E1;
+            if (sub_080086CC(0, c) != 0)
                 break;
             if (sub_080086CC(1, 0x3D) != 0)
                 break;
-            if (sub_080086CC(1, k) != 0)
+            if (sub_080086CC(1, c) != 0)
                 break;
             if (gUnk_020192E4.fD6C & 0x10)
                 continue;
-            j = sub_08056E04(1, 0x3D);
-            if (j == -1 && sub_08056E04(1, k) == j)
-                r6 = 0;
+            r = sub_08056E04(1, 0x3D);
+            if (r == -1 && sub_08056E04(1, c) == r)
+                ok = 0;
             if (sub_08008A1C(1) > 2)
                 break;
             continue;
+        }
         case 6:
             k = 0x5EA;
             goto common;
-        case 4:
-            r6 = 0;
+        case 4: {
+            int j;
+            ok = 0;
             if (sub_08056E04(1, 0x522) < 0)
                 break;
             if (sub_08008860(1) <= 0)
@@ -794,6 +815,7 @@ int sub_0805BC24(void)
             if (gUnk_020192E4.lp0 > sum * 2)
                 break;
             goto success;
+        }
         case 5:
             continue;
         case 7:
@@ -801,40 +823,51 @@ int sub_0805BC24(void)
         common:
             if (sub_08056E04(1, k) == -1)
                 continue;
-            if (sub_08054398(1, gUnk_08623DF4[k]) != 0)
+            if (sub_08054398(1, ((const u16 *)0x08623DF4)[k]) != 0)
                 break;
             continue;
-        case 8:
-            r6 = 0;
-            for (j = 0; j < gUnk_020192E4.handCount; j++) {
-                u32 id = CARD_ID(*(u32 *)(j * 4 + (u32)gUnk_0201A6CC));
-                if (sub_0800756C(CARD_NUMBER(id)) != 0 && sub_08054398(1, id) != 0)
-                    r6 = 1;
+        case 8: {
+            int n;
+            int z;
+            struct DuelZone *zones;
+            const u16 *src;
+            ok = 0;
+            for (n = 0; n < gUnk_020192E4.handCount; n++) {
+                u16 id = CARD_ID(*(u32 *)(n * 4 + (u32)gUnk_0201A6CC));
+                if (sub_0800756C(((const u16 *)0x08622AB4)[id & 0x7FF]) != 0 && sub_08054398(1, id) != 0)
+                    ok = 1;
             }
             if (sub_08056E04(1, 0x3BA) < 0)
                 break;
             sub_08057E08();
-            for (j = 5; j <= 9; j++) {
-                if (CARD_ID(*(u32 *)&gUnk_0201A070[j].card) == 0) {
-                    ((struct CardLo *)&gUnk_0201A070[j])->id = gUnk_08624568[0];
-                    gUnk_0201A070[j].unk91 &= ~8;
-                    gUnk_0201A070[j].flags6 |= 2;
+            zones = gUnk_0201A070;
+            src = gUnk_08624568;
+            for (z = 5; z <= 9; z++) {
+                union { struct DuelCard c; u32 w; } u;
+                u.c = zones[z].card;
+                if ((u.w << 20) == 0) {
+                    zones[z].card.id = src[0];
+                    ((struct BcZone *)&zones[z])->f6_1 = 1;
+                    ((struct BcZone *)&zones[z])->f91_3 = 0;
                 }
             }
-            for (j = 0; j < gUnk_020192E4.handCount; j++) {
-                u32 id = CARD_ID(*(u32 *)(j * 4 + (u32)gUnk_0201A6CC));
-                if (sub_0800756C(CARD_NUMBER(id)) != 0 && sub_08054398(1, id) != 0)
-                    r6 = 1;
+            for (n = 0; n < gUnk_020192E4.handCount; n++) {
+                u16 id = CARD_ID(*(u32 *)(n * 4 + (u32)gUnk_0201A6CC));
+                if (sub_0800756C(((const u16 *)0x08622AB4)[id & 0x7FF]) != 0 && sub_08054398(1, id) != 0)
+                    ok = 1;
             }
             sub_08057E3C();
             break;
+        }
         default:
-            r6 = 0;
+            ok = 0;
             break;
         }
-        if (r6 != 0) {
+        if (ok != 0) {
+            u8 *w;
         success:
-            *(u8 *)((u8 *)&gUnk_02015F00+0x1B24) = 1 | i << 1;
+            w = (u8 *)&gUnk_02015F00;
+            *(w + 0x1B24) = 1 | i << 1;
             return 1;
         }
     }

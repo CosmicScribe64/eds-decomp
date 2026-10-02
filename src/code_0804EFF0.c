@@ -630,11 +630,16 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 2): NONMATCHING: one insn-order difference left in case 101's loop preheader (mov
-       * r8,r0 before the E0 load) */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
+/* FAKEMATCH: a dead 64-factor product (FC_LOOP_PAD) pads case 101's loop. flow deletes it before register
+   allocation, so it emits nothing, but loop.c counts its insns: the first loop pass then sees ~207 insns
+   (without it 144), finds &zone and the 0xD64 constant not worth hoisting, and leaves them to the second pass.
+   That gives the ROM preheader order (E0 reload, &zone, 0xD64, player*0xD64). The ROM loop evidently had
+   ~201-210 insns at loop time; the window is 58-70 factors (more pushes the second pass over 200 insns). */
+#define FC_PAD8(x) x*x*x*x*x*x*x*x
+#define FC_LOOP_PAD(x) (FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x)*FC_PAD8(x))
 int sub_0804FC4C(void)
 {
     u32 card; /* Written by sub_080195D0 on success before it is consumed. */
@@ -817,6 +822,7 @@ int sub_0804FC4C(void)
             if (FC_ID(z) && (z->f6&2)) {
                 int destroy;
                 id=FC_ID(z);
+                destroy=FC_LOOP_PAD(id); /* FAKEMATCH: dead, see FC_LOOP_PAD */
                 destroy=0;
                 switch (FC_NUMBER(id)) {
                 case 0x47A:
@@ -945,7 +951,5 @@ int sub_0804FC4C(void)
 done:
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804FC4C); /* 0x0804FC4C size 0xE24 */
 
 

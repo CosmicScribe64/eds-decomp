@@ -30,7 +30,38 @@ struct TargetPlayerList {
     u8 rest[0xD64 - 80 * 4];
 };
 
-extern struct TargetPlayer gUnk_020192E4[2];
+struct TargetCard {
+    u32 id:12;
+    u32 owner:1;
+    u32 unk13:4;
+    u32 flag17:1;
+    u32 unk18:2;
+    s32 flag20:1;
+    u32 flag21:1;
+    u32 flag22:1;
+    u32 unk23:9;
+};
+struct TargetPlayerS {
+    u16 lifePoints;
+    u8 handCount;
+    u8 deckCount;
+    u8 graveCount;
+    u8 fusionCount;
+    u8 otherCount;
+    u8 unk7[0x684 - 7];
+    struct TargetCard hand[80];
+    struct TargetCard deck[80];
+    struct TargetCard graveyard[80];
+    struct TargetCard fusionDeck[80];
+    struct TargetCard otherCards[80];
+    u16 otherKinds[80];
+};
+/* One player record seen as raw card words (w) or as bitfield cards (s). */
+union TargetPlayerU {
+    struct TargetPlayer w;
+    struct TargetPlayerS s;
+};
+extern union TargetPlayerU gUnk_020192E4[2];
 extern struct TargetPlayerList gUnk_02019AA8[2];
 extern struct TargetPlayerList gUnk_02019BE8[2];
 extern struct TargetList gUnk_0201D810;
@@ -65,7 +96,7 @@ static inline u16 TargetNumber(u32 id)
 }
 #define TARGET_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define PP ((struct TargetPlayer *)(b + off))
-#define PPL (&gUnk_020192E4[player & 1])
+#define PPL (&gUnk_020192E4[player & 1].w)
 #define CASE_LOCALS struct TargetPlayer *p; u32 *word; u32 id; int cardNo; u32 type; u32 allowed; u32 attribute; int pidx; u32 off; u8 *b; u32 *g;
 #define ADD_TARGET(word, area) do { \
     gUnk_0201D810.cards[gUnk_0201D810.count] = (word); \
@@ -173,35 +204,9 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 4033): attribute=0 before the id read in 0x5EB lowers its priority so number gets r4
-       * (dispatch matches) */
-struct TargetCard {
-    u32 id:12;
-    u32 owner:1;
-    u32 unk13:4;
-    u32 flag17:1;
-    u32 unk18:2;
-    s32 flag20:1;
-    u32 flag21:1;
-    u32 flag22:1;
-    u32 unk23:9;
-};
+#if 0 /* NONMATCHING (score 3693): plain-block ADD_TARGET (no do-while(0)) in simple loops, union TargetPlayerU
+       * for 0x60A flag20, 0x462 type switch, 0x439/0x3FA off-giv loops, cards pointer in tail loops 2-3 */
 #define CARDP(p) ((struct TargetCard *)(p))
-struct TargetPlayerS {
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 graveCount;
-    u8 fusionCount;
-    u8 otherCount;
-    u8 unk7[0x684 - 7];
-    struct TargetCard hand[80];
-    struct TargetCard deck[80];
-    struct TargetCard graveyard[80];
-    struct TargetCard fusionDeck[80];
-    struct TargetCard otherCards[80];
-    u16 otherKinds[80];
-};
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
     struct TargetCard cards[80];
@@ -209,6 +214,11 @@ struct TargetPlayerListS {
 };
 #define GRAVE2(pl) ((struct TargetPlayerListS *)gUnk_02019BE8)[(pl) & 1].cards
 #define PLS(pl) ((struct TargetPlayerS *)gUnk_020192E4)[(pl) & 1]
+#define ADD_TARGETB(word, area) { \
+    gUnk_0201D810.cards[gUnk_0201D810.count] = (word); \
+    gUnk_0201D810.areas[gUnk_0201D810.count] = (area); \
+    gUnk_0201D810.count++; \
+}
 #define ADD_TARGET_S(card, area) do { \
     ((struct TargetCard *)gUnk_0201D810.cards)[gUnk_0201D810.count] = (card); \
     gUnk_0201D810.areas[gUnk_0201D810.count] = (area); \
@@ -268,7 +278,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 u32 *t = (u32 *)((u8 *)g + off);
                 word = t + i;
                 if (TARGET_TYPE(TARGET_ID(*word)) == 21)
-                    ADD_TARGET(*word, 4);
+                    ADD_TARGETB(*word, 4);
                 i++;
             } while (i < ((struct TargetPlayer *)(b + off))->graveCount);
         }
@@ -289,7 +299,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 case 0x3D:
                 case 0x3E:
                 case 0x4E1:
-                    ADD_TARGET(*word, 1);
+                    ADD_TARGETB(*word, 1);
                     break;
                 }
                 i++;
@@ -305,7 +315,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 case 0x3D:
                 case 0x3E:
                 case 0x4E1:
-                    ADD_TARGET(*word, 2);
+                    ADD_TARGETB(*word, 2);
                     break;
                 }
                 i++;
@@ -325,7 +335,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
             cardNo = TARGET_NUMBER(TARGET_ID(*word));
             if (cardNo == 0x4B2)
-                ADD_TARGET(*word, 1);
+                ADD_TARGETB(*word, 1);
         
                 word++; i++;
             } while (i < PPL->handCount);
@@ -338,7 +348,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
             cardNo = TARGET_NUMBER(TARGET_ID(*word));
             if (cardNo == 0x4B2)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -356,9 +366,9 @@ u16 sub_08044224(int player, u16 number, int arg)
                 word = (u32 *)((u8 *)gUnk_02019BE8 + (off + i * 4));
                 cardNo = TARGET_NUMBER(TARGET_ID(*word));
                 if (cardNo == 0x3EB || cardNo == 0x40A)
-                    ADD_TARGET(*word, 4);
+                    ADD_TARGETB(*word, 4);
                 i++;
-            } while (i < gUnk_020192E4[player & 1].graveCount);
+            } while (i < gUnk_020192E4[player & 1].w.graveCount);
         }
         break;
     }
@@ -377,7 +387,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 gUnk_0201D810.count++;
                 off += 4;
                 i++;
-            } while (i < gUnk_020192E4[player & 1].fusionCount);
+            } while (i < gUnk_020192E4[player & 1].w.fusionCount);
         }
         break;
     }
@@ -410,7 +420,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) == 22)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PPL->graveCount);
@@ -420,10 +430,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x23D:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(id) <= 20 && TargetDefense(id) <= 1500)
-                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -438,7 +448,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) > 20)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -461,7 +471,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 if (id != 0) {
                     type = (TARGET_STATS(id) & 0x1F00000) >> 20;
                     if (type == 1)
-                        ADD_TARGET(td[i], type);
+                        ADD_TARGETB(td[i], type);
                 }
                 i++;
             } while (i < p->handCount);
@@ -493,11 +503,11 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         pidx = 0;
         do {
-            for (i = 0; i < gUnk_020192E4[pidx & 1].graveCount; i++) {
+            for (i = 0; i < gUnk_020192E4[pidx & 1].w.graveCount; i++) {
                 word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (pidx & 1) * 0xD64);
                 if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                     && (u16)sub_0804412C(pidx, i) != 0)
-                    ADD_TARGET(*word, 4);
+                    ADD_TARGETB(*word, 4);
             }
             pidx++;
         } while (pidx <= 1);
@@ -515,7 +525,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PP->graveCount);
@@ -529,8 +539,14 @@ u16 sub_08044224(int player, u16 number, int arg)
         i = 0;
         b = (u8 *)gUnk_020192E4;
         off = ((1 - player) & 1) * 0xD64;
-        for (; i < PP->deckCount && i <= 4; i++)
-            ADD_TARGET(CopyTargetDeckWord(1-player, i), 2);
+        if (i < PP->deckCount) {
+            g = (u32 *)(b + 0x7C4);
+            do {
+                ADD_TARGETB(*(u32 *)((u8 *)g + off), 2);
+                off += 4;
+                i++;
+            } while (i < gUnk_020192E4[(1 - player) & 1].w.deckCount && i <= 4);
+        }
         break;
     }
     case 0x400:
@@ -543,7 +559,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         if (i < PP->graveCount) {
             g = (u32 *)(b + 0x904);
             do {
-                ADD_TARGET(*(u32 *)((u8 *)g + off), 4);
+                ADD_TARGETB(*(u32 *)((u8 *)g + off), 4);
                 off += 4;
                 i++;
             } while (i < PPL->graveCount);
@@ -554,10 +570,10 @@ u16 sub_08044224(int player, u16 number, int arg)
         if (i < PP->graveCount) {
             g = (u32 *)(b + 0x904);
             do {
-                ADD_TARGET(*(u32 *)((u8 *)g + off), 4);
+                ADD_TARGETB(*(u32 *)((u8 *)g + off), 4);
                 off += 4;
                 i++;
-            } while (i < gUnk_020192E4[(1 - player) & 1].graveCount);
+            } while (i < gUnk_020192E4[(1 - player) & 1].w.graveCount);
         }
         break;
     }
@@ -573,7 +589,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
             cardNo = TARGET_NUMBER(TARGET_ID(*word));
             if (cardNo == 0x3EB || cardNo == 0x40A)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -583,12 +599,12 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x41E:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
             if (type <= 20 && TargetAttackT(id, type) <= 1500
                 && sub_08007834(id) == 0)
-                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         forceFilter = 1;
         break;
@@ -600,8 +616,14 @@ u16 sub_08044224(int player, u16 number, int arg)
         i = 0;
         b = (u8 *)gUnk_020192E4;
         off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++)
-            ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+        if (i < PP->deckCount) {
+            g = (u32 *)(b + 0x7C4);
+            do {
+                ADD_TARGETB(*(u32 *)((u8 *)g + off), 2);
+                off += 4;
+                i++;
+            } while (i < PPL->deckCount);
+        }
         break;
     }
     case 0x443:
@@ -615,7 +637,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) == 22)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PP->graveCount);
@@ -631,7 +653,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         u8 ok;
-        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
             if (type > 20 || TargetAttackT(id, type) > 1500)
@@ -679,17 +701,17 @@ u16 sub_08044224(int player, u16 number, int arg)
                 break;
             }
             if (ok != 0)
-                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
     case 0x455:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(id) <= 20 && TargetKind(id) == 3)
-                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -706,7 +728,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_NUMBER(TARGET_ID(*word)) == number)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -725,17 +747,22 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
             id = TARGET_ID(*word);
             if (TARGET_TYPE(id) == 22) {
-                type = TARGET_TYPE(id);
-                if ((s32)type <= 22 && (s32)type >= 21)
-                    allowed = (TARGET_STATS(id) & 0xE0000) >> 17;
-                else
+                u32 stats = TARGET_STATS_NV(id);
+                switch ((s32)((stats & 0x1F00000) >> 20)) {
+                case 21:
+                case 22:
+                    allowed = (stats & 0xE0000) >> 17;
+                    break;
+                default:
                     allowed = 0;
+                    break;
+                }
                 if (allowed == 6)
-                    ADD_TARGET(*word, 2);
+                    ADD_TARGETB(*word, 2);
             }
         
                 word++; i++;
-            } while (i < PPL->deckCount);
+            } while (i < PP->deckCount);
         }
         break;
     }
@@ -745,7 +772,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x5F0:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64);
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
@@ -756,11 +783,11 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x45C:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64);
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         }
         if (player == arg) {
             flag = 1;
@@ -770,7 +797,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                     if (TARGET_NUMBER(TARGET_ID(gUnk_0201D81C.cards[i])) == 0x45C) {
                         flag = 0;
                         gUnk_0201D810.count--;
-                        for (j = i; j < gUnk_0201D810.count; j++) {
+                        for (j = i; j < gUnk_0201D81C.count; j++) {
                             sub_08007558(&gUnk_0201D81C.cards[j], &gUnk_0201D81C.cards[j + 1]);
                             gUnk_0201D81C.areas[j] = gUnk_0201D81C.areas[j + 1];
                         }
@@ -784,12 +811,12 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x47B:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
             type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
             if (type <= 20 && TargetAttackT(id, type) <= 1500
                 && sub_08007730(id) == 0)
-                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.graveyard[i], 4);
         }
         break;
     }
@@ -804,7 +831,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) == 22)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -826,7 +853,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             case 0x22:
             case 0x4BA:
             case 0x7F2:
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
                 break;
             }
                 i++;
@@ -845,7 +872,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_NUMBER(TARGET_ID(*word)) == 0x2EA)
-                ADD_TARGET(*word, 2);
+                ADD_TARGETB(*word, 2);
         
                 word++; i++;
             } while (i < PPL->deckCount);
@@ -864,7 +891,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
             cardNo = TARGET_NUMBER(TARGET_ID(*word));
             if (cardNo == 0x2EA || cardNo == 0x4D8)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PPL->graveCount);
@@ -874,10 +901,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x526:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             if (TARGET_TYPE(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 10 && TargetLevel(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == arg
                 && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 0)
-                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -892,7 +919,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
                 struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
                 if (TARGET_TYPE(w.id) <= 20 && w.flag21)
-                    ADD_TARGET(*(u32 *)((u8 *)g + (off + i * 4)), 4);
+                    ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
             } while (i < PP->graveCount);
         }
@@ -909,7 +936,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             do {
                 struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
                 if (TARGET_TYPE(w.id) == 22 && w.flag22)
-                    ADD_TARGET(*(u32 *)((u8 *)g + (off + i * 4)), 4);
+                    ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
             } while (i < PP->graveCount);
         }
@@ -926,7 +953,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PP->graveCount);
@@ -945,7 +972,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PPL->graveCount);
@@ -963,7 +990,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) == 3)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PPL->graveCount);
@@ -977,7 +1004,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x5EF:
     {
         CASE_LOCALS
-        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             u32 stats;
             attribute = 0;
             id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
@@ -1000,7 +1027,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             }
             stats = ((const u32 *)0x08621DE0)[id & 0x7FF];
             if (((stats & 0x1F00000) >> 20) <= 20 && (stats >> 29) == attribute)
-                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
+                ADD_TARGET(gUnk_020192E4[player & 1].w.graveyard[i], 4);
         }
         break;
     }
@@ -1012,7 +1039,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         off = (player & 1) * 0xD64;
         for (; i < PP->graveCount; i++) {
             if (PS->graveyard[i].flag20)
-                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.graveyard[i], 4);
         }
         break;
     }
@@ -1027,7 +1054,7 @@ u16 sub_08044224(int player, u16 number, int arg)
             word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
-                ADD_TARGET(*word, 4);
+                ADD_TARGETB(*word, 4);
         
                 word++; i++;
             } while (i < PPL->graveCount);
@@ -1037,13 +1064,11 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x60A:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (i = 0; i < PLS(player).graveCount; i++) {
-            if (sub_0803CDEC((u16)arg, GRAVE2(player)[i].id) != 0
-                && PLS(player).graveyard[i].flag20)
-                ADD_TARGET_S(GRAVE2(player)[i], 4);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
+            word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
+            if (sub_0803CDEC((u16)arg, TARGET_ID(*word)) != 0
+                && gUnk_020192E4[player & 1].s.graveyard[i].flag20)
+                ADD_TARGETB(*word, 4);
         }
         break;
     }
@@ -1062,7 +1087,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 u8 *tk = (u8 *)(b + 0xCC4) + off;
                 w = t[i];
                 if (((TARGET_STATS(TARGET_ID(w)) & 0x1F00000) >> 20) <= 20 && tk[i * 2] != 2)
-                    ADD_TARGET(w, 0x10);
+                    ADD_TARGETB(w, 0x10);
                 i++;
             } while (i < p->otherCount);
         }
@@ -1086,7 +1111,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         }
     }
     for (i = 0; i < gUnk_0201D810.count;) {
-        if ((s32)(gUnk_0201D810.cards[i] << 14) < 0) {
+        u32 *t = gUnk_0201D810.cards;
+        if ((s32)(t[i] << 14) < 0) {
             for (j = i; j < gUnk_0201D810.count; j++)
                 gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];
             gUnk_0201D810.count--;
@@ -1095,7 +1121,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         }
     }
     for (i = 0; i < gUnk_0201D810.count;) {
-        if (sub_0800966C(TARGET_ID(gUnk_0201D810.cards[i])) != 0) {
+        u32 *t = gUnk_0201D810.cards;
+        if (sub_0800966C(TARGET_ID(t[i])) != 0) {
             for (j = i; j < gUnk_0201D810.count; j++)
                 gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];
             gUnk_0201D810.count--;

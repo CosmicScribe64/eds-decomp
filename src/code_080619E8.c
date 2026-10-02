@@ -86,14 +86,6 @@ void sub_080619E8(void)
 }
 
 /* Draw the card frame (by card type / class) into OBJ tile memory (hypothesis). */
-#if 0 /* NONMATCHING: type/class switch and palette blit match exactly. Caching the three loop
-       * constants in locals (trick 4: maskHi=0xFF00, addHi=0x1000, addLo=0x10, assigned before the
-       * blit loops) reproduces the ROM hoists into sl/r8/r9, but gcc also hoists the 0xFF
-       * low-byte mask into ip (the ROM rematerialises it with `mov #0xFF`) and then spills
-       * (y+2)<<5. Tried constants as literals (only 0xFF00 hoisted), 64-bit temps (dead double
-       * loads), goto pixel loops (trick 3: no 0xFF hoist, but the src/dst registers move), and
-       * u16/u32/`!= 0`/`(u8)v` forms. The 0xFF hoist versus the ip scratch is the only
-       * remaining diff. */
 void sub_08061A1C(u16 id)
 {
     u16 x;
@@ -102,9 +94,7 @@ void sub_08061A1C(u16 id)
     const u16 *t;
     const u16 *src;
     u16 *dst;
-    s16 maskHi;
-    u32 addLo;
-    u16 addHi;
+    u16 pal;
     switch ((u8)CARD_TYPE(id)) {
     case 0x15: t = (const u16 *)0x08631558; break;
     case 0x16: t = (const u16 *)0x0862EEC0; break;
@@ -120,18 +110,20 @@ void sub_08061A1C(u16 id)
     }
     src = (const u16 *)((const u8 *)t + 0x10 + t[0] * 2);
     sub_08075294((void *)0x05000220, (const u8 *)t + 8, 0x40);
-    maskHi = 0xFF00;
-    addLo = 0x10;
-    addHi = 0x1000;
+    /* A variable palette offset, read as (u8)pal: the ROM builds 0x1000 as pal << 8 per loop nest. */
+    pal = 0x10;
     for (y = 0; y <= 3; y++) {
         for (x = 0; x <= 0xC; x++) {
             dst = (u16 *)(0x06010000 + (((u16)(x << 1)) + ((u16)(y + 2) << 5)) * 32);
             for (j = 0; j <= 0x1F; j++) {
-                s16 v = *src;
-                if (v & maskHi)
-                    v += addHi;
+                u16 w = *src;
+                u16 v = w;
+                /* FAKEMATCH: keeps the loaded word w apart from the accumulator v (as in sub_08072FAC) */
+                __asm__ __volatile__("" : : "r"(w));
+                if (w & 0xFF00)
+                    v += (u8)pal << 8;
                 if (v & 0xFF)
-                    v += addLo;
+                    v += (u8)pal;
                 *dst = v;
                 src++;
                 dst++;
@@ -142,24 +134,30 @@ void sub_08061A1C(u16 id)
         for (x = 0; x <= 1; x++) {
             dst = (u16 *)(0x06010000 + (((u16)(x << 1)) + ((u16)(y + 2) << 5)) * 32);
             for (j = 0; j <= 0x1F; j++) {
-                u16 v = *src;
-                if (v & maskHi)
-                    v += addHi;
+                u16 w = *src;
+                u16 v = w;
+                /* FAKEMATCH: keeps the loaded word w apart from the accumulator v (as in sub_08072FAC) */
+                __asm__ __volatile__("" : : "r"(w));
+                if (w & 0xFF00)
+                    v += (u8)pal << 8;
                 if (v & 0xFF)
-                    v += addLo;
+                    v += (u8)pal;
                 *dst = v;
                 src++;
                 dst++;
             }
         }
-        for (x = 0; x <= 1; x++) {
-            dst = (u16 *)(0x06010000 + (((u16)((x + 0xB) << 1)) + ((u16)(y + 2) << 5)) * 32);
+            for (x = 0; x <= 1; x++) {
+            dst = (u16 *)(0x06010000 + (((u16)((x << 1) + 0x16)) + ((u16)(y + 2) << 5)) * 32);
             for (j = 0; j <= 0x1F; j++) {
-                s16 v = *src;
-                if (v & maskHi)
-                    v += addHi;
+                u16 w = *src;
+                u16 v = w;
+                /* FAKEMATCH: keeps the loaded word w apart from the accumulator v (as in sub_08072FAC) */
+                __asm__ __volatile__("" : : "r"(w));
+                if (w & 0xFF00)
+                    v += (u8)pal << 8;
                 if (v & 0xFF)
-                    v += addLo;
+                    v += (u8)pal;
                 *dst = v;
                 src++;
                 dst++;
@@ -170,11 +168,14 @@ void sub_08061A1C(u16 id)
         for (x = 0; x <= 0xC; x++) {
             dst = (u16 *)(0x06010000 + (((u16)(x << 1)) + ((u16)(y + 2) << 5)) * 32);
             for (j = 0; j <= 0x1F; j++) {
-                u16 v = *src;
-                if (v & maskHi)
-                    v += addHi;
+                u16 w = *src;
+                u16 v = w;
+                /* FAKEMATCH: keeps the loaded word w apart from the accumulator v (as in sub_08072FAC) */
+                __asm__ __volatile__("" : : "r"(w));
+                if (w & 0xFF00)
+                    v += (u8)pal << 8;
                 if (v & 0xFF)
-                    v += addLo;
+                    v += (u8)pal;
                 *dst = v;
                 src++;
                 dst++;
@@ -182,8 +183,6 @@ void sub_08061A1C(u16 id)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080619E8", sub_08061A1C); /* 0x08061A1C size 0x308 */
 /* Load the picture `id` (6 bits per pixel, packed) into OBJ tile memory and its 64-colour palette (hypothesis). */
 /* Card picture loader: copies card id's 64-colour palette to OBJ palette 0x05000260, unpacks the
  * 6-bit-per-pixel picture (8 pixels per 3 halfwords, as in sub_0805DF34) into the 9x10 8bpp OBJ

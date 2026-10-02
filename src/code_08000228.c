@@ -387,35 +387,33 @@ extern const u8 gUnk_08080A5C[];
 
 /* Cursor sparkle: 6 sprites orbiting (sparkleX, sparkleY); older ones replay
  * positions from a 30-entry history ring, 3 frames apart. */
-#if 0 /* NONMATCHING: r7 and r8 are swapped (base vs &sparkleHead), and the no-op `add r4,#0`
-       * at the fallback join is missing. The attr/gap locals reproduce the target's
-       * `mov r3,#0; orr` and the `mul` by 3. */
 void sub_08000AC8(void)
 {
     u8 i;
-    s8 x, y;
-    u8 attr = 0; u8 gap = 3;
+    int x, y;
+    /* Zero y offset and the 3-frame trail gap stay in variables: the ROM keeps the
+     * `add r4,#0` / `mov r3,#0; orr` and the `mul` by 3 that constants would fold away. */
+    int off = 0; u8 gap = 3;
 
     for (i = 5; i != 0xFF; i--) {
-        x = SPARKLE_BASE_X + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 2 % 256 + 64], 0x400) >> 8);
-        y = SPARKLE_BASE_Y + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 4 % 256], 0x300) >> 8);
+        x = (u8)(SPARKLE_BASE_X + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 2 % 256 + 64], 0x400) >> 8));
+        y = (u8)(SPARKLE_BASE_Y + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 4 % 256], 0x300) >> 8));
         if (i != 5) {
-            u16 d = (i + 1) * gap - 30;
+            s32 d = (i + 1) * gap - 30;
             s32 idx = (SPARKLE_HEAD - d) % 30;
             if (SPARKLE_HIST[idx].x != 0xFF) {
-                u32 *obj = sub_0807B6B8(1, 4, SPARKLE_HIST[idx].x, SPARKLE_HIST[idx].y | attr, 0x20, 0x10, 4, gUnk_08080A5C[i], 0, 0, 0, gUnk_02014888);
+                u32 *obj = sub_0807B6B8(1, 4, SPARKLE_HIST[idx].x, SPARKLE_HIST[idx].y + off, 0x20, 0x10, 4, gUnk_08080A5C[i], 0, 0, 0, gUnk_02013DE0.unkAA8); /* 0x02014888; as a member it gives the base its extra ref (r7, not r8) */
                 *obj |= 0x400;
                 continue;
             }
         }
+        y += off;
         sub_0807B6B8(0, 4, x, y, 0x20, 0x10, 4, gUnk_08080A5C[5 - i]);
         SPARKLE_HIST[SPARKLE_HEAD].x = x;
         SPARKLE_HIST[SPARKLE_HEAD].y = y;
         SPARKLE_HEAD = ++SPARKLE_HEAD % 30;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08000228", sub_08000AC8); /* 0x08000AC8 size 0x18C */
 
 /* gMain (0x03000040): canonical layout in include/main.h. */
 #define gMain gUnk_03000040

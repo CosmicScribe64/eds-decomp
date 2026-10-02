@@ -309,7 +309,7 @@ def cmd_park(func, note):
     s, out = working_score(func)
     if s is None:
         die('the working copy does not compile; nothing parked')
-    start = meta.get('start_score')
+    start = meta.get('parked_score', meta.get('start_score'))
     if start is not None and s >= start:
         die(f'score {s} is not better than the starting draft ({start}); nothing parked')
     i, j, lines = marked_region(work, func)

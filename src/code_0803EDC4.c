@@ -108,10 +108,13 @@ int sub_0803EDC4(struct CardRef *ref)
     return 0;
 }
 
-#if 0 /* NONMATCHING: register numbering. pl and the temps use r2 and r1 the other way round from the
-       * ROM in the step-0 and key arms (12 diff lines). */
-/* AI: add the first two occupied, unflagged spell/trap zones (5-9); player 0: two-step pick, second target must differ from the first. */
-int sub_0803EE6C(struct CardRef *ref)
+/* sub_0802D800 is a condition callback that ignores its arguments; this caller
+ * passes its own second argument through to it (the ROM leaves it in r1 from
+ * entry to the call). The unit's prototype only names ref. */
+typedef int (*CondFunc_0803EE6C)(struct CardRef *ref, int arg);
+
+/* (ref, arg): AI: add the first two occupied, unflagged spell/trap zones (5-9); player 0: gate on sub_0802D800(ref, arg), then a two-step pick where the second target must differ from the first. */
+int sub_0803EE6C(struct CardRef *ref, int arg)
 {
     u8 *es;
     u8 *st;
@@ -139,7 +142,7 @@ int sub_0803EE6C(struct CardRef *ref)
     switch (*st) {
     case 0:
         ref->numTargets = 0;
-        if (sub_0802D800(ref) == 0)
+        if (((CondFunc_0803EE6C)sub_0802D800)(ref, arg) == 0)
             return 1;
         sub_080602A4(0x206, 0x712, 0xB, gUnk_080840A4);
         (*st)++;
@@ -170,8 +173,8 @@ int sub_0803EE6C(struct CardRef *ref)
             u32 *pa = (u32 *)(base + 0x824);
             int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
             int p = *pa;
-            u8 pos = (u8)z << 8 | *(u8 *)pa;
-            if (pos != ref->targets[0] && sub_0803DDAC(ref, p, z) != 0)
+            int pos = (u8)z << 8 | *(u8 *)pa;
+            if (ref->targets[0] != pos && sub_0803DDAC(ref, p, z) != 0)
                 return 1;
             sub_08077AEC(3);
         }
@@ -180,8 +183,6 @@ int sub_0803EE6C(struct CardRef *ref)
         return 0;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803EDC4", sub_0803EE6C); /* 0x0803EE6C size 0x1C8 */
 #if 0 /* NONMATCHING: the AI arm differs. The ROM keeps ref in r6, i in r7, and the constants
        * 1 / 0xFFFF / zone base in r8 / sl / ip, while ours has ref in r7 and i in r8. The human
        * arm is untested (structure believed right). */

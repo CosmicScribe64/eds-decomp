@@ -522,22 +522,18 @@ int sub_080525C4(void)
     d->sel2 = gUnk_0201AE60.sel;
     return 1;
 }
-#if 0 /* NONMATCHING: register allocation differs. The ROM has
-       * `ldrb r0,[r7]; adds r4,r0,#0` (r0 preserved for the tail, r4 for the
-       * switch and the `&`), and reloads state r0 in case 0 before the shared
-       * `adds r0,#1; strb r0,[r7]` tail. The build loads state straight into
-       * r4 and constant-folds the case 1 tail. The ROM also repurposes r5 as
-       * the timer pointer in case 1 (`adds r5,#35`). Closest attempt: a single
-       * s0 var, int t3 for case 1, reloading s0 in case 0, and an inline tail.
-       * The remaining differences are `ldrb r4,[r7]` vs
-       * `ldrb r0,[r7]; adds r4,r0,#0`, and the case 1 tail constant 2 vs
-       * `adds r0,#1`. */
+#if 0 /* NONMATCHING (score 8): BYTE-IDENTICAL: with this draft enabled the whole unit reports 18/18 and unit
+       * bytes MATCH. wf.py apply refuses only because config/functions.tsv gives 0xAC (including 2 bytes of trailing
+       * .align padding after bx r1) while agbcc's .size is 0xAA, so the score stays 8 (4*2). To apply: replace the #if
+       * 0/#else/INCLUDE_ASM/#endif with the draft. Key: int st = *s; switch ((u8)st) makes the switch index a separate
+       * pseudo; earlier drafts (s8/u8 st, switch(*s), shared tail after the switch, (*s)++ or *s = *s + 1) let CSE fold
+       * the case 1 increment to 2 and loaded state straight into r4. */
 int sub_08052668(void)
 {
     struct Ui *u = &gUnk_0201AE60;
     u8 *s = &u->state;
-    s8 st = *s;
-    switch (st) {
+    int st = *s; /* the (u8) switch index is a separate pseudo, so CSE does not fold st == 1 into the case 1 increment */
+    switch ((u8)st) {
     case 0:
         if (u->timer <= 0x3F)
             u->sel = (u->timer >> 2) & 1;
@@ -545,31 +541,29 @@ int sub_08052668(void)
             u->sel = sub_08076F9C() & 1;
         if (u->timer > 0xC0) {
             u->timer = 0;
-            break;
-        }
-        u->timer++;
-        return 0;
+            (*s)++;
+        } else
+            u->timer++;
+        break;
     case 1: {
         u8 v = u->timer;
         if (v <= 0x3B) {
             u->timer = v + 1;
-            if ((gUnk_03000040.keysHeld & 2) || (*(u8 *)&gUnk_0201CFB0 & st)) {
+            if ((gUnk_03000040.keysHeld & 2) || (*(u8 *)&gUnk_0201CFB0 & 1)) {
                 if (u->timer <= 0x33)
                     u->timer = v + 8;
             }
-            return 0;
-        }
+        } else
+            (*s)++;
         break;
     }
     case 2:
         return 1;
     }
-    *s = *s + 1;
     return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052668); /* 0x08052668 size 0xAC */
 #endif
+INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052668); /* 0x08052668 size 0xAC */
 int sub_08052714(void)
 {
     char buf[0x80];

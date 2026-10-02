@@ -717,19 +717,11 @@ static inline u16 SummonCardIdSymbol(u16 number)
     return *(gUnk_08623DF4 + ((number - 0x7D0) & 0x7FF)) + 1;
 }
 
-#if 0 /* NONMATCHING (score 28): summon/tribute state machine; size matches; remaining: case 80 block 1 reload
-       * rotation (first-DF4 r2, number2 r3, second-DF4 r1, step 0x1B30 r2); blocks 2/3 use const-int name table so
-       * reload picks match */
 void sub_080471E8(u16 faceUp, u16 special)
 {
     char text[0x80];
     char format[0x80];
     struct SummonCardRef ref;
-    /* FAKEMATCH: prepare both prompt calls before their shared state-advance tail. */
-    register int promptA asm("r0"); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-    register int promptB asm("r1");
-    register int promptC asm("r2"); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-    register char *promptStr asm("r3");
     u16 required; /* Assigned only for sequence values 0..2, as in the ROM. */
     switch (SD.step) {
     case 0:
@@ -811,7 +803,8 @@ void sub_080471E8(u16 faceUp, u16 special)
             break;
         default:
         normal_summon:
-            switch (SummonLevel(SD.cardId)) {
+            /* FAKEMATCH: consume the level so its constant arms still enter the switch head tests. */
+            switch (({ int level = SummonLevel(SD.cardId); asm volatile("" : : "r"(level)); level; })) {
             case 0:
             case 1:
             case 2:
@@ -987,34 +980,19 @@ void sub_080471E8(u16 faceUp, u16 special)
         }
         break;
     case 30: {
-        register char *dst asm("r3") = text; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-        register const char *fmt asm("r4") = gUnk_0808563C;
-        register const char *names asm("r5"); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-        unsigned offset = SummonCardId(SD.sequence + 0x172) * 0x40;
-        names = gUnk_0822C720;
-        asm("" : : "r"(names)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-        sub_080753F4(dst, fmt, (const char *)(offset + (u32)names));
-        promptA = 0x206;
-        promptB = 0x712;
-        promptC = 0xB;
-        promptStr = text;
-        asm("" : : "r"(promptA), "r"(promptB), "r"(promptC), "r"(promptStr)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-        goto normal_prompt;
+        sub_080753F4(text, gUnk_0808563C, (const char *)0x0822C720 + SummonCardId(SD.sequence + 0x172) * 0x40);
+        sub_080602A4(0x206, 0x712, 0xB, text);
+        SD.step++;
+        break;
     }
     case 31:
         if (sub_08052F38(0xE0)) {
-            /* FAKEMATCH: load the cursor through r1 before retaining it in r8. */
-            register struct SummonCursor *cursorBase asm("r1") = &SC;
-            __asm__("" : : "r"(cursorBase)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
             {
-                /* FAKEMATCH: preserve the cursor's original high-register lifetime. */
-                register struct SummonCursor *cursor asm("r8") = cursorBase;
+                /* FAKEMATCH: keep the cursor in r8. */
+                register struct SummonCursor *cursor asm("r8") = &SC;
                 int player = cursor->player;
-                /* FAKEMATCH: materialize the selected-zone address through r2. */
-                register int *zoneBasePtr asm("r2") = &cursor->zone;
-                __asm__("" : : "r"(zoneBasePtr)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
                 {
-                    int *zonePtr = zoneBasePtr;
+                    int *zonePtr = &cursor->zone;
                     int zone = *zonePtr;
                     int pi = player & 1;
                     int offset = zone * 0x94 + pi * 0xD64;
@@ -1022,16 +1000,8 @@ void sub_080471E8(u16 faceUp, u16 special)
                     struct DuelZone *card = (struct DuelZone *)(offset + (int)zoneBase);
                     u32 id = ID(card);
                     if (id != 0 && (card->flags6 & 2)) {
-                        unsigned index = (id & 0x7FF) * 2;
-                        /* FAKEMATCH: retain the byte index and r3 table load before reading sequence. */
-                        register const u16 *numbers asm("r3") = (const u16 *)0x08622AB4;
-                        const u16 *numberPtr;
-                        unsigned sequence;
-                        __asm__("" : : "r"(index), "r"(numbers)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-                        numberPtr = (const u16 *)(index + (int)numbers);
-                        sequence = SDZ.sequence;
-                        /* FAKEMATCH: keep r3 occupied until the sequence offset has loaded through r0. */
-                        __asm__("" : : "r"(numbers));
+                        const u16 *numberPtr = &((const u16 *)0x08622AB4)[id & 0x7FF];
+                        unsigned sequence = SDZ.sequence;
                         if (*numberPtr == sequence + 0x172) {
                             u32 message = 8;
                             if (player)
@@ -1376,13 +1346,7 @@ void sub_080471E8(u16 faceUp, u16 special)
                 sub_080753F4(text, gUnk_080857CC, gUnk_08085814);
             break;
         }
-        promptA = 0x206;
-        promptB = 0x712;
-        promptC = 0xB;
-        promptStr = text;
-        asm("" : : "r"(promptA), "r"(promptB), "r"(promptC), "r"(promptStr)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-    normal_prompt:
-        sub_080602A4(promptA, promptB, promptC, promptStr);
+        sub_080602A4(0x206, 0x712, 0xB, text);
         SD.step++;
         break;
     case 71:
@@ -1418,23 +1382,26 @@ void sub_080471E8(u16 faceUp, u16 special)
         int player = SD.player;
         int number1 = 0x582;
         u16 first = sub_08008794(player, number1) != 0;
-        /* FAKEMATCH: mix equivalent table-base forms to avoid a cached pointer. */
         int player2 = SD.player;
         int number2 = 0x584;
         u16 second = sub_08008794(player2, number2) != 0;
         if (first) {
             if (second) {
-                sub_080753F4(format, gUnk_0808581C, SUMMON_CARD_NAME(({ u32 i = number1 * 2; const u16 *t = (const u16 *)0x08623DF4; asm("" : "+r"(t)); *(const u16 *)(i + (u32)t); })));
+                sub_080753F4(format, gUnk_0808581C, SUMMON_CARD_NAME(SummonCardId(number1)));
+                /* A plain table read: SummonCardId's folded branches above end the CSE block, so the table
+                 * constant is not kept in a register across the call (the ROM reloads it). */
                 sub_080753F4(text, format, SUMMON_CARD_NAME(((const u16 *)0x08623DF4)[number2]));
                 sub_080602A4(0x206, 0x712, 0xB, text);
                 SD.step++;
             } else {
-                sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + ((const u16 *)0x08623DF4)[number1] * 0x40);
+                /* Integer name-table base: reload loads it here, as in the ROM. */
+                sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + SummonCardId(number1) * 0x40);
                 sub_080602A4(0x206, 0x712, 0xB, text);
                 SD.step++;
             }
         } else if (second) {
-            sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + ((const u16 *)0x08623DF4)[number2] * 0x40);
+            /* Integer name-table base: reload loads it here, as in the ROM. */
+            sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + SummonCardId(number2) * 0x40);
             sub_080602A4(0x206, 0x712, 0xB, text);
             SD.step++;
         } else {
@@ -1497,6 +1464,4 @@ void sub_080471E8(u16 faceUp, u16 special)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08046738", sub_080471E8); /* 0x080471E8 size 0x1DF8 */
 

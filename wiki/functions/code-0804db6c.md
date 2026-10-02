@@ -10,19 +10,19 @@ updated: 2026-10-01
 
 `0x0804DB6C`-`0x0804EFEF`, Thumb, `old_agbcc -O2`. Source: `src/code_0804DB6C.c`. Follows [[code-0804cb58]]. A mix of battle step machines (step byte at `0x020192E0+0x1B16`, bits 1-8, as in [[code-0804cb58]]; secondary step byte at `0x020192E0+0x1B22`/`+0x1B20`) and per-zone scans of both players' field zones (`0x0201930C + p*0xD64 + z*0x94`, zone word `w0 & 0xFFF` = card number). The unit ends with the effect dispatcher `sub_0804E948`, which calls the scans `sub_0804E538`, `sub_0804E5B4`, `sub_0804E780` and `sub_08046D3C`/`sub_08046CB0` from [[code-08046738]].
 
-Unit status: `unit bytes MATCH`, 5/11 functions in C (0x29C bytes); 6 stay `INCLUDE_ASM`. The exact whole-unit check is 11/11 including assembly fallbacks, 0x1484 bytes.
+Unit status: `unit bytes MATCH`, 7/11 functions in C after workflow wave 1 (2026-10-01: `sub_0804E240`, `sub_0804E5B4` added); 4 stay `INCLUDE_ASM`. Before wave 1: 5/11 (0x29C bytes of C). The exact whole-unit check is 11/11 including assembly fallbacks, 0x1484 bytes.
 
 | Address | Size | Status | Purpose (hypotheses) |
 |---|---|---|---|
 | `0x0804DB6C` | 0x11C | matching C | `int (player)`: bails out (returns 1) while `sub_08021628()`; calls `sub_08046B54(1-p, defSlot)`; if the defender zone holds a card, `sub_08008A1C(p) > 0` and `sub_0800A78C(1-p, def, 0x4DB)`, calls `sub_08019078(1-p, pos, p \| sub_08008A44(p)<<8)`; if card 0x602 is present on either side, `sub_080197E0(p, gUnk_086249F8[0])` and returns 1, else resets the step and returns 0. An initialized `+r` copy constraint retains the ROM's `q` copy before `(u8)` narrowing |
 | `0x0804DC88` | 0x5B8 | complete C draft in `#if 0`; asm active | step machine (9-entry jump table on the halfword step); processes linked cards, flagged graveyard entries and prompts, then sets the player's byte-9 bit 4 |
-| `0x0804E240` | 0xDC | 8-byte near miss in `#if 0`; asm active | `int (player)`: scan both players' zones 0-4 for a card with zone byte `+0x8C` bit 1 (destroy via `sub_08018544`) or bit 2 (message 0xA2, `sub_08019078`, or destroy if `sub_08008A44(1-i) < 0`); returns 1 when none. Only loop-entry invariant order differs |
+| `0x0804E240` | 0xDC | **matching** (wave 1, 2026-10-01) | `int (player)`: scan both players' zones 0-4 for a card with zone byte `+0x8C` bit 1 (destroy via `sub_08018544`) or bit 2 (message 0xA2, `sub_08019078`, or destroy if `sub_08008A44(1-i) < 0`); returns 1 when none. Ordinary C (see below) |
 | `0x0804E31C` | 0xA0 | matching C | `int (a)`: table `gUnk_0819D1D8` of handler pointers indexed by the step (bits 9-16 of the word at `0x020192E0+0x1B14`); if present call it with `a`, on nonzero result reset the halfword step and advance the word step (return 0); if absent send message 0x54 (0x8054) and return 1. An initialized shifted-step constraint preserves the second index extraction; the player flag is evaluated before the message value |
 | `0x0804E3BC` | 4 | matching | `void`, empty |
 | `0x0804E3C0` | 0x60 | matching | queues a sprite draw `sub_08076714(v, 0x40C0, 0xF364, tab[(gMain+0x485E >> 1) & 15] << 16)` where `v` = 0x2800A0 or 0x7000A0 depending on `*(0x0201CFB0+0x810) - byte(0x0201CFB0+4) <= 0x47` |
 | `0x0804E420` | 0x118 | nonmatching (asm), attempt in `#if 0` | multi-step routine (step byte `0x0201AF00`): clears byte 9 bit 2 of a player, or prints message 0x50 / runs `sub_08024134` / sets `0x0201CFB0+0x808` bit 3 / `sub_080199E0(1, 1)`; ROM keeps constant 1 in a register and ANDs it with a re-extracted bit (`PS[1 & who]`), gcc folds the AND |
 | `0x0804E538` | 0x7C | matching | for zones 0-4 of `player` with a face-down card (`flags6 & 2`) whose card key (`0x08622AB4`) is 0x16: message 0x73 (0x8073 for player 1) then `sub_08018AE8(player, i, 0)` |
-| `0x0804E5B4` | 0x1CC | nonmatching (asm), attempt in `#if 0` | 3-step routine on the step byte `0x020192E0+0x1B22` with zone counter `+0x1B23`: scan for a face-down card with key 0x228, then card-name prompt, then message 0x43 + `sub_08019078` per found zone. Same structure, register allocation differs |
+| `0x0804E5B4` | 0x1CC | **matching** (wave 1, 2026-10-01) | 3-step routine on the step byte `0x020192E0+0x1B22` with zone counter `+0x1B23`: scan for a face-down card with key 0x228, then card-name prompt, then message 0x43 + `sub_08019078` per found zone. Ordinary C (see below) |
 | `0x0804E780` | 0x1C8 | nonmatching (asm), attempt in `#if 0` | two passes over the face-down zones of `player`: set `found` if a level <= 3 monster (level from the `0x08621DE0` table, as in [[code-08046738]] `sub_08046F20`) with byte `+8` bit 0 clear exists and card 0x52A is on the field (message 0x73), then destroy them / send message 0xA6. Same structure; ROM steps a zone pointer while counting `i` up, we get a mul per iteration or a counted-down loop |
 | `0x0804E948` | 0x6A8 | complete C draft in `#if 0`; asm active | effect dispatcher: calls the scans above, `sub_0801FBCC`, `sub_080088A4`, `sub_0800AA40`; handles linked zones and graveyard notifications |
 
@@ -53,7 +53,7 @@ The saved checkpoint log is `build/bigguns-effects/code_0804DB6C-checkpoint.log`
 compared with ROM bytes; their behavior was audited against source assembly, without executed
 differential cases.
 
-- **E240:** `build/bigguns-effects/e240-final/best.c` is 0xDC, with only 8 differing bytes.
+- **E240** (matched in wave 1, see below): `build/bigguns-effects/e240-final/best.c` is 0xDC, with only 8 differing bytes.
   The remaining difference is the order of three invariant calculations at loop entry: ROM computes
   `i & 1`, `(u8)(1-i)`, `(u8)i`; C computes the last, the middle, then the first. All subsequent bytes
   match. The useful changes are a `u16` message, byte bitfield view for zone flags, and an explicit
@@ -90,4 +90,30 @@ as an induction value before later calls. Do not promote that diagnostic candida
 The latest active fallback-inclusive check is `code_0804DB6C-parked-check.log`, still exact 0x1484.
 
 ## `sub_0804E240` hoist order (2026-10-01)
+
+> Superseded: the wave 1 match below found the actual mechanism (GCSE PRE plus loop.c's two passes), which refines the source-order explanation here.
+
 The inner loop's hoisted invariants follow the source order of their first use within one loop pass. The parked draft now declares `u8 opp = 1 - i` after the zone pointer (with `iu` first) and is down to 4 diff lines: the ROM hoists `(i & 1)`, `(u8)(1 - i)`, `(u8)i` while the build puts `(u8)i` first. Placing `iu` after `opp`, or computing `side = i & 1` in the outer loop, is worse.
+
+## Wave 1 matches (2026-10-01)
+
+Both scans matched in ordinary C with no FAKEMATCH; the unit check reports 11/11, bytes exact. Working notes: `build/wf/sub_0804E240/NOTES.md`, `build/wf/sub_0804E5B4/NOTES.md`.
+
+### `sub_0804E240` (0xDC)
+
+Only the order of the inner-loop invariants in the preheader differed (ROM: `i&1`, `(u8)(1-i)` strength-reduced as `r4>>24`, `(u8)i`; draft: `(u8)i` first). Root cause, from `-dG`/`-dL` dumps and the agbcc `loop.c` / `gcse.c` sources:
+- `u8 iu = i` at the top of the loop body is computed on every path, so GCSE PRE (LCM) hoists `i<<24` to the end of the outer block, ahead of everything loop.c moves.
+- loop.c runs twice. Pass 1 moves the constant 1, then the forced `1-i` / `<<24` / `>>24` chain. `i&1` (life 3) is "not desirable" in pass 1 and only moves in pass 2, so it lands after `opp`. The threshold drops by 3 after each move (T0 is 12-13).
+- Fix 1: `int side = i & 1;` as the first statement of the inner body. Its lifetime now covers the `j*0x94` computation, so pass 1 finds it desirable and moves it before the opp chain.
+- Fix 2: write `(u8)i` inline as the first OR operand, `pos = (u8)i | (u8)j << 8;`. It is conditional, so PRE leaves it alone; its temporaries stay inside one basic block, so loop.c may move them, and the longer temp life makes pass 2 move them last.
+- Required: `int i = 0` with `for (; i <= 1; i++)` (`for (i = 0; ...)` scores 10), the `u8 *zb` base (a literal `0x0201930C` scores 46), and the shared `found: return 0;` label (plain returns score 72). The empty memory barrier of the older frontier is no longer needed.
+- Failed: `u8 iu` after opp at the loop top (18); `iu` inside the b2 block (84, never hoisted); `(u8)i` as the second OR operand (93, combine merges it).
+- Tooling note: this function was byte-exact before `wf.py` could apply it; the 2-byte `.align 2, 0` pad after the final `bx r1` made the size delta nonzero. `check.py` now ignores a delta that is only that pad (see [[agent-tooling]]).
+
+### `sub_0804E5B4` (0x1CC, start score 40)
+
+The ROM preheader hoists the constants `1` (r8), `g = e` (a copy), `st` (a copy), 0x7FF (ip) and 0x228 (r7) in that order, keeps `e+0x2C` inside the loop, and caches the step byte across the `h14` store (`adds r0, r3, #1`).
+- Inside the loop, access the duel state through the global `gUnk_020192E0[...]` instead of the local `e`. The SYMBOL_REF base lets alias analysis keep the step value across the store to `gUnk_0201AE60.h14`; the loop's symbol loads are hoisted, and cse2 turns them into the copies `g = e` and `st = r0`.
+- `int side = player & 1;` at the top of the loop body, used as `idx * 0x94 + side * 0xD64`. The constant 1 is then the first movable, and loop.c matches it with the `h14` constant 1; the `& 1` and the multiply are CSE'd back onto the base register.
+- Failed: an explicit cached `int v = *s2 + 1` (95); `(player & 1) * 0xD64` inline after the idx term (8: the 1 is hoisted after g and st); base term first (30); `int side = (player & 1) * 0xD64` (30); an extern `gUnk_08622AB4[]` instead of `((const u16 *)0x08622AB4)` (41).
+- Debug aid: `build/wf/sub_0804E5B4/dump.sh` with `-dL` dumps loop.c's movable decisions. See [[matching-tricks#Loops, scope, escapes and live ranges]].

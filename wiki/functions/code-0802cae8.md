@@ -10,7 +10,7 @@ updated: 2026-10-01
 
 The unit covers `0x0802CAE8`-`0x0802DB2F` (Thumb, `old_agbcc -O2`), and its source is `src/code_0802CAE8.c`. It follows [[code-0802bad0]] (whose `(ref, pos)` target checks it calls) and [[code-0802aac0]].
 
-Unit status: `unit bytes MATCH`, **30/31 functions in C** (0x1048 bytes, verified with `tools/check.py code_0802CAE8`). One is `INCLUDE_ASM` with its best attempt under `#if 0`.
+Unit status: `unit bytes MATCH`, **31/31 functions in C** since workflow wave 1 (2026-10-01), when the last fallback `sub_0802D058` matched (0x1048 bytes, verified with `tools/check.py code_0802CAE8`).
 
 ## Shared headers
 
@@ -37,7 +37,7 @@ The core of the unit is `sub_0802CE38(ref, other, x)`, a **"can this card effect
 | `0x0802CE38` | 0x168 | matching | the dispatcher above. Also: fail if `sub_0800966C(id)`; with `other`, need `CardClass(ref) >= CardClass(other)` and `!= 1`; if `ref->unk2_10 == 0x11` the card number must be one of 15 (0x28A, 0x291, 0x2B0, 0x3F7/8, 0x433/4, 0x43A, 0x44B, 0x49A, 0x4B3/4, 0x522, 0x587, 0x5FE) | `CanUseCardEffect` |
 | `0x0802CFA0` | 0x30 | matching | `(player, id, u16 x)`: builds a `CardRef` on the stack and calls `sub_0802CE38(&ref, 0, x)` |
 | `0x0802CFD0` | 0x88 | matching | `(player, zone, kind)`: same for a field zone (id from the zone word, `zone`, `unk2_10 = kind`); 0 if the zone is empty |
-| `0x0802D058` | 0x88 | **nonmatching** | `u16 (player, zone)`: 1 if either action list of `0x02017A40` (list B `+0x280` count `+0x3C0`, list A `+0x000` count `+0x3C4`, 0x14-byte entries whose word at +2 is player bit 0 / zone bits 4-9) has an entry for (player, zone). Loop code is right, register allocation differs |
+| `0x0802D058` | 0x88 | **matching** (wave 1, 2026-10-01) | `u16 (player, zone)`: 1 if either action list of `0x02017A40` (list B `+0x280` count `+0x3C0`, list A `+0x000` count `+0x3C4`, 0x14-byte entries whose word at +2 is player bit 0 / zone bits 4-9) has an entry for (player, zone). Plain struct-array indexing through the global; see [the wave 1 section](#action-list-lookup-matched-wave-1-2026-10-01) |
 | `0x0802D0E0` | 0x17C | matching | `u16 (ref, player, zone)`: field card check: temp `CardRef` copy (`sub_08075294` = memcpy 0x14), id from the zone; need type > 20, `CardClass(zone card) >= CardClass(ref)`, no pending action (`D058`), not face-up (numbers 0x52C/0x3F9/0x594/0x5FC count as face-down), zone byte +0x91 bit 2 set and bit 3 clear, and for a Trap no card 0x2EF on the field; then `sub_0802CE38(&tmp, ref, 0)` |
 | `0x0802D25C` | 0xB0 | matching | `u16 (ref, player, idx)`: same for hand card `idx`: must be type 22 with stat bits 17-19 == 5, `CardClass >=`, `sub_08008C94(player, id)`, then the dispatcher |
 | `0x0802D30C` | 0x108 | matching | `(ref, player)`: does `ref` have any usable target: field zones 5-9 via `D0E0`; if `player == duel+0x1B12 bit 1` also hand cards (count at player block +2) via `D25C`, else if `ref` is type 22, a face-up unlocked zone 0-4 holding card 0x5F5 |
@@ -71,7 +71,7 @@ The core of the unit is `sub_0802CE38(ref, other, x)`, a **"can this card effect
 - **Inlined function with several returns** (`CardKindOf`): old_agbcc copies the result out of the "return register" (`adds r2,r0,#0`) exactly as in the ROM, so a `static inline` helper with `return`s reproduces `0x0802CD28` (the plain local `v = ...` does not).
 - `switch (t2) { case 21: case 22: w = ...; default: w = 0; }` gives the signed `bgt`/`blt` pair; `if (t <= 22 && t >= 21)` merges into an unsigned range test.
 - **Early returns give the ROM's block order** when it emits the `return 1` block before the loop: `if (x != 0) return 0; if (!flag) return 0; for (...) { if (found) return 1; }` (`0x0802D414`, `0x0802D67C`).
-- `for (...; i++)` with a pointer `p += 0x14` step: write `p += 0x14, i++` in that order (`0x0802D058`).
+- `for (...; i++)` with a pointer `p += 0x14` step: write `p += 0x14, i++` in that order. This was only a partial improvement for `0x0802D058`, whose match (wave 1) uses no hand-made pointer at all; see below.
 - `(1 - ref->player) & 1` matched with `ZB2` (p term first) / literal 1 and `ref->player` used directly in the loop (its shift `lsl #31` is hoisted, the `lsr` stays).
 - `u16 id = CARD_ID(...)` (instead of `int`) makes agbcc hoist the `0x7FF` mask constant out of the loop (`0x0802D97C`, `0x0802D30C`).
 - `gUnk_0819A9D4[idx].checkZone` read directly into locals (not through a `rule` pointer) gives the ROM's `(base + 8) + idx * 24` address form.
@@ -82,8 +82,8 @@ The core of the unit is `sub_0802CE38(ref, other, x)`, a **"can this card effect
 ## Unsolved and resolved items
 
 - Resolved `0x0802CFD0`: assign `&ref.id` to a local bound to `r5` before computing the id, preserve the initialized player argument with an empty read/write constraint, then mask it separately for the zone address. The player-first `ZB2` source expression emits the ROM's zone-first multiply sequence. These FAKEMATCH choices preserve the original ABI, emit no instructions and introduce no unset scratch values.
-- `0x0802D058`: register allocation of the base pointer (see table).
-- Resolved `0x0802D6D4`: place the default/shared `return 0` before the two case bodies. Each case holds the initialized raw shifted player in `r3` and an initialized mask of one; empty constraints keep the explicit player mask and repeated extractions. A read/write constraint after the fusion-count comparison in the 0x1A3 case prevents hoisting the next extraction before that comparison. The initialized compiler hints are marked FAKEMATCH and emit no instructions. `sub_0802D058` is the only remaining assembly function.
+- Resolved `0x0802D058` (wave 1, 2026-10-01): register allocation of the base pointer; see below.
+- Resolved `0x0802D6D4`: place the default/shared `return 0` before the two case bodies. Each case holds the initialized raw shifted player in `r3` and an initialized mask of one; empty constraints keep the explicit player mask and repeated extractions. A read/write constraint after the fusion-count comparison in the 0x1A3 case prevents hoisting the next extraction before that comparison. The initialized compiler hints are marked FAKEMATCH and emit no instructions. `sub_0802D058` was then the only remaining assembly function (matched in wave 1).
 
 ### Return declaration reconciliation (2026-10-01)
 
@@ -92,3 +92,17 @@ The core of the unit is `sub_0802CE38(ref, other, x)`, a **"can this card effect
 ## 2026-10-01 card-scan interface reconciliation
 
 `sub_0802CE38` now returns `int`; all its returns are full-register 0 or 1. Its existing argument types and predicate behavior are unchanged, and the word consumers in [[code-0805a30c]] agree with this declaration. The complete unit bytes are unchanged. These declaration repairs add no coverage; per-unit artifacts are under `build/bigguns-lead2/` and the full ROM passes at `build/lead-pass27/`.
+
+## Action-list lookup matched (wave 1, 2026-10-01)
+
+`sub_0802D058` (0x88, start score 32) matches in ordinary C on the first try, with no FAKEMATCH. Working notes: `build/wf/sub_0802D058/NOTES.md`.
+
+- The old draft walked a hand-made `u8 *p` from a `base` local (`p + 0x282`, `base + 2`). agbcc then kept the base in r6 and the walking copy in r1; the ROM loads the base into r1 and copies it to r7.
+- What matched: plain struct-array indexing through the global, with no locals besides `i`:
+
+      for (i = 0; i < gUnk_02017A40.countB; i++)
+          if (gUnk_02017A40.listB[i].player == player && gUnk_02017A40.listB[i].zone == zone)
+              return 1;
+
+  and the same loop over `listA` / `countA`. Loop strength reduction creates the pointer giv itself (base + i*0x14, with 0x282 in ip, then base+2), and the allocation comes out as in the ROM.
+- Lesson: when the ROM's walking pointer looks compiler-made, try the indexed form before hand-writing the pointer.

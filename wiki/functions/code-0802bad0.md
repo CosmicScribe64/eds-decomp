@@ -10,7 +10,7 @@ updated: 2026-10-01
 
 `0x0802BAD0`–`0x0802CAE7`, Thumb, `old_agbcc -O2`. Source: `src/code_0802BAD0.c`. Continues [[code-0802aac0]] (`0x0802B1B8`–`0x0802BA68`, same signature and zone helpers).
 
-Unit status: `unit bytes MATCH`, 32/33 functions in C (complete 0x1018 bytes, verified after enabling `sub_0802C3C0` and `sub_0802C080` with `tools/check.py code_0802BAD0`). Only `sub_0802BBDC` remains `INCLUDE_ASM` with its attempt in `#if 0`. Latest log: `build/middle_experiments/sub_0802C080/unit-check.log`.
+Unit status: `unit bytes MATCH`, **33/33 functions in C** since workflow wave 1 (2026-10-01), when the last fallback `sub_0802BBDC` matched. Complete 0x1018 bytes; before that, 32/33 was verified after enabling `sub_0802C3C0` and `sub_0802C080` with `tools/check.py code_0802BAD0`. Latest log: `build/middle_experiments/sub_0802C080/unit-check.log`.
 
 Nearly every function is a target check `int f(struct CardRef *ref, u16 pos)`, where `pos` is `player | zone << 8` with the player in the low byte. It returns 0 or 1 (often a face-up flag). They are probably the per-card "can `ref` target the card in (player, zone)" predicates dispatched from a table (hypothesis; see [[code-0802aac0]]). The functions from `0x0802C77C` on take only `ref` and are card-effect steps. They queue duel events (`sub_0801EC58`) or ask the player to pick a card, and return 1 when done.
 
@@ -31,7 +31,7 @@ Since 2026-09-30 this unit uses the canonical shared layouts instead of its own 
 | `0x0802BAD0` | 0x70 | matching | zone 0-4, occupied, face-up, `sub_0802B1B8` ok, and `sub_0800C8BC == 1` |
 | `0x0802BB40` | 0x54 | matching | zone 0-4, `sub_0802B1B8` ok, occupied (reusing `zone` keeps `ret` in r3) |
 | `0x0802BB94` | 0x48 | matching | other player's occupied face-down zone |
-| `0x0802BBDC` | 0x14C | **nonmatching** | face-up allowed occupied zone; `switch (ref number)` 0x28C/0x293/0x295/0x296/0x297/0x40C/0x40D compare `sub_0800C8BC` with 0xF/7/0xA/6/8/0x12/3; 0x28F needs `sub_0800A668(...) > 0`. Logic is right; register allocation differs |
+| `0x0802BBDC` | 0x14C | **matching** (wave 1, 2026-10-01) | face-up allowed occupied zone; `switch (ref number)` 0x28C/0x293/0x295/0x296/0x297/0x40C/0x40D compare `sub_0800C8BC` with 0xF/7/0xA/6/8/0x12/3; 0x28F needs `sub_0800A668(...) > 0`. Ordinary C; see [the wave 1 section](#target-check-matched-wave-1-2026-10-01) |
 | `0x0802BD28` | 0x70 | matching | no card 0x58A on either side (`sub_08008524`), occupied, face-down, bit 0 set |
 | `0x0802BD98` | 0x58 | matching | occupied, allowed: returns face-up flag |
 | `0x0802BDF0` | 0x80 | matching | occupied, card number not in 0x780-0x7CF, allowed: face-up flag (a redundant `u16` copy of the id reproduces the ROM's register move) |
@@ -85,13 +85,23 @@ Since 2026-09-30 this unit uses the canonical shared layouts instead of its own 
 ## Remaining and historical allocation findings
 
 - **Resolved `u16 pos` copy in `0x0802BE70`** (`lsrs r0,r1,#16; adds r7,r0,#0`): initialize a u16 normalization local bound to `r0` and use an empty input constraint before assigning the preserved copy. Computing the player from that copy keeps the normalization and r7 copy separate while the original pos supplies the zone. This FAKEMATCH hint emits no instructions, introduces no unset values and preserves the original `(ref,u16 pos)` ABI.
-- `0x0802BBDC`: register allocation (`p*0xD64` in `r9`, zone ptr in `sl`, base reloaded). The permuter's best is score 270.
+- Historical `0x0802BBDC`: register allocation (`p*0xD64` in `r9`, zone ptr in `sl`, base reloaded); the permuter's best was score 270. Resolved in wave 1 (see below).
 - `0x0802C3C0`'s historical permuter "score 0" was a false positive: its old metric ignored branch targets. The current accepted source is independently exact with strict branch targets and all unit bytes; see the resolved technique below.
 - `0x0802C080`'s historical permuter match read an unset `new_var` and was rejected. The current accepted ordinary C uses no such scratch and reproduces the shared comparison by putting an explicit default return before the allowed cases, as described below.
-- Historical id/pos-copy observations are related to `0x0802B48C`/`0x0802BA68` in [[code-0802aac0]]; this unit now has only the `sub_0802BBDC` fallback listed above.
+- Historical id/pos-copy observations are related to `0x0802B48C`/`0x0802BA68` in [[code-0802aac0]]; this unit has had no assembly fallback since `sub_0802BBDC` matched in wave 1.
 
 ## Resolved level predicate
 
 Fresh `sub_0802C3C0` baseline was 0x108 versus ROM 0x11C. `CARD_LEVEL(level,id)` followed by one empty `+r(level)` retains the initialized result through the shared `level != 0` test, including the original zero/ten case blocks. An inline level helper alone did not stop the jump-threading. A separate initialized `count = level2 + 1` narrows the remaining call-order miss to four bytes; initializing a local argument copy bound to r0 before `sub_08044224(arg0,0x526,count)` fixes them. The argument input constraint was removed and bytes stayed exact. The remaining read/write constraint emits no instruction, no value is unset, and the original `(ref,u16 pos)` and called-helper ABIs remain. Both original level computations and their table rereads are retained. Source documents the compiler choices as FAKEMATCH. The function is exact at 0x11C and the entire unit at 0x1018, with C coverage now 31/33; log `build/middle_experiments/sub_0802C3C0/unit-check.log`. Private scripts `card_level_boundaries.py` and `card_level_call_order.py` retain the bounded failed variants and successful branch/call-order stages.
 
 `sub_0802C080` was then resolved in ordinary C. Fresh baseline was 0x1B4 versus ROM 0x1B0, with the correct enum tree except for a duplicated final comparison. Placing `default: return 0;` before the entire allowed case group makes the 0x604 arm branch to the same final `cmp r2,r0; bne fail` as 0x60E. A default after the group, a common failure goto, explicit case-body return and added success labels did not settle it. The fix uses no hint, unset variable, changed card set, extra access or ABI change. `card_set_tails.py` records the bounded layout grid. The clean body and the complete 0x1018 unit are exact, with C coverage now 32/33. Log `build/middle_experiments/sub_0802C080/unit-check.log`.
+
+## Target check matched (wave 1, 2026-10-01)
+
+`sub_0802BBDC` (0x14C, start score 38) matches in ordinary C, with no FAKEMATCH. Working notes: `build/wf/sub_0802BBDC/NOTES.md`.
+
+- The difference was register allocation only: global-alloc priority ties between `ref`, `base` and `z` (3 refs over 40 insns each), and between zone94/zone and pD64/refId, were decided the other way from the ROM.
+- `if (zone > 4) return 0;` as its own early return, instead of `zone <= 4 &&` inside the big condition, changes live lengths (+1 for zone94/pD64, +1 or +2 for ref) and gives the ROM's priority order a, zone, zone94, player, refId, pD64, z (r4 to sl). Score 2.
+- The second zone address written `p * 0xD64 + zone * 0x94 + base` (player term first, not the `ZB` macro's zone-first order) fixes the `adds r0, r6, r1` operand order. Score 0.
+- Priority is `floor_log2(refs) * refs / live_length`, and live length counts insns that combine later deletes. Method: `build/wf/sub_0802BBDC/exp.py` compiles a variant with `-dg` and prints the greg allocation order. See [[matching-tricks#Register allocation priority and reload rotation]].
+- Failed: `(2 & ZFLAGS)`, a `flag6_1` bitfield, `<< 20` without `>> 20` (no change); sibling `sub_0802B558`-style early returns for every test (66).

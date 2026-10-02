@@ -10,14 +10,14 @@ updated: 2026-10-01
 
 `0x0803EDC4`-`0x0803FE6F`, Thumb, `old_agbcc -O2`. Source: `src/code_0803EDC4.c`. Continues [[code-0803dd7c]] (same target pickers: `int pick(struct CardRef *ref)` returns 1 when the targets are filled in, 0 while waiting; step byte at `0x02017A40 + 0x3E5`; the common helper is `sub_0803DDAC(ref, player, zone)`, which adds a target if accepted; see that page). `CardRef` is the one from [[code-08030b88]] with three target slots.
 
-Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC-byte unit), 10/12 functions in C after enabling `sub_0803FC88`; 2 stay `INCLUDE_ASM` (attempts under `#if 0`). Verification log: `build/middle_experiments/sub_0803FC88/unit-check.log`.
+Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC-byte unit), 11/12 functions in C after workflow wave 1 (2026-10-01, `sub_0803EE6C` added; `sub_0803FC88` was enabled earlier); `sub_0803F034` stays `INCLUDE_ASM` (attempt under `#if 0`). Verification log: `build/middle_experiments/sub_0803FC88/unit-check.log`.
 
 ## Functions
 
 | Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
 |---|---|---|---|
 | `0x0803EDC4` | 0xA8 | matching | prompt `gUnk_0808405C`, keys `0xD2 << 16`, add the cursor position (`sub_0803DDAC` accepts, else `sub_08077AEC(3)`) |
-| `0x0803EE6C` | 0x1C8 | **nonmatching (asm)** | AI: adds the first two occupied unflagged spell/trap zones (5-9); player 0: 4 steps 0..3 (`sub_0802D800` gate, prompts `gUnk_080840A4` / `gUnk_080840D8`, keys `0x20002` twice, the second pick must differ from `targets[0]`). AI loop matches; current human arm also reloads cursor offset 0x828 instead of advancing 0x824, adding four bytes, as well as differing r1/r2 temporaries |
+| `0x0803EE6C` | 0x1C8 | **matching** (wave 1, 2026-10-01) | AI: adds the first two occupied unflagged spell/trap zones (5-9); player 0: 4 steps 0..3 (`sub_0802D800` gate, prompts `gUnk_080840A4` / `gUnk_080840D8`, keys `0x20002` twice, the second pick must differ from `targets[0]`). Matched once the real second parameter `arg` was restored (see below) |
 | `0x0803F034` | 0x310 | **nonmatching (asm)** | `(ref, arg)`; AI: up to two picks, preferring player-1 zones whose card number is in 0x10-0x14 (`gUnk_02015EE8+4 & 0x200` enables it), else `sub_0805748C(0, i > 0 ? 0 : -1, 1, 1)`; the second pick must differ from `targets[0]`; player 0: 6-step machine (`sub_0802CE38` gate, `sub_08008860(0) + (1)` count, prompts `gUnk_0808410C` / `0808413C` / `08084178`, keys `0xF000F0`). Draft in `#if 0`; the ROM keeps `ref` in r6, `i` in r7 and the constants (1, 0xFFFF, zone base) in r8/sl/ip, ours does not |
 | `0x0803F344` | 0x2AC | matching | AI: `sub_0805748C(0, -1, 1, 1)` result as target 0; player 0: card-dependent prompt (0x280 / 0x403 / 0x42C+0x5EA / other, each guarded by `sub_080088A4(1 - player, ...)`), step 1: keys 0xF0<<16 or 0xE0<<16 by card, then the pick is validated with `sub_0802B1B8` and per card (0x42C: not card 0x547; 0x42C/0x4DC: face-down flag 2) |
 | `0x0803F5F0` | 0xAC | matching | prompt `gUnk_08084290` only if `sub_080088A4(p, 1, 0)` (else done at once), keys 0xE0 |
@@ -40,7 +40,7 @@ Unit status: `unit bytes MATCH` (`tools/check.py code_0803EDC4`, complete 0x10AC
 - **Two-copy `1 & ref->player`**: `pl = 1 & ((u8 *)ref)[2]; one = 1;` then `one - ref->player` (bitfield read) in the same function, see `0x0803F344`.
 
 ## Open problems
-`0x0803EE6C` (cursor-offset reload and r1/r2 temporaries in the step-0 and key arms), `0x0803F034` (AI arm register assignment).
+`0x0803F034` (AI arm register assignment). `0x0803EE6C` (cursor-offset reload and r1/r2 temporaries) was resolved in wave 1; see below.
 
 ### Bounded experiments
 
@@ -53,3 +53,13 @@ Fresh `sub_0803FC88` baseline was 0x1D0 against ROM 0x1E8 (299 differing bytes),
 That six-byte proposal was subsequently settled and enabled. A bounded 60-second permuter found that retaining case 3's derived step pointer separately before its use restores the shared-tail and reset registers. Case 2's equivalent signed addition form `p = e - (-off)` fixes the final reversed ADD operand; `off` is an initialized `int` 0x3E5, so negation is defined and the subtraction is exactly `e + 0x3E5`. Hint minimization removed both r0 pointer pins/inputs and every case-3 offset/pointer hint. Only two empty read/write constraints remain: initialized named r2 case-2 offset keeps that address setup separate, and initialized sound id 3 keeps case 3's sound tail distinct from case 5. The hints emit no asm instructions and add no ABI parameters or uninitialized values. The reformatted clean body and complete 0x10AC unit both match. Archives: `clean-body.c`, `minimal-match.c`, `unit-check.log` in `build/middle_experiments/sub_0803FC88`; `three_pick_permute_finish.py` and `three_pick_minimize.py` record the bounded follow-up and removed hints.
 
 A later follow-up on `sub_0803EE6C` tried staged cursor pointers, field-mask order and separate sound lifetimes without an exact result. A bounded permuter reached score 15 only by placing an initializer before a switch case, where control flow skips it; all such outputs are rejected. Valid initialization outside the switch plus an empty result constraint reaches the correct 0x1C8 size with 24 differing bytes, but adds a zero-register initializer, changes the step-offset register and compares key result against that register instead of the ROM's immediate zero. Copying the existing proven-zero player or leaving the extra result unused did not settle this. Private scripts `two_pick_lifetimes.py`, `two_pick_initialized_zero.py`, `two_pick_dead_zero.py`; `sub_0803EE6C/permuter-new.log` records the bounded search. No invalid or near-match proposal was enabled.
+
+## Target picker matched (wave 1, 2026-10-01)
+
+`sub_0803EE6C` (0x1C8, start score 18) matches in ordinary C. Working notes and reload-tracing scripts: `build/wf/sub_0803EE6C/` (`dump.sh`, `reloads.py`).
+
+- Case 3: `u8 pos` gave `ldrb` where the ROM has `ldrh`; `int pos` with `ref->targets[0] != pos` fixes it.
+- Root cause of the r1/r2 temporaries and the extra `0x828` literal: the two temporaries are **reload registers**, not pseudos (combine folds the `ldrb` into the AND as a memory operand, and the large offsets stay `(plus reg const)` until reload). Reload hands out spill registers round-robin across the whole function (`last_spill_reg` in `allocate_reload_reg`), skipping spill registers that hold a live pseudo. With spill set {r0, r1, r2, r4, r5}, our build gave case 0 r1 and case 1 r2.
+- In the ROM r1 is occupied at case 0: the function has a **second parameter** `arg`, live in r1 from entry and passed on to `sub_0802D800(ref, arg)` (the r1 move is a no-op, so no instruction shows it). Case 0 therefore takes r2, and case 1 takes r5, then `r5+4` and `r5+8`, which is the ROM's advance instead of a second literal.
+- Fix: `int sub_0803EE6C(struct CardRef *ref, int arg)`, with case 0 calling `((CondFunc_0803EE6C)sub_0802D800)(ref, arg)`. The unit's existing prototype for `sub_0802D800` takes only ref, so the call goes through a typedef cast; if that prototype is widened to `(ref, int)`, the cast can go.
+- General lesson: if a reload temporary lands one register off, look for a hidden live value, such as an unused-looking incoming argument passed on to a callee. See [[matching-tricks#Register allocation priority and reload rotation]].

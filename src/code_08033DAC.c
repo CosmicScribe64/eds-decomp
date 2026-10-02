@@ -600,4 +600,125 @@ int sub_08034BA8(struct EffCtx *ctx)
     }
     return 0;
 }
-INCLUDE_ASM("asm/nonmatching/code_08033DAC", sub_08034BFC); /* 0x08034BFC size 0x59C */
+int sub_08007590(u16 number, int flag);
+
+int sub_08034BFC(struct EffCtx *ctx, struct EffCtx *other)
+{
+    int i;
+
+    if (!(ctx->flags4 & 4) && other != NULL) {
+        switch (CARD_NUMBER(ctx->id)) {
+        case 0x3FB:
+            if (CARD_NUMBER(other->id) == 0x14F && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                for (i = 0; i <= 4; i++) {
+                    int p = (1 - ctx->player) & 1;
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+
+                    if (CARD_WORD(z->card) << 20 != 0) {
+                        sub_08030028(1 - ctx->player, i);
+                        sub_08046CB0(ctx->player, 1 - ctx->player, i);
+                    }
+                }
+            }
+            return 0;
+        case 0x3FD:
+            if (CARD_NUMBER(other->id) == 0x3F0 && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+            }
+            break;
+        case 0x3FE:
+            if (CARD_NUMBER(other->id) == 0x150 && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                for (i = 0; i <= 4; i++) {
+                    int p = (1 - ctx->player) & 1;
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+
+                    if (CARD_WORD(z->card) << 20 != 0) {
+                        sub_08030028(1 - ctx->player, i);
+                        sub_08046CB0(ctx->player, 1 - ctx->player, i);
+                    }
+                }
+            }
+            return 0;
+        case 0x405:
+            if (CARD_TYPE(other->id) == 0x16) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+            }
+            return 0;
+        case 0x406:
+            if (CARD_TYPE(other->id) == 0x15) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+            }
+            return 0;
+        case 0x426:
+            if (CARD_NUMBER(other->id) == 0x29F && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                for (i = 5; i <= 10; i++) {
+                    int p = (1 - ctx->player) & 1;
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+
+                    if (CARD_WORD(z->card) << 20 != 0) {
+                        sub_0801EC58(PLAYER_RAW(ctx) == 0 ? 0x808B : 0x8B, i, 1, 0);
+                        sub_08018544(1 - ctx->player, i, 1);
+                    }
+                }
+            }
+            return 0;
+        case 0x5FA:
+            if (CARD_TYPE(other->id) <= 0x14
+                && (sub_08007590(CARD_NUMBER(other->id), 1) != 0 || sub_08007590(CARD_NUMBER(other->id), 0) != 0))
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+            break;
+        case 0x5FB:
+            switch (CARD_NUMBER(other->id)) {
+            case 0x12C ... 0x13C:
+            case 0x13E ... 0x147:
+            case 0x28B:
+            case 0x28D:
+            case 0x290:
+            case 0x3C2:
+            case 0x3F0:
+            case 0x3F4:
+            case 0x3F5:
+            case 0x3FF:
+            case 0x403:
+            case 0x412:
+            case 0x413:
+            case 0x416:
+            case 0x417:
+            case 0x422:
+            case 0x424:
+            case 0x42C:
+            case 0x430:
+            case 0x433:
+            case 0x434:
+            case 0x485:
+            case 0x488:
+            case 0x49E:
+            case 0x4BB:
+            case 0x4C4:
+            case 0x521:
+            case 0x58B:
+            case 0x58C:
+            case 0x58E:
+            case 0x5A8 ... 0x5AB:
+            case 0x604:
+            case 0x60A:
+            case 0x60C:
+            case 0x60E:
+                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                break;
+            }
+            break;
+        }
+    }
+    return 0;
+}

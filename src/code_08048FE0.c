@@ -104,105 +104,116 @@ void sub_08048FE0(void)
     ((struct ReqFlags *)(e + 0x1B2C))->b1 = 0;
 }
 
-#if 0 /* NONMATCHING: the ROM reloads 0x020192E0 and both card tables in every block and keeps arg0 in r8/arg1 in r9/arg2 in r6; the build keeps e in r6 and CSEs all of it, so the function is about 0xF0 bytes shorter. Control flow and all calls/literals are identical. */
-/*
- * Request step driver on the counter at 0x020192E0+0x1B30 (bits 2-9). Step 0 picks a free
- * spell/trap zone (sub_08008C6C) into the second zone field (0x1B34 bits 9-16), handles trap
- * subtype 2, emits the magic/trap event and advances. Step 1 calls sub_08024134(player, 0, zone)
- * and advances. Other steps evaluate the requested zone/player (calls sub_080197E0/19860 on a
- * mismatch) and either feed a card reference to sub_0801FBE0/CC or, when arg0 is 0, just clear
- * the request flag (bit 1 of 0x1B2C).
- */
+#if 0 /* NONMATCHING (score 90): Rewritten: struct-global view of 0x020192E0 (asm label), inline
+       * ZoneCard49(u8,u8) helper for the zone card word, do{}while(0) around sub_080197E0 so cse restarts. Remaining:
+       * post-loop block reg alloc (sym r4 vs r5), call-arg order in B, constant-tied ANDs (0xF/0x1F) in packed args. */
+struct Zone49 {
+    u32 card; /* bits 0-11 id, bit 12 owner, bit 18 */
+    u8 rest[0x94 - 4];
+};
+struct Player49 {
+    u8 pad0[9];
+    u8 f9_lo : 5;
+    u8 f9_5 : 1;
+    u8 f9_hi : 2;
+    u8 pad0A[0x28 - 0xA];
+    struct Zone49 zones[11];
+    u8 filler[0xD64 - 0x28 - 11 * 0x94];
+};
+struct Duel49 {
+    u32 pad0;
+    struct Player49 players[2]; /* +0x004 */
+    u8 pad1ACC[0x1B12 - 0x1ACC];
+    u8 f1B12_lo : 2; /* +0x1B12 */
+    u8 phase : 3;
+    u8 f1B12_hi : 3;
+    u8 pad1B13[0x1B28 - 0x1B13];
+    u16 card; /* +0x1B28 */
+    u16 pad1B2A;
+    u8 f2C_0 : 1; /* +0x1B2C */
+    u8 reqFlag : 1;
+    u8 f2C_hi : 6;
+    u8 pad1B2D[3];
+    union {
+        struct { u16 lo : 2; u16 step : 8; u16 hi : 6; } s;
+        struct { u32 lo : 25; u32 player : 1; u32 hi : 6; } w;
+        struct { u8 pad[3]; u8 lo : 1; u8 player : 1; u8 hi : 6; } b;
+        struct { u8 pad[3]; u8 v; } v;
+    } r30; /* +0x1B30 */
+    union {
+        struct { u16 lo : 1; u16 zone : 8; u16 hi : 7; } h;
+        struct { u32 lo : 9; u32 zone2 : 8; u32 hi : 15; } w;
+        u16 hv;
+        u32 wv;
+    } z; /* +0x1B34 */
+};
+extern struct Duel49 gDuel49 asm("gUnk_020192E0");
+#define D49 gDuel49
+struct Zone2W49 { u32 lo : 9; u32 zone2 : 8; u32 hi : 15; };
+
+static inline u32 ZoneCard49(u8 p, u8 z) { return D49.players[p].zones[z].card; }
+
 void sub_08049048(u16 arg0, u16 arg1, struct CardRef *arg2)
 {
-    u8 *e = gUnk_020192E0;
-    u16 *step = (u16 *)(e + 0x1B30);
-    u32 s = ((u32)*step << 22) >> 24;
-    u32 player;
-    u32 zone;
-    u32 *zw;
-    s16 i;
+    switch (D49.r30.s.step) {
+    case 0:
+        ((struct Zone2W49 *)((u8 *)&D49 + 0x1B34))->zone2 = (u16)sub_08008C6C(D49.r30.b.player);
+        {
+            u32 st = CARD_STATS(D49.card);
 
-    if (s != 0) {
-        if (s == 1) {
-            sub_08024134(REQ_PLAYER(e), 0, REQ_ZONE2(e));
-            *step = (*step & 0xFC03) | (((((u32)*step << 22) >> 24) + 1) & 0xFF) << 2;
-            return;
+            if (((st & 0x1F00000) >> 20) == 0x16 && ((st & 0xE0000) >> 17) == 2) {
+                int i;
+
+                for (i = 0; i <= 1; i++) {
+                    int pp = i ? 1 - D49.r30.b.player : D49.r30.b.player;
+
+                    if ((*(u32 *)((u8 *)gUnk_020192E0 + 0x5F4 + (pp & 1) * 0xD64) << 20) != 0)
+                        sub_08018544(pp, 10, 0);
+                }
+                ((struct Zone2W49 *)((u8 *)gUnk_020192E0 + 0x1B34))->zone2 = 10;
+            }
         }
-        if (arg0 != 0) {
-            u8 *zb = e + 0x2C;
-
-            player = REQ_PLAYER(e);
-            zone = REQ_ZONE2(e);
-            if ((*(u32 *)(zb + zone * 0x94 + player * 0xD64) << 13) < 0) {
-                u32 w2 = *(u32 *)(zb + zone * 0x94 + (1 & player) * 0xD64);
-
-                if (((w2 << 19) >> 31) != player) {
-                    sub_080197E0(player, gUnk_0862467A);
-                    sub_08019860(REQ_PLAYER(e), 0x7D0);
+        sub_0801EC58((2 & D49.r30.v.v) ? 0x80C5 : 0xC5, D49.card,
+                     (0xF & (D49.z.hv >> 1)) << 4 | (0xF & (D49.z.wv >> 9)) | (1 & arg0) << 8, 0);
+        sub_08046A74(D49.r30.b.player);
+        D49.r30.s.step++;
+        break;
+    case 1:
+        sub_08024134(D49.r30.b.player, 0, D49.z.w.zone2);
+        D49.r30.s.step++;
+        break;
+    default:
+        if (arg0) {
+            if ((int)(ZoneCard49(1 & D49.r30.b.player, D49.z.w.zone2) << 13) < 0) {
+                if (((ZoneCard49(1 & D49.r30.b.player, D49.z.w.zone2) << 19) >> 31) != D49.r30.w.player) {
+                    do {
+                        sub_080197E0(D49.r30.w.player, gUnk_0862467A);
+                    } while (0);
+                    sub_08019860(D49.r30.b.player, 2000);
                 }
             }
-            player = REQ_PLAYER(e);
-            zone = REQ_ZONE2(e);
-            if (arg1 != 0) {
-                u32 ev = (player << 31) | (((u32)((u8 *)arg2)[3] >> 2) << 25) |
-                         ((zone & 0x1F) << 16) | *(u16 *)(e + 0x1B28);
 
-                sub_0801FBE0(ev, (arg2->unk8 << 16) | arg2->pos);
+            if (arg1) {
+                sub_0801FBE0(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & D49.z.w.zone2) << 16 | D49.card,
+                             arg2->unk8 << 16 | arg2->pos);
             } else if (arg2 == NULL) {
-                u32 ev = (player << 31) | ((zone & 0x1F) << 16) | *(u16 *)(e + 0x1B28);
-
-                sub_0801FBCC(ev, 0);
+                sub_0801FBCC(D49.r30.b.player << 31 | (0x1F & D49.z.w.zone2) << 16 | D49.card, 0);
             } else {
-                u32 ev = (player << 31) | (((u32)((u8 *)arg2)[3] >> 2) << 25) |
-                         ((zone & 0x1F) << 16) | *(u16 *)(e + 0x1B28);
-
-                sub_0801FBCC(ev, (arg2->unk8 << 16) | arg2->pos);
+                sub_0801FBCC(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & D49.z.w.zone2) << 16 | D49.card,
+                             arg2->unk8 << 16 | arg2->pos);
             }
         }
-        if (((e[0x1B12] << 27) >> 29) > 1) {
-            u8 *pb = (u8 *)(e + 4) + REQ_PLAYER(e) * 0xD64;
+        if (D49.phase > 1) {
+            struct Player49 *pl = (struct Player49 *)((u8 *)&D49 + 4);
 
-            pb[9] |= 0x20;
+            pl[D49.r30.b.player].f9_5 = 1;
         }
-        ((struct ReqFlags *)(e + 0x1B2C))->b1 = 0;
-        return;
-    }
-
-    /* step 0: pick a free zone, handle trap subtype 2, emit the event, advance */
-    zw = (u32 *)(e + 0x1B34);
-    *zw = (*zw & 0xFFFE01FF) | (((u32)sub_08008C6C(REQ_PLAYER(e)) & 0xFF) << 9);
-    {
-        s16 stats = CARD_STATS(*(u16 *)(e + 0x1B28));
-
-        if (((stats & 0x1F00000) >> 20) == 0x16 && ((stats & 0xE0000) >> 17) == 2) {
-            for (i = 0; i <= 1; i++) {
-                s16 pp = (i != 0) ? 1 - REQ_PLAYER(e) : REQ_PLAYER(e);
-
-                if ((*(u32 *)((u8 *)gUnk_020198D4 + (pp & 1) * 0xD64) << 20) != 0)
-                    sub_08018544(pp, 0xA, 0);
-            }
-            {
-                u32 *q = (u32 *)((u8 *)gUnk_020198D4 + 0x1540);
-
-                *q = (*q & 0xFFFE01FF) | 0x1400;
-            }
-        }
-    }
-    {
-        u16 msg = (e[0x1B33] & 2) ? 0x80C5 : 0xC5;
-        s8 card = *(u16 *)(e + 0x1B28);
-        int packed;
-
-        zw = (u32 *)(e + 0x1B34);
-        packed = (((*(u16 *)zw >> 1) & 0xF) << 4) | ((*zw >> 9) & 0xF) | ((arg0 & 1) << 8);
-        sub_08046A74(REQ_PLAYER(e));
-        *step = (*step & 0xFC03) | (((((u32)*step << 22) >> 24) + 1) & 0xFF) << 2;
-        sub_0801EC58(msg, card, packed, 0);
+        D49.reqFlag = 0;
+        break;
     }
 }
 #endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049048); /* size 0x388 */
+INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049048); /* 0x08049048 size 0x388 */
 /* Like sub_08048FE0 but with a step argument: for step 1 or 2 run sub_08018ED8 on the request zone first. */
 void sub_080493D0(u16 step)
 {

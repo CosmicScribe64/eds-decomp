@@ -315,6 +315,381 @@ int sub_08052F38(u32 mask)
         return 1;
     return 0;
 }
+#if 0 /* NONMATCHING (score 567): Cursor-key navigation (LEFT/RIGHT/UP/DOWN per player, zone codes 0-15).
+       * Structure matches: per-case 'call; sub_08077AEC(0); return 0;' with if/else arms joined before the sound, case
+       * 11 before 10, base pointer local for the 0xD64 player block. Remaining: the four 'sub_08077AEC(3); return 0'
+       * paths cross-jump into the shared sound call (ROM keeps 'movs r0,#3; bl; b' in each). */
+struct Side5304C { u8 pad[2]; u8 handCount; u8 rest[0xD64 - 3]; };
+int sub_0805304C(void)
+{
+    u16 keys = gUnk_03000040.keys;
+    int player = gUnk_0201CFB0.player;
+    int zone = gUnk_0201CFB0.zone;
+    int index = gUnk_0201CFB0.index;
+    struct Side5304C *side;
+
+    gUnk_0201CFB0.flags |= 8;
+    if (keys & 0x20) {
+        switch (player) {
+        case 0:
+            switch (zone) {
+            case 0:
+                if (index > 0)
+                    sub_08024134(player, zone, index - 1);
+                else
+                    sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                if (index > 0)
+                    sub_08024134(player, zone, index - 1);
+                else
+                    sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                if (side->handCount != 0) {
+                    if (index > 0)
+                        sub_08024134(player, zone, index - 1);
+                    else
+                        sub_08024134(player, zone, side->handCount - 1);
+                    sub_08077AEC(0);
+                    return 0;
+                } else {
+                    sub_08077AEC(3);
+                    return 0;
+                }
+            case 10:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 5, 4);
+                sub_08077AEC(0);
+                return 0;
+            case 14: case 15:
+                sub_08024134(player, 0, 4);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        case 1:
+            switch (zone) {
+            case 0:
+                if (index <= 3)
+                    sub_08024134(player, zone, index + 1);
+                else
+                    sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                if (index <= 3)
+                    sub_08024134(player, zone, index + 1);
+                else
+                    sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                if (side->handCount != 0) {
+                    if (index < side->handCount - 1)
+                        sub_08024134(player, zone, index + 1);
+                    else
+                        sub_08024134(player, zone, 0);
+                    sub_08077AEC(0);
+                    return 0;
+                } else {
+                    sub_08077AEC(3);
+                    return 0;
+                }
+            case 10:
+                sub_08024134(player, 0, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 5, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14: case 15:
+                sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        }
+    }
+    if (keys & 0x10) {
+        switch (player) {
+        case 0:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                if (index <= 3)
+                    sub_08024134(player, zone, index + 1);
+                else
+                    sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                if (index <= 3)
+                    sub_08024134(player, zone, index + 1);
+                else
+                    sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                if (side->handCount != 0) {
+                    if (index < side->handCount - 1)
+                        sub_08024134(player, zone, index + 1);
+                    else
+                        sub_08024134(player, zone, 0);
+                    sub_08077AEC(0);
+                    return 0;
+                } else {
+                    sub_08077AEC(3);
+                    return 0;
+                }
+            case 10:
+                sub_08024134(player, 0, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 5, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14: case 15:
+                sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        case 1:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                if (index > 0)
+                    sub_08024134(player, zone, index - 1);
+                else
+                    sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                if (index > 0)
+                    sub_08024134(player, zone, index - 1);
+                else
+                    sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                if (side->handCount != 0) {
+                    if (index > 0)
+                        sub_08024134(player, zone, index - 1);
+                    else
+                        sub_08024134(player, zone, side->handCount - 1);
+                    sub_08077AEC(0);
+                    return 0;
+                } else {
+                    sub_08077AEC(3);
+                    return 0;
+                }
+            case 10:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 5, 4);
+                sub_08077AEC(0);
+                return 0;
+            case 14: case 15:
+                sub_08024134(player, 0, 4);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        }
+    }
+    if (keys & 0x40) {
+        switch (player) {
+        case 0:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                sub_08024134(1 - player, zone, 4 - index);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                sub_08024134(player, 0, index);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                sub_08024134(player, 5, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 10:
+                sub_08024134(1 - player, 15, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14:
+                sub_08024134(player, 15, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 15:
+                sub_08024134(1 - player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        case 1:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                sub_08024134(player, 5, index);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                sub_08024134(player, 11, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                sub_08024134(1 - player, 11, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 10:
+                sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(1 - player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(1 - player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14:
+                sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 15:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        }
+    }
+    if (keys & 0x80) {
+        switch (player) {
+        case 0:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                sub_08024134(player, 5, index);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                sub_08024134(player, 11, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                sub_08024134(1 - player, zone, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 10:
+                sub_08024134(player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(1 - player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(1 - player, 12, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14:
+                sub_08024134(player, 13, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 15:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        case 1:
+            switch (gUnk_0201CFB0.zone) {
+            case 0:
+                sub_08024134(1 - player, zone, 4 - index);
+                sub_08077AEC(0);
+                return 0;
+            case 5:
+                sub_08024134(player, 0, index);
+                sub_08077AEC(0);
+                return 0;
+            case 11:
+                sub_08024134(player, 5, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 10:
+                sub_08024134(1 - player, 15, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 12:
+                sub_08024134(player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 13:
+                sub_08024134(player, 14, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 14:
+                sub_08024134(player, 15, 0);
+                sub_08077AEC(0);
+                return 0;
+            case 15:
+                sub_08024134(1 - player, 10, 0);
+                sub_08077AEC(0);
+                return 0;
+            default:
+                return 0;
+            }
+        }
+    }
+    if (gUnk_03000040.keys & 1)
+        return 1;
+    return 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_0805304C); /* 0x0805304C size 0x688 */
 void sub_080536D4(int hidden)
 {

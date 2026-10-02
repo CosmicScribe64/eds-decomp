@@ -676,4 +676,225 @@ void sub_0803D460(u16 num)
         }
     }
 }
+#if 0 /* NONMATCHING (score 12): NONMATCHING: score 12. Only the 0x7E fusion-ingredient loop differs: hand base
+       * (0x02019968) and loop base copy swap r8/r9; the draft still has a FAKEMATCH asm use of gUnk_02019968 that makes
+       * the hand base win the global-alloc contest against the hoisted 0x8000 constant. Case 0x64 needs a u16 *pp
+       * pointer to F57C->pos[cnt]; 0x7D needs u16 id, a DuelScreen *ds for the second switch and the msg ternary nested
+       * in the call. */
+struct Fus57C {
+    u8 pad0[0x3E0];
+    u8 phase;           /* +0x3E0 */
+    u8 pad3E1[0x500 - 0x3E1];
+    u16 target;         /* +0x500: card id of the fusion result (hypothesis) */
+    u8 cnt : 2;         /* +0x502 bits 0-1: number of ingredients */
+    u8 cur : 2;         /* +0x502 bits 2-3 */
+    u8 hi : 4;          /* +0x502 bits 4-7 */
+    u8 pad503;
+    u16 ids[3];         /* +0x504: ingredient card ids */
+    u16 pos[3];         /* +0x50A: ingredient positions (0x8000 hand / 0x4000 field | index) */
+};
+#define F57C ((struct Fus57C *)gUnk_02017A40)
+int sub_0802DEC4_57C(struct CardRef *ref, int a, int b) asm("sub_0802DEC4");
+void sub_0801EC58_i(int msg, int a, int b, int c) asm("sub_0801EC58");
+int sub_08018280_u8(int player, u8 zone) asm("sub_08018280");
+int sub_08056ECC(u16 id);
+int sub_08018280(int player, int zone);
+void sub_080189FC(int player, int zone, u16 arg);
+extern char gUnk_08083B78[];
+extern char gUnk_08083BC8[];
+extern char gUnk_08083C0C[];
+#define HAND_57C(p, i) (*(u32 *)((p) * 0xD64 + (i) * 4 + (u32)gUnk_02019968))
+#define ZONE_57C(p, i) (*(u32 *)((p) * 0xD64 + (i) * 0x94 + (u32)gUnk_0201930C))
+struct ViewCard57C {
+    u16 id : 12;
+    u16 hi : 4;
+    u16 h1;
+};
+struct ListView57C {
+    u8 unk0[5];
+    u8 row : 2;
+    u8 unk5_2 : 6;
+    u16 top;
+    u8 unk8[4];
+    struct ViewCard57C cards[0x80];
+};
+#define LV57C ((struct ListView57C *)&gUnk_0201D810)
+static inline u16 PosCard_57C(int player, u16 pos)
+{
+    u16 id = 0;
+
+    if (pos & 0x8000)
+        id = CARD_ID(HAND_57C(1 & player, pos & 0xFF));
+    if (pos & 0x4000)
+        id = CARD_ID(ZONE_57C(1 & player, pos & 0xFF));
+    return id;
+}
+
+#define CNA(x) CARD_NUMBER(x)
+#define CNB(x) CARD_NUMBER(x)
+#define CNC(x) CARD_NUMBER(x)
+#define CND(x) CARD_NUMBER(x)
+#define CNE(x) CARD_NUMBER(x)
+#define CNF(x) CARD_NUMBER(x)
+#define CNS(x) gUnk_08622AB4[(x) & 0x7FF]
+int sub_0803D57C(struct CardRef *ref, int arg)
+{
+    if (ref->skip4)
+        return 0;
+    switch (F57C->phase) {
+    case 0x80:
+        if (sub_0802DEC4_57C(ref, arg, 0) == 0)
+            return 0;
+        if (1 & ((u8 *)ref)[2]) {
+            int r = sub_08056ECC(ref->id);
+            if (r < 0)
+                return 0;
+            gUnk_0201D810.row = 0;
+            gUnk_0201D810.top = r;
+            return 0x7E;
+        }
+        sub_080602A4(0x206, 0x712, 0xB, gUnk_08083B78);
+        return 0x7F;
+    case 0x7F:
+        sub_0802AF34(ref->player, -1, CNA(ref->id), 0);
+        return 0x7E;
+    case 0x7E:
+        F57C->target = LV57C->cards[LV57C->top + LV57C->row].id;
+        if ((u16)sub_0803D0E8(ref->player, F57C->target, F57C->pos) == 0)
+            return 0;
+        switch (CNB(F57C->target)) {
+        case 0x00E: case 0x01D: case 0x024: case 0x02A: case 0x044: case 0x055: case 0x05B:
+        case 0x072: case 0x084: case 0x0A7: case 0x0BC: case 0x0D6: case 0x0D8: case 0x0DE:
+        case 0x0E5: case 0x10F: case 0x125: case 0x171: case 0x180: case 0x184: case 0x198:
+        case 0x1AA: case 0x1B4: case 0x1C9: case 0x1D0: case 0x1D2: case 0x1D6: case 0x1D8:
+        case 0x1E1: case 0x1E6: case 0x1EE: case 0x1FB: case 0x1FC: case 0x208: case 0x212:
+        case 0x214: case 0x220: case 0x233: case 0x23B: case 0x251: case 0x264: case 0x268:
+        case 0x269: case 0x27E: case 0x2C2: case 0x2C8: case 0x32C: case 0x4D9: case 0x536:
+        case 0x57C: case 0x5A5: case 0x5F6: case 0x7DE: case 0x814:
+            F57C->cnt = 2;
+            break;
+        case 0x17B: case 0x1B9: case 0x234:
+            F57C->cnt = 3;
+            break;
+        }
+        if (1 & ((u8 *)ref)[2])
+            return 0x64;
+        switch (F57C->cnt) {
+        case 2:
+            sub_080602A4(0x206, 0x712, 0xB, gUnk_08083BC8);
+            break;
+        case 3:
+            sub_080602A4(0x206, 0x712, 0xB, gUnk_08083C0C);
+            break;
+        }
+        F57C->hi = 0;
+        F57C->cur = F57C->cnt;
+        {
+            int i;
+/*LOOP{*/
+            for (i = 0; i < F57C->cnt; i++) {
+                u16 id = 0;
+                if (F57C->pos[i] & 0x8000) {
+                    id = CARD_ID(HAND_57C(1 & ref->player, F57C->pos[i] & 0xFF));
+                    asm("" :: "r"(gUnk_02019968));
+                }
+                if (F57C->pos[i] & 0x4000)
+                    id = CARD_ID(ZONE_57C(1 & ref->player, F57C->pos[i] & 0xFF));
+                F57C->ids[i] = id;
+            }
+
+/*}LOOP*/
+        }
+        F57C->cur--;
+        return 0x7D;
+    case 0x7D: {
+/*C7D{*/
+        u16 keys = sub_08052F38(0xF1);
+        u16 id;
+        int ok;
+        struct DuelScreen *ds;
+
+        switch (gUnk_0201CFB0.w828) {
+        case 0xB:
+            id = CARD_ID(HAND_57C(ref->player, gUnk_0201CFB0.idx82C));
+            break;
+        case 0:
+            id = CARD_ID(ZONE_57C(ref->player, gUnk_0201CFB0.idx82C));
+            break;
+        default:
+            id = 0;
+            break;
+        }
+        ok = 0;
+        if (id != 0) {
+            ok = (u16)sub_0803D3D0(id) != 0;
+            if (sub_0803CB28(CNC(id)) != 0) {
+                int h = F57C->hi;
+                ok = 0;
+                if (h == 0)
+                    ok = 1;
+            }
+        }
+        if (ok == 0 || keys == 0)
+            return 0x7D;
+        sub_0803D460(id);
+        if (sub_0803CB28(CND(id)) != 0)
+            F57C->hi++;
+        ds = &gUnk_0201CFB0;
+        switch (ds->w828) {
+        case 0xB: {
+            sub_0801EC58(CNE(ref->id) != 0x60B ? ((1 & ((u8 *)ref)[2]) ? 0x80CC : 0xCC) : ((1 & ((u8 *)ref)[2]) ? 0x80CD : 0xCD), ds->idx82C, 0, 0);
+            break;
+        }
+        case 0:
+            if (CNF(ref->id) != 0x60B)
+                sub_08018280(ref->player, ds->idx82C);
+            else
+                sub_080189FC(ref->player, ds->idx82C, 1);
+            break;
+        }
+        {
+            int c = F57C->cur;
+            if (c != 0) {
+                F57C->cur = c - 1;
+                return 0x7D;
+            }
+        }
+        return 0x63;
+
+/*}C7D*/
+    }
+    case 0x64: {
+/*C64{*/
+        u16 *pp;
+        int c = F57C->cnt;
+
+        if (c != 0) {
+            F57C->cnt = c - 1;
+            pp = &F57C->pos[F57C->cnt];
+            if (*pp & 0x8000)
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80CC : 0xCC, *pp & 0xFF, 0, 0);
+            else if (*pp & 0x4000)
+                sub_08018280(ref->player, *pp & 0xFF);
+            return 0x64;
+        }
+        return 0x63;
+
+/*}C64*/
+    }
+    case 0x63: {
+        u16 *cw;
+
+        sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80CA : 0xCA, 0, 0, 0);
+        cw = (u16 *)&gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row];
+        sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80DC : 0xDC, cw[0], cw[1], 0);
+        return 0x62;
+    }
+    case 0x62:
+        sub_08056094(ref->player, &gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row], 1, 1);
+        return 0x61;
+    }
+    return 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D57C); /* 0x0803D57C size 0x800 */

@@ -130,6 +130,7 @@ function-specific; broad application does not replace source/assembly analysis.
 | `tools/objdiff_resolve.py`, `tools/mkobjdiff.py`, `tools/check_report.py` | The [[objdiff]] progress report (decomp.dev format). |
 | `tools/xref.py func\|global\|strings\|graph\|unit\|subsystems\|what` | Static cross-references from `build/eds.elf`: what a function touches, who uses a global, call trees, and candidate subsystems ([[xref]]). Used to propose names in the readability pass. |
 | `tools/emu.py run\|trace\|watch\|break\|peek\|lua\|gdb\|compare\|states` | Headless mGBA 0.10.5 (image `eds-emu`) with a savestate library: function traces, watchpoints with backtraces, register logs, Lua and GDB ([[emulator]]). The run-time evidence for names. |
+| `tools/jpmap.py [--compile-test] [--assets] [--diff F]` | Maps every USA function, RAM address and asset range to the Japanese ROM (AY5J): status per function, JP-only functions, shared link-order runs, RAM/data deltas, and a recompile of USA C at JP addresses. Read-only; writes `build/jp/` ([[jpmap]], [[rom-versions]]). |
 
 **Ghidra** is not set up, on purpose. The matched C, [[xref]] and the [[emulator]] cover the analysis
 this project needs. Anyone who wants to browse can load `build/eds.elf` into Ghidra directly. It is

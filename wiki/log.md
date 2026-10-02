@@ -762,3 +762,20 @@ updated: 2026-09-29
   - [[decomp-workflow]]: check names with [[xref]] and the [[emulator]] before proposing them.
   - [[overview]]: tooling bullet; milestone 2 notes that the readability pass has started.
   - [[index]]: the two new pages under Tools.
+
+## [2026-10-02] ingest | Japanese ROM mapping (jpmap)
+- Source: the read-only analysis of the Japanese ROM (AY5J) with `tools/jpmap.py` (commit `446546b`) and its outputs in `build/jp/` (local only): `summary.txt`, `PLAN.md`, `map.tsv`, `units.tsv`, `blocks.tsv`, `link_order.tsv`, `ram_map.tsv`, `romdata_map.tsv`, `assets.tsv`, `compile_test.txt`, `sub_08044224_diff.md`.
+- Findings: 158 USA functions identical modulo relocation, 41 same shape with different constants, 647 changed, 1130 without a counterpart; 1290 JP-only functions, 195 of them a Mobile Adapter GB library (`MAGB`, `gameboy.datacenter.ne.jp`) linked after AgbSram. Same compiler and flags (10/10 recompiled USA functions byte-identical at JP addresses). Different duel data model (`u16` card words, small player blocks, 928 cards). Link order shares 428 runs in chance-level order. RAM deltas for `oamBuffer`, the link block, the sound driver and the save mirror. 5 + 21 of 83 asset ranges shared.
+- Pages:
+  - [[rom-versions]]: rewritten comparison section (layout, function mapping, compiler identity, data model, shared units, link-order runs, RAM shifts, asset overlap, crt0/ARM/libgcc/libc differences) and the staged JP plan with estimates, dependencies and risks. The 2026-10-01 numbers are kept as a superseded measurement.
+  - [[jpmap]] (new): usage, outputs, method, verification, limitations.
+  - [[agent-tooling]]: Analysis table row for `tools/jpmap.py`.
+  - [[overview]]: Current state bullet; milestone 5 now describes JP as a separate effort sharing about 200 functions, with stages 1–3 startable now.
+  - [[game-overview]]: corrected the JP sentence.
+  - [[open-questions]]: Mobile Adapter library compiler; rewritten no-counterpart functions; JP IWRAM −0x10; JP card order vs the kana sort keys; link-order runs as TU-boundary evidence.
+  - [[index]]: [[rom-versions]] summary updated, [[jpmap]] added under Tools.
+- Contradictions flagged with `> [!warning] Contradiction`, both resolved in favour of jpmap (`build/jp/PLAN.md` §6):
+  - [[rom-versions]]: "JP game code ends earlier, about 0x1BB4 bytes less code" is wrong; `.text` runs on through the Mobile Adapter library to `0x08089B50`, about 37 KB more than USA.
+  - [[rom-versions]]: the hypothesis that localisation changing RAM and struct layouts explains the low exact-match share is refuted; the game logic and data model were reworked.
+  - [[game-overview]]: "built from the same source with … shifted data layouts" (same cause).
+- Verified for this entry (read-only Python on both ROMs): JP SHA-1 and header; crt0 literal `0x2008` at JP `0x08000224` vs USA `mov r1,#0x2280` at `0x080001C8`; `MAGB` at JP `0x0807FFF8` and `gameboy.datacenter.ne.jp` at `0x0809ED97`, neither in USA; APCS `mov ip, sp` at JP `0x0805CA04`. Status, confidence and JP-only counts recounted from `map.tsv`; longest runs from `blocks.tsv`.

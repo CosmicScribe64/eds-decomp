@@ -4,13 +4,16 @@ type: game
 status: draft
 confidence: medium
 sources: [general-knowledge, rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Yu-Gi-Oh! The Eternal Duelist Soul (EDS)
 
 - Platform: Game Boy Advance. Publisher: Konami (maker code `A4`, see [[rom-header]]).
 - A card game that follows the official OCG/TCG rules of its time fairly closely: Life Point duels, a Main Phase and a Battle Phase, and Normal Summons with Tributes.
-- Released in 2002. The Japanese release is *Yu-Gi-Oh! Duel Monsters 5 Expert 1*. It was built from the same source with a different link order and shifted data layouts ([[rom-versions]]).
+- Released in 2002. The Japanese release is *Yu-Gi-Oh! Duel Monsters 5 Expert 1*. It was built with the same compiler and shares the SDK and system code, but its duel engine was reworked: a different card and player data model, 928 cards, and only about 200 functions that are the same apart from addresses and constants ([[rom-versions]], [[jpmap]]).
+
+> [!warning] Contradiction
+> Until 2026-10-02 this page said JP "was built from the same source with a different link order and shifted data layouts", from the 2026-10-01 byte comparison. The full function mapping ([[jpmap]], `build/jp/PLAN.md` §6) shows the game logic itself differs; see [[rom-versions]]. Resolved in favour of the mapping.
 
 ## What the ROM has shown
 - The game has 821 card IDs (0 to 820). The per-card tables start at `0x0822C720` ([[card-table]], [[cards]]).

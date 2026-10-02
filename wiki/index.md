@@ -13,7 +13,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 ## ROM
 - [[rom-header]]: header fields, size, hashes, entry point. *verified*
 - [[rom-map]]: segment map of the whole 8 MiB image (code, rodata, graphics, fonts, card bank). *verified (29 checks)*
-- [[rom-versions]]: USA (`roms/base_eng.gba`) vs Japan AY5J (`roms/base_jp.gba`): same compiler, different link order and offsets; plan for a multi-version build after USA hits 100%. *verified comparison, draft plan*
+- [[rom-versions]]: USA (`roms/base_eng.gba`) vs Japan AY5J (`roms/base_jp.gba`): same compiler (10/10 recompiled functions byte-identical) but reworked game logic; about 200 functions shared, 647 changed, 1290 JP-only (incl. a Mobile Adapter GB library); link order, RAM and asset deltas; staged plan for a JP build. *verified comparison, draft plan*
 - [[save-type]]: AgbSram v1.12; 0x2170-byte save at SRAM `0x0E000000`, mirrored at `0x02011C20`. *verified*
 - [[ram-map]]: EWRAM/IWRAM globals (`gMain` at `0x03000040`, save mirror, duel state, sound, link).
 - [[gba-memory-map]]: GBA address regions and how ROM offsets map to addresses.
@@ -78,6 +78,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[m2c]]: ARM decompiler for first drafts (`tools/m2c_draft.py`).
 - [[objdiff]]: progress report in the decomp.dev format (`make objdiff-report`, CI workflow) and the object differ.
 - [[xref]]: static cross-reference database from `build/eds.elf` (`tools/xref.py`): function cards, global users, strings, call graphs, units, subsystems, address lookup. *verified (selftest 16/16)*
+- [[jpmap]]: USA-to-Japan mapper (`tools/jpmap.py`): every USA function, RAM address and asset range paired with the AY5J ROM, link-order runs, recompile test at JP addresses; outputs in `build/jp/`. *verified (compile test 10/10)*
 - [[emulator]]: headless mGBA 0.10.5 harness (`tools/emu.py`, image `eds-emu`): traces, watchpoints, breakpoints, Lua, GDB, ROM comparison, and a savestate library from title to mid-duel. *verified (selftest)*
 
 ## Sources

@@ -511,16 +511,16 @@ void sub_08028238(u32 unused, u8 angle, u16 flags, s16 *scale, u8 sel)
     gWork.aff[5].scaleX = 0x100;
     gWork.aff[5].scaleY = 0x100;
 }
-#if 0 /* NONMATCHING: ordinary extents recover y0 live in sl and exact size; selector/X/OAM-value allocation remains different */
 void sub_080283BC(u32 unused, u8 angle, u16 flags, s16 *scale, u8 sel, s16 *anim)
 {
     s32 width = 0x40, height = 0x20;
     s32 x0 = 0x78;
     s32 y0 = 0x30;
-    s32 x;
+    /* Separate x per case (case 0 x in r7, case 1 x in r5) and a separate offset t:
+       x = x0 - (t) must not fold into (x0 + 0x10) - (...). */
+    s32 x, x1, t;
     u8 i;
     u32 *oam;
-    u32 attr;
 
     for (i = 0; i < 2; i++) {
         if (scale[i * 2] > 0x7F)
@@ -530,36 +530,31 @@ void sub_080283BC(u32 unused, u8 angle, u16 flags, s16 *scale, u8 sel, s16 *anim
     }
     switch (sel) {
     case 0:
-        x = (sub_0807B4D0(0x100 - gUnk_08087BA4[anim[0] + 0x40], 0x3000) >> 8) - 0x50;
-        x = x0 + x;
+        t = (sub_0807B4D0(0x100 - gUnk_08087BA4[anim[0] + 0x40], 0x3000) >> 8) - 0x50;
+        x = x0 + t;
         oam = sub_0807B6B8(0, gUnk_080826E6[0], x,
                            y0 + (sub_0807B4D0(gUnk_08087BA4[(angle * 2) % 256], scale[0]) >> 8),
                            width, height, 4, 3, 0x200, 0, 0, 0, &gWork);
-        attr = *oam;
-        *oam = attr | ((flags & 8) ? 0x08000400 : 0x08000000);
+        *oam |= ((flags & 8) ? 0x08000400 : 0x08000000);
         oam = sub_0807B6B8(0, gUnk_080826E6[1], x0 - 0x10, ((anim[1] * anim[1]) >> 1) + y0,
                            width, height, 4, 9, 0x200, 0, 0, 0, &gWork);
-        attr = *oam;
-        *oam = attr | ((flags & 8) ? 0x08000700 : 0x08000300);
+        *oam |= ((flags & 8) ? 0x08000700 : 0x08000300);
         gWork.aff[4].angle = ((u32)(u16)anim[1]) << 9;
         break;
     case 1:
         oam = sub_0807B6B8(0, gUnk_080826E6[0], x0 - 0x70, ((anim[1] * anim[1]) >> 1) + y0,
                            width, height, 4, 9, 0x200, 0, 0, 0, &gWork);
-        attr = *oam;
-        *oam = attr | ((flags & 8) ? 0x08000700 : 0x08000300);
-        oam = sub_0807B6B8(0, gUnk_080826E6[1],
-                           x0 - ((sub_0807B4D0(0x100 - gUnk_08087BA4[anim[0] + 0x40], 0x3000) >> 8) - 0x10),
+        *oam |= ((flags & 8) ? 0x08000700 : 0x08000300);
+        t = (sub_0807B4D0(0x100 - gUnk_08087BA4[anim[0] + 0x40], 0x3000) >> 8) - 0x10;
+        x1 = x0 - t;
+        oam = sub_0807B6B8(0, gUnk_080826E6[1], x1,
                            (sub_0807B4D0(gUnk_08087BA4[(angle * 2) % 256], scale[2]) >> 8) + y0,
                            width, height, 4, 3, 0x200, 0, 0, 0, &gWork);
-        attr = *oam;
-        *oam = attr | ((flags & 8) ? 0x08000400 : 0x08000000);
+        *oam |= ((flags & 8) ? 0x08000400 : 0x08000000);
         gWork.aff[4].angle = -(((u32)(u16)anim[1]) << 9);
         break;
     }
     gWork.aff[4].scaleX = 0x100;
     gWork.aff[4].scaleY = 0x100;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08027580", sub_080283BC); /* 0x080283BC size 0x2C8 */
 

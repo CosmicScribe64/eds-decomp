@@ -148,16 +148,6 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 u16 sub_0805163C(u16 a, u16 b);
 
-#if 0 /* NONMATCHING (score 12): Score 12: only 3 reload-register choices differ (case-2 found block loads
-       * gUnk_0822C720 into r0 vs ROM r6; default's ldrb gUnk_02015EE8+1 into r6 vs r7; 0x1B10 into r7 vs r1) - the
-       * reload round-robin is one step off. Structure that matched: D50 = *(struct *)&gUnk_020192E0 accessed directly
-       * (GCSE makes the r8 base copy); hand loops as 'i = 0; ps = P50; if (i < ps[x].handCount) { [case 1: op = 1 - p;]
-       * hands = (u8 *)ps->hand; n = ps[x].handCount; do { c = *(card *)(x * 0xD64 + (u32)hands + i * 4); ... i++; }
-       * while (i < n); }' with separate ps variables per case; case-1 found block calls sub_080197E0(op) then
-       * sub_080193D4(1 - p) (ROM recomputes 1 - p); zone loops/found blocks via ZONE50 = ((p&1)*0xD64 + z*0x94 +
-       * (u32)gUnk_0201930C) (p-term first); subtype via static inline (u16 id) + switch; case 2 while loop with 'u8 n =
-       * D50.idx; z = (n*0x94 + p*0xD64 + (u32)D50.players[0].zones); s16 id = c.id; ... D50.idx = n + 1' (s16 id pads
-       * the loop so loop.c keeps movs #0x94 inside). */
 struct S50Card { u32 id:12; u32 b12:6; u32 f18:1; u32 b19:13; };
 struct S50Zone {
     struct S50Card card;    /* +0x00 */
@@ -191,10 +181,8 @@ struct S50Duel {
 };
 #define D50 (*(struct S50Duel *)&gUnk_020192E0)
 #define P50 ((struct S50Player *)gUnk_020192E4)
-struct S50ZP { struct S50Zone zones[11]; u8 rest[0xD64 - 11 * 0x94]; };
-struct S50All { struct S50ZP pl[2]; };
-#define ZP50 ((*(struct S50All *)gUnk_0201930C).pl)
-#define Z50(p, z) (ZP50[(p) & 1].zones[z])
+/* Zone z of player p (0x0201930C = players[0].zones). The loops want the zone term first and the
+ * found blocks the player term first (agbcc's multiply order follows the operand order). */
 #define ZONE50(p, z) ((struct S50Zone *)((z) * 0x94 + ((p) & 1) * 0xD64 + (u32)gUnk_0201930C))
 #define ZONE50F(p, z) ((struct S50Zone *)(((p) & 1) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 
@@ -210,15 +198,17 @@ static inline int S50Sub(u16 id)
     }
 }
 
-/* Per-card effect step machine (steps at 0x020192E0+0x1B20). Returns 1 when done. */
+/* Duel step machine on 0x020192E0+0x1B20: 0/1 = turn player / opponent: play the first hand card
+ * with bit 18 set (sub_080193D4), else flip the first marked card in zones 5..10 (skipping face-up
+ * field/equip/continuous spells, subtypes 2..4); 2 = text box for each monster zone whose counter
+ * (+6 bits 6..9) is > 1; 3/4 = queue events 2/3 (+0x8000 for player 1); then link sync, return 1. */
 int sub_08050A70(void)
 {
     char buf[0x80];
     int p = D50.turn;
     int i;
     struct S50Player *ps;
-    struct S50Player *ps0;
-    u8 n1;
+    struct S50Player *ps0; /* separate pointer per case: the ROM gives them different registers */
     u8 n0;
     u8 n2;
     int op;
@@ -268,6 +258,7 @@ int sub_08050A70(void)
         ps = P50;
         if (i < ps[(1 - p) & 1].handCount) {
             u8 *hands;
+            /* FAKEMATCH: the first call takes this copy, the second recomputes 1 - p (as in the ROM) */
             op = 1 - p;
             hands = (u8 *)ps->hand;
             n2 = ps[(1 - p) & 1].handCount;
@@ -312,9 +303,10 @@ int sub_08050A70(void)
             u8 n = D50.idx;
             struct S50Zone *z = (struct S50Zone *)(n * 0x94 + p * 0xD64 + (u32)D50.players[0].zones);
             struct S50Card c = z->card;
-            s16 id = c.id;
+            s16 id = c.id; /* FAKEMATCH: s16 adds loop insns so loop.c keeps movs #0x94 in the loop */
             if (id != 0 && z->cnt > 1) {
-                sub_080753F4(buf, gUnk_08085D94, gUnk_0822C720 + id * 0x40);
+                /* FAKEMATCH: integer table address; the gUnk_0822C720 symbol shifts reload registers */
+                sub_080753F4(buf, gUnk_08085D94, (const u8 *)0x0822C720 + id * 0x40);
                 sub_08075434(buf, buf, z->cnt - 1);
                 sub_080602A4(0x206, 0x712, 0xB, buf);
                 D50.idx++;
@@ -345,8 +337,6 @@ int sub_08050A70(void)
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_08050A70); /* 0x08050A70 size 0x3D8 */
 /* ROM table views at fixed addresses preserve the target lookup allocation. */
 u16 sub_08050E48(void)
 {

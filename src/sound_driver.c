@@ -262,473 +262,276 @@ typedef char se_channel_state_size_check[sizeof(union SoundSeChannelState) == 2 
 typedef char se_channel_offset_check[(u32)&((struct SoundSeTrack *)0)->channel == 0xA ? 1 : -1];
 typedef char se_delay_offset_check[(u32)&((struct SoundSeTrack *)0)->delay == 0xC ? 1 : -1];
 
-#if 0 /* NONMATCHING: typed SE decoder. The candidate is 0x4AC bytes against 0x4A4 in the ROM. */
-void sub_0807D6B4(s32 arg0, struct SoundChannelParams *arg1) {
+#if 0 /* NONMATCHING (score 2): SE decoder rewritten structurally (goto outer loop, inner for(;;) rotated by
+       * expand_end_loop, shared data/tmp stream vars). Score 2: only 60-6F vol copy differs (target ldrb r0;strb;adds
+       * r3,r0 vs built reloads p[2]); u8 temp for vol flips p/track priority (p r5 vs track r6 differ by ~1%). */
+void sub_0807D6B4(s32 idx, struct SoundChannelParams *out) {
     struct SoundDriver *driver = &gUnk_03005210;
-    s32 temp_r3_3;
-    s32 temp_r3_5;
-    s32 var_r0_4;
-    s32 var_r0_5;
-    s32 var_r0_6;
-    s32 var_r2_2;
-    s32 var_r2_4;
-    s32 var_r3_3;
-    s32 var_r3_4;
-    s8 var_r0_2;
-    s8 var_r0_3;
-    s32 var_r3;
-    struct SoundSeTrack *temp_r6;
-    struct SoundSeTrack *var_r0;
-    struct SoundSeTrack *var_r1;
-    u32 temp_r0_2;
-    u16 temp_r3;
-    s32 var_r3_2;
-    u32 temp_r0_3;
-    u8 temp_r0_4;
-    u8 temp_r0_5;
-    u8 temp_r1;
-    u8 temp_r1_2;
-    u8 temp_r1_3;
-    u8 temp_r2;
-    u8 temp_r2_2;
-    u8 temp_r2_3;
-    u8 temp_r3_2;
-    u8 temp_r3_4;
-    u8 temp_r4;
-    s32 var_r2;
-    s32 var_r2_3;
-    s32 var_r2_5;
-    const u8 *temp_r0;
-    const u8 *var_r5;
-    const u8 *var_r5_2;
+    struct SoundSeTrack *track = (struct SoundSeTrack *)&driver->seTracks[idx];
+    const u8 *p;
+    s32 data;
+    s32 tmp;
 
-    /* Flowgraph is not reducible, falling back to gotos-only mode. */
-    temp_r6 = (struct SoundSeTrack *)&driver->seTracks[arg0];
-    if (0x80 & temp_r6->flags) {
-        goto block_2;
+    if (!(track->flags & 0x80))
+        return;
+    *(u16 *)&out->dirty = 0;
+    p = track->data;
+    if (track->flags & 8) {
+        if (track->linkedTracks < 0)
+            return;
+    clear_linked:
+        for (tmp = track->linkedTracks; tmp != 0; tmp--)
+            track[tmp].linkedTracks = 0;
+        track->delay = 1;
+        p = NULL;
+        track->flags = 0;
+        goto stop;
     }
-    return;
-block_2:
-    *(u16 *)&arg1->dirty = 0;
-    var_r5 = temp_r6->data;
-    temp_r2 = temp_r6->flags;
-    if (!(8 & temp_r2)) {
-        goto block_9;
+    if (driver->flags & 4) {
+        track->flags |= 8;
+        goto clear_linked;
     }
-    if ((s32) (s8) temp_r6->linkedTracks >= 0) {
-        goto block_5;
+    if (!(track->flags & 0x40)) {
+        track->flags |= 0x40;
+        track->linkedTracks = 0;
+        track->delay = 0;
+        track->channel.bytes.volume = 0;
+        track->returnData = NULL;
+        goto stop;
     }
-    return;
-block_5:
-    var_r3 = (s8) temp_r6->linkedTracks;
-    if (var_r3 == 0) {
-        goto block_8;
+    out->volume = track->channel.bytes.volume;
+    if (track->flags & 1) {
+        if (idx > 1) {
+            idx = gUnk_081A79E8[idx];
+            if (gUnk_030053AC[idx].flags & 0x80)
+                goto scale;
+        }
+        track->flags &= 0xFE;
+        out->command = 0x40;
+        track->delay = 1;
     }
-    var_r0 = &temp_r6[var_r3];
-loop_7:
-    var_r0->linkedTracks = 0;
-    var_r0--;
-    var_r3 -= 1;
-    if (var_r3 != 0) {
-        goto loop_7;
+    if (--track->delay != 0)
+        return;
+    if (track->flags & 2) {
+        track->flags &= 0xFD;
+        out->command = 0x40;
     }
-block_8:
-    temp_r6->delay = 1;
-    var_r5 = 0;
-    temp_r6->flags = 0;
-    goto block_31;
-block_9:
-    if (!(4 & driver->flags)) {
-        goto block_11;
+top:
+    if (track->flags & 0x10)
+        track->delay = 1;
+    data = *p++;
+    if (data > 0xEF) {
+        data = (data & 0xF) << 8;
+        data += *p++;
     }
-    temp_r6->flags = 8 | temp_r2;
-    goto block_5;
-block_11:
-    temp_r1 = 0x40 & temp_r2;
-    if (temp_r1 != 0) {
-        goto block_16;
+    track->delay = data;
+    data = *p++;
+    for (;;) {
+        if (data > 0xEF) {
+            if (data == 0xFF) {
+                if (track->returnData != NULL) {
+                    p = track->returnData;
+                    track->returnData = NULL;
+                    goto top;
+                }
+                track->flags |= 8;
+                goto stop;
+            } else if (data == 0xFE) {
+                out->command = 0x40;
+                break;
+            } else if (data == 0xFD) {
+            stop:
+                out->pitch = 0;
+                *(u16 *)&out->envelope = 0;
+                out->command = 0x40;
+                out->dirty = 0x40;
+                goto next;
+            } else if (data == 0xFC) {
+                tmp = *p++;
+                if (tmp == 0) {
+                    if (track->flags & 4) {
+                        track->flags &= 0xFB;
+                        p += 4;
+                        goto top;
+                    }
+                } else if (track->flags & 0x20) {
+                    if (--track->loopCounter == 0) {
+                        track->flags &= 0xDF;
+                        p += 4;
+                        goto top;
+                    }
+                } else {
+                    track->loopCounter = tmp;
+                    track->flags |= 0x20;
+                }
+                goto jump;
+            } else if (data == 0xFB) {
+                goto jump;
+            } else if (data > 0xF9) {
+                track->returnData = p + 4;
+            jump:
+                p = (const u8 *)(p[0] + (p[1] << 8) + (p[2] << 16) + (p[3] << 24));
+                goto top;
+            } else if (data == 0xF9) {
+            finish:
+                track->flags |= 1;
+                goto end;
+            }
+            goto next;
+        } else if (data > 0x9F) {
+            s32 c = data;
+            s32 x;
+            if (data > 0xBF) {
+                if (data > 0xDF) {
+                    data = p[0] + (p[1] << 8);
+                    out->pitch = data >> 4;
+                    data &= 0xF;
+                    goto set_state;
+                } else if (data > 0xCF) {
+                    s32 y = (s16)(p[0] | (p[1] << 8)) + track->basePitch;
+                    out->pitch = y;
+                    data = p[2];
+                    p++;
+                } else {
+                    data = p[0] | (p[1] << 8);
+                    out->pitch = (s16)track->basePitch - 0x400 + (data >> 5);
+                }
+                data &= 0x1F;
+                x = data + track->channel.bytes.volume;
+            } else if (data > 0xAF) {
+                data = p[0] + (p[1] << 8);
+                out->pitch = (data >> 4) | 0x4000;
+                data &= 0xF;
+                goto set_state;
+            } else {
+                tmp = p[0] | (p[1] << 8);
+                data = (tmp >> 5) - 0x400;
+                data += (s16)((s16)track->basePitch & ~0x4000);
+                out->pitch = data | 0x4000;
+                x = (tmp & 0x1F) + track->channel.bytes.volume;
+            }
+            data = x - 0x10;
+            if (data < 0)
+                data = 0;
+            if (data > 0xF)
+                data = 0xF;
+        set_state:
+            tmp = (c & 3) | (data << 8);
+            if (!(c & 8)) {
+                if (track->channel.packed != tmp) {
+                    track->channel.packed = tmp;
+                    out->dirty = 2;
+                }
+                out->command = 2;
+                *(u16 *)&out->envelope = tmp;
+            }
+            if (!(c & 4)) {
+                track->basePitch = out->pitch;
+                if (track->channel.packed != tmp)
+                    tmp |= 8;
+                track->channel.packed = tmp;
+            }
+            p += 2;
+            goto next;
+        } else if (data > 0x7F) {
+            track->channel.bytes.volume = out->volume = data & 0xF;
+            tmp = *p;
+            track->channel.bytes.flags = tmp;
+            p++;
+            if (data > 0x8F) {
+                out->pitch = tmp | 0x8000;
+                out->command = 2;
+                out->dirty = 2;
+            }
+            goto next;
+        } else if (data > 0x6F) {
+            data &= 0xF;
+            driver->seTracks[data].unk12 = 1;
+            track->data = p;
+            goto next;
+        } else if (data > 0x5F) {
+            tmp = p[0] + (p[1] << 8);
+            out->sampleId = tmp | 0x8000;
+            out->volume = p[2];
+            tmp = track->channel.bytes.volume = p[2];
+            p += 3;
+            track->basePitch = 0;
+            if (data & 4) {
+                track->basePitch = p[0] | (p[1] << 8);
+                p += 2;
+            }
+            out->pitch = track->basePitch;
+            out->command = 0x80;
+            out->dirty = 2;
+            tmp >>= 4;
+            track->linkedTracks = tmp;
+            for (; tmp != 0; tmp--) {
+                s32 t;
+                track[tmp].flags |= 0x88;
+                t = (u8)track[tmp].linkedTracks;
+                t |= 0xFF;
+                track[tmp].linkedTracks = t;
+                track[tmp].data = NULL;
+            }
+            if (data & 8) {
+                if (track->delay == 0)
+                    goto finish;
+                track->flags |= 2;
+            }
+            goto next;
+        } else if (data > 0x4F) {
+            data &= 0xF;
+        set_vol:
+            track->channel.bytes.volume = data;
+        set_out:
+            out->volume = data;
+            out->dirty = 2;
+            goto next;
+        } else if (data > 0x3F) {
+            tmp = data;
+            data = (s8)p[0] + track->channel.bytes.volume;
+            if (data < 0)
+                data = 0;
+            if (data > 0x3F)
+                data = 0x3F;
+            p++;
+            if (tmp & 1)
+                goto set_out;
+            goto set_vol;
+        } else if (data > 0x2F) {
+            tmp = ((data & 0xF) << 8) | *p;
+            p++;
+            out->pitch = tmp;
+            track->basePitch = tmp;
+            out->command = 2;
+            goto next;
+        } else if (data > 0x1F) {
+            tmp = (((data & 7) << 8) | p[0]) + -0x400;
+            if (data & 8) {
+                track->basePitch += tmp;
+                tmp = 0;
+            }
+            out->pitch = track->basePitch + tmp;
+            out->command = 2;
+            goto next;
+        } else if (data > 0xF) {
+            tmp = data & 7;
+            driver->seTracks[tmp].flags &= 0xEF;
+            if (data & 8)
+                driver->seTracks[tmp].flags |= 0x10;
+            track->data = p;
+        }
     }
-    temp_r6->flags = 0x40 | temp_r2;
-    temp_r6->linkedTracks = 0;
-    temp_r6->delay = (u16) temp_r1;
-    temp_r6->channel.bytes.volume = 0;
-    temp_r6->returnData = 0;
-    goto block_31;
-block_13:
-    driver->seTracks[temp_r2_2 & 0xF].unk12 = 1;
-    temp_r6->data = var_r5;
-    goto block_121;
-block_14:
-    temp_r3 = ((temp_r2_2 & 0xF) << 8) | var_r5[0];
-    var_r5 += 1;
-    arg1->pitch = temp_r3;
-    temp_r6->basePitch = temp_r3;
-    var_r0_2 = 2;
-    goto block_120;
-block_15:
-    var_r5 = temp_r0;
-    temp_r6->returnData = 0;
-    goto loop_25;
-block_16:
-    arg1->volume = (u8) temp_r6->channel.bytes.volume;
-    temp_r2_3 = temp_r6->flags;
-    if (!(1 & temp_r2_3)) {
-        goto block_21;
-    }
-    if (arg0 <= 1) {
-        goto block_20;
-    }
-    if (!(0x80 & gUnk_030053AC[gUnk_081A79E8[arg0]].flags)) {
-        goto block_20;
-    }
-    goto block_124;
-block_20:
-    temp_r6->flags = 0xFE & temp_r2_3;
-    arg1->command = 0x40;
-    temp_r6->delay = 1;
-block_21:
-    temp_r0_2 = temp_r6->delay - 1;
-    temp_r6->delay = temp_r0_2;
-    if ((temp_r0_2 << 0x10) == 0) {
-        goto block_23;
-    }
-    return;
-block_23:
-    temp_r1_2 = temp_r6->flags;
-    if (!(2 & temp_r1_2)) {
-        goto loop_25;
-    }
-    temp_r6->flags = 0xFD & temp_r1_2;
-    arg1->command = 0x40;
-loop_25:
-    if (!(0x10 & temp_r6->flags)) {
-        goto block_27;
-    }
-    temp_r6->delay = 1;
-block_27:
-    var_r2 = *var_r5++;
-    if ((s32) var_r2 <= 0xEF) {
-        goto block_29;
-    }
-    var_r2 = ((0xF & var_r2) << 8) + *var_r5++;
-block_29:
-    temp_r6->delay = (u16) var_r2;
-    temp_r2_2 = *var_r5++;
-    goto loop_111;
-block_30:
-    if (temp_r2_2 != 0xFD) {
-        goto block_32;
-    }
-block_31:
-    arg1->pitch = 0U;
-    *(u16 *)&arg1->envelope = 0U;
-    var_r0_3 = 0x40;
-    goto block_77;
-block_32:
-    if (temp_r2_2 != 0xFC) {
-        goto block_41;
-    }
-    temp_r3_2 = var_r5[0];
-    var_r5 += 1;
-    if (temp_r3_2 != 0) {
-        goto block_36;
-    }
-    if (!(4 & temp_r6->flags)) {
-        goto block_44;
-    }
-    var_r0_4 = 0xFB;
-    goto block_39;
-block_36:
-    temp_r1_3 = temp_r6->flags;
-    if (!(0x20 & temp_r1_3)) {
-        goto block_40;
-    }
-    temp_r0_3 = temp_r6->loopCounter - 1;
-    temp_r6->loopCounter = temp_r0_3;
-    if ((temp_r0_3 << 0x18) != 0) {
-        goto block_44;
-    }
-    var_r0_4 = 0xDF;
-block_39:
-    temp_r6->flags &= var_r0_4;
-    var_r5 += 4;
-    goto loop_25;
-block_40:
-    temp_r6->loopCounter = temp_r3_2;
-    temp_r6->flags = temp_r1_3 | 0x20;
-    goto block_44;
-block_41:
-    if (temp_r2_2 == 0xFB) {
-        goto block_44;
-    }
-    if ((s32) temp_r2_2 <= 0xF9) {
-        goto block_45;
-    }
-    temp_r6->returnData = (const u8 *) (var_r5 + 4);
-block_44:
-    var_r5 = (const u8 *)(var_r5[0] + (var_r5[1] << 8) + (var_r5[2] << 16) + (var_r5[3] << 24));
-    goto loop_25;
-block_45:
-    if (temp_r2_2 == 0xF9) {
-        goto block_47;
-    }
-    goto block_121;
-block_47:
-    temp_r6->flags |= 1;
-    goto block_123;
-block_48:
-    if ((s32) temp_r2_2 <= 0x9F) {
-        goto block_73;
-    }
-    if ((s32) temp_r2_2 <= 0xBF) {
-        goto block_56;
-    }
-    if ((s32) temp_r2_2 <= 0xDF) {
-        goto block_52;
-    }
-    var_r2_2 = var_r5[0] + (var_r5[1] << 8);
-    var_r0_5 = var_r2_2 >> 4;
-    goto block_58;
-block_52:
-    if ((s32) temp_r2_2 <= 0xCF) {
-        goto block_54;
-    }
-    arg1->pitch = (u16) ((s16) (var_r5[0] | (var_r5[1] << 8)) + temp_r6->basePitch);
-    var_r2_3 = var_r5[2];
-    var_r5 += 1;
-    goto block_55;
-block_54:
-    var_r2_3 = var_r5[0] | (var_r5[1] << 8);
-    arg1->pitch = (u16) (temp_r6->basePitch + 0xFFFFFC00 + ((s32) var_r2_3 >> 5));
-block_55:
-    var_r0_6 = (var_r2_3 & 0x1F) + temp_r6->channel.bytes.volume;
-    goto block_60;
-block_56:
-    if ((s32) temp_r2_2 <= 0xAF) {
-        goto block_59;
-    }
-    var_r2_2 = var_r5[0] + (var_r5[1] << 8);
-    var_r0_5 = (var_r2_2 >> 4) | 0x4000;
-block_58:
-    arg1->pitch = (u16) var_r0_5;
-    var_r2_4 = var_r2_2 & 0xF;
-    goto block_64;
-block_59:
-    temp_r3_3 = var_r5[0] | (var_r5[1] << 8);
-    arg1->pitch = (u16) (((temp_r3_3 >> 5) + 0xFFFFFC00 + (s16) (0xFFFFBFFF & temp_r6->basePitch)) | 0x4000);
-    var_r0_6 = (0x1F & temp_r3_3) + temp_r6->channel.bytes.volume;
-block_60:
-    var_r2_4 = var_r0_6 - 0x10;
-    if (var_r2_4 >= 0) {
-        goto block_62;
-    }
-    var_r2_4 = 0;
-block_62:
-    if (var_r2_4 <= 0xF) {
-        goto block_64;
-    }
-    var_r2_4 = 0xF;
-block_64:
-    var_r3_2 = (3 & temp_r2_2) | (var_r2_4 << 8);
-    if (8 & temp_r2_2) {
-        goto block_68;
-    }
-    if (temp_r6->channel.packed == var_r3_2) {
-        goto block_67;
-    }
-    temp_r6->channel.packed = var_r3_2;
-    arg1->dirty = 2;
-block_67:
-    arg1->command = 2;
-    *(u16 *)&arg1->envelope = var_r3_2;
-block_68:
-    if (temp_r2_2 & 4) {
-        goto block_72;
-    }
-    temp_r6->basePitch = (u16) arg1->pitch;
-    if (temp_r6->channel.packed == var_r3_2) {
-        goto block_71;
-    }
-    var_r3_2 |= 8;
-block_71:
-    temp_r6->channel.packed = var_r3_2;
-block_72:
-    var_r5 += 2;
-    goto block_121;
-block_73:
-    if ((s32) temp_r2_2 <= 0x7F) {
-        goto block_78;
-    }
-    temp_r0_4 = temp_r2_2 & 0xF;
-    arg1->volume = temp_r0_4;
-    temp_r6->channel.bytes.volume = temp_r0_4;
-    temp_r3_4 = var_r5[0];
-    temp_r6->channel.bytes.flags = temp_r3_4;
-    var_r5 += 1;
-    if ((s32) temp_r2_2 > 0x8F) {
-        goto block_76;
-    }
-    goto block_121;
-block_76:
-    arg1->pitch = (u16) (temp_r3_4 | 0xFFFF8000);
-    var_r0_3 = 2;
-block_77:
-    arg1->command = var_r0_3;
-    arg1->dirty = var_r0_3;
-    goto block_121;
-block_78:
-    if ((s32) temp_r2_2 <= 0x6F) {
-        goto block_80;
-    }
-    goto block_13;
-block_80:
-    if ((s32) temp_r2_2 <= 0x5F) {
-        goto block_90;
-    }
-    arg1->sampleId = (s16) ((var_r5[0] + (var_r5[1] << 8)) | 0xFFFF8000);
-    arg1->volume = (u8) var_r5[2];
-    temp_r0_5 = var_r5[2];
-    temp_r6->channel.bytes.volume = temp_r0_5;
-    var_r5 += 3;
-    temp_r6->basePitch = 0U;
-    if (!(4 & temp_r2_2)) {
-        goto block_83;
-    }
-    temp_r6->basePitch = (u16) (var_r5[0] | (var_r5[1] << 8));
-    var_r5 += 2;
-block_83:
-    arg1->pitch = (u16) temp_r6->basePitch;
-    arg1->command = 0x80;
-    arg1->dirty = 2;
-    var_r3_3 = (s32) temp_r0_5 >> 4;
-    temp_r6->linkedTracks = (u8) var_r3_3;
-    if (var_r3_3 == 0) {
-        goto block_86;
-    }
-    var_r1 = &temp_r6[var_r3_3];
-loop_85:
-    var_r1->flags |= 0x88;
-    var_r1->linkedTracks |= 0xFF;
-    var_r1->data = 0;
-    var_r1--;
-    var_r3_3 -= 1;
-    if (var_r3_3 != 0) {
-        goto loop_85;
-    }
-block_86:
-    if (!(temp_r2_2 & 8)) {
-        goto block_121;
-    }
-    if (temp_r6->delay != 0) {
-        goto block_89;
-    }
-    goto block_47;
-block_89:
-    temp_r6->flags |= 2;
-    goto block_121;
-block_90:
-    if ((s32) temp_r2_2 <= 0x4F) {
-        goto block_94;
-    }
-    var_r2_5 = temp_r2_2 & 0xF;
-block_92:
-    temp_r6->channel.bytes.volume = var_r2_5;
-block_93:
-    arg1->volume = var_r2_5;
-    arg1->dirty = 2;
-    goto block_121;
-block_94:
-    if ((s32) temp_r2_2 <= 0x3F) {
-        goto block_101;
-    }
-    var_r2_5 = (s8) var_r5[0] + temp_r6->channel.bytes.volume;
-    if ((s32) var_r2_5 >= 0) {
-        goto block_97;
-    }
-    var_r2_5 = 0;
-block_97:
-    if ((s32) var_r2_5 <= 0x3F) {
-        goto block_99;
-    }
-    var_r2_5 = 0x3F;
-block_99:
-    var_r5 += 1;
-    if (1 & temp_r2_2) {
-        goto block_93;
-    }
-    goto block_92;
-block_101:
-    if ((s32) temp_r2_2 <= 0x2F) {
-        goto block_103;
-    }
-    goto block_14;
-block_103:
-    if ((s32) temp_r2_2 <= 0x1F) {
-        goto block_107;
-    }
-    var_r3_4 = (((7 & temp_r2_2) << 8) | var_r5[0]) + 0xFFFFFC00;
-    if (!(temp_r2_2 & 8)) {
-        goto block_106;
-    }
-    temp_r6->basePitch = (u16) (temp_r6->basePitch + var_r3_4);
-    var_r3_4 = 0;
-block_106:
-    arg1->pitch = (u16) (temp_r6->basePitch + var_r3_4);
-    var_r0_2 = 2;
-    goto block_120;
-block_107:
-    if ((s32) temp_r2_2 <= 0xF) {
-        goto loop_111;
-    }
-    temp_r3_5 = 7 & temp_r2_2;
-    temp_r4 = 0xEF & driver->seTracks[temp_r3_5].flags;
-    driver->seTracks[temp_r3_5].flags = temp_r4;
-    if (!(8 & temp_r2_2)) {
-        goto block_110;
-    }
-    driver->seTracks[temp_r3_5].flags = temp_r4 | 0x10;
-block_110:
-    temp_r6->data = var_r5;
-loop_111:
-    if ((s32) temp_r2_2 > 0xEF) {
-        goto block_113;
-    }
-    goto block_48;
-block_113:
-    if (temp_r2_2 != 0xFF) {
-        goto block_117;
-    }
-    temp_r0 = temp_r6->returnData;
-    if (temp_r0 == NULL) {
-        goto block_116;
-    }
-    goto block_15;
-block_116:
-    temp_r6->flags |= 8;
-    goto block_31;
-block_117:
-    if (temp_r2_2 == 0xFE) {
-        goto block_119;
-    }
-    goto block_30;
-block_119:
-    var_r0_2 = 0x40;
-block_120:
-    arg1->command = var_r0_2;
-block_121:
-    if (temp_r6->delay != 0) {
-        goto block_123;
-    }
-    goto loop_25;
-block_123:
-    temp_r6->data = var_r5;
-block_124:
-    arg1->volume = (u8) ((s32) (temp_r6->volume * arg1->volume) >> 4);
-    return;
+next:
+    if (track->delay == 0)
+        goto top;
+end:
+    track->data = p;
+scale:
+    out->volume = (out->volume * track->volume) >> 4;
 }
-
 #endif
-INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807D6B4);
+INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807D6B4); /* 0x0807D6B4 size 0x4A4 */
 
 #if 0 /* NONMATCHING: typed main sequencer. The candidate is 0x7DC bytes with a 0x70-byte stack
        * frame, and the target is 0x7CC bytes. */

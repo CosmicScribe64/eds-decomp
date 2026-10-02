@@ -141,7 +141,6 @@ s32 sub_08076F9C(void);
 u16 sub_08075A6C(int speed);
 void sub_08077AEC(int se);
 #define E788_FAST ((gKeysE788.held & 2) || (((u8 *)&gUnk_0201CFB0)[0] & 1))
-#if 0 /* NONMATCHING: 115 lines; structure and jump tables right, register choices differ (ROM uses r6 as a scratch for constants) */
 /* Screen transition (fade, shake and blend) run once per frame; returns 1 when finished (hypothesis).
  * Holding B (or the fast flag) speeds up every timer. */
 u32 sub_0805E788(u16 a, u16 b, u16 flags)
@@ -149,6 +148,7 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
     s32 pos[2];
     int k;
     u8 v;
+    u32 t3;
 
     pos[0] = a;
     pos[1] = b;
@@ -164,9 +164,9 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
             gUnk_02018450.sub++;
             if (E788_FAST && gUnk_02018450.sub <= 0xB)
                 gUnk_02018450.sub += 3;
-        } else {
-            gUnk_02018450.step++;
+            return 0;
         }
+        gUnk_02018450.step++;
         return 0;
     case 2:
         sub_080757F4();
@@ -196,7 +196,7 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
                 gUnk_02018450.t++;
                 if (E788_FAST && gUnk_02018450.t <= 0x15)
                     gUnk_02018450.t += 7;
-                break;
+                return 0;
             }
             sub_08077AEC(9);
             gUnk_02018450.t = 0;
@@ -215,7 +215,7 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
                 gUnk_02018450.t++;
                 if (E788_FAST && gUnk_02018450.t <= 0x15)
                     gUnk_02018450.t += 7;
-                break;
+                return 0;
             }
             for (k = 0; k <= 1; k++) {
                 if ((6 << (k * 8)) & flags) {
@@ -227,15 +227,15 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
             gUnk_02018450.sub++;
         case 3:
             sub_0805DEA4(flags, pos, 1);
-            v = gUnk_02018450.t;
-            if (v <= 0x1F) {
+            t3 = gUnk_02018450.t;
+            if (t3 <= 0x1F) {
                 *(vu16 *)0x04000050 = 0xC0;
                 if (flags & 2)
                     *(vu16 *)0x04000050 |= 0x404;
                 if (flags & 0x200)
                     *(vu16 *)0x04000050 |= 0x808;
                 *(vu16 *)0x04000054 = gUnk_02018450.t;
-                gUnk_02018450.t++;
+                gUnk_02018450.t = t3 + 1;
                 if (E788_FAST && gUnk_02018450.t <= 0x15)
                     gUnk_02018450.t += 7;
                 if (gUnk_02018450.t == 0x20) {
@@ -248,7 +248,7 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
                     if ((4 << (k * 8)) & flags)
                         sub_0805DF04(k, pos[1 - k] - pos[k], 0);
                 }
-                break;
+                return 0;
             }
             *(vu16 *)0x04000050 = 0;
             *(vu16 *)0x04000054 = 0;
@@ -262,6 +262,7 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
             }
             if (gKeysE788.pressed & 2) {
                 gUnk_02018450.step++;
+                return 0;
             } else {
                 v = gUnk_02018450.t;
                 if (v <= 0x3B) {
@@ -288,8 +289,6 @@ u32 sub_0805E788(u16 a, u16 b, u16 flags)
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805E788", sub_0805E788); /* 0x0805E788 size 0x574 */
 /* Card id (12 bits) of the card the duel screen cursor points at: zone `mode + index` of `player`
  * for modes 0/5/10, hand slot `index` for mode 11, else 0. */
 u32 sub_0805ECFC(void)

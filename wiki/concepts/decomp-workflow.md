@@ -88,6 +88,8 @@ For a register-allocation near miss, start with a bounded [[decomp-permuter]] ru
 Extend a search when new evidence or an improving candidate justifies it; avoid
 rerunning unchanged failed drafts. A score of zero still needs ABI review and an
 exact whole-unit check.
+To work on one function in a private copy (several agents per unit), and to read agbcc's allocation and reload decisions from RTL dumps, use `tools/wf.py` (`prep`/`check`/`perm`/`dump`/`apply`/`park`, see [[agent-tooling]] and [[matching-tricks#Register allocation priority and reload rotation]]).
+`check.py` no longer reports a size delta that is only the trailing `.align 2, 0` pad after a function ending on a 2-byte boundary, so such byte-identical functions now score 0.
 
 ## agbcc matching tips
 - DMA sequences: write the DMA *set* and the DMA *wait* as two separate blocks, each with its own `vu32 *` register pointer, the way the SDK `DmaSet`/`DmaWait` macros are written (sub_0800257C; verified).

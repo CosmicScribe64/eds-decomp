@@ -8,7 +8,7 @@ updated: 2026-10-01
 ---
 # BG tilemap, palette-fade and easing helpers in code_0807A6AC (`0x0807A6AC`-`0x0807B6B8`)
 
-The unit is `src/code_0807A6AC.c` (42 functions, 0x100C bytes), compiled with `old_agbcc -O2`. **37 of 42 are C and byte-matching**, and 5 stay `INCLUDE_ASM` (each has its best attempt under `#if 0 /* NONMATCHING */`). The unit still links to the exact target bytes. Names below are proposals, and the code keeps `sub_08XXXXXX`.
+The unit is `src/code_0807A6AC.c` (42 functions, 0x100C bytes), compiled with `old_agbcc -O2`. **40 of 42 are C and byte-matching** after workflow waves 1-2 (2026-10-01: `0x0807A754`, `0x0807B628` in wave 1, `0x0807AEF0` in wave 2), and 2 stay `INCLUDE_ASM` (`0x0807AD40`, `0x0807ADE8`, each with its best attempt under `#if 0 /* NONMATCHING */`). The unit still links to the exact target bytes. Names below are proposals, and the code keeps `sub_08XXXXXX`.
 
 This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]) and the sound driver. It is a small graphics-utility library used by menus and duel screens. It provides rectangle fills and copies on BG screenblocks (32-entry rows, with the 64-wide "second screenblock" wrap at column 0x20), palette fades toward a target colour, rotation/scale objects, fixed-point helpers and tiny state machines. Related: [[video-helpers]].
 
@@ -17,7 +17,7 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | Address | Size | Status | Proposed name | Purpose |
 |---|---|---|---|---|
 | `0x0807A6AC` | 0xA8 | matching | `FillTilesAscending(tile, bg, x, y, w, h)` | w x h rect of BG screenblock `bg` (`VRAM + bg*0x800`), tile numbers ascending; columns 0x20-0x3F land in the next screenblock (`+0x7C0`), >= 0x40 wrap (`-0x80`) |
-| `0x0807A754` | 0xB4 | nonmatching | `FillTiles32(tile, bg, x, y, w, h)` | same with 32-bit stores of `tile \| tile<<16`, w/2 stores per row |
+| `0x0807A754` | 0xB4 | **matching** (wave 1, 2026-10-01) | `FillTiles32(tile, bg, x, y, w, h)` | same with 32-bit stores of `tile \| tile<<16`, w/2 stores per row |
 | `0x0807A808` | 0x90 | matching | `FillTilesConst(tile, bg, x, y, w, h)` | constant tile |
 | `0x0807A898` | 0x70 | matching | `FillTilesPal(dst, tile, pal, w, h)` | ascending 10-bit tile numbers with palette nibble, flat `dst` |
 | `0x0807A908` | 0x58 | matching | `CopyRows(src, dst, w, h)` | `CpuSet` w halfwords per row, dst stride 0x40 |
@@ -32,7 +32,7 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | `0x0807AD40` | 0xA8 | nonmatching | `CopyBitmapBlock(...)` | h rows of `CpuSet` between two bitmaps, offsets from `sub_0807A490(x, y, shift) & 0xFFFE` |
 | `0x0807ADE8` | 0xA0 | nonmatching | `CopyBitmapBlockFlat(...)` | source is a plain srcW-wide array |
 | `0x0807AE88` | 0x68 | matching | `PackBytePairs(src, dst, w, h)` | `dst[i] = (src[2i] & 0xFF) \| (src[2i+1] & 0xFF) << 8` |
-| `0x0807AEF0` | 0x10C | nonmatching | `LoadPackedImage6bpp(idx, dst, bank)` | unpacks 6-bit pixels (record idx of 0x10E0 bytes at `0x082A6500`, 720 x 6 bytes -> 720 x 8 bytes) to 8 bpp; copies a 64-colour palette (`0x08608360 + idx*0x80`) to `PLTT + ((bank&0x3FF)*64 + 0x80)*2`; ORs the sub-palette bits into every pixel byte |
+| `0x0807AEF0` | 0x10C | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `LoadPackedImage6bpp(idx, dst, bank)` | unpacks 6-bit pixels (record idx of 0x10E0 bytes at `0x082A6500`, 720 x 6 bytes -> 720 x 8 bytes) to 8 bpp; copies a 64-colour palette (`0x08608360 + idx*0x80`) to `PLTT + ((bank&0x3FF)*64 + 0x80)*2`; ORs the sub-palette bits into every pixel byte |
 | `0x0807AFFC` | 0x14 | matching | `LoadPackedImage6bppWrap` | wrapper narrowing args to u16 and calling `sub_0807AEF0` |
 | `0x0807B010` | 0x18 | matching | `CallbackQueue_Init` | zero 4 slots |
 | `0x0807B028` | 0x30 | matching | `CallbackQueue_Add(fn, q)` | slot `[(head+1)&3] = fn`, returns old head, fails (0) if `slot[head]` is busy |
@@ -54,7 +54,7 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | `0x0807B51C` | 0x18 | matching | `Reciprocal8(a)` | `Div(0x10000, a)` |
 | `0x0807B534` | 0x6C | matching | `ObjAffineInit(a)` | 32 x `ObjAffine` (stride 0x18): scale 0x100/0x100, angle 0, four `s16 *` to the OAM affine slots `0x03004476 + (i*4+j)*8` (`oam[i*4+j].pad`) |
 | `0x0807B5A0` | 0x88 | matching | `ObjAffineApply(a)` | writes pa..pd from `1/scale` and the sine table `gUnk_08087BA4` (index `angle>>8`, +0x40 for cos) |
-| `0x0807B628` | 0x90 | nonmatching | `BgAffineSetRef(bg, x, y, cx, cy, a)` | writes BG2/BG3 reference point (`0x04000028/2C`, `0x04000038/3C`) = matrix * (p - c) + c |
+| `0x0807B628` | 0x90 | **matching** (wave 1, 2026-10-01) | `BgAffineSetRef(bg, x, y, cx, cy, a)` | writes BG2/BG3 reference point (`0x04000028/2C`, `0x04000038/3C`) = matrix * (p - c) + c |
 
 ## Structures (as declared in the unit)
 
@@ -93,18 +93,18 @@ pointed at. The remaining blockers concern compiler allocation and loop scheduli
 
 - `0x0807A6AC` matches. Compute the wrap destination pointer before `value = tile++`, and keep that initialized old tile value live with an empty input barrier before the store. This reproduces the address-first scheduling, separate branch stores and target value-copy register. The destination-pointer barrier was removed after exact whole-unit checks; no register constraints are needed. The remaining value barrier emits no instructions and is documented `FAKEMATCH`. Verified `tools/check.py code_0807A6AC`: 42/42 functions and all 0x100C unit bytes MATCH.
 - **32-bit tile fill**:
-  - `0x0807A754`: the build folds `half = w>>1` into a register (`frame sub sp,#4`) and hoists the tile word; the
+  - Historical `0x0807A754` (matched in wave 1, see below): the build folds `half = w>>1` into a register (`frame sub sp,#4`) and hoists the tile word; the
     target keeps `half` in `[sp]` (reloaded per row), `next = i+1` in `[sp+8]` and the row stride `(0x10-half)*4`
     in `[sp+4]` (`sub sp,#12`) and recomputes `v = tile|tile<<16` per row. Adding an explicit `next`/`v` and
     changing `half`'s type did not raise register pressure enough to force the spills.
 - `0x0807AD40` / `0x0807ADE8`: target spills `srcBase`/`srcW` to `[sp]`, keeps the `w & 0x1FFFFF` mask (0x1FFFFF
   rebuilt in the loop) and reloads the 0xFFFE mask from the literal pool per call; the build keeps the base in
   `r7`, spills the other value and CSEs the masks. Source order/type/off-local variants all leave the same split.
-- `0x0807AEF0`: the `0x3F`/`0xFC0` masks **do** need to be locals (`u16 m6, m12`) so they hoist into `r8`/`r9`
+- Historical `0x0807AEF0` (matched in wave 2, see below): the `0x3F`/`0xFC0` masks **do** need to be locals (`u16 m6, m12`) so they hoist into `r8`/`r9`
   as the target does (bare literals leave the first use an immediate and swap r8/r9). This is now in the parked
   draft. ~80 instruction lines of register allocation in the two loops still differ; `u32`/`s32` masks, `u16 i`,
   `dst = dstAddr` before the call and 2nd-loop `i < 0xB40` did not close it.
-- `0x0807B628`: target keeps `bg` in `sl` (a third pushed callee-saved reg) and `sx` in a fresh `r7` while `cx`
+- Historical `0x0807B628` (matched in wave 1, see below): target keeps `bg` in `sl` (a third pushed callee-saved reg) and `sx` in a fresh `r7` while `cx`
   stays in `r9` (`mov r0,r9; adds r7,r4,r0`), storing `str r7,[r0]; adds r0,#4`; the build keeps `bg` in low `r7`,
   lets `cx` die and reuses `r9` for `sx`, storing through `r1`. Putting `cx` first in the expression, a separate
   `sx += cx;`, `if/else` versus `switch` and `reg[0]/reg[1]` all keep the split.
@@ -123,3 +123,22 @@ Related: [[decomp-workflow]], [[compiler-flags]].
 ## Private crop-helper audit
 
 `sub_0807ADE8` consumes its fifth argument, the destination base, from the adjusted stack after the coordinate helper call. Explicit word parameters preserve the caller interface, but `crop_rows_{resume,roles}.py` did not match. One fixed-register candidate overwrote dy with width before consuming dy; it is unsafe and rejected. No candidate from this grid is enabled or counted. Evidence under `build/bigguns-lead2/`.
+
+## Workflow waves 1-2 matches (2026-10-01)
+
+Working notes: `build/wf/<func>/NOTES.md`.
+
+### `sub_0807A754` (`FillTiles32`, 0xB4, start score 61; wave 1, ordinary C)
+
+Same fix as its sibling `sub_0807A5D4` in [[code-0807960c]]: no `half` local. Write `w / 2` inline in both the inner loop bound (`j < w / 2`) and the stride (`p += 0x10 - w / 2`), with `u8 i, j`. c-typeck shortens `u8 / 2` to an unsigned-char division (the redundant u8 narrowing), and the rotated loop's two condition copies are hoisted differently, which produces the `[sp]` spill and the per-row bound reload. Matched on the first try.
+
+### `sub_0807B628` (`BgAffineSetRef`, 0x90, start score 10; wave 1, ordinary C)
+
+The parked draft selected a `vu32 *reg` in the switch and stored `*reg++ = sx; *reg = sy` (with a `u16 sx` hack). What matched: plain `s32 sx, sy` and writing both registers by literal address inside each case (`*(vu32 *)0x04000028 = sx; *(vu32 *)0x0400002C = sy; break;`, and the same for 0x38/0x3C). agbcc derives the second address as `adds r0,#4` from the first, and cross-jumping merges the two case tails into the shared `str r7,[r0]; adds r0,#4; str r4,[r0]`, which also gives the target's allocation (bg in sl, sx in a fresh r7). Matched on the first experiment.
+
+### `sub_0807AEF0` (`LoadPackedImage6bpp`, 0x10C, start score 68; wave 2, FAKEMATCH)
+
+Twin of `sub_0805DF34` ([[code-0805d58c]]); its matched body was ported (mask locals, u16/u32 types, `* 64`, integer ROM addresses). Extra for this twin:
+- Use the `u32 dst` parameter directly (cast at each use, `dst += 2`); a separate `u16 *dst = (u16 *)dstAddr` copy moves the `adds r7, r1, #0` later in the prologue.
+- The ROM keeps the second-loop counter in ip (0x3F3F in r2, 0xB3F in r3). No ordinary form reproduced that: a shared counter for both loops outranks dst (gets r7); u16/int/for/while/do/index forms keep it in r2. FAKEMATCH: `register u32 i asm("ip")`. With the pin, a `for` keeps its entry test (`cmp/bhi`), so the loop is a do-while, and the bound is a local `lim = 0xB3F` set before the loop so the literal loads first, as in the ROM.
+- Cleanup idea: find why global alloc gives the counter ip (it must be allocated after the 0x3F3F/0xB3F invariants and see r4-r6 as unavailable), perhaps via an inline helper shared with `sub_0805DF34`.

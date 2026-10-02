@@ -10,7 +10,7 @@ updated: 2026-10-01
 
 `0x0803DD7C`-`0x0803EDC3`, Thumb, `old_agbcc -O2`. Source: `src/code_0803DD7C.c`. Follows [[code-0803b670]]. The functions here are not effect executors. They are the **target pickers** that the executors ([[code-08039638]], [[code-0803a654]]) call while resolving an effect. `int pick(struct CardRef *ref)` returns 1 when the targets are filled in and 0 while it is still waiting. `CardRef` is the one from [[code-08030b88]] with **three** target slots (`+0xC`, `+0xE`, `+0x10`), where a target is `zone << 8 | player` (see `sub_0803DD7C`).
 
-Unit status: `unit bytes MATCH`, **13/14 functions in C**; 1 remains `INCLUDE_ASM`. Verified with `tools/check.py code_0803DD7C`.
+Unit status: `unit bytes MATCH`, **14/14 functions in C** since workflow wave 2 (2026-10-01), when the last fallback `sub_0803DEB8` matched. Verified with `tools/check.py code_0803DD7C`.
 
 ## Shared headers (migrated 2026-09-30)
 The unit includes `main.h` and `duel.h` and does not define its own copies of the shared layouts:
@@ -31,7 +31,7 @@ Five local struct definitions (`PlayerLP`, `MainView`, `DuelCard`, `DuelZone`, `
 | `0x0803DD7C` | 0x30 | matching | `AddTarget(ref, v)`: `if (ref) ref->targets[ref->numTargets++] = v` |
 | `0x0803DDAC` | 0x94 | matching | `AddTargetChecked(ref, player, zone) -> u16`: if `sub_0802B1B8(ref->id, player, zone)` accepts: `sub_08077AEC(1)` unless player 1, message 8 (`\| 0x8000` for player 1) with the zone split into (`0/5/10` group, index) and `AddTarget(ref, zone << 8 \| player)`; returns 1, else 0 |
 | `0x0803DE40` | 0x78 | matching | same as above without the acceptance test. `do { hi = 5; lo = z - 5; } while (0);` (permuter) fixes the ROM's hi r7 / lo r4 register order |
-| `0x0803DEB8` | 0x12C | **nonmatching (asm)** | list-viewer picker (`0x0201D810`): AI adds the first entry (`sub_08056ECC`); player 0 opens the viewer (`sub_08044224`, `sub_0802AF34`), then takes the chosen card word (id + two halves as two targets). The draft matches except that the AI arm scales `i<<2` into r4 instead of r1+base, and the default arm parks the list base in r5 (ROM r4) so `base+0xC` isn't reused after the call. `CARD_NUMBER` replaced by the constant-address form fixed the case 0/1 arms |
+| `0x0803DEB8` | 0x12C | **matching** (wave 2, 2026-10-01) | list-viewer picker (`0x0201D810`): AI adds the first entry (`sub_08056ECC`); player 0 opens the viewer (`sub_08044224`, `sub_0802AF34`), then takes the chosen card word (id + two halves as two targets). The draft matches except that the AI arm scales `i<<2` into r4 instead of r1+base, and the default arm parks the list base in r5 (ROM r4) so `base+0xC` isn't reused after the call. `CARD_NUMBER` replaced by the constant-address form fixed the case 0/1 arms |
 | `0x0803DFE4` | 0x17C | matching | spell/trap zones 5-9: AI takes the first face-down (flag 2) card of type 0x15, else the first occupied unflagged one; player 0: prompt `gUnk_08083C94`, keys 0xA000A |
 | `0x0803E160` | 0xCC | matching | AI: `sub_08056544(-1)`; player 0: prompt `gUnk_08083CC8`, keys 0xF0 |
 | `0x0803E22C` | 0x198 | matching | AI: `sub_08008860(0) > 0` then `sub_0805748C(0, -1, 1, 1)`; player 0: per-card prompt text (card numbers 0x5E / 0x77, 0x2E6, 0x2DA, 0x536 select `gUnk_08083CF8/D50/D90/DCC`), keys 0xF0 << 16 |
@@ -58,10 +58,17 @@ Five local struct definitions (`PlayerLP`, `MainView`, `DuelCard`, `DuelZone`, `
 
 ## Open problems
 
-The remaining `INCLUDE_ASM` function is `sub_0803DEB8`. It keeps its original assembly, and its decoded draft and current mismatch notes stay guarded by `#if 0` in the unit source.
+The last `INCLUDE_ASM` function, `sub_0803DEB8`, matched in workflow wave 2 (see below); the unit has no assembly fallback left.
 
 ## Verified C conversions (2026-09-30)
 
 - `sub_0803EA9C` (Thumb, `0x114` bytes) is matching C. It is the field-card selector. The AI takes an accepted position, and the human path builds a prompt and waits for input. The match computes the cursor sum before loading the player cursor, with an empty read-write asm on the sum, to retain r4/r5 and the ROM load order.
 
 The compiler hint emits no instructions. The conversion passed a whole-unit byte comparison with the baserom, and the remaining assembly function keeps its original bytes. Earlier notes describing this function as an allocation near miss are resolved by the matching C above.
+
+## List-viewer picker matched (wave 2, 2026-10-01)
+
+`sub_0803DEB8` (0x12C, start score 48) matches in ordinary C. Working notes: `build/wf/sub_0803DEB8/NOTES.md`.
+
+1. AI arm: the ROM computes `lsl r1,i,#2; add r4,r1,base`, but the draft tied the shift into r4. Fix: declare **one** `u16 *c` at function scope and use it in both the AI arm and the default arm. Because `c` spans several basic blocks, global-alloc allocates it (r4), and local-alloc gives the shift/sum temporary its own register, so the temporary is no longer tied to `c`.
+2. Default arm: the ROM keeps the list base in r4 and `base+0xC` in r5 across the call, and reuses `base+0xC`. Fix: access `gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row]` directly instead of through a `struct ListView *lv` local. The player then comes before the base literal, and CSE shares `base+0xC` across the call.

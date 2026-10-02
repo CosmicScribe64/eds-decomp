@@ -8,18 +8,18 @@ updated: 2026-10-01
 ---
 # code_08072FAC: image-pack loaders, map helpers and the multi-player link layer (`0x08072FAC`-`0x080740BC`)
 
-`src/code_08072FAC.c` (19 functions, 0x1110 bytes). **12 / 19 are C and byte-matching**; 7 stay `INCLUDE_ASM` (5 with a near-miss attempt under `#if 0 /* NONMATCHING */`: `sub_080730A8`, `sub_0807332C`, `sub_080735D4`, `sub_08073784`, `sub_08073F04`; 2 not attempted: `sub_0807382C`, `sub_08073C10`). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues [[code-08071f40]] (whose `sub_08072EB0` is the same loader with map buffer `0x03000C5C`); the link state is the `LinkSio` block of [[code-080740bc]] / [[code-080750e0]] (`0x03005B60`), and `sub_080740BC` (link step, in [[code-080740bc]]) is the receive pump these functions call.
+`src/code_08072FAC.c` (19 functions, 0x1110 bytes). **14 / 19 are C and byte-matching** after 2026-10-01 (`sub_0807332C` by the permuter just before workflow wave 1, `sub_080730A8` in wave 1); 5 stay `INCLUDE_ASM` (3 with a near-miss attempt under `#if 0 /* NONMATCHING */`: `sub_080735D4`, `sub_08073784`, `sub_08073F04`; 2 not attempted: `sub_0807382C`, `sub_08073C10`). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues [[code-08071f40]] (whose `sub_08072EB0` is the same loader with map buffer `0x03000C5C`); the link state is the `LinkSio` block of [[code-080740bc]] / [[code-080750e0]] (`0x03005B60`), and `sub_080740BC` (link step, in [[code-080740bc]]) is the receive pump these functions call.
 
 ## Functions
 
 | Address | Size | Status | Proposed name | Purpose |
 |---|---|---|---|---|
 | `0x08072FAC` | 0xFC | **matching** | `LoadImagePack8(mapBase, palIdx, tileBase, img)` | 8bpp image pack: adds `palIdx` to every non-zero pixel byte while copying the tiles (64 bytes each) to `0x06004000 + tileBase*32`, copies the palette to `0x05000000 + palIdx*2`, writes the cells to the map buffer `0x0300045C`, cell = `tile + tileBase/2`. Returns the tile count |
-| `0x080730A8` | 0xDC | nonmatching (draft) | `LoadImagePackRel(mapBase, palIdx, tileBase, img)` | 4bpp pack; cell positions are taken relative to the first cell (`col - col0`, `(row - row0) << 5`), map `0x0300245C` (BG map bank 4) |
+| `0x080730A8` | 0xDC | **matching** (wave 1, 2026-10-01) | `LoadImagePackRel(mapBase, palIdx, tileBase, img)` | 4bpp pack; cell positions are taken relative to the first cell (`col - col0`, `(row - row0) << 5`), map `0x0300245C` (BG map bank 4) |
 | `0x08073184` | 0x4C | **matching** | `LoadImagePackGfx(palIdx, tileBase, img)` | copies tiles (32 bytes each) to `0x06004000 + tileBase*32` and the palette to `0x05000000 + palIdx*2`; returns the tile count |
 | `0x080731D0` | 0x9C | **matching** | `LoadImagePack(mapBase, palIdx, tileBase, img)` | `LoadImagePackGfx` + cell list to `0x03000C5C`, cell = `(tile + tileBase) \| (palIdx >> 4) << 12` |
 | `0x0807326C` | 0xC0 | **matching** | `LoadImagePackInline` | same as above, map `0x0300045C`, copies inlined |
-| `0x0807332C` | 0xC8 | nonmatching | `LoadImagePackRow(row, mapBase, palIdx, tileBase, img)` | as `0x0807326C` into map buffer number `row` (`0x0300045C + row*0x800`); `img` is the stack argument |
+| `0x0807332C` | 0xC8 | **matching** (2026-10-01, permuter; FAKEMATCH) | `LoadImagePackRow(row, mapBase, palIdx, tileBase, img)` | as `0x0807326C` into map buffer number `row` (`0x0300045C + row*0x800`); `img` is the stack argument |
 | `0x080733F4` | 0xA4 | **matching** | `LoadImagePackRel2` | `LoadImagePackGfx` + cells relative to the first cell's position, map `0x03000C5C` |
 | `0x08073498` | 0x3C | **matching** | `ClearBgMaps` | clears the 8 BG map buffers (`0x0300045C`, 0x800 each) and the 0x1C00-byte text canvas at `0x02010014`, `*(u16 *)0x02010010 = 0` |
 | `0x080734D4` | 0x2C | **matching** | `ClearBgMap0` | same for map buffer 0 only |
@@ -81,10 +81,23 @@ Tiles go to `0x06004000 + tileBase*32` (charblock 1). The 6 variants differ only
 ## Nonmatching notes
 
 - `0x080731D0`, `0x0807326C`, `0x080733F4` are now matching (the split shift `((pos & 0xFF00) >> 1) >> 2` plus routing the map base through a pointer/assignment makes old_agbcc hoist the literal ahead of the palette bank and keep `0xFF00` in `ip`; see the `FAKEMATCH` comments in the source).
-- `0x080730A8`, `0x0807332C`: the target re-loads the map literal inside the loop (no hoist) and keeps `0xFF00` in `ip`; with `(u16 *)0x0300045C` (integer literal) the hoist disappears but the mask lands in r5. `0x0807332C`: target keeps `row` in `sl` and hoists `row*0x800 + 0x0300045C`; built spills it to the stack.
-- `0x0807332C` fresh sibling batch: an initialized row constraint to sl corrects all other callee-saved register roles. Reuse that row variable for the map base, keep a named 0xFF00 mask in ip, read the initial cell count into r5, and use a single guarded do/while loop. The best private candidate has eight diff lines. The initial `mov sl,r0` occurs after argument narrowing, and the mask is built in r5 instead of r0. Attempts with explicit word-argument narrowing and scratch staging were worse, so none were activated. Evidence: `build/manual_late_next/sub_0807332C.rowdo.best.c` / `.rowdo.diff`. Runtime narrowing and five-argument ABI must remain intact in future experiments.
+- Historical (both matched 2026-10-01, see below): `0x080730A8`, `0x0807332C`: the target re-loads the map literal inside the loop (no hoist) and keeps `0xFF00` in `ip`; with `(u16 *)0x0300045C` (integer literal) the hoist disappears but the mask lands in r5. `0x0807332C`: target keeps `row` in `sl` and hoists `row*0x800 + 0x0300045C`; built spills it to the stack.
+- Historical `0x0807332C` fresh sibling batch: an initialized row constraint to sl corrects all other callee-saved register roles. Reuse that row variable for the map base, keep a named 0xFF00 mask in ip, read the initial cell count into r5, and use a single guarded do/while loop. The best private candidate has eight diff lines. The initial `mov sl,r0` occurs after argument narrowing, and the mask is built in r5 instead of r0. Attempts with explicit word-argument narrowing and scratch staging were worse, so none were activated. Evidence: `build/manual_late_next/sub_0807332C.rowdo.best.c` / `.rowdo.diff`. Runtime narrowing and five-argument ABI must remain intact in future experiments.
 - `0x080735D4`: structure identical; the target derives `0xA84`/`0xAB4` as `r2 + 0x30` from the `0xA54` literal and keeps the base in r4 (copy in r5), while the built version uses separate literals.
 - `0x08073F04`: first C attempt (from the m2c draft). The target keeps the packet base `0x03006676` in r4 and derives the `LinkSio` base as `r4 - 0xB16`; the attempt materialised `0x03005B60` and other constants separately and spilled them to r8/sl, so the loop body and header field accesses still differ.
 - `0x08073784`: the target keeps the source pointer in `ip` and has a dead `movs r7,#0`; mid-function literal pool. The `ip`-vs-low-reg choice for `src` and the SIOCNT temp/id register roles did not change across sio-temp, declaration-order, `unkAF4 = 0` and direct-index shapes.
 
 Related: [[code-08071f40]], [[code-080740bc]], [[code-080750e0]], [[code-0807b6b8]], [[graphics-formats]], [[decomp-workflow]], [[compiler-flags]].
+
+## Image-pack loaders matched (2026-10-01)
+
+### `sub_0807332C` (0xC8; permuter, FAKEMATCH)
+
+Matched by the permuter in commit `1776627`, just before workflow wave 1. The old near miss had `mov sl,r0` after the u16 parameter narrowing, while the ROM copies `rowArg` to sl first. The permuter moved the row binding `register u32 row __asm__("r10") = rowArg;` **inside** the guarded `if (i < n)` block; with the existing r12 mask pin and the empty `asm volatile("" : "+r"(row))` after the base computation, row stays in sl and the mask in ip as in the ROM. All three are FAKEMATCH devices, commented in the source.
+
+### `sub_080730A8` (0xDC, start score 36; wave 1, ordinary C)
+
+Working notes: `build/wf/sub_080730A8/NOTES.md`.
+- The tile destination was computed as a call argument; a named `u8 *dst` local between `tiles` and `hdrC`, exactly as in matched `sub_0807326C`, fixes it.
+- The index was built as `((dc << 16) | (dr << 21)) >> 16` with ints, giving `asrs` instead of `lsrs`. What matched: int `col`/`row`/`col0`/`row0`, then u16 temporaries `u16 dc = col - col0; u16 dr = row - row0; idx = dc | (dr << 5);`. Combine turns the two zero-extends into the target's `lsl 16 / lsl 21 / orr / lsr 16`. With the u16 temporaries the named `dst` no longer spills `palIdx<<16` (it stays in sl). The map base is the integer literal `(u16 *)0x0300245C`.
+- Failed: u16 `col/row/col0/row0` (90); an int index expression without the u16 temporaries (`lsl 5 / orr / lsl16 / lsr16`, 90).

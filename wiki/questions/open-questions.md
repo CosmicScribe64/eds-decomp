@@ -34,6 +34,7 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [ ] Which duel phase is which in the 10-entry table at `0x08198F80`?
 - [ ] Is the link code Nintendo's MultiSio sample (sync word `0xFEFE`)? A byte-for-byte comparison would settle it.
 - [ ] Where does `gMain` end (about `0x030048CC`), and what is the struct at `0x030049D0`? See [[ram-map]].
+- [ ] Do the deck-edit 20-byte panel cells at `0x0201DB20` start at `+0x1724` (flag bytes at cell +2/+3) or at `+0x1726`? The matched C view has to start at the 4-aligned `+0x1724` because agbcc aligns structs to 4; the ROM accesses alone do not decide the original layout. See [[code-0806704c]].
 
 ## Game data
 - [x] ~~Where are the card stats?~~ `0x08621DE0`. See [[card-table]].

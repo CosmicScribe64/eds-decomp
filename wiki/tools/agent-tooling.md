@@ -26,7 +26,9 @@ base, and they keep the result only if the whole unit still matches.
 |---|---|
 | `python3 tools/wf.py prep F` | Make the working copy; print the starting score. |
 | `python3 tools/wf.py check F [--ctx N]` | Compile the copy (`check.py --src`), print the normalized diff and the score. |
+| `python3 tools/wf.py score F` | Print only the score line. |
 | `python3 tools/wf.py perm F --minutes M -j J` | [[decomp-permuter]] on a snapshot of the copy (`permute.py --src`). |
+| `python3 tools/wf.py dump F [-dg -dl ...]` | agbcc RTL dumps of the copy into `build/wf/F/dump/` (default `-dg -dl -df`: `.greg` global-alloc priorities, `.lreg` local-alloc, `.flow` live lengths; `-dL` loop, `-dJ` cross-jump, `-da` all). How to read them: [[matching-tricks#Register allocation priority and reload rotation]]. |
 | `python3 tools/wf.py apply F` | At score 0: merge into `src/<unit>.c`, verify `unit bytes MATCH`, else restore. Rejects asm() with instructions. |
 | `python3 tools/wf.py park F "note"` | Store the copy as the `#if 0 /* NONMATCHING (score N): note */` draft if it beats the starting score. |
 
@@ -35,7 +37,8 @@ Score = differing normalized lines + 4 x |size delta| (the same metric as the sc
 The size delta does not count the zero `.align 2, 0` pad that the function table includes after a function ending
 on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad showed as `-2 bytes`, held such
 functions at score 8, and made `apply` refuse them ([[code-08019554]], `sub_0801A130`).
-Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave.
+Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01: see [[log]]).
+`apply` accepts empty `asm("" : ...)` constraints and `register ... asm("rN")` bindings but rejects any other asm string, including `asm("gUnk_...")` / `__asm__` symbol-alias declarations inside the markers; wave agents used a cast of an existing symbol or a function-pointer cast macro instead (`sub_0806704C`, `sub_0806710C`, `sub_08070F18`, `sub_0806F934`).
 
 ## Running agents
 | Tool | What it does |

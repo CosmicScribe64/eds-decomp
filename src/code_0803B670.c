@@ -345,21 +345,19 @@ ret78:
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic verified (`int tp = (u8)...` gets closest). The ROM
-       * hoists the constant -1 into sl (live across all three compares and the
-       * final one), with tp in r7 and tz in r9. This build reloads -1 and puts
-       * tp in r8. */
 int sub_0803BCE4(struct CardRef *ref)
 {
-    int none = -1;
-
-    if (sub_08009CAC(ref->player, 0x5EA) != 0 && sub_08008C6C(ref->player) != none && sub_08008A44(ref->player) != none
+    if (sub_08009CAC(ref->player, 0x5EA) != 0 && sub_08008C6C(ref->player) != -1 && sub_08008A44(ref->player) != -1
         && ref->numTargets == 1) {
-        s16 tp = (u8)ref->targets[0];
+        int tp = (u8)ref->targets[0];
         int tz = ref->targets[0] >> 8;
-        u16 a = sub_08008A44(ref->player);
+        int a;
+        /* FAKEMATCH: an extra use of tp raises its global-alloc priority above the 0x77/0x8077 ternary temp,
+         * so tp gets r7 and the ternary falls to ip as in the ROM */
+        asm("" :: "r"(tp));
+        a = sub_08008A44(ref->player);
 
-        if (ref->player != tp) {
+        if (tp != ref->player) {
             int pa = tp & 1;
             struct DuelZone *z = ZB(pa, tz);
 
@@ -370,15 +368,13 @@ int sub_0803BCE4(struct CardRef *ref)
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, gUnk_02017F84[0], gUnk_02017F84[1], 0);
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8077 : 0x77, (u8)b | 0x100, gUnk_02017F84[0], gUnk_02017F84[1]);
                 sub_08017B04(ref->player, ref->player | (u8)b << 8, tp | tz << 8);
-                if (!ref->skip4 && a != none)
-                    sub_08019078(ref->player, ref->targets[0], (u8)a << 8 | ref->player);
+                if (!ref->skip4 && a != -1)
+                    sub_08019078(ref->player, ref->targets[0], ref->player | (u8)a << 8);
             }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803B670", sub_0803BCE4); /* 0x0803BCE4 size 0x154 */
 int sub_0803BE38(struct CardRef *ref)
 {
     if (!ref->skip4) {
@@ -566,7 +562,7 @@ int sub_0803C368(struct CardRef *ref)
 int sub_0803C434(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 2) {
-        u8 tp = ref->targets[0];
+        int tp = (u8)ref->targets[0];
         int tz = ref->targets[0] >> 8;
         u16 want = ref->targets[1];
         int pa = 1 & tp;
@@ -605,7 +601,7 @@ int sub_0803C4F8(struct CardRef *ref)
 int sub_0803C550(struct CardRef *ref)
 {
     if (ref->numTargets == 1) {
-        u8 tp = ref->targets[0];
+        int tp = (u8)ref->targets[0];
         int tz = ref->targets[0] >> 8;
         int pa = 1 & tp;
         struct DuelZone *z = ZB(pa, tz);

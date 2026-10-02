@@ -414,16 +414,31 @@ static inline u8 GetRecipeCardLevelV(u16 id)
     }
     return v;
 }
-#if 0 /* NONMATCHING (score 4): NONMATCHING: 4 lines: only the case 0x64 hoist of hand base differs (built 'adds
-       * r0,r1,#0; ldr r1,=0x684; adds r0,r0,r1', ROM 'ldr r0,=0x684; adds r0,r0,r1': ROM's hoisted add has the 0x684
-       * pseudo as first operand). Keys: function-level u32 tab = gUnk_08622AB4 local (rematerialized as a reload in the
-       * hand loop, fixes reload rotation) with index-first (cid & 0x7FF) * 2 + tab; gUnk_02019968 symbol directly in the
-       * hand-word address (local-alloc tie p vs i*4); cast table ((const u16 *)0x08623DF4)[n] in case 0x80; u8 temp for
-       * need (ref r9/ok r8 priority); u16-type level helper W for levels 2/3 (cid r7/num r6 priority); volatile re-read
-       * of need (FAKEMATCH). Failed for the hoist: GetRecipeHandWord/sum-of-address forms (80-98), hoff local, int p,
-       * 1&player. */
 /* Ritual summon executor (hypothesis): 0x80 checks the recipe and starts tribute selection, 0x78 lets the
  * CPU pick tributes by level, 0x64 finds the ritual monster in hand, 0x63 plays it. */
+/* Level for the hand-loop "ok" test. */
+static inline u8 GetRecipeCardLevelT(u16 id)
+{
+    int type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+    int v;
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        v = 0;
+        break;
+    case 0x18:
+        v = 10;
+        break;
+    default:
+        v = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+        break;
+    }
+    /* FAKEMATCH: consuming v keeps the constant arms (0, 10) jumping to the shared zero test; without it jump2
+     * threads them past the test. */
+    asm volatile("" : : "r"(v));
+    return v;
+}
 static inline u8 GetRecipeCardLevelW(u16 id)
 {
     u16 type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
@@ -473,6 +488,7 @@ int sub_08043B98(struct CardRef *ref)
         if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
             return 0;
         { u8 c = gUnk_0819A990[idx].cnt; EQ->need = c; }
+        /* FAKEMATCH: volatile re-read keeps the ROM's ldrb of need after the store */
         gUnk_02017A40[0x510] = *(volatile u8 *)&EQ->need;
         if (ref->player)
             return 0x78;
@@ -483,7 +499,11 @@ int sub_08043B98(struct CardRef *ref)
     case 0x64:
         for (i = 0; i < gUnk_020192E4[ref->player & 1].handCount; i++) {
             u32 p = ref->player & 1;
-            if (gUnk_08622AB4[(gUnk_020192E4[p].hand[i] << 21) >> 21] == gUnk_0819A990[sub_0804353C(ref->id)].a) {
+            /* Hand word through the integer base gUnk_020192E4 + 0x684 (as GetRecipeHandWord), with the offset as a
+             * separate statement: the pre-test base then feeds the hoisted base+0x684 add, and the table load
+             * stays in the loop. */
+            u32 off = i * 4 + p * 0xD64;
+            if (gUnk_08622AB4[(*(u32 *)(off + ((u32)gUnk_020192E4 + 0x684)) << 21) >> 21] == gUnk_0819A990[sub_0804353C(ref->id)].a) {
                 u32 *c = &gUnk_020192E4[ref->player & 1].hand[i];
                 sub_08007558(gUnk_02017E28, c);
                 sub_0801EC58(ref->player ? 0x80C2 : 0xC2, ((u16 *)c)[0], ((u16 *)c)[1], 0);
@@ -507,7 +527,7 @@ int sub_08043B98(struct CardRef *ref)
                 const u16 *num = (const u16 *)((cid & 0x7FF) * 2 + tab);
                 if (*num == gUnk_0819A990[sub_0804353C(id)].a && sub_0800A2A8(ref->player, *num) <= 1)
                     ok = 0;
-                lv = GetRecipeCardLevelV(cid);
+                lv = GetRecipeCardLevelT(cid);
                 if (lv <= 0)
                     ok = 0;
                 if (ok && handLv < GetRecipeCardLevelW(cid)) {
@@ -543,8 +563,6 @@ int sub_08043B98(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_08043B98); /* 0x08043B98 size 0x594 */
 static inline u32 GetRecipeListWord(int player, int idx)
 {
     u32 p = player & 1;

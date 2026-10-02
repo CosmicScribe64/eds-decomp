@@ -308,34 +308,38 @@ int sub_08052F38(u32 mask)
     return 0;
 }
 INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_0805304C); /* 0x0805304C size 0x688 */
-#if 0 /* NONMATCHING: pointer setup and temporary registers differ. */
 void sub_080536D4(int hidden)
 {
     int i = 0;
     u32 *base = gUnk_02017F84;
     u32 y = (0x60 - (hidden << 4)) << 16;
     int x = 0x24;
-    u32 *cards = base;
-    const u16 *colors = gUnk_081A4424;
-    u16 *frame = &gUnk_0300489E;
+    u32 *cards;
+    const u16 *colors;
+    u16 *frame;
+    u8 *sel;
+    asm("" :: "r"(base)); /* FAKEMATCH: keep base live so combine leaves the copy */
+    cards = base;
+    sel = &gUnk_02017F7C;
+    colors = gUnk_081A4424;
+    frame = &gUnk_0300489E;
     for (; i < 5; i++) {
-        u16 tile = sub_08062140((cards[i] << 20) >> 20) | 0x1000;
+        u16 tile = sub_08062140((*cards << 20) >> 20) | 0x1000;
         u32 flags;
         u32 position;
         if (hidden != 0)
             tile = 0x40;
         position = x | y;
-        if (i == gUnk_02017F7C)
+        if (i == *sel)
             flags = *(const u16 *)((u32)colors + (*frame & 0x1E)) << 16;
         else
             flags = 0x1000000;
         sub_08076714(position, 0x80, tile, flags);
         x += 0x20;
+        cards++;
     }
 }
 
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_080536D4);
 
 void sub_08053770(int hidden, int from, int to)
 {

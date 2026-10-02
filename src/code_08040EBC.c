@@ -478,11 +478,24 @@ int sub_080417DC(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: decoded in full (6-step machine: cursor pick with level
-       * limit sub_08009DEC, saved level at 0x3E6, count-down viewer, prompts
-       * via sub_08075434). The prologue, switch and first cases match. The ROM
-       * keeps CARD_LEVEL in r0 and copies it to r4 (lvl is live across
-       * sub_08009DEC), and shares the return-0 block after the inc tail. */
+/*
+ * Card level as a u8 inline with a return per case: the QImode result pseudo
+ * is copied to its use through a subreg, which reproduces the ROM's level in
+ * r0 plus a register copy (`adds r4,r0,#0` / `adds r1,r0,#0`).
+ */
+static inline u8 CardLevelU8(u32 id)
+{
+    switch ((int)CARD_TYPE(id)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 10;
+    default:
+        return (CARD_STATS(id) & 0x1E000000) >> 25;
+    }
+}
 int sub_08041898(struct CardRef *ref)
 {
     char buf1[0x40];
@@ -506,22 +519,22 @@ int sub_08041898(struct CardRef *ref)
         if (sub_08052F38(0xE000E0) == 0)
             goto ret0;
         {
-            u16 p = gUnk_0201CFB0.w824;
+            u32 p = gUnk_0201CFB0.w824;
             int zn = gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C;
-            s16 pl = 1 & p;
+            int pl = 1 & p;
             struct DuelZone *zp = ZB(pl, zn);
             u32 id = (*(u32 *)zp << 20) >> 20;
-            if (CardLevel(id) <= sub_08009DEC(ref->player)) {
+            if (CardLevelU8(id) <= sub_08009DEC(ref->player)) {
                 if (sub_0803DDAC(ref, p, zn) != 0) {
-                    sub_0803DD7C(ref, CardLevel(id));
-                    gUnk_02017A40[0x3E6] = CardLevel(id);
+                    sub_0803DD7C(ref, CardLevelU8(id));
+                    gUnk_02017A40[0x3E6] = CardLevelU8(id);
                     gUnk_02017A40[0x3E5]++;
                     return 0;
                 }
             }
             sub_08077AEC(3);
         }
-        return 0;
+        goto ret0;
     case 2:
         sub_08075434(buf1, gUnk_08084C3C, *(es + 0x3E6));
         sub_080602A4(0x206, 0x712, 0xB, buf1);
@@ -537,24 +550,24 @@ int sub_08041898(struct CardRef *ref)
         sub_0801EC58(msg, ((u16 *)c)[0], ((u16 *)c)[1], 0);
         gUnk_02017A40[0x3E6]--;
         gUnk_02017A40[0x3E5]++;
+        return 0;
+    }
+    case 5:
+        /* The positive test keeps the fall-through label-free, so post-reload
+         * CSE turns the second count load into `adds r2,r0,#0`; the ret0 label
+         * here makes this tail merge into case 4's `return 0`. */
+        if (*(es + 0x3E6) != 0) {
+            sub_08075434(buf2, gUnk_08084C84, *(es + 0x3E6));
+            sub_080602A4(0x206, 0x712, 0xB, buf2);
+            *(es + 0x3E5) = 3;
 ret0:
-        return 0;
-    }
-    case 5: {
-        int n = *(es + 0x3E6);
-        if (n == 0)
-            return 1;
-        sub_08075434(buf2, gUnk_08084C84, n);
-        sub_080602A4(0x206, 0x712, 0xB, buf2);
-        *(es + 0x3E5) = 3;
-        return 0;
-    }
+            return 0;
+        }
+        return 1;
     default:
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08040EBC", sub_08041898); /* 0x08041898 size 0x328 */
 int sub_08041BC0(struct CardRef *ref)
 {
     u8 *es = gUnk_02017A40;

@@ -114,20 +114,25 @@ extern int sub_08073784(void *p, int n);
 extern int sub_08073F04(int id, void *p, int n);
 
 
-#if 0 /* NONMATCHING: structure and case constants match. The target folds the
-       * u16 narrowing of x/y at their use (x in r6, y in r4, `lsl r3,#16`
-       * right before the mask), while the build emits y's `lsl` in the
-       * prologue and swaps r4/r6. The case block order also differs slightly. */
 /* Allocates an OAM entry on `layer` and fills attr0-2: y/x, shape/size from the w x h pixel size,
  * tile, palette bank, priority; mode 8 = 256 colours. Returns the entry. */
-struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, u16 y, u8 w, u8 h, u8 mode, u8 pal, u32 unused,
+/* Volatile view of the entry: the ROM reloads attr0/1 in every case instead of reusing the stored value. */
+struct OamEntryV {
+    vu32 w;
+    u16 h;
+};
+struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h, u8 mode, u8 pal, u32 unused,
                                u16 flags, u8 aff, u8 prio, struct OamList *list)
 {
-    u32 xx = x & 0x1FF;
-    u32 yy = y & 0xFF;
-    struct OamEntry *e = sub_0807A320(layer, list);
+    u16 y;
+    struct OamEntryV *e;
+    u32 v;
 
-    u32 v = aff << 25;
+    x &= 0x1FF; /* in place: the longer live range gives x r6 and y r4 */
+    y = y_;     /* int param narrowed here, not in the prologue */
+    y &= 0xFF;
+    e = (struct OamEntryV *)sub_0807A320(layer, list);
+    v = aff << 25;
 
     if (mode == 8) {
         v |= 0x2000;
@@ -140,13 +145,13 @@ struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, u16 y, u8 w, u8 h, u8 m
     case 8:
         switch (h) {
         case 8:
-            e->w |= xx << 16 | yy;
+            e->w |= x << 16 | y;
             break;
         case 16:
-            e->w |= 0x8000 | (xx << 16 | yy);
+            e->w |= 0x8000 | (x << 16 | y);
             break;
         case 32:
-            e->w |= 0x40008000 | (xx << 16 | yy);
+            e->w |= 0x40008000 | (x << 16 | y);
             break;
         case 64:
             while (1)
@@ -156,13 +161,13 @@ struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, u16 y, u8 w, u8 h, u8 m
     case 16:
         switch (h) {
         case 8:
-            e->w |= 0x4000 | (xx << 16 | yy);
+            e->w |= 0x4000 | (x << 16 | y);
             break;
         case 16:
-            e->w |= 0x40000000 | (xx << 16 | yy);
+            e->w |= 0x40000000 | (x << 16 | y);
             break;
         case 32:
-            e->w |= 0x80008000 | (xx << 16 | yy);
+            e->w |= 0x80008000 | (x << 16 | y);
             break;
         case 64:
             while (1)
@@ -172,39 +177,39 @@ struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, u16 y, u8 w, u8 h, u8 m
     case 32:
         switch (h) {
         case 8:
-            e->w |= 0x40004000 | (xx << 16 | yy);
+            e->w |= 0x40004000 | (x << 16 | y);
             break;
         case 16:
-            e->w |= 0x80004000 | (xx << 16 | yy);
+            e->w |= 0x80004000 | (x << 16 | y);
             break;
         case 32:
-            e->w |= 0x80000000 | (xx << 16 | yy);
+            e->w |= 0x80000000 | (x << 16 | y);
             break;
         case 64:
-            e->w |= 0xC0008000 | (xx << 16 | yy);
+            e->w |= 0xC0008000 | (x << 16 | y);
             break;
         }
         break;
     case 64:
         switch (h) {
         case 8:
+            while (1)
+                ;
         case 16:
             while (1)
                 ;
         case 32:
-            e->w |= 0xC0004000 | (xx << 16 | yy);
+            e->w |= 0xC0004000 | (x << 16 | y);
             break;
         case 64:
-            e->w |= 0xC0000000 | (xx << 16 | yy);
+            e->w |= 0xC0000000 | (x << 16 | y);
             break;
         }
         break;
     }
     e->h = pal << 12 | tile | prio << 10;
-    return e;
+    return (struct OamEntry *)e;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807B6B8); /* 0x0807B6B8 size 0x1AC */
 #if 0 /* NONMATCHING: register allocation only. The target keeps count in sl
        * and arg11 in r8, spilling the other u8 args; the build keeps arg11 in
        * sl and spills count. Structure and call arguments match. */

@@ -630,8 +630,8 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 108): NONMATCHING: same size; function-scope id shared by cases 101/110/111;
-       * remaining register differences in cases 20 (level/destroy), 101, 110, 111 */
+#if 0 /* NONMATCHING (score 102): NONMATCHING: same size; function-scope u16 id shared by cases 101/110/111;
+       * remaining register/reload differences in cases 20 (level/destroy), 101, 110, 111 */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -641,7 +641,7 @@ int sub_0804FC4C(void)
     char text[128];
     char format[128];
     u32 player; u8 *base; u8 *b4; struct FcFlagsS *ps;
-    u32 id;
+    u16 id;
     player=((struct FcState *)&gUnk_020192E0)->flags; player=((u32)player<<30)>>31;
     base=FC_E; b4=base+4; ps=(struct FcFlagsS *)(b4+player*0xD64);
     if (ps->bit1<0) {

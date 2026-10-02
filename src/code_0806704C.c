@@ -375,31 +375,51 @@ void sub_08067630(void)
     *(u16 *)0x04000042 = 0xF0;
     *(u16 *)0x04000046 = (gUnk_0201DB20_bits.win << 11) | 0x70;
 }
-#if 0 /* NONMATCHING: structure, constants and call sequence match; the ~300-line diff is register allocation of the hoisted constants (target: state base in r8 loaded into r0 first, base+2 in r9 scheduled after the `f & 0x60` test, 7 in sl) and the operand order of `(2 - phase) * 60 + table[...]` (target computes the phase term first) */
-/* Draw one frame of the slide animation of the panel record `p`: tiles of the frame, card and arrow pieces for the current
-   phase (sub_0807AA4C), the two sprite pairs (sub_08077EF4), and selects the HBlank/VBlank callback. */
+#if 0 /* NONMATCHING (score 60): NONMATCHING: everything up to the sub_0807A9C0 block matches (score 60). Keys:
+       * tables as integer-address casts so the add's constant is reloaded (round-robin reload regs), not a symbol
+       * pseudo; per-call temps i1..i5 extracted then overwritten (i = p->phase; i = b2 - i) to get the shared lsl/double
+       * lsr; base+2 written twice (b2/b3) so PRE inserts it before the phase cmp; calls 3/4 as (i + 0x086F17D4 + idx *
+       * 120); call 5 dst via an 18-bit view (lo18 >> 15) for the second sel extraction; u8 prototype for sub_0807AA4C.
+       * Left: A9C0 block (target compares X, copies to Y for src/dst, re-extracts phase for 2 - phase). */
+struct Slide18_8067660 { u32 lo18 : 18; u32 hi : 14; };
+#define SEL18(p) (((struct Slide18_8067660 *)(p))->lo18 >> 15)
+typedef void (*TileCopyFn_8067660)(const void *src, u32 dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi);
+#define TILECOPY ((TileCopyFn_8067660)sub_0807AA4C)
+#define MAP_8067660 ((const u8 (*)[60])0x086F17B0)
 void sub_08067660(struct Slide *p)
 {
-    s16 base;
+    int base;
     int b2;
-    u16 off;
-    base = 0;
+    int b3;
+    int i1, i2, i3, i4, i5;
+    u8 i6;
     if (D.mode == 2)
         base = 4;
+    else
+        base = 0;
     if (PA(p)->dir != 0) {
-        b2 = base + 2;
         if (PA(p)->phase != 0) {
-            sub_0807AA4C(gUnk_086F17B0[b2 - p->phase], 0x0600E000, 0x12, p->phase, 0x1E, 3, 2);
-            sub_0807AA4C(gUnk_086F17E8[2 - p->phase], 0x0600E038, 1, p->phase, 0x1E, 3, 2);
+            b2 = base + 2;
+            i1 = p->phase;
+            i1 = b2 - i1;
+            TILECOPY(((const u8 (*)[60])0x086F17B0)[i1], 0x0600E000, 0x12, p->phase, 0x1E, 3, 2);
+            i2 = p->phase;
+            i2 = 2 - i2;
+            TILECOPY(((const u8 (*)[60])0x086F17E8)[i2], 0x0600E038, 1, p->phase, 0x1E, 3, 2);
         }
-        off = (2 - p->phase) * 60;
-        sub_0807AA4C(off + gUnk_086F17D4[p->arr3[D.cursor]], 0x0600E024, 6, p->phase, 0x1E, 3, 2);
-        off = (2 - p->phase) * 60;
-        sub_0807AA4C(off + gUnk_086F17E0[p->arr6[D.cursor]], 0x0600E030, 4, p->phase, 0x1E, 3, 2);
-        off = (b2 - p->phase) * 60;
-        sub_0807AA4C((const void *)(off + (u32)&((const u16 *)gUnk_086F17B0)[p->sel * 2 + 0x40]), p->sel * 4 + 8 + 0x0600E000, 2, p->phase, 0x1E, 3, 2);
-        if ((u8)p->phase <= 1)
-            sub_0807A9C0(gUnk_086E26D0[p->phase], 0x0600E000 + (p->phase << 6), 0x1E, 2 - p->phase, 0x1E, 0, 0);
+        i3 = p->phase;
+        i3 = (2 - i3) * 60;
+        TILECOPY((const void *)(i3 + 0x086F17D4 + p->arr3[D.cursor] * 120), 0x0600E024, 6, p->phase, 0x1E, 3, 2);
+        i4 = p->phase;
+        i4 = (2 - i4) * 60;
+        TILECOPY((const void *)(i4 + 0x086F17E0 + p->arr6[D.cursor] * 120), 0x0600E030, 4, p->phase, 0x1E, 3, 2);
+        b3 = base + 2;
+        i5 = p->phase;
+        i5 = (b3 - i5) * 60;
+        TILECOPY((const void *)(i5 + 0x086F17B0 + (p->sel * 2 + 0x40) * 2), 0x0600E000 + (SEL18(p) * 2 + 4) * 2, 2, p->phase, 0x1E, 3, 2);
+        i6 = p->phase;
+        if (i6 <= 1)
+            sub_0807A9C0(((const u8 (*)[60])0x086E26D0)[i6], 0x0600E000 + (i6 << 6), 0x1E, 2 - p->phase, 0x1E, 0, 0);
         p->prev = p->phase;
         if (PA(p)->dir == 3 || PA(p)->dir == 1) {
             gUnk_03000040_cb.cb = sub_08067540;
@@ -414,7 +434,7 @@ void sub_08067660(struct Slide *p)
     }
     sub_08077EF4(gUnk_081A6EAC, 0, 1, 0, (-((2 - p->phase) * 8)) & 0xFF, 1, 0, 1, 0, 0, 0, (int)&D);
     if (PA(p)->phase == 2)
-        sub_08077EF4(gUnk_081A6D8C[p->sel], 0, 5, 0, -1, 0, 0, 0, 0, 0, 0, (int)&D);
+        sub_08077EF4(gUnk_081A6D8C[p->sel], 0, 5, -1, -1, 0, 0, 0, 0, 0, 0, (int)&D);
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_08067660); /* 0x08067660 size 0x2A8 */

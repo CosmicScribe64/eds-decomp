@@ -130,11 +130,6 @@ void sub_08017ADC(u32 player, u16 id, u16 pos, u16 a);
 #define CMD_PLAYER() ((gUnk_020185C0.cmd & 0x8000) != 0)
 #define CUR_PLAYER() (gUnk_020192E4_lp[CMD_PLAYER()])
 
-#if 0 /* NONMATCHING (score 30): NONMATCHING: zone loop: u32 sz = 0xD64 set before the loop (pseudo spilled ->
-       * rematerialised as ldr r4 each iteration, player*sz not hoisted), base struct var hoisted to sl, id/stId read via
-       * (u8*)gUnk_0201930C_z + j*0x94 + player*sz; final loop duplicates the ROM's second mul via an asm-opaque player
-       * copy (FAKEMATCH) used in the count test. Remaining: CARD_NUMBER switch lookup r0/r1 swap, stId table-load regs
-       * (r4/r2 vs r1), p2 copy placed before i=0 instead of before the mul. */
 struct Zone08013CDC {
     u32 id:12;
     u32 unk0_12:20;
@@ -158,9 +153,6 @@ struct ZonesPlayer08013CDC {
     struct Zone08013CDC zones[11];
     u8 rest[0xD64 - 11 * 0x94];
 };
-extern struct ZonesPlayer08013CDC gUnk_0201930C_z[2] asm("gUnk_0201930C");
-extern u8 gUnk_0201930C_b[] asm("gUnk_0201930C");
-extern u8 gUnk_020195F0[];
 
 void sub_08013CDC(void)
 {
@@ -185,21 +177,24 @@ void sub_08013CDC(void)
         gUnk_020192E4_lp[1].turns6_14 = 0;
     }
 
+    /* A stride variable set before the loop: its pseudo is spilled and rematerialised each
+     * iteration (ldr r4, =0xD64), and player * sz stays in the loop as in the ROM. */
     sz = 0xD64;
     for (j = 0; j <= 4; j++) {
-        struct ZonesPlayer08013CDC *base = gUnk_0201930C_z;
+        struct ZonesPlayer08013CDC *base = (struct ZonesPlayer08013CDC *)gUnk_0201930C;
         struct ZonesPlayer08013CDC *zp = (struct ZonesPlayer08013CDC *)((u8 *)base + player * sz);
         mon = &zp->zones[j];
         st = &zp->zones[j + 5];
-        id = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + j * 0x94 + player * sz))->id;
-        stId = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + 0x2E4 + j * 0x94 + player * sz))->id;
+        /* Byte offsets (zone first) give the ROM's j*0x94 + player*0xD64 sum, shared by both reads. */
+        id = ((struct DuelCard *)((u8 *)gUnk_0201930C + j * 0x94 + player * sz))->id;
+        stId = ((struct DuelCard *)((u8 *)gUnk_0201930C + 0x2E4 + j * 0x94 + player * sz))->id;
 
         if (id) {
             mon->flag7_2 = 0;
             if (mon->flag6_1) {
                 if (mon->counter6 < 15)
                     mon->counter6++;
-                switch (CARD_NUMBER(id)) {
+                switch (gUnk_08622AB4[id & 0x7FF]) {
                 case 0x052:
                     if (!mon->flag7_5)
                         mon->counter6++;
@@ -233,28 +228,34 @@ void sub_08013CDC(void)
         }
         if (stId) {
             if (st->flag6_1) {
-                if (CARD_NUMBER(stId) == 0x47 && st->counter6 < 12)
+                if (gUnk_08622AB4[stId & 0x7FF] == 0x47 && st->counter6 < 12)
                     st->counter6++;
-            } else if (CARD_TYPE(stId) > 20) {
+            } else if ((*(const u32 *)(0x08621DE0 + (stId & 0x7FF) * 4) & 0x1F00000) >> 20 > 20) {
                 st->flag91_2 = 1;
             }
         }
     }
 
+    /* FAKEMATCH: the ROM multiplies player by 0xD64 twice around the link loop (once for the
+     * count test, once more in the preheader for the link pointer). The count test reads
+     * through an asm-opaque copy of player so cse2 cannot share the body's product; the
+     * statement-expression stride loads 0xD64 before that copy, as in the ROM. */
     {
-        u32 p2 = player;
-        asm("" : "+r"(p2));
-        for (i = 0; i < gUnk_020192E0.players[p2].countB84; i++) {
-            u16 v = gUnk_020192E0.players[player].arrCC4[i];
-            if ((u8)gUnk_020192E0.players[player].arrCC4[i] == 2 && (u8)(v >> 8) <= 4)
-                gUnk_020192E0.players[player].arrCC4[i] = ((u8)((v >> 8) + 1) << 8) | 2;
+        struct DuelState *b;
+        u32 p2;
 
+        i = 0;
+        b = &gUnk_020192E0;
+        if (i < ((u8 *)b + ({ u32 c = 0xD64; c; }) * ({ p2 = player; asm("" : "+r"(p2)); p2; }))[0xA]) {
+            for (; i < b->players[p2].countB84; i++) {
+                u16 v = gUnk_020192E0.players[player].arrCC4[i];
+                if ((u8)gUnk_020192E0.players[player].arrCC4[i] == 2 && (u8)(v >> 8) <= 4)
+                    gUnk_020192E0.players[player].arrCC4[i] = ((u8)((v >> 8) + 1) << 8) | 2;
+            }
         }
     }
     gUnk_020185C0.running = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08013CDC", sub_08013CDC); /* 0x08013CDC size 0x340 */
 INCLUDE_ASM("asm/nonmatching/code_08013CDC", sub_0801401C); /* 0x0801401C size 0x6F4 */
 void sub_08014710(void)
 {

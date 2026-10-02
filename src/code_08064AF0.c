@@ -665,15 +665,54 @@ static inline u16 CardDef5AB4(u16 id)
         return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1FF) * 10;
     }
 }
-#if 0 /* NONMATCHING: 282 lines; first 37% exact. Divine digit loops: target hoists ((row+1)<<5)+1 and keeps row<<5 on the stack */
-/* Draw the selected card's ATK/DEF into the tilemap at (col, row); the Divine cards (type 24) get fixed
- * digit patterns by card number instead (hypothesis). */
+/* FAKEMATCH: int-parameter views of sub_080792A0 / sub_080794E0. The ROM passes the u16 row and the
+ * `0x300 | digit` / ATK values without narrowing them to the callees' u8/u16 parameter types, and the
+ * u16 prototype would also reorder the `orr` operands in the digit loops. */
+#define sub_080792A0_i ((void (*)(int start, u16 *dst, int pal, int mode, int count))sub_080792A0)
+#define sub_080794E0_i ((void (*)(int val, int n, int mode, u16 *dst, int col, int row, int pal, int base, int m2))sub_080794E0)
+
+/* ATK and DEF shown for card `id`: 0 for kinds 21-23, 4000 for the Divine kind 24, else the stat * 10. */
+static inline u16 CardAtk_08065AB4(u16 id)
+{
+    switch (CARD_KIND(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return ((CARD_STATS(id) << 14) >> 23) * 10;
+    }
+}
+
+static inline u16 CardDef_08065AB4(u16 id)
+{
+    switch (CARD_KIND(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    default:
+        return (CARD_STATS(id) & 0x1FF) * 10;
+    }
+}
+
+/* Draw the selected card's ATK/DEF box into the tilemap at (col, row). Kinds 21-23 draw nothing; the
+ * Divine kind 24 draws a frame and a fixed 4-digit pattern chosen by card number (0x776-0x778). */
 void sub_08065AB4(u16 *map, u16 col, u16 row)
 {
     u8 d[4];
     u16 id;
     u8 i;
 
+    /* FAKEMATCH: three empty insns lengthen map's live range so global-alloc ranks it below the loop
+     * temporary (col + 2) & 0x1F; map then gets r8 and that temporary r7 (spilled by reload), as in the ROM. */
+    asm("");
+    asm("");
+    asm("");
     id = sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]);
     switch (CARD_KIND(id)) {
     case 21:
@@ -698,8 +737,8 @@ void sub_08065AB4(u16 *map, u16 col, u16 row)
                 *p = 4;
             }
             for (i = 0; i <= 3; i++) {
-                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
-                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col + 1 + (row << 5)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col++ + 1 + ((row + 1) << 5)], 2, 0, 1);
             }
             break;
         case 0x777:
@@ -709,15 +748,15 @@ void sub_08065AB4(u16 *map, u16 col, u16 row)
                 *p = 10;
             }
             for (i = 0; i <= 3; i++) {
-                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
-                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col + 1 + (row << 5)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col++ + 1 + ((row + 1) << 5)], 2, 0, 1);
             }
             break;
         case 0x778:
             memcpy(d, gUnk_08087568, 4);
             for (i = 0; i <= 3; i++) {
-                sub_080792A0(0x300 | d[i], &map[col + (row << 5) + 1], 2, 0, 1);
-                sub_080792A0(0x300 | d[i], &map[col++ + (((row + 1) << 5) + 1)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col + 1 + (row << 5)], 2, 0, 1);
+                sub_080792A0_i(0x300 | d[i], &map[col++ + 1 + ((row + 1) << 5)], 2, 0, 1);
             }
             break;
         }
@@ -725,10 +764,10 @@ void sub_08065AB4(u16 *map, u16 col, u16 row)
     default:
         map[col + (row << 5)] = 0x198;
         map[col + (((row + 1) & 0x1F) << 5)] = 0x199;
-        sub_080794E0(CardAtk5AB4(id), 4, 1, map, (col + 4) & 0x1F, row, 2, 0x300, 0);
-        sub_080794E0(CardDef5AB4(id), 4, 1, map, (col + 4) & 0x1F, (row + 1) & 0x1F, 2, 0x300, 0);
+        sub_080794E0_i(CardAtk_08065AB4(id), 4, 1, map, (col + 4) & 0x1F, row, 2, 0x300, 0);
+        sub_080794E0_i(CardDef_08065AB4(id), 4, 1, map, (col + 4) & 0x1F, (row + 1) & 0x1F, 2, 0x300, 0);
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08064AF0", sub_08065AB4); /* 0x08065AB4 size 0x3B8 */
+#undef sub_080792A0_i
+#undef sub_080794E0_i

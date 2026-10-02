@@ -602,11 +602,10 @@ void sub_08079474(u8 *dst, u8 unused, u8 pal)
         sub_08079FDC(dst + i * 32, buf + i, pal, 4);
 }
 /* Print `val` as decimal digits right to left starting at (col, row) of a tilemap; mode 0 = zero padded to n digits, mode 1 = no leading zeros. */
-#if 0 /* NONMATCHING: register allocation differs. The ROM keeps n in sl and row on the stack, ours the reverse (and a col copy in r0) */
 void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2)
 {
     u8 i;
-    u8 d;
+    u16 d;
 
     switch (mode) {
     case 0:
@@ -618,18 +617,16 @@ void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 
         break;
     case 1:
         if (val == 0) {
-            sub_080792A0(base, dst + (col + row * 32), pal, m2, 1);
-        } else {
-            for (i = 0; i < n; i++) {
-                d = val % 10;
-                val = val / 10;
-                if (d == 0 && val == 0)
-                    break;
-                sub_080792A0(base + d, dst + (col-- + row * 32), pal, m2, 1);
-            }
+            sub_080792A0(base, dst + (col-- + row * 32), pal, m2, 1);
+            return;
+        }
+        for (i = 0; i < n; i++) {
+            d = val % 10;
+            val = val / 10;
+            if (d == 0 && val == 0)
+                return;
+            sub_080792A0(base + d, dst + (col-- + row * 32), pal, m2, 1);
         }
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080784E4", sub_080794E0);

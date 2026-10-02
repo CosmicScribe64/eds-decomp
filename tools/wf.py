@@ -96,6 +96,8 @@ def score_text(out, func):
     if f'{func}: MATCH' in out and 'size:' not in out and 'not defined' not in out:
         return 0
     m = re.search(r'(\d+) differing lines', out)
+    if not m and 'size:' not in out and 'not defined by the build' not in out:
+        return None  # no diff summary at all: Docker or the toolchain did not run; never report a false 0
     lines = int(m.group(1)) if m else 0
     m = re.search(r'\(([+-]\d+) bytes\)', out)
     delta = int(m.group(1)) if m else 0

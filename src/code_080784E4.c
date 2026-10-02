@@ -462,23 +462,27 @@ void sub_08078FD4(u16 ch, u16 *dst, u16 a, u16 b)
         src++;
     }
 }
-#if 0 /* NONMATCHING (score 181): NONMATCHING: w1/w2 must be a u32 w[2] array (DImode pseudo in r5:r6; regmove
-       * cannot tie subregs, giving the ROM's untied bic/orr temps). Remaining: fill hoists 5 terms (ROM 3; row loop too
-       * small for loop.c threshold), dst2 in ip/0xF in r4 (ROM r7/ip), row/blk stack slots swapped. Earlier: s8 fill/u8
-       * o7 drafts were structurally wrong. */
+#if 0 /* NONMATCHING (score 81): NONMATCHING: u32 w[2] array (DImode pseudo r5:r6, regmove can't tie subregs) +
+       * u16 b1 / short b2 temps for the two bit tests (extensions later removed) + u8 n declared after i,row,blk (GCSE
+       * reaching-reg order -> stack slots). Only diff left: loop.c hoists 4 terms of the colour fill (ROM 3): row loop
+       * has 122/117 RTL insns in loop passes 1/2, needs >=121 in pass 2 (threshold 26-3/move, savings 2 * life 3). */
 extern u8 gUnk_081D0200[];
 void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 {
     u16 *src = (u16 *)(gUnk_081D0200 + sub_08072584(ch) * 20);
     u16 *dst2 = dst + 0x10;
+    u8 i, row, blk;
     u8 n = 10;
-    u8 blk, row, i;
     u32 w[2];
     u32 col;
-    
+    u16 b1;
+    short b2;
 
+    
     for (blk = 0; blk < 2; blk++) {
+        
         for (row = 0; row < 8; row++) {
+            
             if (gUnk_02011C20[4] & 0x80) {
                 w[0] = w[1] = color | (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24) | (color << 28);
             } else {
@@ -486,16 +490,19 @@ void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
                 w[1] = dst2[0] | (dst2[1] << 16);
             }
             for (i = 0; i < 8; i++) {
-                if ((src[0] >> i) & 1)
+                b1 = src[0] >> i;
+                if (b1 & 1)
                     col = c;
                 else
                     col = color;
                 w[0] = (w[0] & ~(0xF << ((7 - i + a) * 4))) | (col << ((7 - i + a) * 4));
-                if (((((u8)src[0] << 8) | (src[0] >> 8)) >> (8 - i + a)) & 1)
+                b2 = ((((u8)src[0]) << 8) | (src[0] >> 8)) >> (8 - i + a);
+                if (b2 & 1)
                     col = c;
                 else
                     col = color;
                 w[1] = (w[1] & ~(0xF << (i * 4))) | (col << (i * 4));
+                
             }
             *dst++ = w[0];
             *dst++ = w[0] >> 16;

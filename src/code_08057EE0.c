@@ -620,20 +620,25 @@ u16 sub_08058924(struct AiReq *req, int number)
 }
 int sub_08008B70(int a, int b, int c, int d);
 
-#if 0 /* NONMATCHING: the whole structure (switch tree, case bodies, shared tails) is reproduced but
-       * not byte-exact yet. The register numbering of the prologue (0x7FF constant / table base /
-       * switch value) and the shared sub_08058924 tails differ. */
+#if 0 /* NONMATCHING (score 31): NONMATCHING (score 31): only the 0x3F1/0x437 case differs: ROM copies h (ldrh
+       * r1; adds r3,r1,#0), ands with a copy of the constant 1 (adds r2,r4,#0; ands r2,r3) and zero-extends (u8)h with
+       * lsl/lsr #24 after the branch; this draft loads the low byte with ldrb instead. Key facts: integer-constant table
+       * form; 0x7FF mask in a u32 m reused as the 0x40E index chain (m &= side; m <<= 1; m += table) FAKEMATCH; zone var
+       * reused for the 0x29F loop; ZP macro with player term first; x shared by 0x3F1 and 0x40E. */
+#define ZP(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 /* AI: second "should I play this card" test (same interface as sub_08058514): a switch over the card number that
    checks life-point thresholds / zone contents and asks sub_08058924 whether a matching monster is on the field. */
 int sub_080589C8(struct AiReq *c)
 {
     int a;
     int z;
-    u16 zone;
+    int zone;
     int num;
     int x;
+    u32 m;
 
-    num = CARD_NUMBER_A(c->id);
+    m = 0x7FF;
+    num = ((const u16 *)0x08622AB4)[c->id & m];
     switch (num) {
     case 0x149:
     case 0x14A:
@@ -671,7 +676,7 @@ int sub_080589C8(struct AiReq *c)
         a = 0;
         for (zone = 0; zone <= 1; zone++) {
             for (z = 0; z <= 4; z++) {
-                u32 id = CARD_ID(CARD_WORD(ZB(zone & 1, z)->card));
+                u32 id = CARD_ID(CARD_WORD(((struct DuelZone *)((zone & 1) * 0xD64 + z * 0x94 + (u32)gUnk_0201930C))->card));
 
                 if (id != 0 && sub_08007730(id))
                     a++;
@@ -703,8 +708,8 @@ int sub_080589C8(struct AiReq *c)
             return 1;
         if (sub_08008B70(1, 0, 0, 0) > 1 && gUnk_020192E4[1].handCount != 0 && sub_08058924(c, 0x405))
             return 1;
-        for (z = 5; z <= 9; z++) {
-            struct DuelZone *dz = ZB(1, z);
+        for (zone = 5; zone <= 9; zone++) {
+            struct DuelZone *dz = ZB(1, zone);
             u16 id = CARD_ID(CARD_WORD(dz->card));
 
             if (dz->f6_1)
@@ -727,25 +732,24 @@ int sub_080589C8(struct AiReq *c)
     case 0x3F1:
     case 0x437: {
         u16 h;
-        u8 w;
+        int pl;
 
         if (c->side)
             return 0;
         h = c->hC;
-        if ((CARD_WORD(*(struct DuelCard *)((h >> 8) * 0x94 + (h & 1) * 0xD64 + (u32)gUnk_0201930C)) << 20) == 0)
+        pl = (u8)h;
+        if ((CARD_WORD(ZP(h & 1, h >> 8)->card) << 20) == 0)
             break;
-        w = *(u32 *)((h >> 8) * 0x94 + ((u8)h & 1) * 0xD64 + (u32)gUnk_0201930C);
-        num = CARD_NUMBER_A(w);
-        if (num == 0x136 || num == 0x405)
+        x = CARD_NUMBER(CARD_ID(CARD_WORD(ZP(pl & 1, h >> 8)->card)));
+        if (x == 0x136 || x == 0x405)
             return 0;
         break;
     }
     case 0x40E:
-        {
-            u16 sid = c->side;
-
-            x = CARD_NUMBER_A(sid);
-        }
+        m &= c->side;
+        m <<= 1;
+        m += 0x08622AB4;
+        x = *(u16 *)m;
         if (x == 0x24E)
             return 1;
         if (x != 0x4C5)
@@ -782,23 +786,23 @@ int sub_080589C8(struct AiReq *c)
             return 0;
         break;
     }
-    switch ((int)CARD_TYPE_A(c->id)) {
-    case 0x15:
-        if (!(c->side)) {
-            if (sub_08058924(c, 0x409))
-                return 1;
-            if (gUnk_020192E4[1].lp > 1000) {
-                if (sub_08058924(c, 0x427))
-                    return 1;
-            }
-        }
-        break;
+    switch ((int)CARD_TYPE(c->id)) {
     case 0x16:
         if (!(c->side)) {
             if (sub_08058924(c, 0x482))
                 return 1;
             if (gUnk_020192E4[1].handCount != 0) {
                 if (sub_08058924(c, 0x405))
+                    return 1;
+            }
+        }
+        break;
+    case 0x15:
+        if (!(c->side)) {
+            if (sub_08058924(c, 0x409))
+                return 1;
+            if (gUnk_020192E4[1].lp > 1000) {
+                if (sub_08058924(c, 0x406))
                     return 1;
             }
         }

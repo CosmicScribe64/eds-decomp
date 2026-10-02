@@ -387,16 +387,18 @@ void sub_08011610(void)
  * zones, 5-9 spell/trap zones, which are zones 5..9 of area 5, and above 9 the
  * field zone). Animates it to the next free hand slot of the card's owner.
  */
-#if 0 /* NONMATCHING: same size, but the built frame is 12 bytes versus the
-       * ROM's 16 (the ROM also spills (player&1)*0xD64), the zone flag reads
-       * keep an extra "& 1", and the slot > 9 path makes different register
-       * choices. */
+/*
+ * Moves a spell/trap (arg2 <= 9: zone arg2 + 5) or field card (zone arg2) back
+ * to its owner's hand. The zone flags are read through `(&zones[i])->flag`, a
+ * pointer sum expanded as an address (P + S + const), so it does not CSE with
+ * the sub_08007558 argument; both reads sit inside the branches, where the
+ * `& 1` masks reuse the register holding step == 1.
+ */
 void sub_08011780(void)
 {
     struct DuelLoc from, to;
     u32 player = CMD_PLAYER;
     int slot = gUnk_020185C0.arg2;
-    struct DuelZone *zone;
 
     switch (gUnk_020185C0.step) {
     case 0:
@@ -412,16 +414,16 @@ void sub_08011780(void)
             from.player = player;
             from.area = 5;
             from.index = slot;
-            zone = ZONE(player & 1, slot + 5);
+            from.flag14 = (&gUnk_020192E4[player & 1].zones[slot + 5])->flag6_0;
+            from.flag15 = (&gUnk_020192E4[player & 1].zones[slot + 5])->flag6_1;
         } else {
             sub_08007558(CMD_CARD, &gUnk_020192E4[player & 1].zones[slot].card);
             from.player = player;
             from.area = 10;
-            zone = ZONE(player & 1, slot);
             from.index = 0;
+            from.flag14 = (&gUnk_020192E4[player & 1].zones[slot])->flag6_0;
+            from.flag15 = (&gUnk_020192E4[player & 1].zones[slot])->flag6_1;
         }
-        from.flag14 = zone->flag6_0;
-        from.flag15 = zone->flag6_1;
         to.player = player;
         to.area = 11;
         to.index = gUnk_020192E4[CMD_CARD->owner].handCount;
@@ -443,8 +445,6 @@ void sub_08011780(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08010BDC", sub_08011780); /* 0x08011780 size 0x230 */
 
 /* Clears the card in zone (arg2 & 7) of the acting player. */
 void sub_080119B0(void)

@@ -145,8 +145,47 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 5952): i pinned to r8 (FAKEMATCH); list base/0x7FF allocation, pointer formation and
-       * tail differ; see build/wf/sub_08044224/NOTES.md */
+#if 0 /* NONMATCHING (score 5939): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; bitfield
+       * TargetCard view; GCSE/loop/regalloc still differ; see build/wf/sub_08044224/NOTES.md */
+struct TargetCard {
+    u32 id:12;
+    u32 owner:1;
+    u32 unk13:4;
+    u32 flag17:1;
+    u32 unk18:2;
+    s32 flag20:1;
+    u32 flag21:1;
+    u32 flag22:1;
+    u32 unk23:9;
+};
+#define CARDP(p) ((struct TargetCard *)(p))
+struct TargetPlayerS {
+    u16 lifePoints;
+    u8 handCount;
+    u8 deckCount;
+    u8 graveCount;
+    u8 fusionCount;
+    u8 otherCount;
+    u8 unk7[0x684 - 7];
+    struct TargetCard hand[80];
+    struct TargetCard deck[80];
+    struct TargetCard graveyard[80];
+    struct TargetCard fusionDeck[80];
+    struct TargetCard otherCards[80];
+    u16 otherKinds[80];
+};
+#define PS ((struct TargetPlayerS *)(b + off))
+struct TargetPlayerListS {
+    struct TargetCard cards[80];
+    u8 rest[0xD64 - 80 * 4];
+};
+#define GRAVE2(pl) ((struct TargetPlayerListS *)gUnk_02019BE8)[(pl) & 1].cards
+#define PLS(pl) ((struct TargetPlayerS *)gUnk_020192E4)[(pl) & 1]
+#define ADD_TARGET_S(card, area) do { \
+    ((struct TargetCard *)gUnk_0201D810.cards)[gUnk_0201D810.count] = (card); \
+    gUnk_0201D810.areas[gUnk_0201D810.count] = (area); \
+    gUnk_0201D810.count++; \
+} while (0)
 struct TargetCards {
     u32 cards[128];
     u16 areas[128];
@@ -159,7 +198,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     int forceFilter = 0;
     int skipFilter = 0;
     int flag;
-    register int i asm("r8");
+    int i;
     int j;
     int pidx;
     struct TargetPlayer *p;
@@ -178,6 +217,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         u32 w;
         i = 0;
+        asm volatile("" ::: "r4", "r5", "r6", "r7");
         b = (u8 *)gUnk_020192E4;
         off = (player & 1) * 0xD64;
         p = (struct TargetPlayer *)(b + off);
@@ -196,12 +236,12 @@ u16 sub_08044224(int player, u16 number, int arg)
         off = (player & 1) * 0xD64;
         if (i < ((struct TargetPlayer *)(b + off))->graveCount) {
             g = (u32 *)(b + 0x904);
-            word = (u32 *)((u8 *)g + off);
             do {
-            if (TARGET_TYPE(TARGET_ID(*word)) == 21)
-                ADD_TARGET(*word, 4);
-        
-                word++; i++;
+                u32 *t = (u32 *)((u8 *)g + off);
+                word = t + i;
+                if (TARGET_TYPE(TARGET_ID(*word)) == 21)
+                    ADD_TARGET(*word, 4);
+                i++;
             } while (i < ((struct TargetPlayer *)(b + off))->graveCount);
         }
         break;
@@ -720,11 +760,11 @@ u16 sub_08044224(int player, u16 number, int arg)
         i = 0;
         b = (u8 *)gUnk_020192E4;
         off = (player & 1) * 0xD64;
-        for (; i < PP->graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
             id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
             if (TARGET_TYPE(id) <= 20 && TargetAttack(id) <= 1500
                 && sub_08007730(id) == 0)
-                ADD_TARGET(PP->graveyard[i], 4);
+                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
         }
         break;
     }
@@ -953,8 +993,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         b = (u8 *)gUnk_020192E4;
         off = (player & 1) * 0xD64;
         for (; i < PP->graveCount; i++) {
-            if (PP->graveyard[i] & (1 << 20))
-                ADD_TARGET(PP->graveyard[i], 4);
+            if (PS->graveyard[i].flag20)
+                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
         }
         break;
     }
@@ -982,11 +1022,10 @@ u16 sub_08044224(int player, u16 number, int arg)
         i = 0;
         b = (u8 *)gUnk_020192E4;
         off = (player & 1) * 0xD64;
-        for (; i < PP->graveCount; i++) {
-            word = &PP->graveyard[i];
-            if (sub_0803CDEC((u16)arg, TARGET_ID(*word)) != 0
-                && (*word & (1 << 20)))
-                ADD_TARGET(*word, 4);
+        for (i = 0; i < PLS(player).graveCount; i++) {
+            if (sub_0803CDEC((u16)arg, GRAVE2(player)[i].id) != 0
+                && PLS(player).graveyard[i].flag20)
+                ADD_TARGET_S(GRAVE2(player)[i], 4);
         }
         break;
     }

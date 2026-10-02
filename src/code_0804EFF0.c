@@ -601,10 +601,11 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 1010): NONMATCHING: same structure; per-case return 0 tails, case 122 struct access,
-       * prologue matches; remaining: reload-register rotation and regalloc in cases 4,9,10,20,101,102,110,111,120; size
-       * +22 */
+#if 0 /* NONMATCHING (score 954): per-case return 0 tails; prologue and cases 0-3,5-8,11,21,100,121,122 match;
+       * remaining: loop-invariant hoisting and regalloc in cases 4,9,20,101,102,110,111,120, case 10 tail register; size
+       * +18; see build/wf/sub_0804FC4C/NOTES.md */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
+static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[(u16)id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
 int sub_0804FC4C(void)
 {
@@ -636,8 +637,9 @@ int sub_0804FC4C(void)
             FC_STEP++;
         }
         return 0;
-    case 3:
-        if (((u32)(((struct FcPlayer *)gUnk_020192E4)[player].flagsC)<<28)>>29) {
+    case 3: {
+        struct FcPlayer *pl=(struct FcPlayer *)gUnk_020192E4;
+        if (((u32)(pl[player].flagsC)<<28)>>29) {
             u16 msg=0x4B;
             if (player) msg=0x804B;
             sub_0801EC58(msg,0,0,0);
@@ -650,9 +652,10 @@ int sub_0804FC4C(void)
         FC_STEP++;
         FC_CURSOR=0;
         return 0;
+    }
     case 4:
         for (;FC_CURSOR<FC_PLAYER(player).listCount;FC_CURSOR++) {
-            if (FC_PLAYER(player).cardList[FC_CURSOR]==0x402) {
+            u32 c=FC_PLAYER(player).cardList[FC_CURSOR]; if (c==0x402) {
                 u16 msg;
                 sub_080197E0(player,gUnk_0862457C[0]);
                 msg=0xCF;
@@ -666,7 +669,8 @@ int sub_0804FC4C(void)
         return 0;
     case 5: {
         int other=1-player;
-        if (sub_08008524(other,0x489) && FC_LIFE(other&1)>499 && (((struct FcPlayer *)gUnk_020192E4)[player&1].handCount)) {
+        struct FcPlayer *pl;
+        if (sub_08008524(other,0x489) && (pl=(struct FcPlayer *)gUnk_020192E4, pl[other&1].life>499) && pl[player&1].handCount) {
             sub_08022678(other,15,0x489,0);
             FC_PLAYER_STEP++;
         } else FC_STEP=7;
@@ -675,12 +679,13 @@ int sub_0804FC4C(void)
     case 6:
         if (FC_CHOICE) {
             int other, index;
+            u32 kind=0x6200000;
             u16 msg=0x43;
             if (player!=1) msg=0x8043;
             sub_0801EC58(msg,500,0,0);
             other=1-player;
             index=sub_0800842C(other,0x489);
-            sub_0801FBCC(((u32)(other&1)<<31)|((index&31)<<16)|0x6200000|EndTurnCardId(0x489),0);
+            sub_0801FBCC(((u32)(other&1)<<31)|(((index&31)<<16)|kind)|EndTurnCardId(0x489),0);
             FC_STEP=5;
         } else FC_STEP=7;
         return 0;
@@ -698,19 +703,20 @@ int sub_0804FC4C(void)
     case 8:
         if (FC_CHOICE) {
             int other=1-player;
+            u32 kind;
             int index=sub_0800842C(other,0x5ED);
-            sub_0801FBCC(((u32)(other&1)<<31)|((index&31)<<16)|0x6400000|EndTurnCardId(0x5ED),0);
+            sub_0801FBCC(((u32)(other&1)<<31)|(((index&31)<<16)|(kind=0x6400000))|EndTurnCardId(0x5ED),0);
         }
         FC_ZONE=5;
         FC_STEP=9;
         return 0;
     case 9:
         for (;FC_ZONE<=9;FC_ZONE++) {
-            struct Zone *z=(struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64);
+            struct Zone *z=(struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C);
             u32 id=FC_ID(z);
-            if (id && (z->f6&2) && !(((u8 *)z)[0x91]&8) && FC_NUMBER(id)==0x592 && sub_08008A1C(player)>0) {
+            if (id && (z->f6&2) && !(((u8 *)z)[0x91]&8) && FcNum(id)==0x592 && sub_08008A1C(player)>0) {
                 u16 msg;
-                sub_080197E0(player,FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64)));
+                sub_080197E0(player,FC_ID((struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C)));
                 msg=0xA3;
                 if (player) msg=0x80A3;
                 sub_0801EC58(msg,(u8)sub_08008A44(player)|(FC_ZONE<<8),3,0);

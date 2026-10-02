@@ -431,89 +431,71 @@ u16 sub_08074794(void) {
     }
 }
 
-#if 0 /* NONMATCHING: body identical except register allocation (gMain pointer r5 vs r4, missing copy for the second gMain pointer) */
 /* Debug menu input: up/down move the cursor, A selects, B goes to the last item, left/right/L/R change the value at save+0x2150. */
 u32 sub_08074868(void) {
     struct Main *m;
-    u32 k;
-    struct Main *m2;
     u8 *step;
-    u8 *tbl;
-    u32 off;
     u32 col;
     s32 row;
-    u16 keys;
-    k = gUnk_03000040.newKeys & 0x80;
-    m = &gUnk_03000040;
-    if (k) {
-        u8 *s1 = &m->unk4859;
-        (*s1)++;
-        if (gUnk_081A73A0[*s1].cb == 0)
-            *s1 = 0;
+    if (gUnk_03000040.newKeys & 0x80) {
+        gUnk_03000040.unk4859++;
+        if (gUnk_081A73A0[gUnk_03000040.unk4859].cb == 0)
+            gUnk_03000040.unk4859 = 0;
     }
-    if (m->newKeys & 0x40) {
-        u8 *s2 = &m->unk4859;
-        if (*s2 == 0) {
-            if (gUnk_081A73A0[*s2].cb != 0) {
-                u8 *p = s2;
+    if (gUnk_03000040.newKeys & 0x40) {
+        if (gUnk_03000040.unk4859 == 0) {
+            if (gUnk_081A73A0[gUnk_03000040.unk4859].cb != 0) {
                 do {
-                    (*p)++;
-                } while (gUnk_081A73A0[*p].cb != 0);
+                    gUnk_03000040.unk4859++;
+                } while (gUnk_081A73A0[gUnk_03000040.unk4859].cb != 0);
             }
         }
-        m->unk4859--;
+        gUnk_03000040.unk4859--;
     }
     col = 1;
-    m2 = m;
+    m = &gUnk_03000040;
+    step = &m->unk4859;
     row = *step * 2 + 4;
-    step = &m2->unk4859;
     if (row > 0x13) {
         col = 0xF;
         row -= 0x10;
     }
     sub_080761F0((col << 3) | (row << 19), 0, 2);
-    keys = m2->newKeys;
-    if (keys & 1)
+    if (m->newKeys & 1)
         return 1;
-    if (keys & 2) {
+    if (m->newKeys & 2) {
         *step = 9;
         return 1;
     }
-    if (keys & 0x10) {
+    if (m->newKeys & 0x10) {
         gUnk_02011C20.unk2150++;
-        m2->unk4857--;
+        m->unk4857--;
         sub_080734D4();
         sub_08074594();
     }
-    if (m->newKeys & 0x20) {
+    if (gUnk_03000040.newKeys & 0x20) {
         if (gUnk_02011C20.unk2150 != 0) {
             gUnk_02011C20.unk2150--;
-            m->unk4857--;
+            gUnk_03000040.unk4857--;
             sub_080734D4();
             sub_08074594();
         }
     }
-    m = &gUnk_03000040;
-    if (m->newKeys & 0x100) {
+    if (gUnk_03000040.newKeys & 0x100) {
         gUnk_02011C20.unk2150 += 0x1E;
         sub_080734D4();
         sub_08074594();
     }
-    if (m->newKeys & 0x200) {
-        u16 *p = &gUnk_02011C20.unk2150;
-        u32 v = *p;
-        if (v > 0x1E)
-            v -= 0x1E;
+    if (gUnk_03000040.newKeys & 0x200) {
+        if (gUnk_02011C20.unk2150 > 0x1E)
+            gUnk_02011C20.unk2150 -= 0x1E;
         else
-            v = 0;
-        *p = v;
+            gUnk_02011C20.unk2150 = 0;
         sub_080734D4();
         sub_08074594();
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080740BC", sub_08074868); /* 0x08074868 size 0x180 */
 
 /* Debug menu final step: launch the selected item's callback. */
 u32 sub_080749E8(void) {

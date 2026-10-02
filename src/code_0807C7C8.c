@@ -99,7 +99,7 @@ extern const u8 gUnk_0870B5E0[], gUnk_0870B600[], gUnk_0870C620[];
 extern const u8 gUnk_087095E0[], gUnk_0870A5E0[], gUnk_0870B620[];
 extern const u8 gUnk_0822C300[], gUnk_0822C720[][64], gUnk_08707B28[];
 void sub_080761F0(u32 a, u32 b, u16 c);
-void sub_08076714(u32 a, u32 b, u32 c, u32 d);
+void sub_08076714(u32 a, u16 b, u16 c, u32 d);
 struct Pair16 {
     u16 lo;
     u16 hi;
@@ -298,7 +298,6 @@ void sub_0807CC78(const void *src, int tile, int width, int rows)
         src = (const u8 *)src + width * 32;
     }
 }
-#if 0 /* NONMATCHING: loop matches; differs in temp register choice (limit/a init, constant temps in the sub_08076714 arg setup) */
 void sub_0807CCAC(int a, u16 b, int c)
 {
     int i, j, limit;
@@ -312,7 +311,7 @@ void sub_0807CCAC(int a, u16 b, int c)
     }
     i = 0;
     while (i < limit) {
-        u8 iy, next;
+        int iy, next;
         u32 yx;
 
         j = 0;
@@ -341,8 +340,6 @@ void sub_0807CCAC(int a, u16 b, int c)
             gUnk_0201F780.c = gUnk_0201F780.c + 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807C7C8", sub_0807CCAC); /* 0x0807CCAC size 0xF4 */
 u32 sub_0807CDA0(void)
 {
     sub_08075278(&gUnk_0201F780, 0x28);

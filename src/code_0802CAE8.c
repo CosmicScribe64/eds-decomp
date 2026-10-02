@@ -388,32 +388,20 @@ u16 sub_0802CFD0(int player, int zone, u16 kind)
         return 0;
     return sub_0802CE38(&ref, 0, 0);
 }
-#if 0 /* NONMATCHING: the loops match structurally (list B at +0x282 via a base pointer with an
-       * unfolded offset, list A at base+2). Only register allocation differs: the ROM keeps
-       * the base pointer in r1 and copies it to r7, while we keep it in r6 and copy to r1. */
 u16 sub_0802D058(int player, int zone)
 {
     int i;
-    struct RefFlags *q;
-    u8 *base = (u8 *)&gUnk_02017A40;
-    u8 *p;
 
-    p = base;
-    for (i = 0; i < *(u16 *)(base + 0x3C0); i++, p += 0x14) {
-        struct RefFlags *e = (struct RefFlags *)(p + 0x282);
-
-        if (e->player == player && e->zone == zone)
+    for (i = 0; i < gUnk_02017A40.countB; i++) {
+        if (gUnk_02017A40.listB[i].player == player && gUnk_02017A40.listB[i].zone == zone)
             return 1;
     }
-    q = (struct RefFlags *)(base + 2);
-    for (i = 0; i < *(u16 *)(base + 0x3C4); i++, q = (struct RefFlags *)((u8 *)q + 0x14)) {
-        if (q->player == player && q->zone == zone)
+    for (i = 0; i < gUnk_02017A40.countA; i++) {
+        if (gUnk_02017A40.listA[i].player == player && gUnk_02017A40.listA[i].zone == zone)
             return 1;
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0802CAE8", sub_0802D058); /* 0x0802D058 size 0x88 */
 u16 sub_0802D0E0(struct CardRef *ref, int player, int zone)
 {
     struct CardRef tmp;

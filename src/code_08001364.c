@@ -227,26 +227,28 @@ u16 sub_08001364(void)
 
 /* Draws the selected card's three stat counters (attack/defense/level) into
  * the dialogue box; optionally also draws a rank icon when arg0 is set. */
-#if 0 /* NONMATCHING: instruction sequences line up, but the hoisted base
-       * pointers land in different registers (target: r7 = 0x20D0, r9 =
-       * gUnk_08080AE0; built: r8 = 0x20D0, r9 = &unk12E9), shifting the whole
-       * prologue and literal pool. */
+struct DuelRec08001374 {
+    u32 wins : 11;
+    u32 losses : 11;
+    u32 draws : 10;
+};
+struct Save08001374 {
+    u8 filler0[0x20D0];
+    struct DuelRec08001374 records[32];
+};
+#define gSave08001374 (*(struct Save08001374 *)&gUnk_02011C20)
+
 void sub_08001374(s32 arg0)
 {
-    if ((arg0 << 0x10) != 0)
+    if ((u16)arg0 != 0)
         sub_080002C0(gUnk_08080AB6[gUnk_02013DE0.unk12E9], 0x43, 4, 1);
-    sub_08000324((u32)((u32)((struct CardState *)((u8 *)&gUnk_02011C20 + 0x20D0
-                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4))->unk0 << 21) >> 21,
+    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].wins,
                  gUnk_08080AD4.unk0, gUnk_08080AD4.unk2, 3, 2);
-    sub_08000324((u32)(*(u32 *)((u8 *)&gUnk_02011C20 + 0x20D0
-                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4) << 10) >> 21,
+    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].losses,
                  gUnk_08080AD4.unk4, gUnk_08080AD4.unk6, 3, 2);
-    sub_08000324(((struct CardState *)((u8 *)&gUnk_02011C20 + 0x20D0
-                      + gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5] * 4))->unk1 >> 6,
+    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].draws,
                  gUnk_08080AD4.unk8, gUnk_08080AD4.unkA, 3, 2);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08001364", sub_08001374); /* 0x08001374 size 0xF0 */
 /* Bustup step: re-initialises both script object arrays and the sparkle trail,
  * programs the horizontal-scroll registers from the dialogue state, and
  * finalises the dialogue box. */

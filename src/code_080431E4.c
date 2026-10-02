@@ -279,74 +279,63 @@ void sub_08017FF4(int player, int zone);
 void sub_080193D4(int player, int a, int b, int c);
 void sub_08077AEC(int se);
 #define CARD_ID(w) (((w) << 20) >> 20)
-#if 0 /* NONMATCHING: 99 lines; structure right, register choices differ in both cases */
-/* Tribute selection step: the chosen card's level is taken off the remaining cost; returns 1 once it is paid
- * (hypothesis). Mode 0 picks from the monster zones, mode 11 from the hand. */
+/* Tribute selection step (hypothesis): the chosen card's level is taken off the remaining cost at
+ * 0x02017A40+0x3E1; returns 1 once it is paid. Mode 11 picks from the hand, mode 0 from the monster zones.
+ * The s8 level passed between the two inline helpers produces the ROM's join-point copy (adds r2, r0, #0). */
+static inline void PayCost37CC(s8 lv)
+{
+    if (EQ->need < lv)
+        EQ->need = 0;
+    else
+        EQ->need -= lv;
+}
+/* Level of a card of the given type: 0 for types 0x15-0x17, 10 for 0x18, else stats bits 25-28. */
+static inline s8 Lv37CC(int type, u16 id)
+{
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 10;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+    }
+}
 int sub_080437CC(void)
 {
     u32 msg = 0xF0;
+    u16 id;
     sub_0804353C(EQ_CUR.id);
     if (sub_08008860(EQ_CUR.player) <= 4)
         msg = 0xF1;
     if (sub_08052F38(msg) != 0) {
         switch (gUnk_0201CFB0.mode) {
         case 11: {
-            int p = EQ_CUR.player;
+            int p;
             u32 type;
-            u16 id = CARD_ID(*(u32 *)(p * 0xD64 + gUnk_0201CFB0.sel * 4 + (u32)gUnk_02019968));
-            const u16 *num = &gUnk_08622AB4[id & 0x7FF];
-            if (*num == gUnk_0819A990[sub_0804353C(EQ_CUR.id)].a && sub_0800A2A8(EQ_CUR.player, *num) <= 1) {
+            p = EQ_CUR.player;
+            id = CARD_ID(*(u32 *)(p * 0xD64 + gUnk_0201CFB0.sel * 4 + (u32)gUnk_02019968));
+            if (((const u16 *)0x08622AB4)[id & 0x7FF] == gUnk_0819A990[sub_0804353C(EQ_CUR.id)].a && sub_0800A2A8(EQ_CUR.player, ((const u16 *)0x08622AB4)[id & 0x7FF]) <= 1) {
                 sub_08077AEC(3);
                 return 0;
             }
             type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
             if (type <= 0x14) {
-                int lv;
-                switch ((int)type) {
-                case 0x15:
-                case 0x16:
-                case 0x17:
-                    lv = 0;
-                    break;
-                case 0x18:
-                    lv = 10;
-                    break;
-                default:
-                    lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
-                    break;
-                }
-                if (EQ->need < lv)
-                    EQ->need = 0;
-                else
-                    EQ->need -= lv;
+                PayCost37CC(Lv37CC(type, id));
                 sub_080193D4(EQ_CUR.player, gUnk_0201CFB0.sel, 0, 1);
             }
             break;
         }
         case 0: {
-            int p = EQ_CUR.player;
+            int p;
             u32 type;
-            u16 id = CARD_ID(*(u32 *)(gUnk_0201CFB0.sel * 0x94 + p * 0xD64 + (u32)gUnk_0201930C));
+            p = EQ_CUR.player;
+            id = CARD_ID(*(u32 *)(p * 0xD64 + gUnk_0201CFB0.sel * 0x94 + (u32)gUnk_0201930C));
             type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
             if (type <= 0x14) {
-                int lv;
-                switch ((int)type) {
-                case 0x15:
-                case 0x16:
-                case 0x17:
-                    lv = 0;
-                    break;
-                case 0x18:
-                    lv = 10;
-                    break;
-                default:
-                    lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
-                    break;
-                }
-                if (EQ->need < lv)
-                    EQ->need = 0;
-                else
-                    EQ->need -= lv;
+                PayCost37CC(Lv37CC(type, id));
                 sub_08017FF4(EQ_CUR.player, gUnk_0201CFB0.sel);
             }
             break;
@@ -355,8 +344,6 @@ int sub_080437CC(void)
     }
     return EQ->need == 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_080437CC); /* 0x080437CC size 0x2DC */
 /* Can the recipe entry matching this card be satisfied (enough cost in hand + field)? */
 int sub_08043AA8(struct CardRef *ref)
 {

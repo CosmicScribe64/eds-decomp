@@ -229,8 +229,11 @@ void sub_080788A0(u8 *p)
 
     *p = *p & m;
 }
-#if 0 /* NONMATCHING: structure matches (peeled row 0 with only the base-colour branches, then rows 1..7 with the buf[i] outline else-branches; buf[i+1] shadow marking). The diff is about 138 lines. agbcc keeps the row counter i in r6 and glyph pointer g in r5 (ROM: i r5, g r6), swaps the c24/c28 stack-vs-sl slots, and uses cmp #7 where ROM uses cmp #8. `i` is u32 and is reused to derive the glyph stride (i<<3 == 8). Best permuter seed. */
 extern u8 gUnk_0822BB00[];
+/* Render one 8x8 glyph (font 0x0822BB00, 8 bytes each) into 8 4bpp words with a drop shadow:
+ * glyph bits get colour a and mark buf[row + 1]; buf[row] bits left unset get colour b.
+ * The loop bound lives in a variable (n = 8): reload substitutes its constant, which keeps the
+ * ROM's unfolded `cmp #8; bcc` (a literal 8 is canonicalised to `cmp #7; bls`). */
 void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
 {
     u8 buf[12];
@@ -239,9 +242,9 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
     u32 one = 1;
     u32 w;
     u8 *g;
-    u32 i;
+    u16 i;
+    u16 n = 8;
 
-    i = one;
     c4 = (u32)a << 4;
     c8 = (u32)a << 8;
     c12 = (u32)a << 12;
@@ -251,12 +254,13 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
     c28 = (u32)a << 28;
     zero = 0;
     CpuSet(&zero, buf, 0x05000003);
+    g = gUnk_0822BB00;
     if (ch > 0x9F) {
         ch -= 0x20;
         if (!(*flags & one))
             ch += 0x40;
     }
-    g = gUnk_0822BB00 + ch * (i << 3);
+    g += ch * (one << 3);
     w = *dst;
     if (*g & 1) { w = (w & ~0xF) | a; buf[1] |= 2; }
     if (*g & 2) { w = (w & ~0xF0) | c4; buf[1] |= 4; }
@@ -268,7 +272,8 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
     if (*g & 0x80) { w = (w & ~0xF0000000) | c28; }
     *dst++ = w;
     g++;
-    for (; i < 8; g++, i++) {        w = *dst;
+    for (i = 1; i < n; g++, i++) {
+        w = *dst;
         if (*g & 1) { w = (w & ~0xF) | a; buf[i + 1] |= 2; }
         if (*g & 2) { w = (w & ~0xF0) | c4; buf[i + 1] |= 4; }
         else if (buf[i] & 2) { w = (w & ~0xF0) | ((u32)b << 4); }
@@ -287,8 +292,6 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
         *dst++ = w;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080784E4", sub_080788AC); /* 0x080788AC size 0x39C */
 s16 sub_08078C48(u8 **pp)
 {
     u16 val = 0;

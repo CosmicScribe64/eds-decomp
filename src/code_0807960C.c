@@ -84,40 +84,40 @@ void sub_0807960C(u8 *str, void *dst, u16 x, u16 y, u8 a, u16 b, u8 max, struct 
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_0807960C); /* 0x0807960C size 0xF4 */
-#if 0 /* NONMATCHING: target keeps x in r8 and a second copy of x in r2 / y in r3 (arg registers) from the prologue, mode goes to r0; the build allocates r2/r4 differently (structure identical) */
+/* sub_08078E80's real x parameter is u16 (see its definition in code_080784E4.c); the u8 prototype above
+   narrows `x & 0x1F` in QImode, so its 0x1F constant is not shared with `y & 0x1F`. */
+typedef void (*DrawGlyphCellFunc)(void *dst, u8 ch, u16 x, u16 y, u8 a, u16 b, void *flags);
+#define sub_08078E80_x16 ((DrawGlyphCellFunc)sub_08078E80)
 
+/* Draws num as decimal digits right to left from x; mode 0 = always count digits, mode 1 = no leading zeros. */
 void sub_08079700(u16 num, u8 count, u8 mode, void *dst, u16 x, u16 y, u8 a, u16 b, void *flags)
 {
     u8 i;
     u16 d;
-    u16 xx = x;
-    int yy = y;
 
     switch (mode) {
     case 0:
         for (i = 0; i < count; i++) {
             d = num % 10;
             num = num / 10;
-            sub_08078E80(dst, d + '0', xx-- & 0x1F, yy & 0x1F, a, b, flags);
+            sub_08078E80_x16(dst, d + '0', x-- & 0x1F, y & 0x1F, a, b, flags);
         }
         break;
     case 1:
         if (num == 0) {
-            sub_08078E80(dst, '0', xx & 0x1F, yy & 0x1F, a, b, flags);
-        } else {
-            for (i = 0; i < count; i++) {
-                d = num % 10;
-                num = num / 10;
-                if (d == 0 && num == 0)
-                    break;
-                sub_08078E80(dst, d + '0', xx-- & 0x1F, yy & 0x1F, a, b, flags);
-            }
+            sub_08078E80_x16(dst, '0', x-- & 0x1F, y & 0x1F, a, b, flags);
+            return;
+        }
+        for (i = 0; i < count; i++) {
+            d = num % 10;
+            num = num / 10;
+            if (d == 0 && num == 0)
+                return;
+            sub_08078E80_x16(dst, d + '0', x-- & 0x1F, y & 0x1F, a, b, flags);
         }
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_08079700); /* 0x08079700 size 0x134 */
 /* Fills a w x h rectangle of a 32x32 tilemap (wrapping at 32) with one tile. */
 void sub_08079834(u16 tile, u16 *dst, u16 x, u16 y, u16 w, u16 h)
 {

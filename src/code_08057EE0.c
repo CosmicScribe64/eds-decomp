@@ -356,9 +356,14 @@ int sub_080580C8(int *out)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08057EE0", sub_080580C8); /* 0x080580C8 size 0x290 */
 
-#if 0 /* NONMATCHING: same instructions, but the built code keeps bestCnt in sl while the ROM keeps
-       * it on the stack and uses sl as the 0x02015F00 base (a pointer base for the
-       * +0x1B20/+0x1B21 flag accesses). */
+/* Byte view of the AI work area's flag byte +0x1B21 (the high byte of fl). */
+struct AiWorkB21 {
+    u8 filler[0x1B21];
+    u8 pad : 1;
+    u8 d : 3;                   /* +0x1B21 bits 1-3 */
+    u8 rest : 4;
+};
+
 /* Chooses which hand card of player 1 to play by simulating each (sub_08057F6C); returns its index or -1. */
 int sub_08058358(void)
 {
@@ -366,8 +371,6 @@ int sub_08058358(void)
     int bestCnt = 0;
     int base;
     int i;
-    u8 *w = (u8 *)&gUnk_02015F00;
-    struct AiFlagsB1 *w21;
 
     sub_08057E08();
     sub_08057E70();
@@ -378,9 +381,7 @@ int sub_08058358(void)
         int bad;
         int flag;
         int r;
-        union AiFlagsU *fh;
 
-        w21 = (struct AiFlagsB1 *)(w + 0x1B21);
         if (!sub_08054398(1, id))
             continue;
         if (sub_08056300(2, CARD_NUMBER(id)))
@@ -397,25 +398,22 @@ int sub_08058358(void)
         sub_08057EE0(i, 0);
         sub_08057E70();
         r = sub_08057F6C();
-        fh = (union AiFlagsU *)(w + 0x1B20);
-        fh->h.c = sub_08008860(1);
-        w21->d = sub_08008860(1);
+        gUnk_02015F00.fl.h.c = sub_08008860(1);
+        ((struct AiWorkB21 *)&gUnk_02015F00)->d = sub_08008860(1);
         sub_08057E3C();
         if (base < r)
             flag = 1;
-        if (r == base && bestCnt < ((struct AiFlagsByte *)(w + 0x1B20))->b && ((union AiFlagsU *)(w + 0x1B20))->h.c != 0)
+        if (r == base && bestCnt < gUnk_02015F00.fl.b.cntB && gUnk_02015F00.fl.h.c != 0)
             flag = 1;
         if (flag) {
             if (r > 0)
                 base = r;
-            bestCnt = gUnk_02017A20.b;
+            bestCnt = gUnk_02015F00.fl.b.cntB;
             best = i;
         }
     }
     return best;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08057EE0", sub_08058358); /* 0x08058358 size 0x1BC */
 int sub_080573D0(int p, int skip, int useAtk, int useDef);
 int sub_08076F9C(void);
 int sub_08056E04(int player, int number);

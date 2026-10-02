@@ -439,30 +439,22 @@ int sub_0803447C(struct EffCtx *ctx)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the ROM keeps 0x020192E4 (r8), 0xD64 (r9) and const 1 (r6) in registers from
-       * the start, while ours computes them later. */
 int sub_08034644(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        if (gUnk_020192E4[ctx->player].handCount != 0) {
+        if (gUnk_020192E4[1 & ctx->player].handCount != 0) {
             if (sub_08052F38(0x10000) != 0) {
-                int p;
-                int q;
-
                 sub_0801EC58(PLAYER_RAW(ctx) ? 0x8008 : 0x8, (u16)gUnk_0201CFB0.player,
-                             (*(u8 *)&gUnk_0201CFB0.cursor << 8) | gUnk_0201CFB0.zone, 0);
-                p = ctx->player;
-                q = (1 - p) & 1;
-                sub_08019788(p, CARD_ID(*(u32 *)(q * 0xD64 + gUnk_0201CFB0.cursor * 4 + 0x02019968)));
-            } else {
-                return 0x80;
-            }
+                             *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
+                sub_08019788(ctx->player, CARD_ID(CARD_WORD(gUnk_020192E4[(1 - ctx->player) & 1].hand[gUnk_0201CFB0.cursor])));
+            } else
+                goto r80;
         }
     }
     return 0;
+r80:
+    return 0x80;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08033DAC", sub_08034644); /* 0x08034644 size 0xC4 */
 int sub_08034708(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {

@@ -626,62 +626,83 @@ int sub_08052810(int a)
         }
     }
 }
-#if 0 /* NONMATCHING: the eligibility logic and attachment scan are typed to
-       * follow the ROM, but compiler allocation and loop structure differ.
-       * Player parity, 16-bit mask banks, flag tests and matching attachment
-       * kinds 1/5/6 are verified against the ROM. */
-struct PickZone {
+#if 0 /* NONMATCHING (score 66): WIP: structure matches except the case-5 link-scan loop: k-loop count load is
+       * hoisted and the base reg at i-loop top differs (loop.c decisions). */
+struct Z908Zone {
     u32 card;
     u8 pad4[2];
     u8 flags;
     u8 pad7[3];
-    u16 kinds[32];
     u16 links[32];
-    s16 count;
+    u16 kinds[32];
+    u16 count;
     u8 pad8C[8];
 };
-extern u8 gUnk_0201930C[];
-int sub_08052908(u32 player, s32 kind, s32 slot, u32 mask)
+struct Z908Player {
+    u8 pad0[2];
+    u8 handCount;
+    u8 pad3[0x25];
+    struct Z908Zone zones[11];
+    u8 rest[0xD64 - 0x28 - 11 * 0x94];
+};
+extern struct Z908Player gZ908Players[2] asm("gUnk_020192E4");
+#define Z908_ID(w) (((w) << 20) >> 20)
+#define Z908_ZB(p, z) ((struct Z908Zone *)((u8 *)gZ908Players[0].zones + (z) * 0x94 + (p) * 0xD64))
+
+int sub_08052908(int player, int kind, int slot, u32 mask)
 {
-    u32 playerOffset = (player & 1) * 0xD64;
-    struct PickZone *zone = (struct PickZone *)(gUnk_0201930C + playerOffset + (kind + slot) * 0x94);
-    u32 packed = zone->card << 20;
-    s16 type = (gUnk_08621DE0[(packed << 1) >> 21] & 0x1F00000) >> 20;
-    s16 shift = player * 16;
+    struct Z908Zone *zone = &gZ908Players[player & 1].zones[kind + slot];
+    int type = (((const u32 *)0x08621DE0)[((s32)(zone->card << 20) >> 20) & 0x7FF] & 0x1F00000) >> 20;
+    int p, i, k;
+
     switch (kind) {
+    case 11:
+        if (!((1 << (player << 4)) & mask)) return 0;
+        if (slot < gZ908Players[player & 1].handCount) return 1;
+        return 0;
     case 0: {
-        int mode = 0;
-        int face = 0;
-        if (packed == 0) return 0;
-        if (!((0xF0U << shift) & mask)) return 0;
-        if (((0x20U << shift) & mask) && (zone->flags & 2)) mode = 1;
-        if (((0x10U << shift) & mask) && !(zone->flags & 2)) mode = 1;
-        if (((0x80U << shift) & mask) && (zone->flags & 1)) face = 1;
-        if (((0x40U << shift) & mask) && !(zone->flags & 1)) face = 1;
-        if (face != 0 && mode != 0) return 1;
+        int a, b;
+        if (!((0xF0 << (player << 4)) & mask)) return 0;
+        a = 0;
+        b = 0;
+        if (Z908_ID(zone->card) == 0) return 0;
+        if (((0x20 << (player << 4)) & mask) && (zone->flags & 2)) a = 1;
+        if (((0x10 << (player << 4)) & mask) && !(zone->flags & 2)) a = 1;
+        if (((0x80 << (player << 4)) & mask) && (zone->flags & 1)) b = 1;
+        if (((0x40 << (player << 4)) & mask) && !(zone->flags & 1)) b = 1;
+        if (b && a) return 1;
         return 0;
     }
     case 5: {
-        u32 selected = (0xEU << shift) & mask;
-        s8 p, i;
-        if (selected == 0 || packed == 0) return 0;
-        if (!(zone->flags & 2)) return ((2U << shift) & mask) != 0;
-        if (selected == (2U << shift)) return 0;
-        if (type == 0x15) return ((8U << shift) & mask) != 0;
-        if (type == 0x16) return ((4U << shift) & mask) != 0;
+        u32 sel = (0xE << (player << 4)) & mask;
+        if (!sel) return 0;
+        if (Z908_ID(zone->card) == 0) return 0;
+        if (!(zone->flags & 2)) {
+            if ((2 << (player << 4)) & mask) return 1;
+            return 0;
+        }
+        if (sel == (2 << (player << 4))) return 0;
+        switch (type) {
+        case 0x16:
+            if ((4 << (player << 4)) & mask) return 1;
+            return 0;
+        case 0x15:
+            if ((8 << (player << 4)) & mask) return 1;
+            return 0;
+        }
         for (p = 0; p <= 1; p++) {
-            struct PickZone *z = (struct PickZone *)(gUnk_0201930C + (p & 1) * 0xD64);
-            for (i = 0; i <= 4; i++, z++) {
-                s8 k;
-                if ((z->card << 20) == 0 || !(z->flags & 2)) continue;
-                for (k = 0; k < z->count; k++) {
-                    s8 entry = z->kinds[k];
-                    switch (entry) {
-                    case 1:
-                    case 5:
-                    case 6:
-                        if (z->links[k] == ((u16)((slot + 5) << 8) | (u8)player)) return 1;
-                        break;
+            for (i = 0; i <= 4; i++) {
+                struct Z908Zone *z = &gZ908Players[p & 1].zones[i];
+                if (Z908_ID(z->card) && (z->flags & 2)) {
+                    for (k = 0; k < Z908_ZB(p & 1, i)->count; k++) {
+                        u16 link = Z908_ZB(p & 1, i)->links[k];
+                        switch (Z908_ZB(p & 1, i)->kinds[k]) {
+                        case 1:
+                        case 5:
+                        case 6:
+                            if (link == ((u8)player | ((u8)(slot + 5) << 8))) return 1;
+                            break;
+                        }
                     }
                 }
             }
@@ -689,22 +710,20 @@ int sub_08052908(u32 player, s32 kind, s32 slot, u32 mask)
         return 0;
     }
     case 10: {
-        struct PickZone *z = (struct PickZone *)(gUnk_0201930C + playerOffset + 10 * 0x94);
-        u32 ret = 0;
-        if ((z->card << 20) == 0) return 0;
-        if (z->flags & 2) {
-            int bits = (4U << shift) & mask;
-            ret = ((0U - bits) | bits) >> 31;
-        } else if ((2U << shift) & mask) ret = 1;
-        if (ret != 0) return 1;
+        int ret;
+        struct Z908Zone *f = Z908_ZB(player & 1, 10);
+        if (!Z908_ID(f->card)) return 0;
+        ret = 0;
+        if (f->flags & 2) {
+            if ((4 << (player << 4)) & mask)
+                ret = 1;
+        } else if ((2 << (player << 4)) & mask)
+            ret = 1;
+        if (ret) return 1;
         return 0;
     }
-    case 11:
-        if (!((1U << shift) & mask)) return 0;
-        if (slot < *((u8 *)gUnk_0201930C - 0x28 + playerOffset + 2)) return 1;
-        return 0;
-    default: return 0;
     }
+    return 0;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052908); /* 0x08052908 size 0x270 */

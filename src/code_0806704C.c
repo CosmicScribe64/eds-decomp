@@ -480,62 +480,110 @@ void sub_080679A8(u8 x)
 {
     sub_0807AA4C(gUnk_086F1B10[x], 0x0600E3B0, 6, 6, 0x1E, 3, 2);
 }
-#if 0 /* NONMATCHING: structure and all calls match; 0x18 bytes short. First diff +0xA: target frame is `sub sp,#20` and keeps the first table value in [sp,#16], built allocates 24 and spills the second table value too; the target also keeps `&state+0x1C1C` in sl, built uses r7 + separate offset literal. Register allocation only. */
-/* Scroll the card list up by one row (cursor column `st->cursor`): two tilemap scrolls, redraw the
-   card entering at the top, shift the item counters, then refresh the side panel. `*out` gets the
-   card id that left, or 0xFFFF. */
+/* struct ScrollSt above lacks the 2 bytes after f18AC (f18B0 lands at 0x18AE); this copy has the right offsets. */
+struct ScrollSt79E0 {
+    u8 pad0[0x628];
+    u8 f628[8];                  /* +0x628 window rect passed to sub_0807B100 */
+    u16 f630;                    /* +0x630 */
+    u16 f632;                    /* +0x632 */
+    u8 f634;                     /* +0x634 VRAM page toggle */
+    u8 f635;                     /* +0x635 slide direction code */
+    u8 pad636[0x63A - 0x636];
+    u16 f63A;                    /* +0x63A */
+    u8 pad63C[0x63E - 0x63C];
+    u16 f63E;                    /* +0x63E */
+    u8 f640[0x1494 - 0x640];     /* +0x640 map scratch */
+    u16 cnt1494[2][3];           /* +0x1494 counter [row][cursor] */
+    u8 arr14A0[0x18AC - 0x14A0];
+    u16 f18AC;                   /* +0x18AC */
+    u8 pad18AE[2];
+    u8 f18B0[0x1BB0 - 0x18B0];   /* +0x18B0 out buffer */
+    u16 f1BB0;                   /* +0x1BB0 slide extents */
+    u8 pad1BB2[2];
+    u8 f1BB4;                    /* +0x1BB4 dirty flag */
+    u8 f1BB5;                    /* +0x1BB5 */
+    u8 f1BB6;                    /* +0x1BB6 */
+    u8 f1BB7;                    /* +0x1BB7 */
+    u8 f1BB8[0x1C1C - 0x1BB8];   /* +0x1BB8 5 slots */
+    u8 cursor;                   /* +0x1C1C */
+    u8 pad1C1D[0x1C58 - 0x1C1D];
+    u16 f1C58;                   /* +0x1C58 scroll counter */
+};
+/* Callee prototypes with the real u16 row parameter (the unit-wide ones take s32/u32, which turns the
+   row's `>> 3` into asr); sub_0807AFFC really takes the VRAM page as a third argument (see sub_080671E8). */
+typedef void (*Fn518C_79E0)(u16, s32, s32, u16, u8 *);
+typedef void (*Fn5108_79E0)(u16, s32, s32, u16, u8 *, s32);
+#define CALL518C ((Fn518C_79E0)sub_0806518C)
+#define CALL5108 ((Fn5108_79E0)sub_08065108)
+typedef void (*FnAFFC_79E0)(u16 id, u32 dst, u16 page);
+#define CALLAFFC ((FnAFFC_79E0)sub_0807AFFC)
+typedef void (*Fn5AB4_79E0)(s32, s32, u16, u8 *);
+typedef void (*Fn5E6C_79E0)(s32, s32, u16, s32);
+#define CALL5AB4 ((Fn5AB4_79E0)sub_08065AB4)
+#define CALL5E6C ((Fn5E6C_79E0)sub_08065E6C)
+/* Scroll the card list up by one row (cursor column `cursor`): two tilemap scrolls, redraw the card
+   entering at the top, shift the item counters, then refresh the side panel. `*out` gets the card id
+   that left, or 0xFFFF. */
 void sub_080679E0(u16 *out)
 {
-    struct ScrollSt *st = &gUnk_0201DB20_s;
-    s16 t;
+#define S79E0 (*(struct ScrollSt79E0 *)&gUnk_0201DB20_s)
+    s32 t1, t2, t3;
 
-    if (gUnk_0201E140[st->cursor] == 0)
+    if (gUnk_0201E140[S79E0.cursor] == 0)
         return;
-    st->f1C58 = 0x1E;
-    st->f18AC = 0xFC00;
-    sub_0807B100(6, 0, -1, st->f628);
-    gUnk_0201E140[st->cursor]--;
-    st->f634 ^= 1;
-    t = gUnk_0808749C[0];
-    sub_08079834(0, 0x0600C000, 0, ((st->f63E + t) & 0xFF) >> 3, 0x1E, 5, gUnk_0201E160);
-    if (gUnk_0201E140[st->cursor] < st->cnt1494[gUnk_0201EFC0[st->cursor]][st->cursor]) {
-        sub_0806518C(sub_08068D1C(st->cursor, gUnk_0201EFC0[st->cursor], gUnk_0201E140[st->cursor]),
-                     0x0600C000, 0, ((st->f63E + t) & 0xFF) >> 3, gUnk_0201E160);
-        sub_0807AFFC(sub_08068D1C(st->cursor, gUnk_0201EFC0[st->cursor], gUnk_0201E140[st->cursor]),
-                     st->f634 * 0x1680 + 0x06008000);
-        sub_08064E28(((st->f630 & 0xFF) >> 3) + 0x13, (u8)(((st->f632 & 0xFF) >> 3) - 8), st->f634, 1, 0);
+    S79E0.f1C58 = 0x1E;
+    S79E0.f18AC = 0xFC00;
+    sub_0807B100(6, 0, -1, S79E0.f628);
+    gUnk_0201E140[S79E0.cursor]--;
+    S79E0.f634 ^= 1;
+    t1 = gUnk_0808749C[0];
+    sub_08079834(0, 0x0600C000, 0, ((S79E0.f63E + t1) & 0xFF) >> 3, 0x1E, 5, gUnk_0201E160);
+    if (gUnk_0201E140[S79E0.cursor] < S79E0.cnt1494[gUnk_0201EFC0[S79E0.cursor]][S79E0.cursor]) {
+        CALL518C(sub_08068D1C(S79E0.cursor, gUnk_0201EFC0[S79E0.cursor], gUnk_0201E140[S79E0.cursor]),
+                     0x0600C000, 0, ((S79E0.f63E + t1) & 0xFF) >> 3, gUnk_0201E160);
+        CALLAFFC(sub_08068D1C(S79E0.cursor, gUnk_0201EFC0[S79E0.cursor], gUnk_0201E140[S79E0.cursor]),
+                 S79E0.f634 * 0x1680 + 0x06008000, S79E0.f634);
+        sub_08064E28(((S79E0.f630 & 0xFF) >> 3) + 0x13, (u8)(((S79E0.f632 & 0xFF) >> 3) - 8), S79E0.f634, 1, 0);
     }
-    st->f63E -= 0x28;
-    st->f632 -= 0x50;
-    st->f635 = 1;
-    t = gUnk_08087494[0];
-    sub_08079834(0, 0x0600D000, 3, ((st->f63A + t) & 0xFF) >> 3, 0x1B, 2, gUnk_0201E160);
-    if ((s16)gUnk_0201E140[st->cursor] - 2 >= 0) {
-        sub_08065108(sub_08068D1C(st->cursor, gUnk_0201EFC0[st->cursor], (u16)(gUnk_0201E140[st->cursor] - 2)),
-                     0x0600D000, 0, ((st->f63A + t) & 0xFF) >> 3, gUnk_0201E160, 0);
-        *out = sub_08068D1C(st->cursor, gUnk_0201EFC0[st->cursor], (u16)(gUnk_0201E140[st->cursor] - 2));
+    S79E0.f63E -= 0x28;
+    S79E0.f632 -= 0x50;
+    S79E0.f635 = 1;
+    /* t2 is read inside the argument list, table operand first: the 0x0600D000 pseudo is then set
+       before the table load, and the load before the f63A address. */
+    sub_08079834(0, 0x0600D000, 3, (((t2 = gUnk_08087494[0]) + S79E0.f63A) & 0xFF) >> 3, 0x1B, 2, gUnk_0201E160);
+    if ((s16)gUnk_0201E140[S79E0.cursor] - 2 >= 0) {
+        CALL5108(sub_08068D1C(S79E0.cursor, gUnk_0201EFC0[S79E0.cursor], (u16)(gUnk_0201E140[S79E0.cursor] - 2)),
+                     0x0600D000, 0, ((S79E0.f63A + t2) & 0xFF) >> 3, gUnk_0201E160, 0);
+        *out = sub_08068D1C(S79E0.cursor, gUnk_0201EFC0[S79E0.cursor], (u16)(gUnk_0201E140[S79E0.cursor] - 2));
     } else {
         *out = 0xFFFF;
     }
-    if (gUnk_0201E140[gUnk_0201F73C] + 1 < st->cnt1494[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C])
-        sub_08065108(sub_08068D1C(gUnk_0201F73C, gUnk_0201EFC0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] + 1)),
-                     0x0600D000, 0, ((st->f63A + t) & 0xFF) >> 3, st->f640, 3);
-    sub_08065AB4(0x0600C000, 0xB, ((st->f63E + 0x38) & 0xFF) >> 3, st->f640);
-    sub_08065E6C(0x0600C000, 0x11, ((st->f63E + 0x38) & 0xFF) >> 3, 6);
-    st->f63A -= 0x10;
+    t3 = gUnk_08087494[1];
+    sub_08079834(0, 0x0600D000, 3, ((S79E0.f63A + t3) & 0xFF) >> 3, 0x1B, 2, S79E0.f640);
+    if (gUnk_0201E140[gUnk_0201F73C] + 1 < S79E0.cnt1494[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C])
+        CALL5108(sub_08068D1C(gUnk_0201F73C, gUnk_0201EFC0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] + 1)),
+                     0x0600D000, 0, ((S79E0.f63A + t3) & 0xFF) >> 3, S79E0.f640, 3);
+    S79E0.f63A -= 0x10;
+    CALL5AB4(0x0600C000, 0xB, ((S79E0.f63E + 0x38) & 0xFF) >> 3, S79E0.f640);
+    CALL5E6C(0x0600C000, 0x11, ((S79E0.f63E + 0x38) & 0xFF) >> 3, 6);
     sub_080657F8(0);
-    sub_08065F34(st->cnt1494[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C],
-                 gUnk_0201E140[gUnk_0201F73C], &st->f1BB0);
-    if (st->f1BB5 != 0) {
-        st->f1BB5 = 2;
-        st->f1BB4 |= 1;
+    sub_08065F34(S79E0.cnt1494[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C],
+                 gUnk_0201E140[gUnk_0201F73C], &S79E0.f1BB0);
+    {
+        /* FAKEMATCH: addressing f1BB4 through the f1BB5 pointer puts the offset constant in r0 and the
+           address in r1, as in the ROM; plain S79E0.f1BB4 |= 1 swaps them. */
+        u8 *p = &S79E0.f1BB5;
+        if (*p != 0) {
+            *p = 2;
+            p[-1] |= 1;
+        }
     }
-    sub_08066478(st->f635, *out, st->cnt1494[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C], st->f1BB8, st->f18B0);
+    sub_08066478(S79E0.f635, *out, ((u16 *)S79E0.cnt1494)[gUnk_0201EFC0[gUnk_0201F73C] * 3 + gUnk_0201F73C],
+                 S79E0.f1BB8, S79E0.f18B0);
     sub_08065058(1);
     sub_08077AEC(0);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_080679E0); /* 0x080679E0 size 0x3C4 */
+#undef S79E0
 #if 0 /* NONMATCHING: only register allocation/spills; built is 8 bytes short. Target frame `sub sp,#20` spills the 0xFFFF constant to [sp,#16] and keeps `base+0x14A0` in sl; built frame `sub sp,#16`, uses a pool constant and absolute 0x0201E140/0x0201EFC0 literals. Calls and control flow identical (23 bl either side). */
 /* Mirror of sub_080679E0: scroll the card list down by one row. */
 void sub_08067DA4(u16 *out)

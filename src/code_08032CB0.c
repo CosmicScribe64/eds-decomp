@@ -580,8 +580,6 @@ int sub_08033AAC(struct EffCtx *ctx)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: registers only. The ROM keeps type in r4 and the 0x02019968 hand base / card
-       * pointer in r5, and our build swaps them. */
 int sub_08033AEC(struct EffCtx *ctx)
 {
     char bufA[0x100];
@@ -615,13 +613,15 @@ int sub_08033AEC(struct EffCtx *ctx)
             int pl = ctx->player;
             u32 word = *(u32 *)(pl * 0xD64 + gUnk_0201CFB0.cursor * 4 + (u32)gUnk_02019968);
             u32 id = CARD_ID11(word);
-            u32 type = CARD_TYPE(id);
 
-            if (type == 1 && (sub_0800756C(CARD_NUMBER(id)) == 0 || sub_08008668(ctx->player) != 0)) {
+            if (CARD_TYPE(id) == 1 && (sub_0800756C(CARD_NUMBER(id)) == 0 || sub_08008668(ctx->player) != 0)) {
                 u32 *hand = (u32 *)((1 & ctx->player) * 0xD64 + (u32)gUnk_02019968);
                 u32 *card = hand + gUnk_0201CFB0.cursor;
+                /* FAKEMATCH: the signed byte/halfword flag adds RTL insns while the card pointer is live, so
+                 * global alloc ranks the type (r4) above the card pointer (r5) as in the ROM. */
+                s16 f = (s8)PLAYER_RAW(ctx);
 
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80C2 : 0xC2, ((u16 *)card)[0], ((u16 *)card)[1], 0);
+                sub_0801EC58(f ? 0x80C2 : 0xC2, ((u16 *)card)[0], ((u16 *)card)[1], 0);
                 sub_08056094(ctx->player, card, 1, 0);
                 return 0x7D;
             }
@@ -636,13 +636,16 @@ int sub_08033AEC(struct EffCtx *ctx)
             int i;
 
             for (i = 0; i < gUnk_020192E4[1 & ctx->player].handCount; i++) {
-                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[(u16)(i)]));
+                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[i]));
+                /* FAKEMATCH: a named type-minus-one keeps the base copy before the 0x7FF load (r7/r4 as in
+                 * the ROM) and compares against the immediate 1. */
+                int t = CARD_TYPE(id) - 1;
 
-                if (CARD_TYPE(id) == 1) {
-                    sub_080602A4(0x205, 0x914, 0xB, gUnk_08082C3C);
-                    sub_08060308(1, 0, 0);
-                    return 0x7C;
-                }
+                if (t != 0)
+                    continue;
+                sub_080602A4(0x205, 0x914, 0xB, gUnk_08082C3C);
+                sub_08060308(1, 0, 0);
+                return 0x7C;
             }
         }
         return 0;
@@ -655,6 +658,4 @@ int sub_08033AEC(struct EffCtx *ctx)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08032CB0", sub_08033AEC); /* 0x08033AEC size 0x2C0 */
 

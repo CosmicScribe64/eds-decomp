@@ -717,7 +717,7 @@ static inline u16 SummonCardIdSymbol(u16 number)
     return *(gUnk_08623DF4 + ((number - 0x7D0) & 0x7FF)) + 1;
 }
 
-#if 0 /* NONMATCHING: summon/tribute state machine; remaining: case 40 offset-register (r1 vs r2/r3) + choices==0 base/offset form, case 80 pool CSE, one far jump; see build/fable/sub_080471E8/NOTES.md */
+#if 0 /* NONMATCHING: summon/tribute state machine; case 40 now matches; remaining: case 80 reload-register picks + one extra pool word, see build/fable/sub_080471E8/NOTES.md */
 void sub_080471E8(u16 faceUp, u16 special)
 {
     char text[0x80];
@@ -1069,9 +1069,10 @@ void sub_080471E8(u16 faceUp, u16 special)
         if (sub_0800A2A8(0, required) && (SD.sequence <= 1 || sub_08008A1C(0) > 0))
             SD.choices |= 1;
         {
-            register unsigned raw asm("r0") = ((struct { u8 prefix[0x1B30]; u32 choices; } *)&SD)->choices; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-            register unsigned shifted asm("r2") = raw << 14;
-            register unsigned choices asm("r1") = shifted >> 28; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
+            register unsigned off asm("r1"); register unsigned raw asm("r0"); register unsigned shifted asm("r2"); register unsigned choices asm("r1"); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
+            raw = (u32)&SD; asm("" : "+r"(raw)); off = 0x1B30; asm("" : "+r"(off)); raw = *(u32 *)(raw + off);
+            shifted = raw << 14;
+            choices = shifted >> 28; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
             asm("" : : "r"(raw), "r"(shifted), "r"(choices));
             if (choices & 1) {
                 /* FAKEMATCH: preserve both short-circuit tests and keep choices live. */
@@ -1118,9 +1119,10 @@ void sub_080471E8(u16 faceUp, u16 special)
             }
         }
         {
-            register unsigned raw asm("r0") = ((struct { u8 prefix[0x1B30]; u32 choices; } *)&SD)->choices; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
-            register unsigned shifted asm("r2") = raw << 14;
-            register unsigned choices asm("r1") = shifted >> 28; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
+            register unsigned off asm("r1"); register unsigned raw asm("r0"); register unsigned shifted asm("r2"); register unsigned choices asm("r1"); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
+            raw = (u32)&SD; asm("" : "+r"(raw)); off = 0x1B30; asm("" : "+r"(off)); raw = *(u32 *)(raw + off);
+            shifted = raw << 14;
+            choices = shifted >> 28; /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
             asm("" : : "r"(raw), "r"(shifted), "r"(choices));
             if (choices & 1) {
                 /* FAKEMATCH: preserve both short-circuit tests and keep choices live. */
@@ -1203,9 +1205,15 @@ void sub_080471E8(u16 faceUp, u16 special)
                         asm("" : : "r"(names)); /* FAKEMATCH: preserve the ROM temporary allocation/lifetime. */
                         sub_080753F4(dst, fmt, (const char *)(offset + (u32)names));
                     }
-        if ((*(u32 *)((u8 *)&SD + 0x1B30) & 0x3C000) == 0) {
+        {
+        register char *t3 asm("r3"); /* FAKEMATCH: keep r3/r5 live across the test so reload picks the ROM spill registers. */
+        register int t5 asm("r5");
+        asm("" : "=r"(t3), "=r"(t5));
+        if ((((struct { u8 prefix[0x1B30]; u32 w; } *)&SD)->w & 0x3C000) == 0) {
             SD.active = 0;
             break;
+        }
+        asm("" : : "r"(t3), "r"(t5));
         }
         sub_080602A4(0x206, 0x712, 0xB, text);
         SD.step++;
@@ -1491,6 +1499,7 @@ void sub_080471E8(u16 faceUp, u16 special)
         break;
     }
 }
-#endif
+#else
 INCLUDE_ASM("asm/nonmatching/code_08046738", sub_080471E8); /* 0x080471E8 size 0x1DF8 */
+#endif
 

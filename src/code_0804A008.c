@@ -620,4 +620,219 @@ int sub_0804AC18(int player)
         return 1;
     }
 }
+#if 0 /* NONMATCHING (score 198): Structure matches (state switch on cnt at gUnk_0201930C+0x1AEA, member-access
+       * cnt/stage forms, cross-jumped reset tails via return-inside-if). Remaining: case 0 register allocation of
+       * opp/num and their asm-barrier copies (target opp r8, num r4, copies r6/sl, n r5, &gBattle r9); case 30 table reg
+       * r2 vs r1. */
+struct AEZone {
+    u32 card;
+    u8 b4;
+    u8 b5;
+    u8 b6;
+    u8 b7;
+    u8 pad[0x94 - 8];
+};
+struct AEF00 {
+    u8 unk0[0xC];
+    u16 f0 : 1;
+    u16 f1 : 1;
+    u16 f2 : 5;
+    u16 dst : 3;
+    u16 rest : 6;
+};
+#define AE_F00 (*(struct AEF00 *)&gUnk_02015F00)
+#define AE_ZB ((u8 *)gUnk_0201930C)
+#define AEZ(p, z) ((struct AEZone *)((z) * 0x94 + (p) * 0xD64 + (u32)AE_ZB))
+#define AEZb(p, z) ((struct AEZone *)((p) * 0xD64 + (z) * 0x94 + (u32)AE_ZB))
+#define AEZ1(z) ((struct AEZone *)(AE_ZB + 0xD64) + (z))
+#define AE_CNT (*(struct DGCnt *)(AE_ZB + 0x1AEA))
+struct AEStage {
+    u8 prefix[0x1B14];
+    u32 lo : 9;
+    u16 stage : 8;
+    u32 hi : 15;
+    u8 pad[8];
+};
+struct AECur { u8 pad[0x82C]; u8 b82C; };
+#define AE_CUR (*(struct AECur *)&gUnk_0201CFB0)
+#define AE_ST (*(struct AEStage *)&gUnk_020192E0)
+int sub_0800AB08(int player, u16 number);
+int sub_0800AB6C(int player, u16 number);
+int sub_0800C894(int player, int zone);
+int sub_0800C8A8(int player, int zone);
+void sub_080197E0(int player, u16 id);
+int sub_08052F38(u32 keys);
+int sub_0800756C(u16 number);
+extern const u16 gUnk_08623DF4[];
+extern const u8 gUnk_08085958[], gUnk_0808598C[];
+
+int sub_0804AE64(int player)
+{
+    u32 pl = player & 1;
+    u32 id = AEZb(pl, BTH.atkSlot)->card << 20 >> 20;
+    if (sub_08008860(1 - player) == 0)
+        BTB.direct = 1;
+    if (BTB.direct) {
+        sub_0801EC58(player ? 0x8034 : 0x34, BTH.atkSlot, 1, 0);
+        BTB.defSlot = 5;
+        return 1;
+    }
+    switch (AE_CNT.cnt) {
+    case 0: {
+        int opp = 1 - player;
+        u32 num = 0x422;
+        if (sub_0800AB08(opp, num) > 0) {
+            int p, n, zone, a, b, mine;
+            u16 c;
+            sub_080197E0(opp, ((const u16 *)0x08623DF4)[num]);
+            p = opp;
+            c = num;
+            /* FAKEMATCH: keep the copies of opp/num as separate registers */
+            asm("" : "+r"(p));
+            asm("" : "+r"(c));
+            n = sub_0800AB08(p, c);
+            if (n == 1) {
+                if (player != 0) {
+                    zone = sub_0800AB6C(p, c);
+                    a = sub_0800C894(p, zone);
+                    b = sub_0800C8A8(p, zone);
+                    mine = sub_0800C894(player, BTH.atkSlot);
+                    if (AEZb(p & 1, zone)->b6 & 1) {
+                        if (mine > b) {
+                            BTB.defSlot = sub_0800AB6C(p, c);
+                            AE_CNT.cnt = 3;
+                            return 0;
+                        }
+                    } else {
+                        if (mine > a) {
+                            BTB.defSlot = sub_0800AB6C(opp, c);
+                            AE_CNT.cnt = 3;
+                            return 0;
+                        }
+                    }
+                    sub_0804A39C(player, BTH.atkSlot);
+                    gUnk_020192E0.cnt1B16 = 0;
+                    AE_ST.stage = 1;
+                    return 0;
+                }
+                BTB.defSlot = sub_0800AB6C(1, num);
+                gUnk_020192E0.cnt1B16 = 4;
+                return 0;
+            }
+            if (player != 0) {
+                sub_0804A39C(player, BTH.atkSlot);
+                gUnk_020192E0.cnt1B16 = 0;
+                AE_ST.stage = 1;
+                return 0;
+            }
+            gUnk_020192E0.cnt1B16 = 20;
+            return 0;
+        }
+        gUnk_020192E0.cnt1B16++;
+    }
+    case 1:
+        if (sub_0800756C(((const u16 *)0x08622AB4)[id & 0x7FF]) && sub_08008F74(1 - player)) {
+            gUnk_020192E0.cnt1B16 = 30;
+            return 0;
+        }
+        if ((u16)sub_0804A3D8(player, BTH.atkSlot)) {
+            gUnk_020192E0.cnt1B16 = 10;
+            return 0;
+        }
+        gUnk_020192E0.cnt1B16++;
+    case 2:
+        if (player != 0) {
+            if (sub_0805809C(0)) {
+                if (AE_F00.f1) {
+                    BTB.direct = 1;
+                    sub_0801EC58(0x8034, BTH.atkSlot, 1, 0);
+                    BTB.defSlot = 5;
+                    return 1;
+                }
+                BTB.defSlot = AE_F00.dst;
+                sub_0801EC58(0x8033, BTH.atkSlot, BTB.defSlot, 0);
+                return 1;
+            }
+            sub_0801EC58(0x8035, BTH.atkSlot, 1, 0);
+            AE_ST.stage = 1;
+            gUnk_020192E0.cnt1B16 = 0;
+            return 0;
+        }
+        sub_080602A4(0x206, 0x511, 0xB, gUnk_08085958);
+        gUnk_020192E0.cnt1B16++;
+        return 0;
+    case 3:
+        if (sub_08052F38(0xF00000)) {
+            struct AEZone *z = AEZ1(gUnk_0201CFB0.w82C);
+            int cid;
+            if ((z->b6 & 2) && (cid = z->card << 20 >> 20) > 0 && ((const u16 *)0x08622AB4)[cid & 0x7FF] == 0x52E && sub_080094E4() == 0x14D) {
+                sub_08077AEC(3);
+                return 0;
+            }
+            BTB.defSlot = AE_CUR.b82C;
+            gUnk_020192E0.cnt1B16++;
+        }
+        if (gUnk_03000040.h6 & 2) {
+            sub_08077AEC(2);
+            sub_08024134(player, 0, BTH.atkSlot);
+            gUnk_020192E0.cnt1B16 = 0;
+            AE_ST.stage--;
+            return 0;
+        }
+        return 0;
+    case 4:
+        sub_0801EC58(player ? 0x8033 : 0x33, BTH.atkSlot, BTB.defSlot, 0);
+        return 1;
+    case 10:
+        if (player != 0) {
+            BTB.direct = 1;
+            sub_0801EC58(0x8034, BTH.atkSlot, 1, 0);
+            return 1;
+        }
+        sub_080602A4(0x204, 0x715, 0xB, gUnk_0808598C);
+        sub_08060308(1, 0, 0);
+        gUnk_020192E0.cnt1B16++;
+        return 0;
+    case 11:
+        if (gUnk_0201AE60.h14) {
+            BTB.direct = 1;
+            sub_0801EC58(player ? 0x8034 : 0x34, BTH.atkSlot, 1, 0);
+            return 1;
+        }
+        gUnk_020192E0.cnt1B16 = 2;
+        return 0;
+    case 20:
+        if (sub_08052F38(0xE00000)) {
+            if (sub_0800A78C(1 - player, gUnk_0201CFB0.w82C, 0x422)) {
+                BTB.defSlot = AE_CUR.b82C;
+                gUnk_020192E0.cnt1B16 = 4;
+            } else {
+                sub_08077AEC(3);
+            }
+        }
+        if (gUnk_03000040.h6 & 2) {
+            sub_08077AEC(2);
+            gUnk_020192E0.cnt1B16 = 0;
+            AE_ST.stage--;
+            return 0;
+        }
+        return 0;
+    case 30:
+        if (player != 0)
+            return 0;
+        if (sub_08052F38(0xF00000) && sub_0800756C(*(u16 *)((u8 *)gUnk_08622AB4 + ((AEZ1(gUnk_0201CFB0.w82C)->card << 21) >> 20)))) {
+            BTB.defSlot = AE_CUR.b82C;
+            AE_CNT.cnt = 3;
+        }
+        if (gUnk_03000040.h6 & 2) {
+            sub_08077AEC(2);
+            gUnk_020192E0.cnt1B16 = 0;
+            AE_ST.stage--;
+            return 0;
+        }
+        return 0;
+    }
+    return 1;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804AE64); /* 0x0804AE64 size 0x7DC */

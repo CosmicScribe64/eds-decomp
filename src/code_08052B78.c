@@ -315,18 +315,19 @@ int sub_08052F38(u32 mask)
         return 1;
     return 0;
 }
-#if 0 /* NONMATCHING (score 567): Cursor-key navigation (LEFT/RIGHT/UP/DOWN per player, zone codes 0-15).
-       * Structure matches: per-case 'call; sub_08077AEC(0); return 0;' with if/else arms joined before the sound, case
-       * 11 before 10, base pointer local for the 0xD64 player block. Remaining: the four 'sub_08077AEC(3); return 0'
-       * paths cross-jump into the shared sound call (ROM keeps 'movs r0,#3; bl; b' in each). */
+/* Per-player duel block at 0x020192E4: stride 0xD64, hand count at +2. */
 struct Side5304C { u8 pad[2]; u8 handCount; u8 rest[0xD64 - 3]; };
+/* Duel-field cursor keys: Left/Right/Up/Down move the cursor between zones
+ * (both players, zone codes 0-15) via sub_08024134 and play SE 0; A returns 1.
+ * Each case keeps its own sound/return so cross-jumping merges the tails as in
+ * ROM; the first switch uses the local zone, the later ones re-read the field. */
 int sub_0805304C(void)
 {
     u16 keys = gUnk_03000040.keys;
     int player = gUnk_0201CFB0.player;
     int zone = gUnk_0201CFB0.zone;
     int index = gUnk_0201CFB0.index;
-    struct Side5304C *side;
+    struct Side5304C *sides, *side;
 
     gUnk_0201CFB0.flags |= 8;
     if (keys & 0x20) {
@@ -348,7 +349,7 @@ int sub_0805304C(void)
                 sub_08077AEC(0);
                 return 0;
             case 11:
-                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1];
                 if (side->handCount != 0) {
                     if (index > 0)
                         sub_08024134(player, zone, index - 1);
@@ -357,8 +358,9 @@ int sub_0805304C(void)
                     sub_08077AEC(0);
                     return 0;
                 } else {
-                    sub_08077AEC(3);
-                    return 0;
+                    /* FAKEMATCH: an int-returning cast turns this into a call_value, so cross-jumping keeps a separate movs r0, #3; bl in each copy as in ROM */
+                    ((int (*)(int))sub_08077AEC)(3);
+                    break;
                 }
             case 10:
                 sub_08024134(player, 14, 0);
@@ -376,9 +378,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 0, 4);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         case 1:
             switch (zone) {
             case 0:
@@ -396,7 +397,7 @@ int sub_0805304C(void)
                 sub_08077AEC(0);
                 return 0;
             case 11:
-                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1];
                 if (side->handCount != 0) {
                     if (index < side->handCount - 1)
                         sub_08024134(player, zone, index + 1);
@@ -405,8 +406,9 @@ int sub_0805304C(void)
                     sub_08077AEC(0);
                     return 0;
                 } else {
-                    sub_08077AEC(3);
-                    return 0;
+                    /* FAKEMATCH: an int-returning cast turns this into a call_value, so cross-jumping keeps a separate movs r0, #3; bl in each copy as in ROM */
+                    ((int (*)(int))sub_08077AEC)(3);
+                    break;
                 }
             case 10:
                 sub_08024134(player, 0, 0);
@@ -424,9 +426,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 10, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         }
     }
     if (keys & 0x10) {
@@ -448,7 +449,7 @@ int sub_0805304C(void)
                 sub_08077AEC(0);
                 return 0;
             case 11:
-                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1];
                 if (side->handCount != 0) {
                     if (index < side->handCount - 1)
                         sub_08024134(player, zone, index + 1);
@@ -457,8 +458,9 @@ int sub_0805304C(void)
                     sub_08077AEC(0);
                     return 0;
                 } else {
-                    sub_08077AEC(3);
-                    return 0;
+                    /* FAKEMATCH: an int-returning cast turns this into a call_value, so cross-jumping keeps a separate movs r0, #3; bl in each copy as in ROM */
+                    ((int (*)(int))sub_08077AEC)(3);
+                    break;
                 }
             case 10:
                 sub_08024134(player, 0, 0);
@@ -476,9 +478,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 10, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         case 1:
             switch (gUnk_0201CFB0.zone) {
             case 0:
@@ -496,7 +497,7 @@ int sub_0805304C(void)
                 sub_08077AEC(0);
                 return 0;
             case 11:
-                { struct Side5304C *sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1]; }
+                sides = (struct Side5304C *)gUnk_020192E4; side = &sides[player & 1];
                 if (side->handCount != 0) {
                     if (index > 0)
                         sub_08024134(player, zone, index - 1);
@@ -505,8 +506,9 @@ int sub_0805304C(void)
                     sub_08077AEC(0);
                     return 0;
                 } else {
-                    sub_08077AEC(3);
-                    return 0;
+                    /* FAKEMATCH: an int-returning cast turns this into a call_value, so cross-jumping keeps a separate movs r0, #3; bl in each copy as in ROM */
+                    ((int (*)(int))sub_08077AEC)(3);
+                    break;
                 }
             case 10:
                 sub_08024134(player, 14, 0);
@@ -524,9 +526,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 0, 4);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         }
     }
     if (keys & 0x40) {
@@ -565,9 +566,8 @@ int sub_0805304C(void)
                 sub_08024134(1 - player, 10, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         case 1:
             switch (gUnk_0201CFB0.zone) {
             case 0:
@@ -602,9 +602,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 14, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         }
     }
     if (keys & 0x80) {
@@ -643,9 +642,8 @@ int sub_0805304C(void)
                 sub_08024134(player, 14, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         case 1:
             switch (gUnk_0201CFB0.zone) {
             case 0:
@@ -680,17 +678,14 @@ int sub_0805304C(void)
                 sub_08024134(1 - player, 10, 0);
                 sub_08077AEC(0);
                 return 0;
-            default:
-                return 0;
             }
+            return 0;
         }
     }
     if (gUnk_03000040.keys & 1)
         return 1;
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_0805304C); /* 0x0805304C size 0x688 */
 void sub_080536D4(int hidden)
 {
     int i = 0;

@@ -134,15 +134,16 @@ void sub_08002388(void);
 
 /* Calendar step 0: draw the month grid (year digits, day numbers, event
  * icons) and the cursor. */
-#if 0 /* NONMATCHING: semantics identical, but agbcc spills rowY to the stack
-       * (24-byte frame vs 20) and picks different callee-saved registers for
-       * day/col/cell/events, so the whole body and literal pool shift. */
 void sub_08002388(void)
 {
     struct Date d0, d1;
-    s32 year, x, digits;
+    s32 year, x, digits, digit;
     s32 day, cell, col, daysInMonth;
-    u16 pal, iconX, rowY, dayY, iconY;
+    s32 pal, iconX, iconX2;
+    register s32 rowY asm("r9"); /* FAKEMATCH: unpinned, rowY loses r9 to day (its constant init doubles its live length) */
+    u32 iconY, dayY;
+    u32 step; /* one pseudo for 0x180000 that gets no register, so reload rematerialises it per use */
+    u32 events;
 
     sub_08002220();
     sub_080047F4(&d0, gCalendar.date);
@@ -150,46 +151,50 @@ void sub_08002388(void)
 
     /* Year, right to left in 4 decimal digits. */
     year = d0.year;
-    digits = 3;
     x = 0;
-    do {
-        sub_080761F0((0xE0 - x) | 0x100000, 0, (year % 10) + 0x6240);
+    for (digits = 3; digits >= 0; digits--) {
+        digit = year % 10;
+        sub_080761F0((0xE0 - x) | 0x100000, 0, digit + 0x6240);
         year = year / 10;
         x += 6;
-        digits--;
-    } while (digits >= 0);
+    }
 
     day = 1;
-    cell = sub_080042D8(d0.year, d0.month, 1);
+    cell = sub_080042D8(d0.year, d0.month, day);
     col = cell;
     daysInMonth = sub_080042B4(d0.year, d0.month);
     if (gCalendar.secondHalf) {
         while (cell <= 20) {
             cell++;
             day++;
-            col = (col + 1) % 7;
+            col++;
+            col %= 7;
         }
         cell = 0;
     }
-    if (daysInMonth < day)
+
+    if (day > daysInMonth)
         return;
     if (cell > 20)
         return;
-
+    step = 0x180000;
     iconY = 0x300000;
     dayY = 0x280000;
     rowY = 0;
     iconX = col << 5;
-    do {
-        u32 events = sub_080044E4(d0.year, d0.month, day);
-        s32 iconX2 = iconX + 0x18;
-
+    while (day <= daysInMonth && cell <= 20) {
+        events = sub_080044E4(d0.year, d0.month, day);
         pal = 0;
-        if (col == 0)
+        iconX2 = iconX + 0x18;
+        switch (col) {
+        case 0:
             pal = 1;
-        else if (col == 6)
+            break;
+        case 6:
             pal = 2;
-        sub_080761F0((iconX + 0x10) | dayY, 0, (pal << 5) + 0x6200 + day);
+            break;
+        }
+        sub_080761F0((iconX + 0x10) | dayY, 0, (pal << 5) + day + 0x6200);
         if (events & 0x100000) {
             sub_080762D0(iconX2 | iconY, 0x40, 0x172);
             iconX2 += 8;
@@ -199,7 +204,8 @@ void sub_08002388(void)
             iconX2 += 8;
         }
         if (events & 0x3F400000) {
-            sub_080762D0(iconX2 | ((rowY + 0x30) << 16), 0x40, 0x170);
+            iconX2 |= (rowY + 0x30) << 16;
+            sub_080762D0(iconX2, 0x40, 0x170);
         }
         if (d0.year == d1.year && d0.month == d1.month && day == d1.day) {
             sub_080762D0((iconX + 0xD) | ((rowY + 0x25) << 16), 0x80, 0x17C);
@@ -209,16 +215,14 @@ void sub_08002388(void)
         if (col > 6) {
             iconX = 0;
             col = 0;
-            iconY += 0x180000;
-            dayY += 0x180000;
+            iconY += step;
+            dayY += step;
             rowY += 0x18;
         }
         day++;
         cell++;
-    } while (day <= daysInMonth && cell <= 20);
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08002388", sub_08002388); /* 0x08002388 size 0x1F4 */
 
 /* Calendar step 1: clear the calendar state, set up video and load graphics. */
 /* DMA fill, then wait, as two separate blocks with their own register

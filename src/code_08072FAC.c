@@ -398,55 +398,62 @@ u16 sub_08073B64(u32 id, void *dst)
     return 0;
 }
 INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_08073C10); /* 0x08073C10 size 0x2F4 */
-#if 0 /* NONMATCHING: first attempt from m2c; structure/target use base 0x03006676 in r4 and derive link as r4-0xB16 (the build materialises separate literals and spills the state into r8/sl); the loop body and order are not aligned yet */
+/* LinkSio as seen by sub_08073F04 (0x03005B60). */
+struct LinkSioF04 {
+    u8 pad0[0x20C];
+    u16 rxBuf[2][2][0x101];     /* +0x20C [half][slot] */
+    u8 padA14[4];
+    u8 unkA18[2];
+    u8 unkA1A[2];
+    u8 padA1C[0xA26 - 0xA1C];
+    u16 unkA26;
+    u8 padA28[0xAF4 - 0xA28];
+    u16 unkAF4[2];
+    u16 unkAF8[2];
+    s32 unkAFC;
+    u8 padB00[0x10];
+    u16 unkB10;
+    u16 unkB12;
+    u16 unkB14;
+    u16 rx[2][8];               /* +0xB16 */
+};
+#define gLinkF04 (*(struct LinkSioF04 *)&gUnk_03005B60_s)
+
 /* Public link receive: pump sub_080740BC, then scan the two player slots for a
    complete type-0x3000 packet and copy it to dst; returns the byte count. */
-u16 sub_08073F04(s32 slot, void *dst)
+u16 sub_08073F04(int slot, void *dst)
 {
-    u8 *link = (u8 *)0x03005B60;
-    u16 *idp = &gUnk_03006670;
-    u16 *prog = (u16 *)(link + 0xAF4);
-    s16 id;
-    u16 hdr;
-    sub_080740BC(gUnk_03006676);
-    *idp = 0;
-    gUnk_03006672 = 0;
-    if ((gUnk_03006674 & 0xF) != 3)
-        return 0;
-    gUnk_0300665C = 0;
-    do {
-        hdr = *(u16 *)((u8 *)gUnk_03006676 + id * 16);
-        id = *idp;
-        if ((hdr & 0xF000) == 0x1000) {
-        } else if ((hdr & 0xF000) == 0x3000) {
-            u8 *p;
-            s8 n;
-            gUnk_03006658[id] = hdr & 0x1FF;
-            p = (u8 *)(link + 0xA1A) + id;
-            *p = n + 1;
-            n = *p;
-            CpuSet((u8 *)(link + 0xB18) + id * 16,
-                   (u8 *)(link + 0x20C) + id * 0x202 + n * 0x404 + prog[id] * 0xC,
-                   7);
-            prog[id]++;
-            if (id == slot) {
-                u8 *q = (u8 *)(link + 0xA18) + id;
-                s8 c = *q;
-                *q = c + 1;
-                gUnk_03006672 = gUnk_03006658[id];
-                CpuSet((u8 *)(link + 0x20C) + c * 0x404 + id * 0x202, dst,
-                       gUnk_03006672 >> 1);
+    sub_080740BC((u8 *)gLinkF04.rx);
+    gLinkF04.unkB10 = 0;
+    gLinkF04.unkB12 = 0;
+    if ((gLinkF04.unkB14 & 0xF) == 3) {
+        for (gLinkF04.unkAFC = 0; gLinkF04.unkAFC < 2; gLinkF04.unkAFC++) {
+            /* the header is read twice from memory (CSE merges the loads);
+               a u16 local for it swaps the AND operands */
+            u16 t = gLinkF04.rx[gLinkF04.unkB10][0] & 0xF000;
+            if (t == 0x1000) {
+            } else if (t == 0x3000) {
+                gLinkF04.unkAF8[gLinkF04.unkB10] = gLinkF04.rx[gLinkF04.unkB10][0] & 0x1FF;
+                CpuSet(&gLinkF04.rx[gLinkF04.unkB10][1],
+                       (u8 *)gLinkF04.rxBuf[gLinkF04.unkA1A[gLinkF04.unkB10]++][gLinkF04.unkB10]
+                           + gLinkF04.unkAF4[gLinkF04.unkB10] * 12,
+                       7);
+                gLinkF04.unkAF4[gLinkF04.unkB10]++;
+                if (gLinkF04.unkB10 == slot) {
+                    gLinkF04.unkB12 = gLinkF04.unkAF8[gLinkF04.unkB10];
+                    CpuSet(gLinkF04.rxBuf[gLinkF04.unkA18[gLinkF04.unkB10]++][gLinkF04.unkB10], dst,
+                           gLinkF04.unkB12 >> 1);
+                }
+                gLinkF04.unkA1A[gLinkF04.unkB10] &= 1;
+                gLinkF04.unkA18[gLinkF04.unkB10] &= 1;
             }
-            ((u8 *)(link + 0xA1A))[id] &= 1;
-            ((u8 *)(link + 0xA18))[id] &= 1;
+            gLinkF04.unkAF8[gLinkF04.unkB10] = 0;
+            gLinkF04.unkAF4[gLinkF04.unkB10] = 0;
+            gLinkF04.unkB10++;
         }
-        *(u16 *)(link + 0xAF8 + id * 2) = 0;
-        prog[id] = 0;
-        (*idp)++;
-        gUnk_0300665C++;
-    } while (gUnk_0300665C <= 1);
-    *(u16 *)(link + 0xA26) = 0;
-    return *(u16 *)(link + 0xB12);
+        gLinkF04.unkA26 = 0;
+        return gLinkF04.unkB12;
+    }
+    return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_08073F04); /* 0x08073F04 size 0x1B8 */
+#undef gLinkF04

@@ -578,14 +578,11 @@ void sub_080752B0(void *dst, const void *src, u32 size);
 void sub_08075294(void *dst, const void *src, u32 size);
 void sub_08004F08(void);
 void sub_08004ABC(void);
-#if 0 /* NONMATCHING: the 4x4 tile-map fill loop's register allocation differs. agbcc
-       * splits the running tile value into several literals instead of the target's single
-       * r1 chain (ldr r1,=0xC389; 15x add r1,#1) and hoists the last values; also the
-       * tile-map base ends up in r3 instead of r4. Address shape is otherwise exact. */
+/* Title screen setup: palettes and graphics, a repeating 4x4 tile block over BG map 3,
+ * half-brightness palette entries 0xC0..0xCF, HBlank scroll table and the VBlank/HBlank callbacks. */
 void sub_08004FD8(void)
 {
-    s32 x, y, i;
-    s32 t;
+    s32 x, i;
 
     sub_080752B0((void *)0x05000200, gUnk_0822C300, 0x20);
     sub_08074B08(0x20, 0x10);
@@ -604,34 +601,40 @@ void sub_08004FD8(void)
     sub_0807326C(0x409, 0xA0, 0x2B8, gUnk_087C1DCC);
     sub_0807326C(0x809, 0xB0, 0x310, gUnk_087C0CD4);
     sub_0807326C(0xC00, 0xC0, 0x388, gUnk_0867DFCC);
-    for (y = 0; y <= 0x1F; y += 4) {
+    /* Plain constants: postreload move2add turns the reloads into the ROM's `adds r1, #1` chain.
+     * The outer counter shares `i` with the palette loop, which puts it in r5. */
+    for (i = 0; i <= 0x1F; i += 4) {
         for (x = 0; x <= 0x1F; x += 4) {
-            s32 o = (y << 5) + x;
+            s32 o = (i << 5) + x;
 
             gMain.bgMapBuffer[3][o] = 0xC388;
-            t = 0xC389;
-            gMain.bgMapBuffer[3][o + 1] = t;
-            gMain.bgMapBuffer[3][o + 2] = ++t;
-            gMain.bgMapBuffer[3][o + 3] = ++t;
-            gMain.bgMapBuffer[3][o + 0x20] = ++t;
-            gMain.bgMapBuffer[3][o + 0x21] = ++t;
-            gMain.bgMapBuffer[3][o + 0x22] = ++t;
-            gMain.bgMapBuffer[3][o + 0x23] = ++t;
-            gMain.bgMapBuffer[3][o + 0x40] = ++t;
-            gMain.bgMapBuffer[3][o + 0x41] = ++t;
-            gMain.bgMapBuffer[3][o + 0x42] = ++t;
-            gMain.bgMapBuffer[3][o + 0x43] = ++t;
-            gMain.bgMapBuffer[3][o + 0x60] = ++t;
-            gMain.bgMapBuffer[3][o + 0x61] = ++t;
-            gMain.bgMapBuffer[3][o + 0x62] = ++t;
-            gMain.bgMapBuffer[3][o + 0x63] = ++t;
+            gMain.bgMapBuffer[3][o + 1] = 0xC389;
+            gMain.bgMapBuffer[3][o + 2] = 0xC38A;
+            gMain.bgMapBuffer[3][o + 3] = 0xC38B;
+            gMain.bgMapBuffer[3][o + 0x20] = 0xC38C;
+            gMain.bgMapBuffer[3][o + 0x21] = 0xC38D;
+            gMain.bgMapBuffer[3][o + 0x22] = 0xC38E;
+            gMain.bgMapBuffer[3][o + 0x23] = 0xC38F;
+            gMain.bgMapBuffer[3][o + 0x40] = 0xC390;
+            gMain.bgMapBuffer[3][o + 0x41] = 0xC391;
+            gMain.bgMapBuffer[3][o + 0x42] = 0xC392;
+            gMain.bgMapBuffer[3][o + 0x43] = 0xC393;
+            gMain.bgMapBuffer[3][o + 0x60] = 0xC394;
+            gMain.bgMapBuffer[3][o + 0x61] = 0xC395;
+            gMain.bgMapBuffer[3][o + 0x62] = 0xC396;
+            gMain.bgMapBuffer[3][o + 0x63] = 0xC397;
         }
     }
     for (i = 0; i <= 0xF; i++) {
-        u32 v = ((u16 *)0x05000180)[i];
+        u16 c = ((u16 *)0x05000180)[i];
+        u16 r = c & 0x1F;
+        u16 g = c & 0x3E0;
+        u16 b = c & 0x7C00;
 
-        ((u16 *)0x05000180)[i] = ((v & 0x7C00) >> 1 & 0x7C00) | ((v & 0x1F) >> 1 & 0x1F)
-                               | ((v & 0x3E0) >> 1 & 0x3E0);
+        r = (r >> 1) & 0x1F;
+        g = (g >> 1) & 0x3E0;
+        b = (b >> 1) & 0x7C00;
+        ((u16 *)0x05000180)[i] = r | g | b;
     }
     sub_08075294(gMain.hblankScroll, gUnk_08198830, 0x20);
     gMain.vblankCallback = sub_08004F08;
@@ -643,8 +646,6 @@ void sub_08004FD8(void)
     REG_IE |= 2;
     REG_IME = 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080044E4", sub_08004FD8); /* 0x08004FD8 size 0x2A4 */
 /* Title step 0: Title_Init */
 u16 sub_0800527C(void)
 {

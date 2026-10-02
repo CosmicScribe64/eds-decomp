@@ -182,7 +182,7 @@ USA 100% ──► global rename ───────────────�
 stage 1 ─► stage 2 ─► stage 3                stage 4 ─► stage 5
 ```
 
-Stages 1–3 do not depend on the rename and can start now; they give a byte-matching JP build and a JP ROM map. Stage 5 needs only the scoped part of stage 4. Stages 6–7 need the global rename, because otherwise every shared or derived function carries USA-address names the JP build cannot resolve. The duel code reaches struct fields through absolute aliases (`gUnk_0201930C`, `gUnk_02019AA8`, …) where JP uses one base plus offsets, so those aliases have to become struct globals with member accesses first. agbcc still folds `&gDuel.x` into one relocated literal, so USA keeps matching.
+Stages 1–3 do not depend on the rename and could start at any time; they give a byte-matching JP build and a JP ROM map. (2026-10-02: after the USA decompilation reached 100%, the user paused JP work. The order is the rename pass first, then JP; see [[overview]].) Stage 5 needs only the scoped part of stage 4. Stages 6–7 need the global rename, because otherwise every shared or derived function carries USA-address names the JP build cannot resolve. The duel code reaches struct fields through absolute aliases (`gUnk_0201930C`, `gUnk_02019AA8`, …) where JP uses one base plus offsets, so those aliases have to become struct globals with member accesses first. agbcc still folds `&gDuel.x` into one relocated literal, so USA keeps matching.
 
 **Risks and open points** (from `PLAN.md` §5):
 - Identical and same-shape pairs are exact; the 172 low-confidence changed pairs are similarity guesses. Re-run [[jpmap]] after stage 2, when the JP function list is final.

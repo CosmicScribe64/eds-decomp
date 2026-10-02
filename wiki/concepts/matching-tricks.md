@@ -21,7 +21,7 @@ Jump to [batch workflow](#use-the-catalog-to-speed-up-a-batch), [compiler and pa
 | Observed difference | First things to inspect |
 |---|---|
 | `ldr` versus `ldrh`/`ldrb`, or `ldsh` versus `ldrh` | Field width, access expression, bitfield container, overlay size and signedness |
-| Correct instructions, wrong registers | Separate initialized locals, declaration/assignment order, live ranges and guard scope; compute global-alloc priorities and trace reload rotation ([below](#register-allocation-priority-and-reload-rotation)) |
+| Correct instructions, wrong registers | Separate initialized locals, declaration/assignment order, live ranges and guard scope; compute global-alloc priorities and trace reload rotation ([below](#register-allocation-priority-and-reload-rotation)), or let [[regoracle]] do both |
 | A literal or temporary lands one register off | Reload round-robin (`last_spill_reg`): an extra or missing reload earlier in the function, a hidden live argument, integer-constant versus symbol tables |
 | Correct sum, reversed `add` operands | Explicit derived offset and entry pointer; staged additions |
 | Table/base loaded outside the loop | Constant pointer versus extern symbol, narrow inline helper, repeated access versus cached local |
@@ -36,14 +36,14 @@ Prefer an ordinary C form first. Use initialized hints only when a documented co
 
 ## Use the catalog to speed up a batch
 
-At the 2026-09-30 held checkpoint, 291 fallbacks remained: 261 had parked C and 30 lacked parked C drafts. (After workflow waves 1-2 on 2026-10-01: 1769/1976 functions in C, 66.91% of code bytes. After waves 2-3 and the giants loop, at the 2026-10-02 checkpoint: 1910/1976, 83.35%; see [[overview]].) They occupy 0x358D8 code bytes; 51 functions of at least 0x400 bytes account for 0x1C318 of those bytes. These are source-progress counts, not proof that the parked drafts are correct. Newly parked large reconstructions improve the reference inventory only. [[overview]], [[agent-tooling]]
+At the 2026-09-30 held checkpoint, 291 fallbacks remained: 261 had parked C and 30 lacked parked C drafts. (After workflow waves 1-2 on 2026-10-01: 1769/1976 functions in C, 66.91% of code bytes. After waves 2-3 and the giants loop, at the 2026-10-02 checkpoint: 1910/1976, 83.35%. Final, 2026-10-02 (commit `d77fcef`): 1976/1976 functions and 100% of code bytes; see [[overview]].) They occupy 0x358D8 code bytes; 51 functions of at least 0x400 bytes account for 0x1C318 of those bytes. These are source-progress counts, not proof that the parked drafts are correct. Newly parked large reconstructions improve the reference inventory only. [[overview]], [[agent-tooling]]
 
 1. Regenerate `build/decomp-queue/queue.json` while writers are held. Claim a source unit, then inspect its current compiled mismatch and the linked unit/sibling pages. The queue identifies matched-source siblings and batches up to eight functions per unit.
 2. Reuse a matched sibling before retranslating an existing draft. Apply the relevant width, ABI, expression or scope recipe to related functions together; retain function-specific differences.
 3. Compile a small variant grid in one Docker invocation. Record the candidate/source/compiler context and the exact remaining discrepancy. A syntax failure or malformed extraction is not matching evidence.
 4. Time-box allocation searches. Start with a two- or three-minute focused permuter run; extend only if the candidate improves or new evidence changes the search. Keep at most two jobs, each with at most two workers, within the documented shared-host budget. Do not rerun an unchanged failed grid blindly. [[decomp-permuter]]
 5. Review behavior/ABI and accept each source change only after a complete-unit byte match. Keep nonmatching drafts parked. Hold all source writers for combined ROM/report checkpoints; full builds need not run for each private candidate.
-6. Update this catalog and the unit page when a new trick succeeds or a bounded family fails. Advance both metrics with sibling wins and larger-function streams: 85.27% of functions are in source, while the source counter covers 57.76% of code bytes (validated objdiff: 57.72%).
+6. Update this catalog and the unit page when a new trick succeeds or a bounded family fails. Advance both metrics with sibling wins and larger-function streams. (Historical: at checkpoint 48, 85.27% of functions were in source and the source counter covered 57.76% of code bytes, with validated objdiff at 57.72%. Both reached 100% on 2026-10-02.)
 
 The existing Docker image supplies the compiler, disassembler, decompiler and search dependencies. Reuse prepared function contexts and run candidate loops inside Docker; avoid host installs and repeated container setup per variant. A C draft is a starting point; translation alone does not advance matching coverage. [[toolchain]], [[m2c]]
 
@@ -107,7 +107,7 @@ Source: [[compiler-flags]]. These patterns preserve the original arithmetic doma
 - **Verified: whole-word card reads.** A card-word pointer cast or `*(u32 *)` followed by `<< 20 >> 20` preserves the ROM's word load. Direct array-member `.id` can become a halfword load. For an 11-bit table index multiplied by two, combine uses `<< 21 >> 20`. Examples: `sub_080193D4`, placement/list helpers and the command-card views. [[code-08007994]], [[code-0800fb10]], [[code-080184d8]]
 - **Verified: byte flags alongside word views.** Use a larger byte-view struct for `+6`/`+0x91` mask tests and a separate four-byte card-word view for the same object. This gives `ldr` for IDs and `ldrb [base,#6]` for flags while retaining a shared address. [[code-0800ab08]], [[code-08011be0]], [[code-08007994]]
 - **Verified: byte-mask versus bitfield access.** A plain `u8` mask produces `mov/and`; a bitfield can produce a shift/sign test. Choose the representation demonstrated by the ROM. The draw-card player flag needs a whole-byte `|= 1`, whereas some link flags need individual bitfield assignments. [[code-0800eaa8]], [[code-0801f454]], [[code-08021cc8]]
-- **Verified: signed bitfields for a single-bit sign test (waves 2-3, 2026-10-02).** The ROM's `ldrb; lsl #27; cmp #0; bge` or `lsl #28; bge` tests one bit through the sign of a shifted byte. It comes from a **signed** field read straight off the struct: `(s8)(byte9 << 4) < 0` or an `s8 b9_0:4` field tested `< 0` matched `sub_0804F168`, where the `.b9_3` bitfield gave `movs #8; ands; beq`. In parked drafts, an `s32 flag20:1` field read from a struct-typed array element (`PS->graveyard[i].flag20`) reproduces `sub_08044224`'s byte test, and `s8 bit1:1` tested `< 0` gives `sub_0804FC4C`'s prologue `lsl #30; bge` together with the `and r0, r2` tie for the clear. A `u32` field gives a word load plus `lsl #11`, and a `u8` field or `& 0x10` gives `movs/ands/beq`. [[code-0804eff0]], [[code-08044224]]
+- **Verified: signed bitfields for a single-bit sign test (waves 2-3, 2026-10-02).** The ROM's `ldrb; lsl #27; cmp #0; bge` or `lsl #28; bge` tests one bit through the sign of a shifted byte. It comes from a **signed** field read straight off the struct: `(s8)(byte9 << 4) < 0` or an `s8 b9_0:4` field tested `< 0` matched `sub_0804F168`, where the `.b9_3` bitfield gave `movs #8; ands; beq`. An `s32 flag20:1` field read from a struct-typed array element (`gUnk_020192E4[pl].s.graveyard[i].flag20` in the matched source) reproduces `sub_08044224`'s byte test, and `s8 bit1:1` tested `< 0` gives `sub_0804FC4C`'s prologue `lsl #30; bge` together with the `and r0, r2` tie for the clear. A `u32` field gives a word load plus `lsl #11`, and a `u8` field or `& 0x10` gives `movs/ands/beq`. [[code-0804eff0]], [[code-08044224]]
 - **Verified: padded byte bitfield views.** A byte bitfield struct of exactly four bytes can be read with `ldr`. Padding it beyond four bytes permits the required `ldrb`. [[code-08009a68]]
 - **Verified: bitfield container controls comparisons.** `u32 timer:7` produces signed `bgt/ble` in the command-banner families; the corresponding `u16` container produces unsigned branches. Other selectors deliberately require `u16 rows:4` or `u16 timer:7` to avoid a hoisted coordinate or to compare masked bits directly. [[code-08012c4c]], [[code-08013cdc]], [[code-080150dc]], [[code-080162c4]], [[code-0801ce68]]
 - **Verified: mixed bitfield containers.** One byte can combine `u32 active:1` with `u8 timer:2` and `u8 frame:5`; the declared types affect extraction and decrement tests. [[code-08025108]]
@@ -407,7 +407,7 @@ This matches `sub_08004280`. Source: [[compiler-flags]].
 - **Compiler hint: one-iteration wrapper changes LICM.** `do { for(...) {...} } while(0)` matches sub_0806CD14's split of hoisted 1/8 and reloaded scratch base. It also matches SDK DMA sequences (below), but failed as a general loop fix in the sub_080431E4 sweep. [[code-0806c4e4]], [[code-080431e4]].
 - **Hint (FAKEMATCH): `do { ... } while (0)` around reads inside a loop ends CSE1's extended block.** The wrapper's LOOP_END note starts a new extended basic block for the first CSE pass. In `sub_0804F7A4` (wave 3, 2026-10-02), wrapping a loop's zone reads this way kept `0xD64` and the zone base from becoming long-lived before loop.c, so they stay in the loop as in the ROM. The post-loop CSE pass then reuses them for a later case (`sl`/`r9`). Wrapping a block whose skip label falls after LOOP_END does not work (score 298). Compiling with `-fno-cse-skip-blocks` showed that the unwanted merge came from CSE path following. [[code-0804eff0]]
 - **Verified: an inline helper's constant offsets are folded before loop.c sees them.** An open-coded size switch in `sub_08076A20` / `sub_08076BEC` / `sub_08076DAC` let loop.c hoist the `0x4433` OAM-offset literals and CSE share them with a neighbouring address (scores 218, 201 and 593). Moving the switch into an inline let integrate.c fold the offsets into the adds, so they are no longer hoistable (scores 28, 50 and 28). Wave 3, 2026-10-02. [[code-08076144]]
-- **Partial: a hard-register induction variable is not a biv.** `register int i asm("r8")` gave `sub_08044224`'s `i` the ROM's register but stopped loop.c from strength-reducing the i-indexed addresses (a hard register is not a basic induction variable), and the giv inits moved. A plain `int i` plus one empty clobber `asm volatile("" ::: "r4", "r5", "r6", "r7");` right after `i = 0;` worked better (FAKEMATCH, parked). At that point `i` is live and nothing else wants r4-r7, so global allocation picks r8. In the same function, loops that contain a jump-table switch were not loop-optimised in the ROM and match as plain `for` loops. [[code-08044224]]
+- **Partial: a hard-register induction variable is not a biv.** `register int i asm("r8")` gave `sub_08044224`'s `i` the ROM's register but stopped loop.c from strength-reducing the i-indexed addresses (a hard register is not a basic induction variable), and the giv inits moved. A plain `int i` plus one empty clobber `asm volatile("" ::: "r4", "r5", "r6", "r7");` right after `i = 0;` worked better (FAKEMATCH, kept in the matched source, 2026-10-02). At that point `i` is live and nothing else wants r4-r7, so global allocation picks r8. In the same function, loops that contain a jump-table switch were not loop-optimised in the ROM and match as plain `for` loops. [[code-08044224]]
 
 
 - **Verified C: assign meaningful coordinates at first use and reuse them.** Explicit `int x0/y0/x1/y1` locals resolve the final ADD operands in `sub_080656B4`. The original switch accepts kinds 0–3; ROM callers satisfy that domain, and index zero bypasses table uses. No invented initialization or default case was added. [[code-08064af0]]
@@ -434,13 +434,15 @@ This matches `sub_08004280`. Source: [[compiler-flags]].
 
 Workflow waves 1-2 (2026-10-01) matched about sixty functions whose last differences were register numbers. Most were resolved by reading agbcc's RTL dumps instead of guessing. `tools/wf.py dump` (see [[agent-tooling]]) or `old_agbcc -O2 -dl -dg -dL -dc` on a cut-down file produces them; the per-function `dump.sh` / `prio.py` / `reloads.py` scripts under `build/wf/<func>/` are worked examples.
 
+**Tool (2026-10-02): [[regoracle]].** `tools/dr python3 tools/regoracle.py <unit> <func>` automates this section. A patched old_agbcc, which emits byte-identical code, traces refs, live lengths, `REG_EQUIV` doubling, every `find_reg` decision, local-alloc quantities and reload choices. The tool aligns the build with the ROM and lists the pseudos in a different register. It then replays global-alloc in Python and inverse-solves the priority order. For each pseudo that has to move it gives the refs-only or live-only change that would do it, and it checks the answer by recompiling. Differences that ordering cannot fix are explained instead: a hard conflict, liveness, local-alloc, or the first reload-rotation mismatch. In [[code-08044224]]'s case 0x439 it asked for "live +3" on one pseudo, and three dead stores supplied it.
+
 **Global allocation (`global.c`).** Pseudos that live across basic blocks are allocated in priority order `floor_log2(refs) * refs / live_length`. The `.greg` dump lists "Registers to be allocated in sorted order"; the `.lreg` dump prints "Register N used X times across Y insns". Facts established by the matches:
 
 - refs and live_length come from the **flow pass, before combine**. Insns that combine later deletes (zero/sign extensions of narrow locals) still count, and notes and labels do not. A pseudo set twice counts each loop insn twice (`sub_0803C254`: i at 4*20/216 = 0.3704 beat ref at 3*15/122 = 0.3689 until `u8` locals added combinable insns). [[code-0803b670]]
 - Equal priorities (after integer truncation) go to the **lower pseudo number**, i.e. the earlier-created value: `u16 angle, scale; scale = sa >> 16; angle = sa;` put angle in r8 in `sub_08076714`; its twin needed `u32 scale` because `attr2 << 1` broke the tie. [[code-08076144]] Waves 2-3 (2026-10-01/02): declaring `zoneOfs`/`playerOfs` before `z` won the tie in `sub_0800935C`; `u32 info` instead of `u16` dropped a zero extension and shortened `p*0xD64`'s live length in `sub_080098C0`; `(u8)*link` broke a 0xD64/zone tie in `sub_08017DE0`. [[code-08008a1c]], [[code-08017314]]
 - A pseudo with a `REG_EQUAL`/`REG_EQUIV` constant has its live length **doubled** by `update_equiv_regs` (`sub_080516D8`). [[code-08050a70]] The doubling applies once per constant set: 0xD64 set twice gets four times its live length (`sub_0802B2FC`, `sub_08017DE0`). It also applies when the first set in insn order is a constant, even if later sets cancel the equivalence; making the first set a load instead (reusing a variable) fixed `sub_08018690`. A constant used in a ternary spans two blocks, so update_equiv_regs substitutes it at the use (`sub_0800CE28`). [[code-0802aac0]], [[code-08017314]], [[code-080184d8]], [[code-0800c894]]
 - A pseudo born at function entry has the longest live range and the lowest priority. It gets no register, and reload rematerializes its constant at each use. `u16 *tab = gUnk_08622AB4;` as the first local reproduced the per-iteration table reload of `sub_0800CD68` / `sub_0800CC18`; a block-local `int mask = 0xFF` did the same for `sub_080657F8`, and a `sel` pointer for `sub_080536D4`. [[code-0800c894]], [[code-08064af0]], [[code-08052b78]]
-- Levers that change refs: one fewer use (`goto end;` to a single `return flags;`, `sub_080044E4`); one more use with no code (`asm("" : : "r"(color))`, FAKEMATCH, `sub_08005860`); a no-op self-store `count += 0` (FAKEMATCH, `sub_080516D8`). Levers that change live length: a separate early return instead of an `&&` term (`sub_0802BBDC`); `s16 f = (s8)PLAYER_RAW(ctx)` adding deletable sign extensions (`sub_08033AEC`); OR operand order in packed arguments (`(u8)w828 | ((u8)w82C << 8)` in `sub_08051DF4`, player first in `sub_08035E0C`). [[code-080044e4]], [[code-08005500]], [[code-0802bad0]], [[code-08032cb0]], [[code-08051a9c]], [[code-08035198]] Waves 2-3 (2026-10-01/02) added more. A ternary `x = c ? a : b` assigns through a temporary, so `x` has one set instead of two (fewer refs) and is filled by a copy (`sub_080616D0`). Duplicating a call in both arms adds refs before cross-jumping merges the copies back (`sub_08061004`). A no-code `asm("" : : "r"(&gUnk_0201DB20))` is rewritten by GCSE into a use of its reaching-register copy and raises that copy's refs (`sub_0806B3B0`). Writing `unk12 = player` without `& 1` adds refs (`sub_08058EDC`). Merging one counter across several loops raises its refs and priority (`sub_0805E1D0`, `sub_08057C94`). `sub_08051A9C` matched by engineering an exact priority tie (0.0833 each) that the lower pseudo number wins, which is fragile. [[code-080609c4]], [[code-0806a92c]], [[code-08057ee0]], [[code-0805d58c]], [[code-08056ecc]], [[code-08051a9c]]
+- Levers that change refs: one fewer use (`goto end;` to a single `return flags;`, `sub_080044E4`); one more use with no code (`asm("" : : "r"(color))`, FAKEMATCH, `sub_08005860`); a no-op self-store `count += 0` (FAKEMATCH, `sub_080516D8`). Levers that change live length: a separate early return instead of an `&&` term (`sub_0802BBDC`); `s16 f = (s8)PLAYER_RAW(ctx)` adding deletable sign extensions (`sub_08033AEC`); OR operand order in packed arguments (`(u8)w828 | ((u8)w82C << 8)` in `sub_08051DF4`, player first in `sub_08035E0C`). [[code-080044e4]], [[code-08005500]], [[code-0802bad0]], [[code-08032cb0]], [[code-08051a9c]], [[code-08035198]] Waves 2-3 (2026-10-01/02) added more. A ternary `x = c ? a : b` assigns through a temporary, so `x` has one set instead of two (fewer refs) and is filled by a copy (`sub_080616D0`). Duplicating a call in both arms adds refs before cross-jumping merges the copies back (`sub_08061004`). A no-code `asm("" : : "r"(&gUnk_0201DB20))` is rewritten by GCSE into a use of its reaching-register copy and raises that copy's refs (`sub_0806B3B0`). Writing `unk12 = player` without `& 1` adds refs (`sub_08058EDC`). Merging one counter across several loops raises its refs and priority (`sub_0805E1D0`, `sub_08057C94`). `sub_08051A9C` matched by engineering an exact priority tie (0.0833 each) that the lower pseudo number wins, which is fragile. The final round of `sub_08044224` (2026-10-02) shows statement order and narrow types working together on one pair. In case 0x5EB, `attribute = 0` belongs after the id read (ROM order). There, though, the attribute (14 refs at loop depth 2; its first set is a constant, so its live length is doubled) reached priority 0.750, above `number`'s 0.7232, and took r4. A `u16` id, a `u8` attribute and two `(u8)` casts added combinable insns inside its live range (live 56 → 70) and dropped it to 0.600, so `number` (81 refs, 73 of them from the dispatch) keeps r4 with about 19% margin. Two empty `asm("")` after the init also worked but were not needed. [[code-080609c4]], [[code-0806a92c]], [[code-08057ee0]], [[code-0805d58c]], [[code-08056ecc]], [[code-08051a9c]]
 
 **Local allocation (`local-alloc.c`).** Quantities that live inside one block are allocated there. A value used in two blocks becomes a global pseudo instead, which can free the local registers: one function-scope `u16 *c` (`sub_0803DEB8`) or `u8 *pp` (`sub_08070F18`, `sub_0806F934`) shared by two arms. With exactly three local quantities, agbcc's sort compares quantity numbers rather than `qty_order` entries, which can give a pointer r0 (`sub_08070F18`). A dummy fourth quantity, `asm volatile("" : "=r"(extra))`, restores the priority sort (FAKEMATCH, `sub_0806B3B0`, wave 3, [[code-0806a92c]]). Block-local temporaries per subtraction let local-alloc tie the shift, the result and the difference to one register (`sub_0807B9D4`). [[code-0803dd7c]], [[code-0807093c]], [[code-0806ed44]], [[code-0807b6b8]]
 
@@ -529,6 +531,120 @@ Mechanisms found while matching the rest of wave 2, wave 3 and the giants (2026-
 - **A dead post-decrement leaves a parameter copy.** `f(..., x--, ...); return;` keeps the old value as a separate pseudo (the ROM's prologue `mov`) and the dead decrement is deleted. It hints at copy-pasted original source (`sub_080794E0`, `sub_08079700`). [[code-080784e4]], [[code-0807960c]]
 - **Narrow parameters at the use.** Taking an `int` parameter and assigning it to a `u16` local where it is used moves the `lsl/lsr` out of the prologue (`sub_0807B6B8`). Calling through the callee's real parameter widths matters too: a `u8 x` made `x & 0x1F` a QImode constant, separate from `y & 0x1F` (`sub_0807960C`, `sub_08079700`). [[code-0807b6b8]], [[code-0807960c]]
 - **`(u32)func` already carries the Thumb bit.** A function address in a pool literal is emitted with bit 0 set by the assembler, so do not write `| 1` (`sub_080735D4`, which also needed the ROM's volatile store order). [[code-08072fac]]
+
+### Loop motion and allocation in sub_08044224 (2026-10-02)
+
+These mechanisms come from the last rounds on [[code-08044224]]: the final region-split round (workers r1A–r1F,
+`build/wf44/r1*/NOTES.md`) and the rounds before it (`build/wf/sub_08044224/NOTES.md`). Each one is verified by a
+region that is exact in the matched source; the region is named in brackets. They extend the loop.c rules above
+(threshold, two passes, `force_movables`). The workers read loop.c's movable decisions for both passes from
+`-dL` dumps with `lp.py`/`lp2.py`, and the allocation with [[regoracle]].
+
+**Which pass moves an invariant decides where it sits in the preheader**
+- The preheader holds the pass-1 movables, then the giv inits from strength reduction, then the pass-2 movables.
+  An invariant that comes too early compared with the ROM was moved in pass 1 and should wait for pass 2, and the
+  other way round. Work out the margin first: `threshold * savings * lifetime` against the loop's real insn count.
+  For example, `&count` moved in pass 1 at 2·2·27 = 108 ≥ 104 [0x2F] and at 4·1·16 = 64 ≥ 64 [0x447, 0x45C].
+- **To move an invariant from pass 1 to pass 2**, add pass-1 insns that combine deletes later. Two examples: a
+  `u16` parameter on an inline helper (its zero extension, `TargetAttack16` [0x2F]), or a `u8` return type
+  (`TargetType8` [0x447, 0x45C]; `u16` also works, `s8` left 2 lines). The final code does not change, only
+  the hoist order.
+- **To keep an invariant in the loop through pass 2**, the pass-2 loop must hold more insns than
+  `threshold * savings * lifetime`. Pass 2 starts again from the base threshold (26 without calls). The cards
+  address `list + 12` has savings 1 and life 1, so it stays only when pass 2 sees at least 27 insns
+  [0x3FA, 0x400, 0x439]. There are two FAKEMATCH ways to pad the loop:
+  - **Empty `asm("")`.** It is an `ASM_INPUT` insn: it counts toward the insn total and emits nothing. One was
+    enough in 0x3FA; 0x400 needed three per loop (two were not enough). Its position in the body did not matter.
+    The asm stays in the RTL through register allocation, so it lengthens the live range of every pseudo live
+    across it and can reorder allocation.
+  - **Dead stores to function-level variables** that nothing reads before they are rewritten:
+    `j = i; flag = i; fieldCount = i;` [0x439]. The one statement `fieldCount = i * 3` also gives 3 insns.
+    `delete_trivially_dead_insns` keeps the stores between the loop passes because those registers have uses
+    elsewhere. flow deletes them before allocation, so live lengths do not change. In 0x439 three
+    `asm volatile("")` fixed the loop but swapped r4/r5/r6; the dead stores did not.
+- **Use the same index expression in the loop test and the body.** The body and the latch form one extended basic
+  block. When the body indexes with the same expression as the test (`gUnk_020192E4[player & 1]` in both), cse1
+  merges the latch's test chain into one insn `p = off + G`. loop.c then forces that insn out in pass 1, because it
+  is the last use of `off`, so it lands before the giv init as in the ROM. A different spelling such as
+  `player & skipFilter` or `(skipFilter - player) & 1` leaves a 4-insn chain that only pass 2 moves, after the
+  giv init [0x3FA, 0x400, 0x439]. With `player & skipFilter` in the test itself, `cse_around_loop` links the
+  body's AND to the latch's loop-test register in a circle, and strength reduction is lost (50 lines in 0x439).
+
+**Matching constants**
+- **Same-mode constants add up.** loop.c combines identical constant movables and adds up their savings and
+  lifetimes. In 0x455, with `u16` parameters on both the kind helper (`TargetKind16`) and the type test, all three
+  `id & 0x7FF` ANDs are HImode. Their constants match (savings 6, life 6), so `0x7FF` moves in pass 1. With one
+  HImode and two SImode ANDs, the HImode constant stands alone (savings 2, life 2) and waits for pass 2. A
+  `(u16)(id & 0x7FF)` index cast is worse: it makes a separate HImode AND and breaks the sharing with the number
+  lookup.
+- **`combine_movables` can keep a forced movable in the loop.** A movable whose destination's last use is another
+  invariant insn is forced by it (`force_movables`); here the copy's `G` load forces `G + 0x7C4`. If another
+  movable has the same `REG_EQUAL` constant source, `combine_movables` matches the two. The forced one is then
+  "done" and moves only with its match. When the match is not worth moving, neither moves, and the add stays in the
+  loop as in the ROM. The lever is the test read: write it as
+  `*(u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + i * 4 + (player & 1) * 0xD64)`. Its pool load then carries
+  `REG_EQUAL (const (plus G 0x7C4))`, the copy's constant [0x41E; 0x47B with `0x904`]. In the `-dL` log this shows
+  as "done move-insn matches N forces M". The mirror symbol `gUnk_02019AA8` is the same address but a different
+  constant, so nothing matches and the add is hoisted.
+- **An inline helper decides CSE sharing, and with it lifetimes.** With the type test written as an inline
+  (`TARGET_TYPE_NV(idv)`), cse1 merges its stats load with the one inside the next helper; the open-coded
+  `((TARGET_STATS_NV(idv) & 0x1F00000) >> 20)` is not merged. That cut the lifetime of the `0x1F00000` constant
+  from 11 to about 2, so pass 2 stopped hoisting it. It also removed a reload, which fixed the reload rotation
+  further down the case [0x41E, 0x47B]. Compare the allocation-section entry on an inline helper that stops two
+  lookups sharing a constant.
+
+**Address shapes**
+- **Array reference or pointer cast for a copy.** `gUnk_020192E4[player & 1].w.deck[i]` (a BLKmode struct base)
+  expands to `(4i + t * 0xD64) + (G_reg + 0x7C4)`. `G` stays in a register, giving the ROM's
+  `ldr =0x7C4; add rX, sl`. Cast forms (`*(u32 *)&PLS(player).deck[i]`, `(u8 *)G + 0x7C4 + ...`) fold `G + 0x7C4`
+  into one pool constant [0x41E, 0x455, 0x47B].
+- **Mirror symbols are aliases.** `gUnk_02019AA8` and `gUnk_02019BE8` are `gUnk_020192E4 + 0x7C4` and `+ 0x904`:
+  player 0's deck and graveyard. The spelling a read uses decides its `REG_EQUAL` constant, and so which movables
+  match (above). Where the ROM reads through the mirror constant and copies with
+  `ldr =0x7C4/0x904; add rX, <high reg>`, write the read as `(u8 *)gUnk_020192E4 + 0x7C4/0x904 + ...` and the
+  copy as the plain array reference [0x41E, 0x47B].
+- **Grouped offsets.** `(u8 *)G + 0x904 + (i * 4 + (player & 1) * 0xD64)`, with the inner sum in parentheses,
+  makes `G + 0x904` an invariant that is computed before the latch copy; the giv init is then `off + rN`
+  [0x462 and most scan loops]. If a case has two loops, give each loop its own block-local pointer. A `word`
+  variable shared by both loops is a long-lived user variable, and loop.c does not strength-reduce it [0xF].
+- **A BLKmode base goes into a register before the index.** `((struct S *)(off + (u32)g))->cards[i]` computes
+  `off + g` before `i << 2`, because REG+REG addresses are not legitimate before reload [0x58D, 0x59F: ROM order].
+  Pass 2 then hoists `off + g` (life 2: 26·1·2 = 52 ≥ 49 insns). A hard register is never a loop movable, so
+  `register u32 t asm("r0") = off + (u32)g;` keeps it in the loop (FAKEMATCH). `asm volatile("" : "+r"(t))` also
+  works; a non-volatile asm is hoisted together with `t`.
+- **Bitfield extraction is not CSE'd like a shift.** Reading the card as
+  `struct TargetCard c = *(struct TargetCard *)(...)` and passing `c.id` to two helpers gives one `lsl #20` and two
+  `lsr #20`, as in the ROM [0x2F, 0x23D, 0x526]. The shift macro `((w << 20) >> 20)` is CSE'd and gives one of
+  each.
+- **A union keeps array-reference addressing.** With the player array declared as a union of a raw-word view and a
+  bitfield view, `gUnk_020192E4[pl].s.graveyard[i].flag20` gives the ROM's `(X + base) + 0x906`. A pointer cast gives
+  `(base + off) + 4i` [0x60A].
+
+**Loop form and GCSE**
+- **A `for` loop lets loop.c hoist a GCSE re-set after a call.** GCSE treats a symbol's pool load as an expression
+  that only calls kill. After an inner call, PRE therefore re-inserts the load and a copy into the reaching register
+  (`ldr rX, =list; mov sl, rX`) in the latch. In a `for` loop, jump.c duplicates the exit test and puts
+  `NOTE_INSN_LOOP_VTOP` before the bottom test. loop.c resets `maybe_never` there, so the latch's re-set becomes
+  movable and is hoisted, and CSE2 deletes the self-copy that results. An `if (...) do { } while (...)` loop has no
+  VTOP, so the copy stays and changes refs, live lengths and the global allocation. Prefer real `for`/`while`
+  loops wherever a latch would re-set a pool-load pseudo after a call. In `sub_08044224`, rewriting the 0x45C
+  removal loop this way fixed the whole function's allocation: list base in `sl`, count pointer in `ip`.
+- **The duplicated `for` exit test uses fresh pseudos**, so GCSE does not make the latch's `b + off` redundant,
+  and loop.c hoists it after the list/count copies, as in the ROM. A guarded `do` loop with user variables
+  `b`/`off` made PRE copy `p` right after the pre-check instead [most scan cases].
+- **cse2 path reachability decides between a register copy and a constant load.** After loop, cse2 follows jumps
+  from the function start, at most 9 followable branches (`PATHLENGTH` 10). A case whose loop preheader lies on
+  such a path sees the dispatch's list and count registers (`mov rX, sl` / `mov rX, ip`); any other case keeps
+  loop.c's constant load (`ldr =list`). A dispatch jump to a case label is followable only if a BARRIER precedes
+  the label (notes are skipped; `NOTE_INSN_LOOP_END` stops the walk). A case that ends with a loop whose last insn
+  jumps back to the loop top, with no `break` jump after `LOOP_END`, makes the next case label unfollowable and
+  shortens every later path. 0x3FA's `for (...; i < n && i <= 4; i++)` gives the ROM's `ble top; b tail` ending,
+  so 0x400 becomes reachable and 0x3FA is not, as in the ROM.
+- **Plain blocks for statement macros.** A `do { } while (0)` macro adds loop notes, so flow weights the refs
+  inside it one loop level deeper (see "Loop depth weights refs" above). In `sub_08044224` the plain-block
+  `ADD_TARGETB` matched the simple loops. The do-while form remains in three loops: the two that contain a
+  jump-table switch [0x454, 0x5EB] and the 0x447 graveyard loop. Converting every site at once had made the GCSE
+  list pseudo disappear (+68 bytes), while converting two or three at a time was neutral. Why is not understood.
 
 ## Initialized compiler hints and scheduling
 
@@ -801,7 +917,7 @@ The whole-unit mode must actually say `unit bytes MATCH`. A function size mismat
 - **Cross-jumping is post-allocation-sensitive** (see [verified cross-jump steering](#switches-branches-and-shared-tails) for the survivor rule that matched sub_0804AC18 on 2026-10-01). sub_0804A008/sub_0804A1C8, sub_0805B3F4/sub_0805C0A0 and sub_0805C938/CB2C/CEAC/D254 need partial tail sharing. In the strategy family the target only merges the final store/zero/branch because earlier scratch registers differ; drafts merge the entire identical clear sequence. Temp reorderings do not reliably control which copy survives. [[code-0804a008]], [[code-0805b3f4]], [[code-0805c508]].
 - **Partial register fixes remain partial.** sub_080555B0 explicit byte/message/mask work reaches 32 diff lines, union byte view worse; sub_08055B28 player/record pins fail. sub_08057C94 sorts correctly but n/done/last spills and the 2E8 high-register constant differ; private volatile-state and a/va pins remain nonmatching. sub_08057EE0 counter/zone barriers reduce to four scheduling lines, but replacing the bitfield clear with explicit halfword masks worsens it. [[code-08054e7c]], [[code-08056ecc]], [[code-08057ee0]].
 - **Shared return/control-flow size is not proof.** sub_0806C534 switch-copy/pointer locals and if/else do not fix registers; sub_0806CB68 extra=main+4 still loads a separate offset; sub_0806D1D8 three column pointers match size but not shifts/hoists; sub_08069284 filter/sort translation still rotates count/output/source pointers; sub_0806F0F8/sub_08070A1C mode loops remain different after many range spellings; sub_0807CDB4 and sub_0807D1F4 differed in register/literal setup (both now match; sub_0807D1F4 through constant-address tables that reload loads, 2026-10-01). [[code-0806c4e4]], [[code-08069284]], [[code-0806ed44]], [[code-0807093c]], [[code-0807c7c8]].
-- **Large effect unit sub_08044224:** raw m2c needs repaired wrapped case values, nested shared labels and pointer-scale offsets. The newer private narrow-getter/guarded-loop draft is 0x2340 versus required 0x2514, with frame 0x20 versus 0x28. It passed the finite 7,609-sample synthetic-callee differential suite, including all 821 card IDs, but destination/source evaluation order, loop-local base lifetimes and two stack slots still differ. Its 1,551/4,232 aligned normalized lines ignore label values and are not byte coverage. Active source/fallback remains unchanged; neither tested table variants nor volatile scratch forms produced acceptance. [[code-08044224]]. Update 2026-10-02: still nonmatching, wf score 6266 -> 4321 after the workflow round (unpinned `i` with one r4-r7 clobber, signed 1-bit card-word fields, deck/graveyard symbol reads); see [[code-08044224]].
+- **Resolved 2026-10-02 (matched by a region-split workflow round, see [[code-08044224]] and [Loop motion and allocation in sub_08044224](#loop-motion-and-allocation-in-sub_08044224-2026-10-02)):** **Large effect unit sub_08044224:** raw m2c needs repaired wrapped case values, nested shared labels and pointer-scale offsets. The newer private narrow-getter/guarded-loop draft is 0x2340 versus required 0x2514, with frame 0x20 versus 0x28. It passed the finite 7,609-sample synthetic-callee differential suite, including all 821 card IDs, but destination/source evaluation order, loop-local base lifetimes and two stack slots still differ. Its 1,551/4,232 aligned normalized lines ignore label values and are not byte coverage. Active source/fallback remains unchanged; neither tested table variants nor volatile scratch forms produced acceptance. [[code-08044224]]. Update 2026-10-02: still nonmatching, wf score 6266 -> 4321 after the workflow round (unpinned `i` with one r4-r7 clobber, signed 1-bit card-word fields, deck/graveyard symbol reads); see [[code-08044224]].
 - **Resolved 2026-10-02 (matched in the giants loop, see [[code-0800ab08]]; the match needed only two FAKEMATCH forms):** **Large card-stat routine sub_0800ABC8:** the parked frontier is 0x1CD0 versus 0x1CCC with frame 0x54 versus 0x50. Recovered byte/halfword flag views, link-field load order and distinct preliminary/field pointer lifetimes improve structure, but a preliminary next-index spill, serial rereads, auxiliary mask and link-pointer association still differ. Compilation/layout/source-assembly audit was performed; no executed behavioral equivalence was established for this revision. Bounded output-width/helper/pointer/serial grids did not match. [[code-0800ab08]].
 - **Resolved 2026-10-02 (matched in the giants loop, see [[code-08046738]]):** **Large summon routine sub_080471E8:** the guarded readable draft recovers 85 dispatch entries, 37 physical chunks and frame 0x118; size is 0x1E18 versus 0x1DF8. Fourteen chunks have normalized matching shape, which ignores real label/literal values. Explicit guards differ from ROM's incoming-register/unpopulated-text behavior on invalid state-40/41 sequence and state-70 card values; the observed local transition domain is not a proof for every caller. Private guard-removal/lifetime variants remain uninstalled. Keep this semantic blocker distinct from its substantial allocation difference. [[code-08046738]].
 

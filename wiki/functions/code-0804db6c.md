@@ -12,6 +12,12 @@ updated: 2026-10-02
 
 Unit status: `unit bytes MATCH`, **9/11 functions in C** after workflow waves 2-3 (2026-10-01/02: `0x0804E420` in wave 2, `0x0804E780` in wave 3); 2 stay `INCLUDE_ASM` (`0x0804DC88`, `0x0804E948`, both with complete C drafts under `#if 0`). After wave 1: 7/11 (2026-10-01: `sub_0804E240`, `sub_0804E5B4` added); before wave 1: 5/11 (0x29C bytes of C). The exact whole-unit check is 11/11 including assembly fallbacks, 0x1484 bytes.
 
+> [!warning] Contradiction: the unit is now 11/11
+> The count above (9/11) predates later matches. `src/code_0804DB6C.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 11 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
 > [!warning] Contradiction
 > The table row for `0x0804E420` (before 2026-10-02) gave its step byte as `0x0201AF00`. The wave 2 match (2026-10-01, `build/wf/sub_0804E420/NOTES.md` and the matched source) uses `0x020192E4 + 0x1B1C` = `0x0201AE00` (the ROM literals are `0x020192E4` and `0x1B1C`; the default case increments the same byte as `0x020192E0[0x1B20]`). Resolved in favour of the matched source; the row is corrected below.
 

@@ -12,6 +12,12 @@ updated: 2026-10-02
 
 Unit status: `unit bytes MATCH`, **16/17 functions in C** after workflow waves 2-3 (2026-10-02: `0x08034644` in wave 2, `0x08034768` in wave 3); 1 stays `INCLUDE_ASM` (`0x08034BFC`). Before the waves: 14/17. Verified with `tools/check.py code_08033DAC` (0x13EC bytes).
 
+> [!warning] Contradiction: the unit is now 17/17
+> The count above (16/17) predates later matches. `src/code_08033DAC.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 17 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
 ## Shared headers
 The unit includes `include/duel.h` and `include/duel_ui.h` (the latter pulls in `duel.h`); `include/main.h` is not needed (`gUnk_03000040` is unused here). It removed four local struct definitions (`DuelCard`, `DuelZone`, `DuelZonesPlayer`, `DuelPlayerHead`) and the local externs for `gUnk_020192E0`/`gUnk_020192E4`/`gUnk_0201930C`/`gUnk_0201CFB0`, and switched to the canonical tags and field names. `flags6 & 2` became `flag6_1`, `w824`/`b828` became `player`/`zone`, and the `#if 0` drafts' hand entries go through `CARD_WORD` since `hand[]` is now `struct DuelCard[]`.
 

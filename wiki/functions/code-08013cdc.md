@@ -4,7 +4,7 @@ type: function
 status: draft
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # Unit code_08013CDC
 
@@ -12,6 +12,12 @@ updated: 2026-10-01
 Duel "script command" handlers, dispatched like those in [[code-08012c4c]] and [[code-080162c4]]. Most of them set one per-player flag from `arg2`. Two large handlers do per-turn bookkeeping.
 
 Unit status: `unit bytes MATCH`, 14/16 functions in C (verified with `tools/check.py code_08013CDC`).
+
+> [!warning] Contradiction: the unit is now 16/16
+> The count above (14/16) predates later matches. `src/code_08013CDC.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 16 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
 
 The unit uses the shared headers `include/main.h` (struct `Main`) and `include/duel.h`
 (struct `DuelCard` / `DuelZone` / `DuelPlayer` / `DuelState`); its own copies of those

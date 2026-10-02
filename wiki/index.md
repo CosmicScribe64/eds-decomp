@@ -8,7 +8,7 @@ updated: 2026-10-02
 ---
 # Wiki Index
 
-Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the repo root, and the build/decomp how-to is [[decomp-workflow]]. See the [[log]] for history.
+Start with [[overview]]. The decompilation is 100% matched since 2026-10-02: all 1,976 functions, the last being [[code-08044224]]. The schema and workflows live in `CLAUDE.md` at the repo root, and the build/decomp how-to is [[decomp-workflow]]. See the [[log]] for history.
 
 ## ROM
 - [[rom-header]]: header fields, size, hashes, entry point. *verified*
@@ -50,7 +50,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[frame-sync-update]]: per-frame BG/OAM copy, keys, sound, RNG.
 - [[read-keys]], [[random]], [[fade-functions]], [[video-helpers]].
 - [[save-game]]: SRAM save/verify with retries.
-- [[sound-api]], [[sound-driver]], [[sound-mixer]]: game-side sound calls; Konami driver matching C and remaining functions; ARM mixer at `0x0807EAD0`.
+- [[sound-api]], [[sound-driver]], [[sound-mixer]]: game-side sound calls; Konami driver, 30/30 functions in matching C; ARM mixer at `0x0807EAD0`.
 - [[main-menu]], [[title-screen]], [[license-sequence]], [[debug-menu]] (unused).
 - [[card-data-functions]]: card stat/ID lookups.
 - [[lzss-decompress]]: `sub_0807A1A8`, the custom LZSS decoder.
@@ -73,6 +73,7 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[toolchain]]: Docker image, disassembler, build, check tools.
 - [[agbcc]]: the compiler (confirmed).
 - [[decomp-permuter]]: random-rewrite search for near-miss drafts (`tools/permute.py`).
+- [[regoracle]]: register-allocation oracle (`tools/regoracle.py` plus a tracing agbcc patch). It shows which pseudos differ from the ROM's registers and why, then inverse-solves the allocation order and checks the answer by recompiling. *verified (`--verify-compiler` 112/112)*
 - [[function-pointer-tables]]: 88 tables of function pointers in ROM data (`tools/fnptr_tables.py`).
 - [[shared-headers]]: canonical `include/main.h` and `include/duel.h`, and how units migrate to them.
 - [[m2c]]: ARM decompiler for first drafts (`tools/m2c_draft.py`).

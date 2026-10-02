@@ -10,7 +10,13 @@ updated: 2026-10-02
 
 The unit covers `0x0804EFF0`-`0x08050A6F` (Thumb, `old_agbcc -O2`), and its source is `src/code_0804EFF0.c`. It follows [[code-0804b640]] and uses the duel global `0x020192E0` (step byte `+0x1B20`, current player = bit 1 of `+0x1B12`), the player state array `0x020192E4` (0xD64 per player), the zone array `0x0201930C` and the UI block `0x0201AE60`.
 
-Unit status: `unit bytes MATCH`, **9/10 functions in C** after workflow waves 2-3 (2026-10-02: `0x0804F168` in wave 2, `0x0804EFF0` and `0x0804F7A4` in wave 3); only the 3.6 KB turn-end machine `sub_0804FC4C` stays `INCLUDE_ASM`, one of the last two giants. Before wave 2: 6/10 (0x494 bytes). The exact whole-unit check is 10/10 including the fallback, 0x1A80 bytes.
+Unit status: `unit bytes MATCH`, **9/10 functions in C** after workflow waves 2-3 (2026-10-02: `0x0804F168` in wave 2, `0x0804EFF0` and `0x0804F7A4` in wave 3); only the 3.6 KB turn-end machine `sub_0804FC4C` stays `INCLUDE_ASM`, one of the last two giants.
+
+> [!warning] Contradiction: `sub_0804FC4C` now matches
+> The status line above (waves 2-3) says `sub_0804FC4C` stays `INCLUDE_ASM`. It matched later on 2026-10-02 (commit `f637be2`,
+> "Match sub_0804FC4C (3.6 KB giant)"), so the unit is **10/10 functions in C** and `src/code_0804EFF0.c` has no
+> `INCLUDE_ASM` left (checked 2026-10-02). The [workflow-round section](#sub_0804fc4c-workflow-round-2026-10-0102-still-nonmatching)
+> below is history; the tricks of the final match are not written up yet. See [[overview]]. Before wave 2: 6/10 (0x494 bytes). The exact whole-unit check is 10/10 including the fallback, 0x1A80 bytes.
 
 | Address | Size | Status | Purpose (hypotheses) |
 |---|---|---|---|

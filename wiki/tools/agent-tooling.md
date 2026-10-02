@@ -39,6 +39,18 @@ on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad s
 functions at score 8, and made `apply` refuse them ([[code-08019554]], `sub_0801A130`).
 Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01, waves 2-3 and the giants on 2026-10-02: see [[log]]).
 
+**Register differences.** Since 2026-10-02, [[regoracle]] reads the allocation from a traced compiler instead of
+hand-read dumps. It runs on the `wf.py` copy by default. Its output directory is fixed
+(`build/regoracle/<func>/`), so parallel workers on one function need private copies of the tool, as the
+[[code-08044224]] region workers made.
+
+**Region-split rounds (2026-10-02).** The last function, [[code-08044224]], matched in one round with six
+workers on private whole-unit copies. Each worker owned a group of case regions, scored by a per-case diff
+(`rdiff.py`) plus the global `check.py --norm` line. An integrator then applied the patches in score order onto
+copies and moved the result into `src/` with `wf.py apply`. A size error in one region shifts the absolute
+jump-table words of every later switch. Those diffs clear only after integration, so workers should not chase
+them.
+
 **Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `sub_080471E8` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[code-08046738]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
 
 **Parking twice.** `park` merges three ways against the copy's `base.c` and does not refresh `base.c` afterwards, so a second park of the same function conflicts with the first. Agents on the giants worked around this by copying `src/<unit>.c` to `base.c` after each park, once a diff showed only their draft block had changed (`syncbase.py` for `sub_0804FC4C`, `park.sh` for `sub_08044224`, which also checks that nobody else touched the unit).
@@ -130,6 +142,7 @@ function-specific; broad application does not replace source/assembly analysis.
 | `tools/objdiff_resolve.py`, `tools/mkobjdiff.py`, `tools/check_report.py` | The [[objdiff]] progress report (decomp.dev format). |
 | `tools/xref.py func\|global\|strings\|graph\|unit\|subsystems\|what` | Static cross-references from `build/eds.elf`: what a function touches, who uses a global, call trees, and candidate subsystems ([[xref]]). Used to propose names in the readability pass. |
 | `tools/emu.py run\|trace\|watch\|break\|peek\|lua\|gdb\|compare\|states` | Headless mGBA 0.10.5 (image `eds-emu`) with a savestate library: function traces, watchpoints with backtraces, register logs, Lua and GDB ([[emulator]]). The run-time evidence for names. |
+| `tools/regoracle.py <unit> <func> [--show LO HI] [--prio R=P]` | Register-allocation oracle. A patched old_agbcc (byte-identical code) traces every allocation decision. The tool lists the pseudos that sit in a different register than in the ROM and says why. It then inverse-solves the global-alloc order into refs/live levers and checks the answer by recompiling. Defaults to the `wf.py` copy `build/wf/<func>/unit.c` ([[regoracle]]). |
 | `tools/jpmap.py [--compile-test] [--assets] [--diff F]` | Maps every USA function, RAM address and asset range to the Japanese ROM (AY5J): status per function, JP-only functions, shared link-order runs, RAM/data deltas, and a recompile of USA C at JP addresses. Read-only; writes `build/jp/` ([[jpmap]], [[rom-versions]]). |
 
 **Ghidra** is not set up, on purpose. The matched C, [[xref]] and the [[emulator]] cover the analysis

@@ -10,6 +10,10 @@ updated: 2026-10-02
 
 This page covers how the repo builds, and how to turn one assembly function into matching C. Read it before touching `src/`.
 
+Since 2026-10-02 (commit `d77fcef`) all 1,976 functions are in matching source, and no `INCLUDE_ASM` is left
+([[overview]]). 1,970 are C. The other 6 are authored assembly: the SWI stubs and the ARM sound mixer. The loop below still applies to FAKEMATCH cleanups (keep the unit matching) and to the planned
+Japanese build ([[rom-versions]]).
+
 [[matching-tricks]] consolidates the wiki's matching recipes, failed variants,
 compiler/ABI constraints and validation limits by discrepancy. Read the relevant
 section and its linked unit examples before starting a new batch. The queue and
@@ -89,6 +93,10 @@ Extend a search when new evidence or an improving candidate justifies it; avoid
 rerunning unchanged failed drafts. A score of zero still needs ABI review and an
 exact whole-unit check.
 To work on one function in a private copy (several agents per unit), and to read agbcc's allocation and reload decisions from RTL dumps, use `tools/wf.py` (`prep`/`check`/`perm`/`dump`/`apply`/`park`, see [[agent-tooling]] and [[matching-tricks#Register allocation priority and reload rotation]]).
+When the instructions agree but the registers do not, run [[regoracle]]
+(`tools/dr python3 tools/regoracle.py <unit> <func>`). It lists the pseudos that sit in a different register
+than in the ROM, explains each one (allocation order, conflict, local-alloc or reload rotation), and gives the
+refs/live change in the source that fixes the order, checked by recompiling.
 `check.py` no longer reports a size delta that is only the trailing `.align 2, 0` pad after a function ending on a 2-byte boundary, so such byte-identical functions now score 0.
 
 ## agbcc matching tips

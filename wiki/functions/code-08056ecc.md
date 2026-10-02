@@ -10,6 +10,12 @@ updated: 2026-10-02
 
 `src/code_08056ECC.c` (19 functions, 0x1014 bytes). **18/19 functions in C** after workflow waves 2-3 (2026-10-02: `0x08057C94` in wave 3); 1 stays `INCLUDE_ASM` (`sub_08056ECC`, best attempt under `#if 0 /* NONMATCHING */`). Before wave 3: 17/19. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals, and the code keeps `sub_08XXXXXX`. All of this is probably the CPU opponent's decision code (hypothesis). Neighbours: [[code-080609c4]] (board drawing) and [[code-08009a68]] (per-player lists/zones). See also `src/code_0800C894.c`: `sub_0800C894` is zone ATK, `sub_0800C8A8` is zone DEF, and `sub_0800ABC8` is card info.
 
+> [!warning] Contradiction: the unit is now 19/19
+> The count above (18/19) predates later matches. `src/code_08056ECC.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 19 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
 ## Functions
 
 | Address | Size | Status | Proposed name | Purpose |

@@ -10,6 +10,12 @@ updated: 2026-10-02
 
 `src/code_08072FAC.c` (19 functions, 0x1110 bytes). **16/19 functions in C** after workflow waves 2-3 (2026-10-01: `0x080735D4`, `0x08073784` in wave 2; none in wave 3); 3 stay `INCLUDE_ASM` (`sub_08073F04` with a near-miss attempt under `#if 0 /* NONMATCHING */`; `sub_0807382C`, `sub_08073C10` not attempted). Before wave 2: 14/19 (`sub_0807332C` by the permuter just before workflow wave 1, `sub_080730A8` in wave 1). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues [[code-08071f40]] (whose `sub_08072EB0` is the same loader with map buffer `0x03000C5C`); the link state is the `LinkSio` block of [[code-080740bc]] / [[code-080750e0]] (`0x03005B60`), and `sub_080740BC` (link step, in [[code-080740bc]]) is the receive pump these functions call.
 
+> [!warning] Contradiction: the unit is now 19/19
+> The count above (16/19) predates later matches. `src/code_08072FAC.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 19 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
 ## Functions
 
 | Address | Size | Status | Proposed name | Purpose |

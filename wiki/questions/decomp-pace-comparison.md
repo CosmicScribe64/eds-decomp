@@ -4,7 +4,7 @@ type: question
 status: draft
 confidence: medium
 sources: [web-research-2026-10-01]
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 # How fast other GBA decomps went
 
@@ -29,6 +29,9 @@ Data was pulled on 2026-10-01 from the decomp.dev JSON (`https://decomp.dev/proj
 | Golden Sun | 2026-05 (2023 disassembly) | 5 | 24.4 | - | |
 | Fire Emblem 8 US | 2018-02-16 | 23 | 99.8 | 5.25 yr / 7.8 yr | Pre-AI |
 | **EDS (this project)** | 2026-09-29 | 1 | **60.9** | 50% on day 3 | 1,706/1,976 functions |
+
+> [!note] Update 2026-10-02
+> The EDS row above is the 2026-10-01 snapshot. EDS reached **100%** (1,976/1,976 functions, 100% of code bytes) on 2026-10-02 (commit `d77fcef`, [[overview]]). That was the fourth day of the project, which started on 2026-09-29 according to the first [[log]] entries; the public git history begins on 2026-10-01. That is about 4 days to ~100%, against 14 for khcom, the fastest project in the table.
 
 Older human-only GBA projects took years: Metroid Zero Mission 4.7 years to 99.9%, Sonic Advance 3 at 84.5% after 3 years (it bans AI contributions).
 

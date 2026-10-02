@@ -779,3 +779,26 @@ updated: 2026-09-29
   - [[rom-versions]]: the hypothesis that localisation changing RAM and struct layouts explains the low exact-match share is refuted; the game logic and data model were reworked.
   - [[game-overview]]: "built from the same source with … shifted data layouts" (same cause).
 - Verified for this entry (read-only Python on both ROMs): JP SHA-1 and header; crt0 literal `0x2008` at JP `0x08000224` vs USA `mov r1,#0x2280` at `0x080001C8`; `MAGB` at JP `0x0807FFF8` and `gameboy.datacenter.ne.jp` at `0x0809ED97`, neither in USA; APCS `mov ip, sp` at JP `0x0805CA04`. Status, confidence and JP-only counts recounted from `map.tsv`; longest runs from `blocks.tsv`.
+
+## [2026-10-02] progress | 100% matched: sub_08044224, 1976/1976 functions
+- Milestone: commit `d77fcef` matches `sub_08044224` ([[code-08044224]], 0x2514 bytes, the largest function), the last one left. The USA decompilation is complete: 1,976/1,976 functions, 0x7EC70/0x7EC70 code bytes (100%), `check_all.py` 112/112 units, `make compare` `eds.gba: OK`.
+- How it matched: one round of a region-split workflow, starting from the parked draft at score 338 (`2eafe08`). Six workers (r1A–r1F) each fixed a group of case regions on a private copy. The integrator applied their patches in score order (338 → 254 → 178 → 70 → 36 → 16 → 0) and moved the result into `src/` with `wf.py apply`. The fixes were loop.c pass-1/pass-2 movable thresholds, address grouping, matching `REG_EQUAL` constants, and the attribute/number priority in 0x5EB. FAKEMATCH forms: empty `asm("")` loop padding (0x3FA, 0x400), three dead stores (0x439), `register ... asm("r0")` pins (0x58D, 0x59F) and the earlier clobber in 0x2F. Sources: `build/wf/sub_08044224/NOTES.md`, `build/wf44/r1*/NOTES.md`, `build/jp/sub_08044224_diff.md` (local).
+- Pages:
+  - [[code-08044224]]: status solid/matching. New sections: How it matched (score path, worker table, integration table), earlier rounds, FAKEMATCH table, JP-counterpart insights, verification. The pre-match sections are now a history section, with contradiction callouts on the superseded claims (status, pointer formation, tail loops, two-array scans, "Still open").
+  - [[regoracle]] (new): `tools/regoracle.py` + `tools/regoracle_agbcc.patch`. Usage, output, how it works, validation, use on `sub_08044224`, limitations. Linked from [[agent-tooling]] (Analysis row and notes on region-split rounds), [[matching-tricks]] (discrepancy table and allocation section), [[decomp-workflow]] and [[index]].
+  - [[matching-tricks]]: new subsection "Loop motion and allocation in sub_08044224 (2026-10-02)", deduplicated against the existing loop/GCSE entries and citing the regions. It covers pass-1 vs pass-2 hoist order, padding with `asm("")` vs dead stores, the shared test/body index, same-mode constant savings, `combine_movables` matching through `REG_EQUAL`, inline helpers and CSE lifetimes, array-reference vs cast copies, mirror symbols, grouped offsets, BLKmode bases and hard-register pins, bitfield extraction, union addressing, `for` loops vs GCSE re-sets, cse2 path reachability, and plain-block macros. Also: the 0x5EB priority example; stale `sub_08044224` lines (signed bitfields, hard-register `i`, the large-unit entry) and the progress numbers updated.
+  - [[overview]]: headline 100% matched (date, commit, progress counts, history), the last-function bullet, a tooling sentence for [[regoracle]], and the milestones. The milestones are now: write up the 2026-10-02 matches; the readability pass; FAKEMATCH cleanup (the `build/wf/CLEANUP.md` items plus three found here); data relocation; shared headers; the JP build, paused by the user.
+  - [[decomp-workflow]]: everything matches now; when to use [[regoracle]].
+  - [[index]]: headline line, [[regoracle]] under Tools, sound-driver entry (30/30).
+  - [[rom-versions]], [[decomp-pace-comparison]]: notes on the JP pause and on reaching 100% on day 4.
+  - Stale unit counts: 37 unit pages whose status line still gave N/M functions in C with N < M got a `> [!warning] Contradiction` callout (the unit is now M/M; no `INCLUDE_ASM` in its source). [[code-0804eff0]] got one for `sub_0804FC4C` (matched in `f637be2`).
+- Verified for this entry:
+  - `tools/dr python3 tools/check.py code_08044224`: 1/1 match, `unit bytes MATCH` (0x2514).
+  - `python3 tools/progress.py`: 1976/1976 functions, 0x7EC70/0x7EC70 bytes.
+  - `tools/dr python3 tools/regoracle.py --verify-compiler` over all 112 C units: 112/112 identical, traced and untraced.
+  - `grep INCLUDE_ASM src/*.c`: none left.
+  - `check_all.py` and `make compare` were reported by the coordinator and not re-run. regoracle's `--selftest`/`--perturb` figures come from its docstring.
+- Found for cleanup (not fixed, `src/` untouched):
+  - the 0x2F `asm volatile` clobber in `src/code_08044224.c` has no `/* FAKEMATCH */` comment;
+  - `src/code_0800EAA8.c` lines 403–457 keep a dead `#if 0 /* NONMATCHING */` draft of `sub_0800F3D0`;
+  - `src/code_080383F0.c:83` calls `sub_08038FB8` a non-matching draft.

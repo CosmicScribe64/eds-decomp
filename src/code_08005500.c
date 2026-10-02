@@ -352,44 +352,42 @@ static inline int Icon64AC(u16 id)
         return 0;
     }
 }
-#if 0 /* NONMATCHING: 381 lines; build keeps one more callee-saved register (r9), and the ROM reloads and re-masks the card id for each table read */
+/* Card level as a u8: the narrow return type gives the inline its own result register (r0) and the
+ * copy into `level` that the ROM keeps. */
+static inline u8 CardLevel64AC(u16 id)
+{
+    switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 10;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+    }
+}
 /* Card detail screen: level stars (squeezed together above 9), the spell/trap icon, and the fixed
- * ATK/DEF digits of the three Divine cards (hypothesis from the sprite tiles). */
+ * ATK/DEF digits of the three Divine cards (hypothesis from the sprite tiles). Case 24 is written
+ * first: that body order reproduces the ROM's block layout. The type switch reads the card through
+ * an int local, so its zero-extending load is not shared with the u16 load of the card-number check. */
 void sub_080064AC(void)
 {
     int x;
     int level;
     int i;
+    u32 attr;
+    int id;
 
     if (gUnk_02013D90.flags & 1)
         x = 0x48;
     else
         x = 0;
-    level = Level64AC(gUnk_02013D90.card);
+    level = CardLevel64AC(gUnk_02013D90.card);
     if ((u16)(((const u16 *)0x08622AB4)[gUnk_02013D90.card & 0x7FF] - 0x780) <= 0x4F)
         return;
-    switch ((int)((((const u32 *)0x08621DE0)[gUnk_02013D90.card & 0x7FF] & 0x1F00000) >> 20)) {
-    case 21:
-    case 22:
-        sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
-        if (Icon64AC(gUnk_02013D90.card) != 0)
-            sub_080761F0((x + 0x50) | 0x240000, 0, 0x2024);
-        break;
-    case 23:
-        break;
-    default:
-        for (i = 0; i < level; i++) {
-            if (level <= 9)
-                sub_080761F0((x + 0x54 - i * 8) | 0x260000, 0, 2);
-            else
-                sub_080761F0((0x54 - 0x4E * i / level + x) | 0x260000, 0, 2);
-        }
-        i = ((const u32 *)0x08621DE0)[gUnk_02013D90.card & 0x7FF] >> 29;
-        if (i != 0 && i <= 6)
-            sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
-        sub_0800642C();
-        sub_0800646C();
-        break;
+    id = gUnk_02013D90.card;
+    switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
     case 24:
         for (i = 0; i <= 9; i++)
             sub_080761F0((x + 0x54 - i * 8) | 0x260000, 0, 2);
@@ -433,7 +431,29 @@ void sub_080064AC(void)
             break;
         }
         break;
+    case 21:
+    case 22:
+        sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
+        if (Icon64AC(gUnk_02013D90.card) != 0)
+            sub_080761F0((x + 0x50) | 0x240000, 0, 0x2024);
+        break;
+    case 23:
+        break;
+    default:
+        for (i = 0; i < level; i++) {
+            if (level <= 9)
+                sub_080761F0((x + 0x54 - i * 8) | 0x260000, 0, 2);
+            else {
+                int t = 0x54 - 0x4E * i / level;
+                sub_080761F0((t + x) | 0x260000, 0, 2);
+            }
+        }
+        attr = ((const u32 *)0x08621DE0)[gUnk_02013D90.card & 0x7FF] >> 29;
+        if (attr != 0)
+            if (attr <= 6)
+                sub_080761F0((x + 0x4C) | 0x160000, 0x40, 0x1020);
+        sub_0800642C();
+        sub_0800646C();
+        break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08005500", sub_080064AC); /* 0x080064AC size 0x3CC */

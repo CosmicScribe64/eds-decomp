@@ -54,156 +54,161 @@ extern struct BState gUnk_02018450;
 struct BSideV { u8 pad[8]; u8 raw; u8 f1; u16 cardId; u8 pad4[6]; u16 damage; };
 #define BSV(i) ((struct BSideV *)((u8 *)&gUnk_02018450 + (i) * 12))
 
-#if 0 /* NONMATCHING: the case bodies have the same shape but register allocation differs (e2 lands
-       * in ip instead of r3, constant 1 in r5 instead of r4, B/side pointers in the default
-       * arm). The result is 0x74 bytes shorter than the ROM. */
+#if 0 /* NONMATCHING (score 36): score 36: same code and size as the ROM; only register choices differ. In case
+       * 0, after the switch, BS (0x02018450) and 1-p swap r4/r5 (global-alloc priority: q 3/44 vs BS 10/148), and in
+       * case 10 the reload registers for 0x1B16 and gUnk_0822C720 rotate. What got the shape right: one goto ret0 label
+       * after case 10's STEP++; STEP through a struct-pointer bitfield ((struct CbDuel *)gUnk_020192E0)->step, so the
+       * base symbol is a pseudo split from 0x1B16; flags as gUnk_020192E4[] (an ARRAY_REF stops fold merging f0/f1);
+       * case 1 STEP=10 relative to gUnk_020192E4 (CSE related value); (u8)p & 15 / (u8)(1-p) & 15 nibbles; case 2
+       * ev=(p&1)<<31; link bit b1 as s8 bitfield; side=(1-p)&1 local; loop with i=0, bs/k locals and BSV(i)->raw.
+       * asm-label externs give '*name' symbols that CSE does not relate, so avoid them. */
 /* Battle resolution step machine (hypothesis: applies per-card effects after damage; steps 0-2 damage, 10-12 special). */
+#define CB_BS gUnk_02018450
+#define CB_SIDE(i) gUnk_02018450.side[i]
+#define CB_KEY(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+#define CB_PF(i) (gUnk_020192E4[(i) & 1])
+struct CbDuel { u32 unk0; struct PlF pl[2]; u8 pad[0x1B16 - 4 - 2 * 0xD64]; u16 lo : 1; u16 step : 8; u16 hi : 7; };
+struct CbDuel4 { u8 pad[0x1B12]; u16 lo : 1; u16 step : 8; u16 hi : 7; };
+#define CB_DUEL ((struct CbDuel *)gUnk_020192E0)
+#define CB_STEP (CB_DUEL->step)
+struct CbLink { u8 pad[0x450]; u8 b0 : 1; s8 b1 : 1; u8 rest : 6; };
+#define CB_LINK ((struct CbLink *)gUnk_02017FB0)
+struct CbZone { u8 pad[6]; u8 b6; };
 int sub_0804CB58(int p)
 {
     char buf[256];
-    u8 *e = gUnk_020192E0;
-    switch (STEP0) {
+    switch (CB_STEP) {
     case 0:
-        if (gUnk_02018450.side[p].damage != 0 && !gUnk_020192E4[p & 1].f0 && !gUnk_020192E4[p & 1].f1) {
-            sub_08019894(p, gUnk_02018450.side[p].damage, (u8)p | gUnk_02018450.atkSlot << 8, (u8)(1 - p) | gUnk_02018450.defSlot << 8);
-            switch (((const u16 *)0x08622AB4)[gUnk_02018450.side[(1 - p)].cardId & 0x7FF]) {
+        if (CB_SIDE(p).damage != 0 && !CB_PF(p).f0 && !CB_PF(p).f1) {
+            sub_08019894(p, CB_SIDE(p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            switch (CB_KEY(CB_SIDE(1 - p).cardId)) {
             case 0x71:
-                sub_080197E0((1 - p), gUnk_02018450.side[(1 - p)].cardId);
+                sub_080197E0(1 - p, CB_SIDE(1 - p).cardId);
                 sub_08022784(p, 1, 1);
                 break;
             case 0xDB:
-                sub_080197E0((1 - p), gUnk_02018450.side[(1 - p)].cardId);
-                sub_080199E0((1 - p), 1);
+                sub_080197E0(1 - p, CB_SIDE(1 - p).cardId);
+                sub_080199E0(1 - p, 1);
                 break;
             case 0x20A:
-                sub_080197E0((1 - p), gUnk_02018450.side[(1 - p)].cardId);
+                sub_080197E0(1 - p, CB_SIDE(1 - p).cardId);
                 sub_080199E0(p, 2);
                 break;
             case 0x530:
             case 0x5E7:
                 {
-                    u32 ev = (((1 - p) & 1) << 31);
-                    u32 b = gUnk_02018450.defSlot << 16;
+                    u32 ev = ((1 - p) & 1) << 31;
+                    u32 b = CB_BS.defSlot << 16;
                     b |= 0x1C400000;
                     ev |= b;
-                    ev |= gUnk_02018450.side[(1 - p)].cardId;
-                    sub_0801FBCC(ev,
-                        ((((p & 15) | gUnk_02018450.atkSlot << 4) | ((((1 - p) & 15) | gUnk_02018450.defSlot << 4) << 8)) << 16) | gUnk_02018450.side[p].damage);
+                    ev |= CB_SIDE(1 - p).cardId;
+                    sub_0801FBCC(ev, CB_SIDE(p).damage | ((((u8)p & 15) | CB_BS.atkSlot << 4) | (((u8)(1 - p) & 15) | CB_BS.defSlot << 4) << 8) << 16);
                 }
                 break;
             }
-            {
-                int k = ((const u16 *)0x08622AB4)[gUnk_02018450.side[p].cardId & 0x7FF];
-                if (k == 0x2DA || k == 0x536) {
-                    if (sub_0800A430(p, gUnk_02018450.atkSlot) != 0xFFFF && !gUnk_020192E4[(1 - p) & 1].f0 && !gUnk_020192E4[(1 - p) & 1].f1)
-                        sub_08019894((1 - p), gUnk_02018450.side[p].damage, (u8)p | gUnk_02018450.atkSlot << 8, (u8)(1 - p) | gUnk_02018450.defSlot << 8);
-                }
-            }
+            if ((CB_KEY(CB_SIDE(p).cardId) == 0x2DA || CB_KEY(CB_SIDE(p).cardId) == 0x536)
+                && sub_0800A430(p, CB_BS.atkSlot) != 0xFFFF && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1)
+                sub_08019894(1 - p, CB_SIDE(p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
         }
-        STEP++;
-        return 0;
+        CB_STEP++;
+        goto ret0;
     case 1:
-        if (gUnk_02018450.side[(1 - p)].damage != 0 && !gUnk_020192E4[(1 - p) & 1].f0 && !gUnk_020192E4[(1 - p) & 1].f1
-            && sub_0800A2A8((1 - p), 0x39) != 0) {
-            STEP = 10;
-            return 0;
+        if (CB_SIDE(1 - p).damage != 0 && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1
+            && sub_0800A2A8(1 - p, 0x39) != 0) {
+            ((struct CbDuel4 *)gUnk_020192E4)->step = 10;
+            goto ret0;
         }
-        STEP++;
-        return 0;
+        CB_STEP++;
+        goto ret0;
     case 2:
-        if (gUnk_02018450.side[(1 - p)].damage != 0 && !gUnk_020192E4[(1 - p) & 1].f0 && !gUnk_020192E4[(1 - p) & 1].f1) {
-            sub_08019894((1 - p), gUnk_02018450.side[(1 - p)].damage, (u8)p | gUnk_02018450.atkSlot << 8, (u8)(1 - p) | gUnk_02018450.defSlot << 8);
-            switch (((const u16 *)0x08622AB4)[gUnk_02018450.side[p].cardId & 0x7FF]) {
+        if (CB_SIDE(1 - p).damage != 0 && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1) {
+            sub_08019894(1 - p, CB_SIDE(1 - p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            switch (CB_KEY(CB_SIDE(p).cardId)) {
             case 0x71:
-                sub_080197E0(p, gUnk_02018450.side[p].cardId);
-                sub_08022784((1 - p), 1, 1);
+                sub_080197E0(p, CB_SIDE(p).cardId);
+                sub_08022784(1 - p, 1, 1);
                 break;
             case 0xDB:
-                sub_080197E0(p, gUnk_02018450.side[p].cardId);
+                sub_080197E0(p, CB_SIDE(p).cardId);
                 sub_080199E0(p, 1);
                 break;
             case 0x20A:
-                sub_080197E0(p, gUnk_02018450.side[p].cardId);
-                sub_080199E0((1 - p), 2);
+                sub_080197E0(p, CB_SIDE(p).cardId);
+                sub_080199E0(1 - p, 2);
                 break;
             case 0x530:
             case 0x5E7:
                 {
-                    u32 ev = p << 31;
-                    u32 b = gUnk_02018450.atkSlot << 16;
+                    u32 ev = (p & 1) << 31;
+                    u32 b = CB_BS.atkSlot << 16;
                     b |= 0x1A400000;
                     ev |= b;
-                    ev |= gUnk_02018450.side[p].cardId;
-                    sub_0801FBCC(ev,
-                        (((((1 - p) & 15) | gUnk_02018450.defSlot << 4) | (((p & 15) | gUnk_02018450.atkSlot << 4) << 8)) << 16) | gUnk_02018450.side[(1 - p)].damage);
+                    ev |= CB_SIDE(p).cardId;
+                    sub_0801FBCC(ev, CB_SIDE(1 - p).damage | ((((u8)(1 - p) & 15) | CB_BS.defSlot << 4) | (((u8)p & 15) | CB_BS.atkSlot << 4) << 8) << 16);
                 }
                 break;
             }
-            {
-                int k = ((const u16 *)0x08622AB4)[gUnk_02018450.side[(1 - p)].cardId & 0x7FF];
-                if (k == 0x2DA || k == 0x536) {
-                    if (sub_0800A430((1 - p), gUnk_02018450.defSlot) != 0xFFFF && !gUnk_020192E4[p & 1].f0 && !gUnk_020192E4[p & 1].f1)
-                        sub_08019894(p, gUnk_02018450.side[(1 - p)].damage, (u8)p | gUnk_02018450.atkSlot << 8, (u8)(1 - p) | gUnk_02018450.defSlot << 8);
-                }
-            }
+            if ((CB_KEY(CB_SIDE(1 - p).cardId) == 0x2DA || CB_KEY(CB_SIDE(1 - p).cardId) == 0x536)
+                && sub_0800A430(1 - p, CB_BS.defSlot) != 0xFFFF && !CB_PF(p).f0 && !CB_PF(p).f1)
+                sub_08019894(p, CB_SIDE(1 - p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
         }
-        STEP++;
-        return 0;
+        CB_STEP++;
+        goto ret0;
     case 10:
         if (p != 0) {
             sub_080753F4(buf, gUnk_08085B7C, gUnk_0822C720 + (gUnk_08623E66[0] << 6));
             sub_080602A4(0x204, 0x915, 0xB, buf);
-            STEP++;
             sub_08060308(1, 0, 0);
-            return 0;
-        }
-        if (!gUnk_02015EE8.link) {
+            CB_STEP++;
+        } else if (!gUnk_02015EE8.link) {
             gUnk_0201AE60.v14 = 1;
-            return 0;
-            STEP++;
+            CB_STEP++;
+        } else {
+            sub_0802297C(0xF057, gUnk_08623E66[0], 0, 0);
+            CB_LINK->b1 = 0;
         }
-        sub_0802297C(0xF057, gUnk_08623E66[0], 0, 0);
-        STEP++;
-        gUnk_02017FB0[0x450] &= ~3;
+        CB_STEP++;
+    ret0:
         return 0;
     case 11:
-        if (!(gUnk_02017FB0[0x450] & 2))
-            return 0;
+        if ((int)(gUnk_02017FB0[0x450] << 30) >= 0)
+            goto ret0;
         gUnk_0201AE60.v14 = *(u16 *)(gUnk_02017FB0 + 0x45A);
-        STEP++;
-        return 0;
+        CB_STEP++;
+        goto ret0;
     case 12:
         if (gUnk_0201AE60.v14 != 0) {
-            sub_080197C0((1 - p), gUnk_08623E66[0]);
-            if (sub_0801A130((1 - p), 0x39) != 0)
-                gUnk_02018450.side[(1 - p)].damage = 0;
+            sub_080197C0(1 - p, gUnk_08623E66[0]);
+            if (sub_0801A130(1 - p, 0x39) != 0)
+                CB_SIDE(1 - p).damage = 0;
         }
-        STEP = 2;
-        return 0;
-    default: {
-        u8 *e2 = gUnk_020192E0;
-        ((struct PlF *)(e2 + 4))[1].f0 = 0;
-        ((struct PlF *)(e2 + 4))[0].f0 = 0;
-        if (((const u16 *)0x08622AB4)[BSV(1 - p)->cardId & 0x7FF] == 0x4B1 && (int)(BSV(1 - p)->raw << 28) >= 0) {
-            s16 qb = (1 - p) & 1;
-            u8 s1 = gUnk_02018450.defSlot * 0x94 + qb * 0xD64;
-            u8 *zb = e2 + 0x2C;
-            if (((struct ZoneF6 *)(s1 + (int)zb))->b6 & 1) {
-                sub_080197E0((1 - p), BSV(1 - p)->cardId);
-                sub_08018ED8((1 - p), gUnk_02018450.defSlot, 0, 0);
+        CB_STEP = 2;
+        goto ret0;
+    default:
+        CB_DUEL->pl[0].f0 = 0;
+        CB_DUEL->pl[1].f0 = 0;
+        if (CB_KEY(CB_SIDE(1 - p).cardId) == 0x4B1 && (int)(CB_SIDE(1 - p).raw << 28) >= 0) {
+            int side = (1 - p) & 1;
+            int s1 = CB_BS.defSlot * 0x94 + side * 0xD64;
+            if (((struct CbZone *)(s1 + (int)(gUnk_020192E0 + 0x2C)))->b6 & 1) {
+                sub_080197E0(1 - p, CB_SIDE(1 - p).cardId);
+                sub_08018ED8(1 - p, CB_BS.defSlot, 0, 0);
             }
         }
         {
-            s16 i;
-            for (i = 0; i < 2; i++) {
-                s8 f = gUnk_02018450.side[i].raw;
-                if ((int)(f << 25) < 0 && (int)(f << 28) >= 0) {
-                    sub_08017AB4(p, gUnk_08624730[0], (u8)i | (i == p ? gUnk_02018450.atkSlot : gUnk_02018450.defSlot) << 8, 3);
-                }
+            int i;
+            struct BState *bs;
+            const u16 *k;
+            i = 0;
+            bs = &gUnk_02018450;
+            k = gUnk_08624730;
+            for (; i < 2; i++) {
+                u8 f = BSV(i)->raw;
+                if ((int)(f << 25) < 0 && (int)(f << 28) >= 0)
+                    sub_08017AB4(p, k[0], (u8)i | (i == p ? bs->atkSlot : bs->defSlot) << 8, 3);
             }
         }
         return 1;
-    }
     }
 }
 #endif

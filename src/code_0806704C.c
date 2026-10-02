@@ -584,57 +584,84 @@ void sub_080679E0(u16 *out)
     sub_08077AEC(0);
 }
 #undef S79E0
-#if 0 /* NONMATCHING: only register allocation/spills; built is 8 bytes short. Target frame `sub sp,#20` spills the 0xFFFF constant to [sp,#16] and keeps `base+0x14A0` in sl; built frame `sub sp,#16`, uses a pool constant and absolute 0x0201E140/0x0201EFC0 literals. Calls and control flow identical (23 bl either side). */
-/* Mirror of sub_080679E0: scroll the card list down by one row. */
+struct DnSt_x {
+    u8 pad0[0x620];
+    u16 arr620[3];               /* +0x620 */
+    u8 pad626[2];
+    u8 f628[8];                  /* +0x628 */
+    u16 f630;                    /* +0x630 */
+    u16 f632;                    /* +0x632 */
+    u8 f634;                     /* +0x634 */
+    u8 f635;                     /* +0x635 */
+    u8 pad636[0x63A - 0x636];
+    u16 f63A;                    /* +0x63A */
+    u8 pad63C[0x63E - 0x63C];
+    u16 f63E;                    /* +0x63E */
+    u8 f640[0x1494 - 0x640];     /* +0x640 */
+    u16 cnt1494[2][3];           /* +0x1494 */
+    u8 arr14A0[0x18AC - 0x14A0]; /* +0x14A0 */
+    u16 f18AC;                   /* +0x18AC */
+    u8 pad18AE[2];
+    u8 f18B0[0x1BB0 - 0x18B0];   /* +0x18B0 */
+    u16 f1BB0;                   /* +0x1BB0 */
+    u8 pad1BB2[4];
+    u8 f1BB6;                    /* +0x1BB6 */
+    u8 f1BB7;                    /* +0x1BB7 */
+    u8 f1BB8[0x1C1C - 0x1BB8];   /* +0x1BB8 */
+    u8 cursor;                   /* +0x1C1C */
+    u8 pad1C1D[0x1C58 - 0x1C1D];
+    u16 f1C58;                   /* +0x1C58 */
+};
+#define DN (*(struct DnSt_x *)&gUnk_0201DB20_s)
+#define DN_65108 ((void (*)(u16, u32, u16, u16, u8 *, u8))sub_08065108)
+#define DN_6518C ((void (*)(u16, u32, u16, u16, u8 *))sub_0806518C)
+#define DN_65384 ((void (*)(u16, u32, u16, u16, u8 *))sub_08065384)
+#define DN_65AB4 ((void (*)(u32, u16, u16, u8 *))sub_08065AB4)
+#define DN_65E6C ((void (*)(u32, u16, u16, u8))sub_08065E6C)
+/* Scroll the card list down by one row (cursor column DN.cursor). */
 void sub_08067DA4(u16 *out)
 {
-    struct ScrollSt *st = &gUnk_0201DB20_s;
-    s16 t;
+    s32 t1, t2, t3;
 
-    if (gUnk_0201E140[gUnk_0201F73C] >= gUnk_0201EFB4[st->arr14A0[gUnk_0201F73C] * 3 + gUnk_0201F73C] - 1)
+    if (DN.arr620[DN.cursor] >= DN.cnt1494[DN.arr14A0[DN.cursor]][DN.cursor] - 1)
         return;
-    st->f1C58 = 0x1E;
-    st->f18AC = 0xFC00;
-    sub_0807B100(0, 6, 1, st->f628);
-    st->f634 ^= 1;
-    sub_0807AFFC(sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], gUnk_0201E140[gUnk_0201F73C]), st->f634 * 0x1680 + 0x06008000);
-    gUnk_0201E140[gUnk_0201F73C]++;
-    sub_08064E28(((st->f630 & 0xFF) >> 3) + 0x13, ((st->f632 & 0xFF) >> 3) + 0xC, st->f634, 1, 0);
-    st->f635 = 2;
-    t = gUnk_08087494[2];
-    sub_08079834(0, 0x0600D000, 3, ((st->f63A + t) & 0xFF) >> 3, 0x1B, 3, st->f640);
-    if (gUnk_0201E140[gUnk_0201F73C] + 2 < gUnk_0201EFB4[st->arr14A0[gUnk_0201F73C] * 3 + gUnk_0201F73C]) {
-        sub_08065108(sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] + 2)),
-                     0x0600D000, 0, ((st->f63A + t) & 0xFF) >> 3, st->f640, 6);
-        *out = sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] + 2));
+    DN.f1C58 = 0x1E;
+    DN.f18AC = 0xFC00;
+    sub_0807B100(0, 6, 1, DN.f628);
+    DN.f634 ^= 1;
+    ((Fn0807AFFC_x)sub_0807AFFC)(sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], ++DN.arr620[DN.cursor]),
+                                 DN.f634 * 0x1680 + 0x06008000, DN.f634);
+    sub_08064E28(((DN.f630 & 0xFF) >> 3) + 0x13, ((DN.f632 & 0xFF) >> 3) + 0xC, DN.f634, 1, 0);
+    DN.f635 = 2;
+    sub_08079834(0, 0x0600D000, 3, (((t1 = gUnk_08087494[2]) + DN.f63A) & 0xFF) >> 3, 0x1B, 3, DN.f640);
+    if (DN.arr620[DN.cursor] + 2 < DN.cnt1494[DN.arr14A0[DN.cursor]][DN.cursor]) {
+        DN_65108(sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], DN.arr620[DN.cursor] + 2),
+                     0x0600D000, 0, ((DN.f63A + t1) & 0xFF) >> 3, DN.f640, 6);
+        *out = sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], DN.arr620[DN.cursor] + 2);
     } else {
         *out = 0xFFFF;
     }
-    sub_08079834(0, 0x0600D000, 3, ((st->f63A + t) & 0xFF) >> 3, 0x1B, 3, st->f640);
-    t = gUnk_08087494[3];
-    if ((s16)gUnk_0201E140[gUnk_0201F73C] - 1 >= 0)
-        sub_08065108(sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] - 1)),
-                     0x0600D000, 0, ((st->f63A + t) & 0xFF) >> 3, st->f640, 3);
-    t = gUnk_0808749C[1];
-    sub_08079834(0, 0x0600C000, 0, ((t + st->f63E) & 0xFF) >> 3, 0x1E, 6, st->f640);
-    if (gUnk_0201EFB4[st->arr14A0[gUnk_0201F73C] * 3 + gUnk_0201F73C] != 0) {
-        sub_0806518C(sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], gUnk_0201E140[gUnk_0201F73C]),
-                     0x0600C000, 0, ((st->f63E + t) & 0xFF) >> 3, st->f640);
-        sub_08065AB4(0x0600C000, 0xB, ((st->f63E + 0x60) & 0xFF) >> 3, st->f640);
-        sub_08065E6C(0x0600C000, 0x11, ((st->f63E + 0x60) & 0xFF) >> 3, 6);
+    sub_08079834(0, 0x0600D000, 3, (((t2 = gUnk_08087494[3]) + DN.f63A) & 0xFF) >> 3, 0x1B, 3, DN.f640);
+    if ((s16)DN.arr620[DN.cursor] - 1 >= 0)
+        DN_65108(sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], DN.arr620[DN.cursor] - 1),
+                     0x0600D000, 0, ((DN.f63A + t2) & 0xFF) >> 3, DN.f640, 3);
+    sub_08079834(0, 0x0600C000, 0, (((t3 = gUnk_0808749C[1]) + DN.f63E) & 0xFF) >> 3, 0x1E, 6, DN.f640);
+    if (DN.cnt1494[DN.arr14A0[DN.cursor]][DN.cursor] != 0) {
+        DN_6518C(sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], DN.arr620[DN.cursor]),
+                     0x0600C000, 0, ((DN.f63E + t3) & 0xFF) >> 3, DN.f640);
+        DN_65AB4(0x0600C000, 0xB, ((DN.f63E + 0x60) & 0xFF) >> 3, DN.f640);
+        DN_65E6C(0x0600C000, 0x11, ((DN.f63E + 0x60) & 0xFF) >> 3, 6);
         sub_080657F8(5);
-        sub_08065F34(gUnk_0201EFB4[st->arr14A0[gUnk_0201F73C] * 3 + gUnk_0201F73C], gUnk_0201E140[gUnk_0201F73C], &st->f1BB0);
-        if (st->f1BB7 != 0) {
-            st->f1BB7 = 2;
-            st->f1BB6 |= 1;
+        sub_08065F34(DN.cnt1494[DN.arr14A0[DN.cursor]][DN.cursor], DN.arr620[DN.cursor], &DN.f1BB0);
+        if (DN.f1BB7 != 0) {
+            DN.f1BB7 = 2;
+            DN.f1BB6 |= 1;
         }
-        sub_08066478(st->f635, *out, gUnk_0201EFB4[st->arr14A0[gUnk_0201F73C] * 3 + gUnk_0201F73C], st->f1BB8, st->f18B0);
+        sub_08066478(DN.f635, *out, ((u16 *)DN.cnt1494)[DN.arr14A0[DN.cursor] * 3 + DN.cursor], DN.f1BB8, DN.f18B0);
     } else {
-        sub_08065384(sub_08068D1C(gUnk_0201F73C, st->arr14A0[gUnk_0201F73C], gUnk_0201E140[gUnk_0201F73C]),
-                     0x0600C000, 0, ((st->f63E + t) & 0xFF) >> 3, st->f640);
+        DN_65384(sub_08068D1C(DN.cursor, DN.arr14A0[DN.cursor], DN.arr620[DN.cursor]),
+                     0x0600C000, 0, ((DN.f63E + t3) & 0xFF) >> 3, DN.f640);
     }
     sub_08065058(2);
     sub_08077AEC(0);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_08067DA4); /* 0x08067DA4 size 0x3DC */

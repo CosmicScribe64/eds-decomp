@@ -626,8 +626,6 @@ int sub_08052810(int a)
         }
     }
 }
-#if 0 /* NONMATCHING (score 66): WIP: structure matches except the case-5 link-scan loop: k-loop count load is
-       * hoisted and the base reg at i-loop top differs (loop.c decisions). */
 struct Z908Zone {
     u32 card;
     u8 pad4[2];
@@ -645,13 +643,24 @@ struct Z908Player {
     struct Z908Zone zones[11];
     u8 rest[0xD64 - 0x28 - 11 * 0x94];
 };
-extern struct Z908Player gZ908Players[2] asm("gUnk_020192E4");
+/* The duel players at 0x020192E4 (declared above as struct Player) in this layout. */
+#define gZ908Players ((struct Z908Player *)gUnk_020192E4)
+/* Card ID test on a card word (lsl #20, compared with 0). */
 #define Z908_ID(w) (((w) << 20) >> 20)
+/* Zone pointer as base + zone * 0x94 + player * 0xD64 (the link scan's address order). */
 #define Z908_ZB(p, z) ((struct Z908Zone *)((u8 *)gZ908Players[0].zones + (z) * 0x94 + (p) * 0xD64))
 
+/*
+ * Is (player, kind + slot) a valid pick for the 16-bit-per-player key mask?
+ * kind 11 = hand (slot < handCount), 0 = monster zones (face/position bits),
+ * 5 = magic/trap zones (types 0x15/0x16, else a kind-1/5/6 link from a
+ * face-up monster zone of either player), 10 = field zone.
+ */
 int sub_08052908(int player, int kind, int slot, u32 mask)
 {
     struct Z908Zone *zone = &gZ908Players[player & 1].zones[kind + slot];
+    /* The signed shift keeps the id extraction apart from the later `id != 0`
+     * tests, so only zone->card << 20 is shared (CSE), as in the ROM. */
     int type = (((const u32 *)0x08621DE0)[((s32)(zone->card << 20) >> 20) & 0x7FF] & 0x1F00000) >> 20;
     int p, i, k;
 
@@ -692,15 +701,14 @@ int sub_08052908(int player, int kind, int slot, u32 mask)
         }
         for (p = 0; p <= 1; p++) {
             for (i = 0; i <= 4; i++) {
-                struct Z908Zone *z = &gZ908Players[p & 1].zones[i];
-                if (Z908_ID(z->card) && (z->flags & 2)) {
+                if (Z908_ID(Z908_ZB(p & 1, i)->card) && (Z908_ZB(p & 1, i)->flags & 2)) {
                     for (k = 0; k < Z908_ZB(p & 1, i)->count; k++) {
                         u16 link = Z908_ZB(p & 1, i)->links[k];
                         switch (Z908_ZB(p & 1, i)->kinds[k]) {
                         case 1:
                         case 5:
                         case 6:
-                            if (link == ((u8)player | ((u8)(slot + 5) << 8))) return 1;
+                            if (link == (u16)((u8)player | ((u8)(slot + 5) << 8))) return 1;
                             break;
                         }
                     }
@@ -725,5 +733,3 @@ int sub_08052908(int player, int kind, int slot, u32 mask)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052908); /* 0x08052908 size 0x270 */

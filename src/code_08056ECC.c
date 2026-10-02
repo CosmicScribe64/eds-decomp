@@ -747,16 +747,12 @@ int sub_08057C50(int value)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic, loops and the switch tree match, but register allocation differs (ROM
-       * hoists the 0x2E8 switch constant into sl and spills n/done/last, built keeps n/last in
-       * sl/r9 and spills a) */
 /* Pick an attacker among player 1's eligible monster zones (sorted by ATK, ascending) whose best attack plan wins; 1 if found. */
 int sub_08057C94(void)
 {
     u16 cand[5];
     struct AttackPlan plan;
-    int n, done, last, i, j, k, next;
-    u16 *p;
+    int n, done, last, i, next;
 
     gUnk_02015F00.best.f2 = 0;
     gUnk_02015F00.best.f1 = 0;
@@ -764,11 +760,9 @@ int sub_08057C94(void)
     gUnk_02015F00.best.gt = 0;
     gUnk_02015F00.best.le = 0;
     n = 0;
-    p = cand;
     for (i = 0; i <= 4; i++) {
         if (sub_0804A528(1, i, 1)) {
-            *p = i;
-            p++;
+            cand[n] = i;
             n++;
         }
     }
@@ -777,14 +771,16 @@ int sub_08057C94(void)
     last = n - 1;
     do {
         done = 1;
-        for (j = 0; j < last; j = next) {
-            s8 a = cand[j];
-            s16 b;
-            u32 idb;
+        for (i = 0; i < last; i++) {
+            u16 a = cand[i];
+            u16 b;
+            u16 ida, idb;
             int va, vb, ok;
 
-            next = j + 1;
+            next = i + 1;
             b = cand[next];
+            /* ida is never used; its dead load is deleted, but CSE keeps its 0x94 and zone-base registers, which orders the ROM's mov/ldr/mul */
+            ida = CARD_ID(CARD_WORD(ZB(1, a)->card));
             idb = CARD_ID(CARD_WORD(ZB(1, b)->card));
             va = sub_0800C894(1, a);
             vb = sub_0800C894(1, b);
@@ -797,14 +793,14 @@ int sub_08057C94(void)
                 break;
             }
             if (va > vb && ok) {
-                cand[j] = b;
-                cand[next] = a;
+                cand[i] = b;
+                cand[i + 1] = a;
                 done = 0;
             }
         }
     } while (!done);
-    for (k = 0; k < n; k++) {
-        u16 z = cand[k];
+    for (i = 0; i < n; i++) {
+        u16 z = cand[i];
 
         sub_0800C894(1, z);
         if (sub_08057A80(z, &plan)) {
@@ -815,8 +811,6 @@ int sub_08057C94(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08056ECC", sub_08057C94); /* 0x08057C94 size 0x174 */
 /* Save the duel state (0x020192E4, 0xD86 words) to the backup buffer 0x02015F14. */
 void sub_08057E08(void)
 {

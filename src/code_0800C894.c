@@ -216,42 +216,83 @@ u32 sub_0800C8BC(s32 player, s32 slot)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800C8BC); /* 0x0800C8BC size 0x234 */
-#if 0 /* NONMATCHING: loop structure, register allocation and stack frame differ */
+/* Field zone (0x94 bytes) as read by sub_0800CAF0. */
+struct CAF0Zone {
+    u32 card;               /* +0x00: bits 0-11 card id */
+    u8 filler4[2];
+    u8 flags6;              /* +0x06: bit 1 face up */
+    u8 filler7[3];
+    u16 links[32];          /* +0x0A: (zone << 8) | player of a linked card */
+    u16 linkKinds[32];      /* +0x4A: low byte = link kind */
+    u16 numLinks;           /* +0x8A */
+    u8 filler8C[4];
+    u32 unk90;              /* +0x90: bits 13-17 replacement state; byte +0x91 bit 3 tested */
+};
+/* Byte view of links[], so the player byte is a separate ldrb from the same address as the ldrh. */
+struct CAF0ZoneB {
+    u8 filler0[0xA];
+    u8 linkBytes[64];       /* +0x0A */
+};
+#define CAF0_ZONE(p, s) ((struct CAF0Zone *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define CAF0_ZONEB(p, s) ((struct CAF0ZoneB *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+/* Linked zone; the caller passes the already-masked player bit. */
+#define CAF0_LINKED(p, s) ((struct CAF0Zone *)(gUnk_0201930C + ((s) * 0x94 + (p) * 0xD64)))
+#define CAF0_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define CAF0_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+/*
+ * Card stats bits 29-31 of the card in (player, slot), or 0 for an empty zone. For a face-up
+ * monster (slot 0-4), a kind-1 link to a card with number 0x5A8 (not flagged at +0x91 bit 3,
+ * no 0x601 on either side, gUnk_0201ADAD bits 0-1 clear) replaces it with that zone's +0x90
+ * bits 13-17.
+ */
 u32 sub_0800CAF0(s32 player, s32 slot)
 {
-    u8 *zone;
-    u32 cardId;
-    u32 var_r7;
-    s16 i;
-    zone = &gUnk_0201930C[slot * 0x94 + (player & 1) * 0xD64];
-    cardId = (*(u32 *)zone << 20) >> 20;
-    if (cardId == 0) {
+    u32 id;
+    u32 result;
+    int i;
+    u32 off;
+    u8 *zones;
+
+    /* The player offset and the zone base are staged before the slot offset (ROM order). */
+    off = (player & 1) * 0xD64;
+    zones = gUnk_0201930C;
+    id = (((struct CAF0Zone *)(zones + (slot * 0x94 + off)))->card << 20) >> 20;
+    if (id == 0)
         return 0;
-    }
-    var_r7 = gUnk_08621DE0[cardId & 0x7FF] >> 29;
-    if (slot > 4 || !(zone[6] & 2)) {
-        return var_r7;
-    }
-    for (i = 0; i < *(u16 *)&zone[0x8A]; i++) {
-        u16 ref = *(u16 *)&zone[0xA + i * 2];
-        u32 s = ref >> 8;
-        u32 p = ref & 1;
-        u8 *tz = &gUnk_0201930C[s * 0x94 + p * 0xD64];
-        u32 tcid;
-        if (zone[0x4A + i * 2] != 1 || (tcid = (*(u32 *)tz << 20) >> 20, tcid == 0)) {
-            continue;
+    result = CAF0_STATS(id) >> 29;
+    if (slot > 4 || !(CAF0_ZONE(player, slot)->flags6 & 2))
+        return result;
+    {
+        /* Pointer set outside the loop: reloaded before its ldrb, after the #3 mask. */
+        u8 *flags = &gUnk_0201ADAD;
+
+        for (i = 0; i < CAF0_ZONE(player, slot)->numLinks; i++) {
+            u16 link;
+            u8 kind;
+            int lz, lp;
+            struct CAF0Zone *t;
+            u16 tid;
+
+            /* FAKEMATCH: an extra use of the zone base the loop hoists, so global alloc keeps it
+             * in r9 and spills the hoisted linkKinds pointer to [sp] instead. */
+            asm("" :: "r"(gUnk_0201930C));
+            link = CAF0_ZONE(player, slot)->links[i];
+            kind = CAF0_ZONE(player, slot)->linkKinds[i];
+            lz = link >> 8;
+            lp = CAF0_ZONEB(player, slot)->linkBytes[i * 2] & 1;
+            t = CAF0_LINKED(lp, lz);
+            tid = (t->card << 20) >> 20;
+            if (kind == 1 && tid != 0
+                && !(((u8 *)t)[0x91] & 8)
+                && sub_08008524(0, 0x601) == 0
+                && sub_08008524(1, 0x601) == 0
+                && !(*flags & 3)
+                && CAF0_NUMBER(tid) == 0x5A8)
+                result = (t->unk90 << 14) >> 27;
         }
-        if (tz[0x91] & 8) continue;
-        if (sub_08008524(0, 0x601) != 0) continue;
-        if (sub_08008524(1, 0x601) != 0) continue;
-        if (gUnk_0201ADAD & 3) continue;
-        if (gUnk_08622AB4[tcid & 0x7FF] != 0x5A8) continue;
-        var_r7 = (*(u32 *)&tz[0x90] << 14) >> 27;
     }
-    return var_r7;
+    return result;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800CAF0); /* 0x0800CAF0 size 0x128 */
 s32 sub_0800CC18(s32 player, s32 slot)
 {
     u16 *tab = gUnk_08622AB4;

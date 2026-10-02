@@ -379,7 +379,15 @@ void sub_08070F14_arg(void *) __asm__("sub_08070F14");
 #define sub_08070F14 sub_08070F14_arg
 
 /* Deck Edit (variant) card-list frame: animate, handle list/menu input, draw, and fade. */
-#if 0 /* NONMATCHING: rebuilt from the matched sub_0806DBB0; 257 normalized diff lines, all in the input/menu section */
+struct DeckPhaseFields {
+    u8 pad0[0x1C3D];
+    u8 phase : 3;               /* +0x1C3D bits 0-2 */
+    u8 rest3D : 5;
+};
+#define DECK_PHASE (((struct DeckPhaseFields *)&gUnk_0201DB20)->phase)
+/* FAKEMATCH: same callee under other return types, so the three menu transition calls are not cross-jumped. */
+#define sub_080787F4_int ((int (*)(u32, u32, u32, void *))sub_080787F4)
+#define sub_080787F4_u16 ((u16 (*)(u32, u32, u32, void *))sub_080787F4)
 int sub_08070F18(void)
 {
     u16 row;
@@ -389,8 +397,8 @@ int sub_08070F18(void)
     u8 slot;
     u8 horizontalOffset;
     u8 blend;
-    /* FAKEMATCH: stage the shared phase-byte address before each incoming branch. */
-    struct DeckPhaseByte *menuPhase;
+    /* FAKEMATCH: one phase-byte pointer for both menu arms (a global pseudo, like the ROM's r2). */
+    u8 *pp;
     u8 *tail;
     u8 *list;
     u8 *objects;
@@ -613,7 +621,7 @@ int sub_08070F18(void)
                 }
             }
             if (keys == A_BUTTON) {
-                ((struct DeckPhaseByte *)(PSTATE + 0x1C3D))->phase = 1;
+                DECK_PHASE = 1;
                 goto confirm_sound;
             }
             sub_08070F14(&gUnk_0201F73C);
@@ -626,8 +634,17 @@ int sub_08070F18(void)
                         DECK_FRAME.menuSelected = 4;
                     else if ((DECK_MENU_RAW & 0x38000) == 0x38000)
                         DECK_FRAME.menuSelected = 0;
-                    menuPhase = (struct DeckPhaseByte *)(PSTATE + 0x1C3D);
-                    goto menu_moved;
+                    {
+                        /* FAKEMATCH: r5 stays busy over the add so the offset reload takes r0 */
+                        register u32 busy asm("r5");
+                        pp = (u8 *)&gUnk_0201DB20;
+                        asm("" : "=r"(busy));
+                        pp += 0x1C3D;
+                        asm("" : : "r"(busy));
+                    }
+                    ((struct DeckPhaseByte *)pp)->phase = 3;
+                    sub_08077AEC(0);
+                    break;
                 case DPAD_LEFT:
                     switch (DECK_FRAME.menuSelected) {
                     case 4:
@@ -640,9 +657,15 @@ int sub_08070F18(void)
                         DECK_FRAME.menuSelected = (u16)(DECK_FRAME.menuSelected - 1);
                         break;
                     }
-                    menuPhase = (struct DeckPhaseByte *)(PSTATE + 0x1C3D);
-menu_moved:
-                    menuPhase->phase = 3;
+                    {
+                        /* FAKEMATCH: r4 stays busy over the add so the offset reload takes r5 */
+                        register u32 busy asm("r4");
+                        pp = (u8 *)&gUnk_0201DB20;
+                        asm("" : "=r"(busy));
+                        pp += 0x1C3D;
+                        asm("" : : "r"(busy));
+                    }
+                    ((struct DeckPhaseByte *)pp)->phase = 3;
                     sub_08077AEC(0);
                     break;
                 case A_BUTTON:
@@ -651,11 +674,11 @@ menu_moved:
                         if (CNT(gUnk_0201DB20.cursor) == 0)
                             goto error_sound;
                         gUnk_0201DB20.mode = 2;
-                        sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                        sub_080787F4_int(0, 0x180, 0, PSTATE + 0x618);
                         goto confirm_sound;
                     case 4:
                         gUnk_0201DB20.mode = 1;
-                        sub_080787F4(0, 0x180, 0, PSTATE + 0x618);
+                        sub_080787F4_u16(0, 0x180, 0, PSTATE + 0x618);
                         goto confirm_sound;
                     case 5:
                         gUnk_0201DB20.mode = 3;
@@ -746,6 +769,4 @@ fade:
 done:
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807093C", sub_08070F18); /* 0x08070F18 size 0x1028 */
 

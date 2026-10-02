@@ -241,7 +241,8 @@ static inline int TargetTypeNV(u16 id)
 }
 #define TARGET_TYPE_NV(id) ((u32)TargetTypeNV(id))
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 508): 0x462 bitfield .s.deck[i] read/copy (wf 508) */
+#if 0 /* NONMATCHING (score 360): 0x4BC exact: word = (u32 *)((u8 *)&G[0].w.deck[i] + (player & 1) * 0xD64) (wf
+       * 360) */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -709,7 +710,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-                word = &gUnk_020192E4[player & 1].w.deck[i];
+            word = (u32 *)((u8 *)&gUnk_020192E4[0].w.deck[i] + (player & 1) * 0xD64);
             switch (TARGET_NUMBER(TARGET_ID(*word))) {
             case 0x22:
             case 0x4BA:
@@ -747,10 +748,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
+            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_020192E4 + 0x7C4 + ((player & 1) * 0xD64 + i * 4));
             if (TARGET_TYPE(c.id) == 10 && TargetLevel(c.id) == arg
-                && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64)))) == 0)
-                ADD_TARGETB(*(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64)), 2);
+                && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + ((player & 1) * 0xD64 + i * 4)))) == 0)
+                ADD_TARGETB(*(u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + (i * 4 + (player & 1) * 0xD64)), 2);
         }
         break;
     }
@@ -879,7 +880,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
-            word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
+            word = (u32 *)((u8 *)gUnk_020192E4 + 0x904 + (i * 4 + (player & 1) * 0xD64));
             id = TARGET_ID(*word);
             if (sub_0803CDEC((u16)arg, id) != 0
                 && gUnk_020192E4[player & 1].s.graveyard[i].flag20)

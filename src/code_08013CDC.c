@@ -256,11 +256,9 @@ void sub_08013CDC(void)
     }
     gUnk_020185C0.running = 0;
 }
-#if 0 /* NONMATCHING (score 116): WIP 116: all-gUnk_020192E0 forms; flags via u32 b=(u32)ST.players;
-       * pl=(P*)((player&1)*0xD64+b); lists int o=(i&1)*0xD64; u32 h=(u32)ST.players[0].hand; ((T*)(o+h))[j]; listB84
-       * ((T*)((u8*)ST.players[0].listB84+(i&1)*0xD64))[j] (K=r9+0xB86 hoisted); 5..9 loop u16 id + *((const
-       * u32*)0x08621DE0+(id&0x7FF)) (hoists 0x7FF). Remaining: pre-test ip/sl swap in lists, 12-loop pos hoisting,
-       * link-scan regs, pool placement. */
+#if 0 /* NONMATCHING (score 24): WIP 24: only the list pre-test base/0xD64 copies (ip/sl) are swapped. Main loop
+       * matched by writing every (u8)player pos as (u8)player | ((u8)i << 8) (me evaluated first, so loop.c hoists it to
+       * sp4 and the 12-loop keeps its own copy in r6). */
 struct Card0801401C {
     u32 id:12;
     u32 unk12:9;
@@ -401,7 +399,7 @@ static inline void Effect0801401C(int player, int i, u16 card)
             sub_08018544(player, i, 1);
         } else {
             u16 msg = player ? 0x8082 : 0x82;
-            u16 a = ((u8)i << 8) | (u8)player;
+            u16 a = (u8)player | ((u8)i << 8);
             u16 b = ((u8)t << 8) | (u8)(1 - player);
             sub_0801EC58(msg, a, b, 0);
             sub_08017ADC(player, ((u16 *)0x08623DF4)[card], a, 3);
@@ -481,7 +479,7 @@ void sub_0801401C(void)
 
     for (j = 0; j <= 1; j++) {
         for (i = 5; i <= 9; i++) {
-            struct ZP0801401C *pl = &gUnk_0201930C_0801401C[j & 1];
+            struct ZP0801401C *pl = &ZPA0801401C[j & 1];
             struct Zone0801401C *z = &pl->zones[i];
             u16 id = (*(u32 *)z << 20) >> 20;
             if (id && ((*((const u32 *)0x08621DE0 + (id & 0x7FF)) & 0x1F00000) >> 20) > 20 && !z->flag6_1)
@@ -491,7 +489,7 @@ void sub_0801401C(void)
 
     for (player = 0; player <= 1; player++) {
         for (i = 0; i <= 4; i++)
-            ((struct Zone0801401C *)((u8 *)PS0801401C.p[0].zones + ((player & 1) * 0xD64 + i * 0x94)))->flag8C_5 = 0;
+            ((struct Zone0801401C *)((u8 *)ST0801401C.players[0].zones + ((player & 1) * 0xD64 + i * 0x94)))->flag8C_5 = 0;
     }
 
     if (gUnk_02015EE8_0801401C.link && ST0801401C.linkSkip)
@@ -502,7 +500,6 @@ void sub_0801401C(void)
             int flag = 0;
             u32 id = (*(u32 *)ZONER0801401C(player & 1, i) << 20) >> 20;
             int found;
-
             if (id == 0)
                 continue;
             if (((const u16 *)0x08622AB4)[(u16)id & 0x7FF] == 0x458 && ZONER0801401C(player & 1, i)->flag6_1 && !ZONER0801401C(player & 1, i)->flag6_13)
@@ -521,10 +518,10 @@ void sub_0801401C(void)
                     found = 1;
             }
             if (found)
-                sub_08017ADC(player, 0, ((u8)i << 8) | (u8)player, 4);
+                sub_08017ADC(player, 0, (u8)player | ((u8)i << 8), 4);
             for (j = 0; j < 12u; j++) {
                 if (sub_0800A78C(player, i, gUnk_08198DCC[j]))
-                    sub_08017ADC(player, CardId0801401C(gUnk_08198DCC[j]), (i << 8) | (u8)player, 3);
+                    sub_08017ADC(player, CardId0801401C(gUnk_08198DCC[j]), (u8)player | ((u8)i << 8), 3);
             }
             { u16 card = 0x403; Effect0801401C(player, i, card); }
             if (player == gUnk_020185C0.cmd >> 15) {
@@ -535,7 +532,7 @@ void sub_0801401C(void)
                 int t = sub_08008A44(player);
                 sub_080197E0(player, id);
                 sub_0801EC58(player ? 0x8071 : 0x71, gUnk_08624CF4[0], 1, 0);
-                sub_0801EC58(player ? 0x80A3 : 0xA3, ((u8)i << 8) | (u8)t, 0, 0);
+                sub_0801EC58(player ? 0x80A3 : 0xA3, (u8)t | ((u8)i << 8), 0, 0);
             }
         }
     }

@@ -697,13 +697,6 @@ void sub_08057E3C(void);
 int sub_08008524(int, u16);
 int sub_08008860(int);
 
-#if 0 /* NONMATCHING (score 32): NONMATCHING: score 32 (from 351). Fixed so far: int i/int sum; case 8 zone loop
-       * as union word read + bitfield stores (BcZone) with zones/src locals after sub_08057E08 (gives SR); ((const u16
-       * *)0x08623DF4)[k] int-cast table (lsl first); success store through u8 *p = w + 0x1B24 with FAKEMATCH asm-opaque
-       * 1 (orr operand tie). Left: zone-loop preheader order (ROM: base, src->ip, giv inits, -4096->sl, -9, end; build
-       * hoists -4096/-9 pairs in loop pass 1 before the SR inits, and gives src sl / -4096 ip); case 4 cast-base reload
-       * r7 vs ROM r0; pool order. Tried: many bitfield/explicit-mask/loop forms in a mini harness
-       * (build/wf/sub_0805BC24/t), do-while(0) wrappers, struct-copy flags. */
 struct BcZone {
     u32 id : 12;
     u32 rest : 20;
@@ -716,6 +709,11 @@ struct BcZone {
     u8 f91_3 : 1;
     u8 f91_4 : 4;
     u8 pad92[2];
+};
+struct BcF91 {
+    u8 b0 : 3;
+    u8 b3 : 1;
+    u8 b4 : 4;
 };
 int sub_0805BC24(void)
 {
@@ -797,8 +795,14 @@ int sub_0805BC24(void)
             continue;
         }
         case 6:
+            /* Same tail as case 7: jump2 cross-jumps it after reload, so its reloads
+             * still advance the reload round-robin (case 4's base then lands in r0). */
             k = 0x5EA;
-            goto common;
+            if (sub_08056E04(1, k) == -1)
+                continue;
+            if (sub_08054398(1, ((const u16 *)0x08623DF4)[k]) != 0)
+                break;
+            continue;
         case 4: {
             int j;
             ok = 0;
@@ -821,7 +825,6 @@ int sub_0805BC24(void)
             continue;
         case 7:
             k = 0x5EB;
-        common:
             if (sub_08056E04(1, k) == -1)
                 continue;
             if (sub_08054398(1, ((const u16 *)0x08623DF4)[k]) != 0)
@@ -829,9 +832,10 @@ int sub_0805BC24(void)
             continue;
         case 8: {
             int n;
-            int z;
             struct DuelZone *zones;
             const u16 *src;
+            struct DuelZone *dz;
+            struct BcF91 *f;
             ok = 0;
             for (n = 0; n < gUnk_020192E4.handCount; n++) {
                 u16 id = CARD_ID(*(u32 *)(n * 4 + (u32)gUnk_0201A6CC));
@@ -843,15 +847,26 @@ int sub_0805BC24(void)
             sub_08057E08();
             zones = gUnk_0201A070;
             src = gUnk_08624568;
-            for (z = 5; z <= 9; z++) {
-                union { struct DuelCard c; u32 w; } u;
-                u.c = zones[z].card;
-                if ((u.w << 20) == 0) {
-                    zones[z].card.id = src[0];
-                    ((struct BcZone *)&zones[z])->f6_1 = 1;
-                    ((struct BcZone *)&zones[z])->f91_3 = 0;
+            /* FAKEMATCH: two pointers stepped by hand (flag byte +0x91 first) and a signed
+             * pointer compare. The ROM sets them up before the masks, which loop pass 1 hoists,
+             * and before the end value, so the loop cannot be an indexed z loop (strength
+             * reduction would put its inits after the hoisted masks). */
+            f = (struct BcF91 *)&zones[5].unk91;
+            dz = &zones[5];
+            do {
+                u16 cid = CARD_ID(*(u32 *)&dz->card);
+                /* FAKEMATCH: two empty insns raise the loop's insn count so loop pass 2 keeps
+                 * the 0xFFF and #2 constants inside the loop, as in the ROM. */
+                asm volatile("");
+                asm volatile("");
+                if (cid == 0) {
+                    dz->card.id = src[0];
+                    ((struct BcZone *)dz)->f6_1 = 1;
+                    f->b3 = 0;
                 }
-            }
+                f = (struct BcF91 *)((u8 *)f + 0x94);
+                dz++;
+            } while ((int)dz <= (int)&zones[9]);
             for (n = 0; n < gUnk_020192E4.handCount; n++) {
                 u16 id = CARD_ID(*(u32 *)(n * 4 + (u32)gUnk_0201A6CC));
                 if (sub_0800756C(((const u16 *)0x08622AB4)[id & 0x7FF]) != 0 && sub_08054398(1, id) != 0)
@@ -872,6 +887,7 @@ int sub_0805BC24(void)
                 u8 *p = w + 0x1B24;
                 int s = i << 1;
                 int one = 1;
+                /* FAKEMATCH: opaque 1 so the orr output ties to the constant register (ROM: mov r1, #1; orr r1, r2) */
                 asm("" : "+r"(one));
                 *p = one | s;
             }
@@ -880,8 +896,6 @@ int sub_0805BC24(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805B3F4", sub_0805BC24); /* 0x0805BC24 size 0x47C */
 
 int sub_08008B70(int, u16, u16, u16);
 int sub_08059408(u16);

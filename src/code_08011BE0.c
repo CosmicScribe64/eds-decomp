@@ -372,9 +372,6 @@ void sub_08012264(void)
     gUnk_020185C0.running = 0;
 }
 
-#if 0 /* NONMATCHING: the card-number index is built with `and #0x7FF; lsl #1`
-       * instead of `ldrh; lsl #21; lsr #20`, plus register choices in the
-       * from.flag14/15 block. */
 extern const u8 gUnk_08690D0C[];
 extern const u16 gUnk_08622AB4[];   /* maps card ID to card number */
 void sub_08008CFC(u32 player, u32 slot, u32 toArea15);
@@ -389,15 +386,15 @@ void sub_080122B4(void)
 {
     struct DuelLoc from, to;
     u32 player = CMD_PLAYER();
-    u16 slot = gUnk_020185C0.arg2;
-    u16 mode = gUnk_020185C0.arg4;
+    u32 slot = gUnk_020185C0.arg2;
+    u32 mode = gUnk_020185C0.arg4;
     struct DuelZone08011BE0 *zones;
     struct CmdCard *card;
 
     switch (gUnk_020185C0.step) {
     case 0:
-        from.player = player;
         sub_08077AEC(0x10);
+        from.player = player;
         from.area = 0;
         from.index = slot;
         from.flag14 = ZZ(slot)->flag6_0;
@@ -411,7 +408,9 @@ void sub_080122B4(void)
         zones = (struct DuelZone08011BE0 *)((u8 *)gUnk_0201930C + (player & 1) * 0xD64);
         sub_08007558(card, zones + slot);
         sub_08008CFC(player, slot, mode);
-        if ((u16)(gUnk_08622AB4[(u8)(*(u16 *)card & 0x7FF)] - 1920) > 79) {
+        /* Card number of the low 11 id bits, read through the table's integer address
+         * (as in sub_0800E1E0) so the index is computed before the table address. */
+        if ((u16)(*(const u16 *)(0x08622AB4 + (((u32)*(u16 *)card << 21) >> 20)) - 1920) > 79) {
             from.player = player;
             from.area = 0;
             from.index = slot;
@@ -432,8 +431,6 @@ void sub_080122B4(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08011BE0", sub_080122B4); /* 0x080122B4 size 0x234 */
 
 /*
  * Takes control of card: zone arg2 of the acting player is animated to the

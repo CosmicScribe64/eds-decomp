@@ -256,35 +256,40 @@ int sub_08030F84(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the ROM reloads the phase byte after the side store
-       * (unknown alias) and builds the side address as base+(0x3E0+1).
-       * Register allocation differs. */
 int sub_08030FFC(struct CardRef *ref)
 {
     if (!ref->skip4) {
-        int i;
-
-        if (EFF_PHASE != 0x7F) {
-            if (EFF_PHASE != 0x80)
-                return 0;
-            EFF_PHASE--;
+        switch (EFF_PHASE) {
+        case 0x80:
             EFF_SIDE = 1 - ref->player;
-        }
-        for (i = 0; i <= 4; i++) {
-            if (sub_0802B28C(EFF_SIDE, i)) {
-                sub_08030028(EFF_SIDE, i);
-                sub_08046CB0(ref->player, EFF_SIDE, i);
-                return 0x7F;
+            EFF_PHASE--;
+        case 0x7F: {
+            int i;
+            
+            for (i = 0; i <= 4; i++) {
+                if (sub_0802B28C(EFF_SIDE, i)) {
+                    sub_08030028(EFF_SIDE, i);
+                    sub_08046CB0(ref->player, EFF_SIDE, i);
+                    return 0x7F;
+                }
+            }
+            {
+                /* FAKEMATCH: the side pointer pinned to r0 */
+                register u8 *p asm("r0");
+                u8 *b = gUnk_02017A40;
+                int sd;
+
+                p = b + 0x3E1;
+                *p = 1 - *p;
+                sd = ref->player;
+                if (*(volatile u8 *)p == sd)
+                    return 0x7F;
             }
         }
-        EFF_SIDE = 1 - EFF_SIDE;
-        if (ref->player == EFF_SIDE)
-            return 0x7F;
+        }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08030B88", sub_08030FFC); /* 0x08030FFC size 0x98 */
 int sub_08031094(struct CardRef *ref)
 {
     int i;

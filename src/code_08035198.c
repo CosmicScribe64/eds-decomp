@@ -731,39 +731,42 @@ int sub_08035FDC(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the ROM reloads the EFF base after the setup block (no CSE of the phase
-       * address) and keeps ref in r7 instead of r8. */
+/* Executor view of ES->fn: the callbacks return a full int; the caller keeps only the low byte. */
+typedef int (*EffFn36030)(struct CardRef *, int);
+/* Dispatcher: at phase 0x80 copies ref into ES->cur, takes id/player from card and picks the
+ * card's executor from gUnk_0819A9D4; then runs it and stores its step in EFF_PHASE. A null
+ * executor or a zero step prints message 0xB0. */
 int sub_08036030(struct CardRef *ref, struct CardRef *card)
 {
-    u8 *p = 0;
-    if (gUnk_02017A40[0x3E0] == 0x80) {
-        ((struct EffState *)gUnk_02017A40)->cur.id = card->id;
-        sub_08075294(&((struct EffState *)gUnk_02017A40)->cur, ref, 0x14);
-        ((struct EffState *)gUnk_02017A40)->cur.player = card->player;
-        (*(int (**)(struct CardRef *, int))(gUnk_02017A40 + 0x4F8)) = gUnk_0819A9D4[sub_08047058(card->id)].fn;
-        if ((*(int (**)(struct CardRef *, int))(gUnk_02017A40 + 0x4F8)) == 0)
+    u8 *p;
+
+    if (EFF_PHASE == 0x80) {
+        sub_08075294(&ES->cur, ref, 0x14);
+        ES->cur.id = card->id;
+        ES->cur.player = card->player;
+        *(EffFn36030 *)&ES->fn = (EffFn36030)gUnk_0819A9D4[sub_08047058(card->id)].fn;
+        if (*(EffFn36030 *)&ES->fn == 0) {
+            /* FAKEMATCH: dead store; it keeps the phase pointer from being shared with the
+             * setup block, so the base is reloaded from the pool and ref stays in r7. */
+            p = 0;
             goto fail;
+        }
     }
     {
-        unsigned long long base = (u32)gUnk_02017A40;
-        struct EffState *e = (struct EffState *)(u32)base;
-        int step;
-        unsigned long long phaseOffset = 0x3E0;
-        step = e->fn(&e->cur, 0);
-        p = (u8 *)e + phaseOffset;
+        struct EffState *e = ES;
+        int step = (*(EffFn36030 *)&e->fn)(&e->cur, 0);
+
+        p = &e->phase;
         *p = step;
-        if (*p == 0) goto fail;
-        goto success;
+        if (*p != 0)
+            goto success;
     }
 fail:
     sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80B0 : 0xB0, 1, 0, 0);
     return 0;
-
 success:
     return *p;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08035198", sub_08036030); /* 0x08036030 size 0xB8 */
 int sub_080360E8(struct CardRef *ref)
 {
     u8 tp0 = ref->targets[0];

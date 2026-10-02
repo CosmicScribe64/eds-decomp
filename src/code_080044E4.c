@@ -179,38 +179,36 @@ static inline u32 WeekOfMonth(u32 year, u32 month, u32 day)
     return (day - 1) / 7 + 1;
 }
 
-#if 0 /* NONMATCHING: prologue copies arg2 before arg1 */
-u32 sub_080044E4(u32 arg0, u32 arg1, u32 arg2)
+u32 sub_080044E4(u32 year, u32 month, u32 day)
 {
-    u32 a1 = arg1;
-    u32 r4, r9;
-    u32 flags = sub_08004358(arg0, a1, arg2);
+    u32 bit20, bit21;
+    u32 flags = sub_08004358(year, month, day);
 
-    switch (arg1 - 2) {
+    switch (month - 2) {
     case 0:
-        if (arg2 == 0xE)
+        if (day == 0xE)
             flags |= 0x40000;
         break;
     case 1:
-        if (arg2 == 0xE)
+        if (day == 0xE)
             flags |= 0x80000;
         break;
     case 4:
-        if (arg2 == 0x1C)
+        if (day == 0x1C)
             flags |= 0x8000;
-        if (WeekOfMonth(arg0, a1, arg2) == 1 && sub_080042D8(arg0, a1, arg2) == 6)
+        if (WeekOfMonth(year, month, day) == 1 && sub_080042D8(year, month, day) == 6)
             flags |= 0x10000000;
-        if (WeekOfMonth(arg0, a1, arg2 - 1) == 1 && sub_080042D8(arg0, a1, arg2 - 1) == 6
+        if (WeekOfMonth(year, month, day - 1) == 1 && sub_080042D8(year, month, day - 1) == 6
             && gSaveData.unk2160 != 0)
             flags |= 0x20000000;
         break;
     case 8:
-        if (arg2 == 0x1F)
+        if (day == 0x1F)
             flags |= 0x10000;
         break;
     case 9:
-        if (sub_080042D8(arg0, a1, arg2) == 0) {
-            switch (WeekOfMonth(arg0, a1, arg2)) {
+        if (sub_080042D8(year, month, day) == 0) {
+            switch (WeekOfMonth(year, month, day)) {
             case 1:
                 flags |= 0x1000000;
                 break;
@@ -230,48 +228,48 @@ u32 sub_080044E4(u32 arg0, u32 arg1, u32 arg2)
         }
         break;
     case 10:
-        if (arg2 == 0x18)
+        if (day == 0x18)
             flags |= 0x20000;
         break;
     }
-    if (sub_080042D8(arg0, a1, arg2) == 6) {
-        u32 v = WeekOfMonth(arg0, a1, arg2);
+    if (sub_080042D8(year, month, day) == 6) {
+        u32 v = WeekOfMonth(year, month, day);
         if (v == 2 || v == 4)
             flags |= 0x400000;
     }
-    if ((sub_08004494(arg0, a1, arg2) << 16) != 0)
-        return flags;
-    r4 = 0;
-    r9 = 0;
-    if (sub_080042D8(arg0, a1, arg2) == 2
-        && (arg0 > 0x7D1 || a1 > 1 || arg2 > 2))
-        r4 = 1;
-    if (sub_080042D8(arg0, a1, arg2) == 1
-        && (sub_08004494(arg0, a1, arg2 + 1) << 16) != 0)
-        r4 = 1;
-    if (sub_080042D8(arg0, a1, arg2) == 6
-        && (sub_08004494(arg0, a1, arg2 + 2) << 16) != 0
-        && (sub_08004494(arg0, a1, arg2 + 3) << 16) != 0)
-        r4 = 1;
-    if (r4 != 0)
+    /* The shared exit keeps flags at one return use, which lets month win r6 over flags. */
+    if ((sub_08004494(year, month, day) << 16) != 0)
+        goto end;
+    bit20 = 0;
+    bit21 = 0;
+    if (sub_080042D8(year, month, day) == 2
+        && (year > 0x7D1 || month > 1 || day > 2))
+        bit20 = 1;
+    if (sub_080042D8(year, month, day) == 1
+        && (sub_08004494(year, month, day + 1) << 16) != 0)
+        bit20 = 1;
+    if (sub_080042D8(year, month, day) == 6
+        && (sub_08004494(year, month, day + 2) << 16) != 0
+        && (sub_08004494(year, month, day + 3) << 16) != 0)
+        bit20 = 1;
+    if (bit20 != 0)
         flags |= 0x100000;
-    if (arg2 == 0x15)
-        r9 = 1;
-    if (arg2 == 0x14 && (sub_08004494(arg0, a1, 0x15) << 16) != 0)
-        r9 = 1;
-    if (arg2 == 0x13 && (sub_08004494(arg0, a1, 0x14) << 16) != 0
-        && (sub_08004494(arg0, a1, 0x15) << 16) != 0)
-        r9 = 1;
-    if (arg2 == 0x12 && (sub_08004494(arg0, a1, 0x13) << 16) != 0
-        && (sub_08004494(arg0, a1, 0x14) << 16) != 0
-        && (sub_08004494(arg0, a1, 0x15) << 16) != 0)
-        r9 = 1;
-    if (r9 != 0)
+    if (day == 0x15)
+        bit21 = 1;
+    if (day == 0x14 && (sub_08004494(year, month, 0x15) << 16) != 0)
+        bit21 = 1;
+    if (day == 0x13 && (sub_08004494(year, month, 0x14) << 16) != 0
+        && (sub_08004494(year, month, 0x15) << 16) != 0)
+        bit21 = 1;
+    if (day == 0x12 && (sub_08004494(year, month, 0x13) << 16) != 0
+        && (sub_08004494(year, month, 0x14) << 16) != 0
+        && (sub_08004494(year, month, 0x15) << 16) != 0)
+        bit21 = 1;
+    if (bit21 != 0)
         flags |= 0x200000;
+end:
     return flags;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080044E4", sub_080044E4); /* 0x080044E4 size 0x310 */
 
 /* Converts a day count (day 0 = 2001-01-01) into a packed date plus weekday.
  * Day 36524 (2100-02-29, not a leap day) is skipped. */

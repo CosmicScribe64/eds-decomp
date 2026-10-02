@@ -351,7 +351,6 @@ void sub_0807B5A0(void *object);
 #define DECK_SCROLL_CURVE gUnk_080875D2[DECK_TWEEN_STEP]
 
 /* Deck Edit card-list frame: animate, handle list/menu input, draw, and fade. */
-#if 0 /* NONMATCHING: 43 lines: LEFT tail pinned to r2 (merges with RIGHT tail); remaining: pointer folded to one constant, ldrb r3 vs r5 */
 int sub_0806DBB0(void)
 {
     u16 row;
@@ -612,7 +611,12 @@ int sub_0806DBB0(void)
                     }
                     {
                         /* FAKEMATCH: same registers as the DPAD_RIGHT tail so the two tails merge */
-                        register struct DeckPhaseByte *p asm("r2") = (struct DeckPhaseByte *)((u8 *)&gUnk_0201DB20 + 0x1C3D);
+                        register u8 *b asm("r2") = (u8 *)&gUnk_0201DB20;
+                        register u32 busy asm("r3");
+                        struct DeckPhaseByte *p;
+                        asm("" : "=r"(busy));
+                        p = (struct DeckPhaseByte *)(b + 0x1C3D);
+                        asm("" : : "r"(busy));
                         p->phase = 3;
                     }
                     sub_08077AEC(0);
@@ -754,6 +758,4 @@ fade:
 done:
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806D51C", sub_0806DBB0); /* 0x0806DBB0 size 0x1194 */
 

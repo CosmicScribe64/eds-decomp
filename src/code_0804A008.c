@@ -578,15 +578,12 @@ int sub_0804AB90(int player)
     sub_0801EC58((e->b1B12 & 2) ? 0x8053 : 0x53, 0, 0, 0);
     return 1;
 }
-#if 0 /* NONMATCHING: the logic is decoded and the code is identical to the ROM before scheduling.
-       * The ROM cross-jumps the `strh cnt; b ret0` tails and the sub_0801EC58 call of the p!=0
-       * path with the default path, and ours does not (0x24C vs larger). */
 int sub_0804AC18(int player)
 {
     struct DuelGlobal *e = &gUnk_020192E0;
     struct DGCnt *c = (struct DGCnt *)((u8 *)e + 0x1B16);
     struct BattleH *bh;
-    u8 msg, a1;
+    u16 msg, a1;
     switch (c->cnt) {
     case 0:
         sub_0804A848((struct PlayerState *)((u8 *)e + 4), player, 0, 0);
@@ -595,63 +592,60 @@ int sub_0804AC18(int player)
         BTB.f5 = 0;
         sub_08024134(player, 0, 0);
         c->cnt++;
-        goto ret0;
+        return 0;
     case 1:
         if (player == 0) {
-            if (sub_0804A1C8() != 0) {
-            ret0:
+            if (sub_0804A1C8() != 0)
                 return 0;
+            if (gUnk_03000040.h6 & 2) {
+                if ((e->b0C << 25) < 0)
+                    sub_080602A4(0x204, 0x616, 0xB, gUnk_08085878);
+                else
+                    sub_080602A4(0x204, 0x616, 0xB, gUnk_080858E4);
+                sub_08060308(5, (u32)sub_0804F310, (u32)sub_0804F384);
+                {
+                    struct DuelGlobal *e2 = &gUnk_020192E0;
+                    e2->cnt1B16 = 10;
+                }
             }
-            if (!(gUnk_03000040.h6 & 2))
-                goto ret0;
-            if ((e->b0C << 25) < 0)
-                sub_080602A4(0x204, 0x616, 0xB, gUnk_08085878);
-            else
-                sub_080602A4(0x204, 0x616, 0xB, gUnk_080858E4);
-            sub_08060308(5, (u32)sub_0804F310, (u32)sub_0804F384);
-            {
-                struct DuelGlobal *e2 = &gUnk_020192E0;
-                e2->cnt1B16 = 10;
-            }
-            goto ret0;
+            return 0;
         }
         if (sub_0805809C(0)) {
             bh = &BTH;
             bh->atkSlot = gUnk_02015F00.v;
             sub_0801EC58(0x8008, gUnk_0201CFB0.w824, bh->atkSlot << 8, 0);
-            goto clear;
+            ((struct BattleB *)bh)->f4 = 0;
+            ((struct BattleB *)bh)->f3 = 0;
+            return 1;
         }
         ((struct DGWord *)((u8 *)e + 0x1B14))->stage = 0xC;
         c->cnt = 0;
-        goto ret0;
+        return 0;
     case 10:
         switch (gUnk_0201AE60.h14) {
         case 0:
             ((struct DGWord *)((u8 *)e + 0x1B14))->stage = 0xC;
             c->cnt = 0;
             e->f1B26_0 = 0;
-            goto ret0;
+            return 0;
         case 1:
             ((struct DGWord *)((u8 *)e + 0x1B14))->stage = 0xC;
             c->cnt = 0;
             e->f1B26_0 = 1;
-            goto ret0;
+            return 0;
         case 2:
             c->cnt = 1;
-            goto ret0;
+            return 0;
         }
-        goto ret0;
+        return 0;
     default:
         msg = player ? 0x8008 : 8;
         a1 = player;
         bh = &BTH;
         sub_0801EC58(msg, a1, bh->atkSlot << 8, 0);
-    clear:
         ((struct BattleB *)bh)->f4 = 0;
         ((struct BattleB *)bh)->f3 = 0;
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804AC18); /* 0x0804AC18 size 0x24C */
 INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804AE64); /* 0x0804AE64 size 0x7DC */

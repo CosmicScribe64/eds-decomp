@@ -258,40 +258,52 @@ void sub_08049450(void)
         break;
     }
 }
-#if 0 /* NONMATCHING: register allocation and literal CSE differ. The ROM keeps e in r8 (build r9), reloads the 0x7FF mask and both card tables at every use (build CSEs them into r8/r9), and emits an explicit `& 0xFFFF` after each `flags |= ...` that the u16-typed build folds away. Control flow, switch bodies and every call are identical. */
+#if 0 /* NONMATCHING (score 44): NONMATCHING: score 44. Fixes found: u32 flags with (u16)(flags|C) truncations
+       * and one raw flags|=0x1800 (sub_08007834 path) give the ROM's lsl/lsr pattern; asm barrier hides flags==0 from
+       * CSE path-following there; int return; sub_08008860 called through int cast; final type switch on int t (signed
+       * bgt/blt); 0x47 test via gUnk_020192E4[p&1].rest[0]; fresh local e2 for the bit1 test (keeps ldr+ldr+add).
+       * Remaining: card-table address lands in r2 instead of r1 (3 places), pb=(e+4)+p*0xD64 operand order, 0x1800
+       * constant reg after the asm barrier. */
+struct Flags514 { u8 f0 : 1; u8 bit1 : 1; u8 phase : 3; u8 rest : 3; };
+#define CN8860(p) (((int (*)(int))sub_08008860)(p))
 /*
- * Usability flags for card `id` held by `player`: only when the duel state at 0x020192E0+0x1B12
- * bits 2-4 is 2 or 4. Handles Magic (0x15) and Trap (0x16) cards (face-up / subtype / number
- * special cases), other cards via sub_08054398 and the deck/zone conditions, then the shared
- * "activation" adjustments at the end. Returns the flag word.
+ * Usability flags for card `id` held by `player`.
  */
-u16 sub_08049514(u16 id, int player)
+int sub_08049514(u16 id, int player)
 {
-    u16 flags = 0;
-    u8 *e = gUnk_020192E0;
-    struct CardRef ref;     /* FAKEMATCH: unused, but the ROM reserves its 0x14-byte stack slot */
+    u32 flags;
+    u8 *e;
+    struct CardRef ref; /* FAKEMATCH: unused, but the ROM reserves its 0x14-byte stack slot */
+    u32 n;
     u8 *pb;
-    int n;
-    u32 state = ((u32)e[0x1B12] << 27) >> 29;
-    u8 type;
-    u16 cn;
+    int t;
+    u8 *e2;
 
-    if (state == 2 || state == 4) {
-        n = id & 0x7FF;
-        switch ((CARD_STATS_N(n) & 0x1F00000) >> 20) {
+    flags = 0;
+    e = gUnk_020192E0;
+    switch (((u32)e[0x1B12] << 27) >> 29) {
+    case 2:
+    case 4:
+        n = 0x7FF & id;
+        switch ((((const u32 *)0x08621DE0)[n] & 0x1F00000) >> 20) {
         case 0x16:
             if (sub_08008C94(player, id) == 0)
-                goto done;
+                break;
             if (sub_0802CFA0(player, id, 1) != 0)
                 flags = 0x40;
-            flags |= 0x10;
-            cn = CARD_NUM_N(n);
-            if (cn == 0x520) {
+            flags = (u16)(flags | 0x10);
+            switch (((const u16 *)0x08622AB4)[n]) {
+            case 0x605:
+            case 0x606:
+            case 0x607:
+            case 0x608:
+                flags &= 0xFFEF;
+                break;
+            case 0x520:
                 pb = e + 4 + (player & 1) * 0xD64;
                 if ((pb[9] << 26) < 0 || (pb[8] << 27) < 0)
                     flags &= 0xFFBF;
-            } else if (cn >= 0x520 && cn <= 0x608 && cn >= 0x605) {
-                flags &= 0xFFEF;
+                break;
             }
             break;
         case 0x15:
@@ -301,70 +313,76 @@ u16 sub_08049514(u16 id, int player)
         default:
             if (sub_08054398(player, id) != 0) {
                 if (sub_08007834(id) != 0) {
-                    flags = 0x1800;
-                    if ((sub_08047170(0) << 16) == 0)
+                    asm("" : "+r"(flags)); /* FAKEMATCH: hide flags == 0 from CSE */
+                    flags |= 0x1800;
+                    if ((u16)sub_08047170(0) == 0)
                         flags = 0;
                 } else {
-                    pb = e + (player & 1) * 0xD64;
-                    if ((pb[0xC] << 27) >= 0)
+                    if ((e[(player & 1) * 0xD64 + 0xC] << 27) >= 0)
                         flags = 0x30;
-                    switch (CARD_NUM_N(n)) {
+                    switch (((const u16 *)0x08622AB4)[n]) {
                     case 0x17A:
-                        if (sub_080086CC(player, 0x4DB) > 0)
+                        if (sub_080086CC(player, 0x4DB) <= 0)
+                            break;
                     case 0x5F0:
-                            flags |= 0x1800;
+                        flags = (u16)(flags | 0x1800);
                         break;
                     case 0x546:
-                        if (sub_08008860(0) + 1 < sub_08008860(1) && sub_08008A1C(0) > 0)
-                            flags |= 0x1800;
+                        if (CN8860(0) + 1 < CN8860(1) && sub_08008A1C(0) > 0)
+                            flags = (u16)(flags | 0x1800);
                         if (sub_08008AF8(player, -1) == 0)
                             flags &= 0xFFCF;
                         break;
                     }
-                    if ((sub_08047170(0) << 16) == 0)
-                        flags &= 0xE7FF;
-                    if ((sub_08047114(0) << 16) == 0)
-                        flags &= 0xFFDF;
                 }
+                if ((u16)sub_08047170(0) == 0)
+                    flags &= 0xE7FF;
+                if ((u16)sub_08047114(0) == 0)
+                    flags &= 0xFFDF;
             }
-            switch (CARD_NUM(id)) {
+            switch (((const u16 *)0x08622AB4)[0x7FF & id]) {
             case 0x47:
-                pb = (u8 *)gUnk_020192E4 + (player & 1) * 0xD64;
                 if (sub_08008C94(player, id) != 0 && sub_0802CFA0(player, id, 1) != 0 &&
-                    sub_08008A1C(player) > 0 && (pb[8] << 27) >= 0)
-                    flags |= 0x40;
+                    sub_08008A1C(player) > 0 &&
+                    (gUnk_020192E4[player & 1].rest[0] << 27) >= 0)
+                    flags = (u16)(flags | 0x40);
                 break;
             case 0x1A8:
                 if (sub_0802CFA0(player, id, 1) != 0)
-                    flags |= 0x40;
+                    flags = (u16)(flags | 0x40);
                 break;
             }
             break;
         }
+        break;
     }
-done:
-    if ((e[0x1B12] & 2) == 0) {
-        if (((CARD_STATS(id) & 0x1F00000) >> 20) == 0x16 &&
-            ((CARD_STATS(id) & 0xE0000) >> 17) == 5 &&
+    e2 = gUnk_020192E0;
+    if (((struct Flags514 *)(e2 + 0x1B12))->bit1 == 0) {
+        u32 st = ((const u32 *)0x08621DE0)[0x7FF & id];
+        if (((st & 0x1F00000) >> 20) == 0x16 && ((st & 0xE0000) >> 17) == 5 &&
             sub_08008C94(player, id) != 0 && sub_0802CFA0(player, id, 1) != 0)
-            flags |= 0x40;
+            flags = (u16)(flags | 0x40);
     }
-    if (((CARD_STATS(id) & 0x1F00000) >> 20) == 0x16 && (flags & 0x40) != 0) {
+    if (((((const u32 *)0x08621DE0)[0x7FF & id] & 0x1F00000) >> 20) == 0x16 && (flags & 0x40) != 0) {
         if (sub_08008524(0, 0x49C) > 0)
             flags &= 0xFFBF;
         if (sub_08008524(1, 0x49C) > 0)
             flags &= 0xFFBF;
     }
-    type = (CARD_STATS(id) & 0x1F00000) >> 20;
-    if (type <= 0x16 && type >= 0x15 &&
-        (((u8 *)gUnk_020192E4)[(player & 1) * 0xD64 + 7] >> 6) != 0) {
-        flags &= 0xFFEF;
-        flags &= 0xFFBF;
+    t = (((const u32 *)0x08621DE0)[0x7FF & id] & 0x1F00000) >> 20;
+    switch (t) {
+    case 0x15:
+    case 0x16:
+        if (gUnk_020192E4[player & 1].b7 >> 6 != 0) {
+            flags &= 0xFFEF;
+            flags &= 0xFFBF;
+        }
+        break;
     }
     return flags;
 }
 #endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049514); /* size 0x36C */
+INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049514); /* 0x08049514 size 0x36C */
 #if 0 /* NONMATCHING: register allocation only. The ROM keeps id in r7 and zone in r4 and saves only r8; the build keeps id in r8/r9, spills the 0x7FF mask and hoists the constant 1 into r4. The switch decision tree and every body are identical. */
 /*
  * Usability lookup for the spell/trap command menu: given a card id, a player and a spell/trap

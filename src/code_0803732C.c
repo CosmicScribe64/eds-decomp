@@ -491,8 +491,10 @@ int sub_08037E94(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING (score 44): NONMATCHING: 5-step state machine; score 44, size +2. Remaining: register
-       * allocation and a 2-byte size delta (in progress). */
+#if 0 /* NONMATCHING (score 12): NONMATCHING: 5-step state machine; score 12, size matches. Only diff: in the
+       * 0x7E arm the E21 address (ROM r5) and E21 value (ROM r4) are swapped. Fixed so far: u16 *h = &E28H0 local in the
+       * 0x7C path (ROM derives E21 from E28); ED8Hand inline (base loaded before the index, QImode &1 so the constant 1
+       * is not CSE'd); gUnk_020192E4[i & 1].zones[j] in the zone loop. */
 static inline u32 ED8Level(int type, int id)
 {
     switch (type) {
@@ -508,6 +510,9 @@ static inline u32 ED8Level(int type, int id)
 }
 static inline int ED8Idx(int p) { return (u8)p & 1; }
 static inline int ED8Idx2(u8 p) { return p & 1; }
+static inline struct DuelPlayer *ED8Pl(int p) { return &gUnk_020192E4[(u8)p & 1]; }
+static inline struct DuelPlayer *ED8Pl2(u8 p) { return &gUnk_020192E4[p & 1]; }
+static inline int ED8Hand(int p) { return gUnk_020192E4[(u8)p & 1].handCount; }
 int sub_08037ED8(struct CardRef *ref)
 {
     if (!ref->skip4) {
@@ -518,7 +523,7 @@ int sub_08037ED8(struct CardRef *ref)
             for (i = 0; i <= 1; i++) {
                 ref->targets[i] = 0;
                 for (j = 0; j <= 4; j++) {
-                    u16 id = CARD_ID(CARD_WORD(ZB(i & 1, j)->card));
+                    u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[i & 1].zones[j].card));
 
                     if (id != 0 && CARD_TYPE(id) <= 0x14)
                         ref->targets[i]++;
@@ -553,7 +558,7 @@ ret7F:
                     sub_0801EC58(E21 ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
                     return 0x7D;
                 }
-                sub_080193D4(E21, gUnk_020192E4[ED8Idx(E21)].handCount - 1, 0, 1);
+                sub_080193D4(E21, ED8Hand(E21) - 1, 0, 1);
                 asm("");
                 goto ret7F;
             }
@@ -563,7 +568,8 @@ ret7F:
 
                 if (type <= 0x14) {
                     if (ED8Level(type, id) <= 4 && sub_08007834(id) == 0) {
-                        sub_0801EC58(E21 ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
+                        u16 *h = &E28H0;
+                        sub_0801EC58(E21 ? 0x80C2 : 0xC2, h[0], h[1], 0);
                         ref->targets[E21]--;
                         return 0x7C;
                     }
@@ -572,7 +578,7 @@ ret7F:
             }
             {
                 int s = EFF_SIDE;
-                sub_080193D4(s, gUnk_020192E4[ED8Idx(s)].handCount - 1, ref->player != s, 1);
+                sub_080193D4(s, ED8Hand(s) - 1, ref->player != s, 1);
             }
             goto ret7F;
         }

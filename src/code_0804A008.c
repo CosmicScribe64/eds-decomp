@@ -233,24 +233,17 @@ u16 sub_0804A008(void)
     }
     return flags;
 }
-#if 0 /* NONMATCHING: the logic is decoded and the structure is close (0x370 vs 0x394 bytes). The ROM
-       * keeps the flag0=1 stores of the 3 pick paths separate, keeps the sel pointer in r4
-       * across sub_0804A008, and orders the zone address (p&1 first) differently. */
+struct A1C8Zone { u8 unk0[6]; u8 flags6; u8 unk7[0x94 - 7]; };
 int sub_0804A1C8(void)
 {
-    u8 b;
-    struct SelMask *sel;
     u32 p, row;
     u16 id;
-    {
-        struct DuelGlobal *e0 = &gUnk_020192E0;
-        b = *((u8 *)e0 + 0x1B2C);
-    }
-    if (b & 1) {
+
+    if (gUnk_020192E0.sel.flag0) {
         sub_0801DC04();
         return 1;
     }
-    if (b & 2) {
+    if (gUnk_020192E0.sel.active) {
         sub_0801E260();
         return 1;
     }
@@ -263,61 +256,41 @@ int sub_0804A1C8(void)
     case 0:
     case 5:
     case 10:
-        if (id == 0)
-            goto fail;
-        if (gUnk_0201CFB0.w824 != 0) {
-            struct DuelZone *zn = ZB(gUnk_0201CFB0.w824 & 1, gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C);
-            if (!(((u8 *)zn)[6] & 2))
-                goto fail;
+        if (id != 0 && (gUnk_0201CFB0.w824 == 0 || (((struct A1C8Zone *)((gUnk_0201CFB0.w824 & 1) * 0xD64 + (gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C) * 0x94 + (u32)gUnk_020192E4[0].zones))->flags6 & 2))) {
+            gUnk_020192E0.sel.flag0 = 1;
+            gUnk_020192E0.sel.state = 0;
+            gUnk_020192E0.sel.mask = sub_0804A008();
+            return 1;
         }
-        sel->flag0 = 1;
-        sel = &gUnk_020192E0.sel;
-        goto pick;
+        sub_08077AEC(3);
+        return 0;
     case 11:
-        if (gUnk_0201CFB0.w824 != 0) {
-            if (sub_0800A368(gUnk_0201CFB0.w824) == 0)
-                goto fail;
+        if ((gUnk_0201CFB0.w824 == 0 || sub_0800A368(gUnk_0201CFB0.w824) != 0) && id != 0) {
+            gUnk_020192E0.sel.flag0 = 1;
+            gUnk_020192E0.sel.state = 0;
+            gUnk_020192E0.sel.mask = sub_0804A008();
+            return 1;
         }
-        if (id == 0)
-            goto fail;
-        sel = &gUnk_020192E0.sel;
-        sel->flag0 = 1;
-        goto pick;
+        sub_08077AEC(3);
+        return 0;
     case 12:
     case 13:
-        if (p != 0)
-            goto fail;
-        sel = &gUnk_020192E0.sel;
-        sel->flag0 = 1;
-    pick:
-        {
-            struct DuelGlobal *e = &gUnk_020192E0;
-            e->sel.state = 0;
-            sel->mask = sub_0804A008();
+        if (p == 0) {
+            gUnk_020192E0.sel.flag0 = 1;
+            gUnk_020192E0.sel.state = 0;
+            gUnk_020192E0.sel.mask = sub_0804A008();
+            return 1;
         }
-        return 1;
+        sub_08077AEC(3);
+        return 0;
     case 14:
     case 15:
-        sub_08077AEC(1);
         sub_0802AF34(p, row, 0, 0);
-        return 0;
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 6:
-    case 7:
-    case 8:
-    case 9:
-    default:
+        sub_08077AEC(1);
         return 0;
     }
-fail:
-    sub_08077AEC(3);
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804A1C8); /* 0x0804A1C8 size 0x1D4 */
 
 void sub_0804A39C(int player, int zone)
 {

@@ -260,10 +260,7 @@ int sub_0805809C(u16 drop)
     return r;
 }
 
-#if 0 /* NONMATCHING (score 4): NONMATCHING: only the default-case b&7|8 differs: regmove swaps the AND/IOR onto
-       * the constant pseudos (ands r0,r1 vs ands r1,r0). Keys found: u16 id, u16 mask with int a,b at loop scope,
-       * (int)CardCost switch, 0x1B21 byte and cntB read through gUnk_02015F00 (makes loop.c hoist the invariants, which
-       * then spill and rematerialise as the ROM's folded literals). */
+/* Byte view of the AI work area flag byte +0x1B21 (the ROM reaches it through gUnk_02015F00). */
 struct AiWorkB21x {
     u8 filler[0x1B21];
     u8 pad : 1;
@@ -271,6 +268,8 @@ struct AiWorkB21x {
     u8 rest : 4;
 };
 
+/* Like sub_08058358, but cards of cost class 5-6 or 0/>=7 also pick extra cards (sub_080563B8), packed
+   into the mask passed to sub_08057EE0; returns the chosen hand index (-1 if none), *out = best total. */
 int sub_080580C8(int *out)
 {
     int best = -1;
@@ -289,6 +288,7 @@ int sub_080580C8(int *out)
         u16 mask;
         int r;
         int a, b;
+        u16 c;
 
         if (!sub_08054398(1, id))
             continue;
@@ -317,9 +317,8 @@ int sub_080580C8(int *out)
             b = sub_080563B8(a, 0);
             if (a == -1 || b == -1)
                 bad = 1;
-            b &= 7;
-            b |= 8;
-            mask = (((u32)a << 20) >> 16) | b;
+            c = (b & 7) | 8;
+            mask = (((u32)a << 20) >> 16) | c;
             break;
         }
         if (bad)
@@ -355,8 +354,6 @@ int sub_080580C8(int *out)
     *out = base;
     return best;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08057EE0", sub_080580C8); /* 0x080580C8 size 0x290 */
 
 /* Byte view of the AI work area's flag byte +0x1B21 (the high byte of fl). */
 struct AiWorkB21 {

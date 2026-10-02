@@ -210,19 +210,29 @@ void sub_08017D38(int player, int zone, int otherPlayer, int otherZone)
     }
 }
 
-#if 0 /* NONMATCHING: register allocation differs. The ROM hoists the base (ip) and 0xD64 (r9) into high registers and keeps i in r7, while GCC spills i and arg. The links[i]/linkInfo[i] addresses are also built before the loads. */
 void sub_08017DE0(int player, int zone, u16 arg)
 {
     int i;
-    int p, z;
+    int z;
 
     for (i = 0; i < ZONE_PTR(player, zone)->numLinks; i++) {
-        s16 lp = (u8)ZONE_PTR(player, zone)->links[i];
-        int lz = ZONE_PTR(player, zone)->links[i] >> 8;
-        u16 id = CARD(ZONE_PTR(lp, lz)->card).id;
-        int f = 0;
+        int t = player & 1;
+        struct DuelZone *zp = ZONE_T(t, zone);
+        int offset = i * 2;
+        u16 *link = (u16 *)((u8 *)zp + 0xA);
+        u8 *info;
+        int lp, lz;
+        u16 id;
+        int f;
+        link = (u16 *)((u8 *)link + offset);
+        info = (u8 *)zp + 0x4A;
+        info += offset;
+        lp = (u8)*link;
+        lz = *link >> 8;
+        id = CARD(ZONE_PTR(lp, lz)->card).id;
+        f = 0;
 
-        switch ((u8)ZONE_PTR(player, zone)->linkInfo[i]) {
+        switch (*info) {
         case 1:
         case 10:
             if (id != 0)
@@ -251,14 +261,11 @@ void sub_08017DE0(int player, int zone, u16 arg)
             sub_08018544(lp, lz, arg != 0);
     }
     if (zone <= 4) {
-        for (p = 0; p <= 1; p++)
+        for (i = 0; i <= 1; i++)
             for (z = 0; z <= 4; z++)
-                sub_08017D38(p, z, player, zone);
+                sub_08017D38(i, z, player, zone);
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017DE0); /* 0x08017DE0 size 0x1B8 */
-#endif
 
 
 /* For every kind-5 link of the zone, call sub_08018544(linkPlayer, linkZone, 1). */

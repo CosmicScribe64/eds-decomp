@@ -134,7 +134,7 @@ static inline u16 TargetAttackNV(u32 id)
     return ((TARGET_STATS_NV(id) << 14) >> 23) * 10;
 }
 
-static inline u16 TargetAttackT(u32 id, u32 type)
+static inline u32 TargetAttackT(u32 id, u32 type)
 {
     switch ((s32)type) {
     case 21:
@@ -204,8 +204,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 1399): 0x191 0x1A3 0x1A8 0x3C6 0x3EB 0x3F0 exact (grouped offsets, literal case
-       * number); wf 1399 */
+#if 0 /* NONMATCHING (score 1306): TargetAttackT returns u32; 0x439 natural; wf 1306 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -497,16 +496,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         skipFilter = 1;
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->deckCount) {
-            g = (u32 *)(b + 0x7C4);
-            do {
-                ADD_TARGETB(*(u32 *)((u8 *)g + off), 2);
-                off += 4;
-                i++;
-            } while (i < PPL->deckCount);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
+            gUnk_0201D810.cards[gUnk_0201D810.count] = gUnk_020192E4[player & 1].w.deck[i];
+            gUnk_0201D810.areas[gUnk_0201D810.count] = 2;
+            gUnk_0201D810.count = gUnk_0201D810.count + 1;
         }
         break;
     }

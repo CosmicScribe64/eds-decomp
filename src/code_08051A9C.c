@@ -514,12 +514,6 @@ int sub_080525C4(void)
     d->sel2 = gUnk_0201AE60.sel;
     return 1;
 }
-#if 0 /* NONMATCHING (score 8): BYTE-IDENTICAL: with this draft enabled the whole unit reports 18/18 and unit
-       * bytes MATCH. wf.py apply refuses only because config/functions.tsv gives 0xAC (including 2 bytes of trailing
-       * .align padding after bx r1) while agbcc's .size is 0xAA, so the score stays 8 (4*2). To apply: replace the #if
-       * 0/#else/INCLUDE_ASM/#endif with the draft. Key: int st = *s; switch ((u8)st) makes the switch index a separate
-       * pseudo; earlier drafts (s8/u8 st, switch(*s), shared tail after the switch, (*s)++ or *s = *s + 1) let CSE fold
-       * the case 1 increment to 2 and loaded state straight into r4. */
 int sub_08052668(void)
 {
     struct Ui *u = &gUnk_0201AE60;
@@ -554,8 +548,6 @@ int sub_08052668(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052668); /* 0x08052668 size 0xAC */
 int sub_08052714(void)
 {
     char buf[0x80];

@@ -335,39 +335,60 @@ void sub_08078CA8(u32 a, u8 *q)
     q[0x1D] = z;
 }
 /* Composite a nibble-per-pixel glyph buffer (EWRAM 0x02000000, width byte at +0x10000) onto solid colour `color`, writing 4bpp tile data. */
-#if 0 /* NONMATCHING: register allocation differs (x in r5 and fill in r2 in the ROM, width in r3), and the ROM computes (x<<4)*w separately from w*x; 131 differing lines */
 void sub_08078CC8(u16 *dst, u16 color, u8 x)
 {
-    u16 fill;
-    s16 w;
-    s32 j;
-    s32 k;
-    u8 *src;
+    s32 i, next;
+    s32 w;
+    u8 *buf;
 
-    fill = color & 0xF;
-    fill |= fill << 4;
-    fill |= fill << 8;
+    /* FAKEMATCH: do-while(0) raises the loop depth of these refs so fill gets r2 (same trick as sub_08075114) */
+    do {
+        color &= 0xF;
+        color |= color << 4;
+        color |= color << 8;
+    } while (0);
     w = gUnk_02000000[0x10000];
-    dst += x * 16 * w;
-    for (j = 0; j < w * 3; j++) {
-        src = gUnk_02000000 + ((j + w * x) << 6);
-        for (k = 15; k >= 0; k--) {
-            *dst = fill;
-            if (src[0] != 0)
-                *dst = (fill & 0xFFF0) | src[0];
-            if (src[1] != 0)
-                *dst = (*dst & 0xFF0F) | (src[1] << 4);
-            if (src[2] != 0)
-                *dst = (*dst & 0xF0FF) | (src[2] << 8);
-            if (src[3] != 0)
-                *dst = (*dst & 0x0FFF) | (src[3] << 12);
-            dst++;
-            src += 4;
-        }
+    /* FAKEMATCH: do-while(0) weights x's refs so x is allocated (r5) before the block-0 base pointer (r6) */
+    do {
+        dst += (x << 4) * w;
+    } while (0);
+    /* FAKEMATCH: explicit guard + do-while (instead of for) keeps the guard on plain w, so w stays in r3 with no copy */
+    i = 0;
+    if (i < w * 3) {
+        /* FAKEMATCH: assigning the base in the preheader keeps the block-0 base live into it (allocated r6) */
+        buf = gUnk_02000000;
+        do {
+            /* FAKEMATCH: (w & 0xFF) is a loop-invariant no-op that loop.c hoists to the [sp+4] copy the ROM spills
+               (and drags w*x out with it); the u32 sum puts the tile offset before the base in the add */
+            const u8 *src = (const u8 *)((i + (w & 0xFF) * x) * 64 + (u32)buf);
+            s32 j;
+
+            next = i + 1;
+            for (j = 15; j >= 0; j--) {
+                *dst = color;
+                if (src[0] != 0) {
+                    *dst &= 0xFFF0;
+                    *dst |= src[0];
+                }
+                if (src[1] != 0) {
+                    *dst &= 0xFF0F;
+                    *dst |= src[1] << 4;
+                }
+                if (src[2] != 0) {
+                    *dst &= 0xF0FF;
+                    *dst |= src[2] << 8;
+                }
+                if (src[3] != 0) {
+                    *dst &= 0x0FFF;
+                    *dst |= src[3] << 12;
+                }
+                dst++;
+                src += 4;
+            }
+            i = next;
+        } while (i < (w & 0xFF) * 3);
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080784E4", sub_08078CC8);
 void sub_08078DC4(u8 *p, u8 a, u8 b, u8 c, u8 d, u8 e)
 {
     sub_08074E20((p[0] << 8) | p[1], a + 1, b + 1, d | (e << 8));

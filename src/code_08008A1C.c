@@ -570,30 +570,37 @@ int sub_080094E4(void)
     return 0;
 }
 
-#if 0 /* NONMATCHING: the structure matches. The remaining diff is register allocation (the ROM
-       * keeps base in r9 and player in r8, GCC uses sl for base and r9 for player) and the
-       * reversed entry test. */
+/* Zone address as (player & 1) * 0xD64 + zone * 0x94 + base; this operand order makes
+ * old_agbcc emit zone * 0x94 first, as the ROM does here (ZB's order emits the player term first). */
+#define ZB_PZ(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+
 /* Find a zone (either player, monster zones only, occupied and face-up) holding a link
  * (kind 1, 2, 5, 7 or 10) whose target is (player, zone); return its loc (zone << 8 | player)
- * or 0xFFFF. */
+ * or 0xFFFF. The two case groups have identical bodies; cross-jumping merges them. The
+ * loops sit inside an if (no early return), so loop.c finds no barrier to move the
+ * return block out of the loop. */
 u16 sub_08009538(int player, int zone)
 {
     int p, z, i;
 
-    if (ZONE_CARD(player, zone).id == 0)
-        return 0xFFFF;
-    for (p = 0; p <= 1; p++) {
-        for (z = 0; z <= 4; z++) {
-            if (ZONE_CARD(p, z).id != 0 && (ZONEP(p, z)->flags6 & 2)) {
-                for (i = 0; i < ZB(p & 1, z)->numLinks; i++) {
-                    u16 link = ZB(p & 1, z)->links[i];
-                    u8 kind = ZB(p & 1, z)->linkInfo[i];
+    if (CARD(ZB_PZ(player & 1, zone)->card).id != 0) {
+        for (p = 0; p <= 1; p++) {
+            for (z = 0; z <= 4; z++) {
+                if (CARD(ZB_PZ(p & 1, z)->card).id != 0 && (ZB_PZ(p & 1, z)->flags6 & 2)) {
+                    for (i = 0; i < ZB_PZ(p & 1, z)->numLinks; i++) {
+                        u16 link = ZB_PZ(p & 1, z)->links[i];
+                        u8 kind = ZB_PZ(p & 1, z)->linkInfo[i];
 
-                    switch (kind) {
-                    case 1: case 2: case 5: case 7: case 10:
-                        if (link == ((u8)player | ((u8)zone << 8)))
-                            return (u8)p | ((u8)z << 8);
-                        break;
+                        switch (kind) {
+                        case 1: case 5: case 10:
+                            if (link == (u16)((u8)player | ((u8)zone << 8)))
+                                return (u8)p | ((u8)z << 8);
+                            break;
+                        case 2: case 7:
+                            if (link == (u16)((u8)player | ((u8)zone << 8)))
+                                return (u8)p | ((u8)z << 8);
+                            break;
+                        }
                     }
                 }
             }
@@ -601,8 +608,6 @@ u16 sub_08009538(int player, int zone)
     }
     return 0xFFFF;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_08009538); /* 0x08009538 size 0x134 */
 /* True if the marked-zone list has an entry for card `id` whose zone still holds a card
  * (with +0x91 bit 3 clear). */
 u32 sub_0800966C(u16 id)

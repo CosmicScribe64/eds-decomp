@@ -240,23 +240,22 @@ void sub_0807B864(u16 num, u8 count, u8 mode, u16 x, u16 y, u8 *base, u32 unused
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807B864); /* 0x0807B864 size 0x170 */
-#if 0 /* NONMATCHING: cross-jumping and expansion of the (s16) casts differ.
-       * The target shares the tail from the `asr` (each case computes x1<<16
-       * itself) and sign-extends in place; the build extends via a second
-       * register and merges further. */
 void sub_0807B9D4(u16 x0, u16 y0, u16 x1, u16 y1, u16 dur, u16 b, struct Tween *t, u8 mode)
 {
-    int a;
-    int b2;
-
     switch (mode) {
     case 2:
     case 3:
         t->step = 0x4000 / (s16)dur;
         t->step2 = 0;
         t->kind = 1;
-        t->dx = (a = (s16)x1) - (b2 = (s16)x0);
-        t->dy = (a = (s16)y1) - (b2 = (s16)y0);
+        {
+            int a = (s16)x1, b2 = (s16)x0;
+            t->dx = a - b2;
+        }
+        {
+            int a = (s16)y1, b2 = (s16)y0;
+            t->dy = a - b2;
+        }
         t->x = x0;
         t->y = y0;
         t->x0 = x0;
@@ -277,8 +276,14 @@ void sub_0807B9D4(u16 x0, u16 y0, u16 x1, u16 y1, u16 dur, u16 b, struct Tween *
         t->step = ((s16)dur + 0x7F) / (s16)dur;
         t->step2 = 0;
         t->kind = mode;
-        t->dx = (a = (s16)x1) - (b2 = (s16)x0);
-        t->dy = (a = (s16)y1) - (b2 = (s16)y0);
+        {
+            int a = (s16)x1, b2 = (s16)x0;
+            t->dx = a - b2;
+        }
+        {
+            int a = (s16)y1, b2 = (s16)y0;
+            t->dy = a - b2;
+        }
         t->x = x0;
         t->y = y0;
         t->x0 = x0;
@@ -289,8 +294,6 @@ void sub_0807B9D4(u16 x0, u16 y0, u16 x1, u16 y1, u16 dur, u16 b, struct Tween *
     }
     t->mode = mode;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807B9D4); /* 0x0807B9D4 size 0xE0 */
 /* Tween update (see struct Tween): mode 0 approaches (x1,y1) with a +-1 velocity, 1..3 ease along the sine table. */
 void sub_0807BAB4(struct Tween *t)
 {

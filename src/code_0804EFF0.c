@@ -143,67 +143,67 @@ void sub_0804EFF0(int player)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804EFF0); /* 0x0804EFF0 size 0x178 */
 
-#if 0 /* NONMATCHING: register allocation and CSE differ (ROM reloads b9 for the read-modify-write, keeps &step in r6 and the step value in r2) */
+/* Byte +0x1B12 of the duel global: bit 1 is the current player. Padded past 4 bytes so it is read with ldrb. */
+struct F168Flags {
+    u8 b0 : 1;
+    u8 cur : 1;
+    u8 rest : 6;
+    u8 pad[4];
+};
+/* gUnk_020192E0 with the player array at +4 (the unit's struct DuelGlobal has no players member). */
+struct F168Duel {
+    u32 u0;
+    struct PS players[2];
+    u8 pad[0x1B12 - 4 - 2 * 0xD64];
+    u8 flags;   /* +0x1B12 */
+    u8 pad2[0x1B20 - 0x1B13];
+    u8 step;    /* +0x1B20 */
+};
+#define F168_CUR(p) (((struct F168Flags *)(p))->cur)
+
+/* Step machine on gUnk_020192E0.step; returns 1 when finished. */
 int sub_0804F168(void)
 {
-    struct DuelGlobal *e = &gUnk_020192E0;
-    u8 *sp = &e->step;
-    switch (*sp) {
+    struct F168Duel *e = (struct F168Duel *)&gUnk_020192E0;
+    switch (e->step) {
     case 0:
-        sub_080240A8(((u32)e->b1B12 << 30) >> 31, 0xB);
+        sub_080240A8(F168_CUR(&e->flags), 0xB);
+        e->step++;
         return 0;
-        (*sp)++;
     case 1: {
-        struct PS *ps = (struct PS *)((u8 *)e + 4);
-        u8 *bp = &e->b1B12;
-        u8 b = *bp;
-        u16 c = ((u32)b << 30) >> 31;
-        if ((s32)((u32)*((u8 *)ps + (c & 1) * 9 + 0xD64) << 28) < 0) {
-            u8 z;
-            ps[1 & c].b9_3 = 0;
-            if (!(gUnk_02015EE8.b1 & 1)) {
-                z = *bp & 2;
-                if (z == 0) {
-                    gUnk_02015EF0[0] = z;
-                    gUnk_02015EF0[1] = z;
-                }
+        struct PS *ps = e->players;
+        /* bit 3 of byte +9, tested as the sign of the byte shifted left by 4 (the ROM's lsl #28; bge) */
+        if ((s8)(((u8 *)&ps[F168_CUR(&e->flags) & 1])[9] << 4) < 0) {
+            ps[F168_CUR(&e->flags) & 1].b9_3 = 0;
+            if (!(gUnk_02015EE8.b1 & 1) && !(e->flags & 2)) {
+                gUnk_02015EF0[0] = 0;
+                gUnk_02015EF0[1] = 0;
             }
             if (gUnk_02015EE8.b1 & 1)
                 sub_0802297C(0xF002, 0, 0, 0);
             gUnk_02015EE8.u0[0] += 5;
             return 1;
-        } else {
-            u32 msg = 1;
-            if (b & 2)
-                msg = 0x8001;
-            sub_0801EC58(msg, 0, 0, 0);
         }
-        (*sp)++;
+        sub_0801EC58((e->flags & 2) ? 0x8001 : 1, 0, 0, 0);
+        e->step++;
         return 0;
     }
-    case 2: {
-        u8 *bp = &e->b1B12;
-        sub_0804EFF0(((u32)*bp << 30) >> 31);
-        sub_0804EFF0(1 - (((u32)*bp << 30) >> 31));
-        (*sp)++;
+    case 2:
+        sub_0804EFF0(F168_CUR(&e->flags));
+        sub_0804EFF0(1 - F168_CUR(&e->flags));
+        e->step++;
         return 0;
-    }
-    default: {
-        struct PS *ps0 = gUnk_020192E4;
-        u8 *bp = (u8 *)ps0 + 0x1B0E;
-        ps0[((u32)*bp << 30) >> 31].b9_4 = 0;
-        ps0[((u32)*bp << 30) >> 31].b9_5 = 0;
-        ps0[((u32)*bp << 30) >> 31].b8_4 = 0;
-        ps0[((u32)*bp << 30) >> 31].b8_5 = 0;
-        ps0[((u32)*bp << 30) >> 31].bB_3 = 0;
-        ps0[((u32)*bp << 30) >> 31].bC_5 = 0;
+    default:
+        /* the same flag byte addressed from the players symbol (0x020192E4 + 0x1B0E) */
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].b9_4 = 0;
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].b9_5 = 0;
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].b8_4 = 0;
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].b8_5 = 0;
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].bB_3 = 0;
+        gUnk_020192E4[F168_CUR((u8 *)gUnk_020192E4 + 0x1B0E)].bC_5 = 0;
         return 1;
     }
-    }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804F168); /* 0x0804F168 size 0x1A8 */
-#endif
 
 /* Draws the menu cursor sprite (blinks while confirming). */
 void sub_0804F310(void)

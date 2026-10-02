@@ -6,6 +6,8 @@
   python3 tools/assets.py gen-data                       # regenerate data/*.s from config/assets.tsv
   python3 tools/assets.py check                          # manifest covers the data exactly once
   python3 tools/assets.py verify [--rom baserom.gba]     # build every asset and compare with the ROM
+  (extract/verify take --only PATH_PREFIX; EDS_ASSET_MANIFEST / EDS_ASSETS_DIR / EDS_ASSETS_OUT override the
+   manifest, assets/ and build/assets/, for developing a converter privately. More formats: tools/assetfmt/)
 
 The repository contains no game data. `config/assets.tsv` lists every byte range of the ROM that isn't
 code, with a type that decides the file format in `assets/`:
@@ -37,9 +39,9 @@ import sys
 import zlib
 
 BASE = 0x08000000
-MANIFEST = 'config/assets.tsv'
-ASSETS = 'assets'
-OUT = 'build/assets'
+MANIFEST = os.environ.get('EDS_ASSET_MANIFEST', 'config/assets.tsv')  # overrides let a converter be developed
+ASSETS = os.environ.get('EDS_ASSETS_DIR', 'assets')                   # against a private manifest and output
+OUT = os.environ.get('EDS_ASSETS_OUT', 'build/assets')
 DATA_UNITS = {  # data unit -> (start, end) address range; see units.txt
     'rodata_08080A20': (0x08080A20, 0x08087FB4),
     'rodata_08087FD0': (0x08087FD0, 0x08800000),
@@ -428,7 +430,31 @@ TYPES = {
 }
 
 
+def _load_plugins():
+    """More formats live in tools/assetfmt/<name>.py, one module per format family. Each defines
+    register(A) -> {type: (extract, build)}, where A is this module (helpers such as png_write, enc, dec)."""
+    import importlib.util
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assetfmt')
+    if not os.path.isdir(d):
+        return
+    for fn in sorted(os.listdir(d)):
+        if fn.endswith('.py') and not fn.startswith('_'):
+            spec = importlib.util.spec_from_file_location(f'assetfmt_{fn[:-3]}', os.path.join(d, fn))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            for name, fns in mod.register(sys.modules[__name__]).items():
+                if name in TYPES:
+                    sys.exit(f'tools/assetfmt/{fn}: type {name} is already defined')
+                TYPES[name] = fns
+
+
+_load_plugins()
+
+
 # ------------------------------------------------------------------------------------------- manifest
+ONLY = None  # --only PREFIX: extract/verify only assets whose path starts with PREFIX
+
+
 def manifest():
     out = []
     for line in open(MANIFEST):
@@ -440,7 +466,8 @@ def manifest():
         p.update(start=int(f[0], 16), end=int(f[1], 16), type=f[2], path=f[3])
         if p['type'] not in TYPES:
             sys.exit(f'{MANIFEST}: unknown type {p["type"]}')
-        out.append(p)
+        if ONLY is None or p['path'].startswith(ONLY):
+            out.append(p)
     return out
 
 
@@ -577,8 +604,13 @@ def cmd_gen_data():
 
 
 def main():
+    global ONLY
     a = sys.argv[1:]
     rom = a[a.index('--rom') + 1] if '--rom' in a else 'baserom.gba'
+    if '--only' in a:
+        if a[0] not in ('extract', 'verify'):
+            sys.exit('--only works with extract and verify')
+        ONLY = a[a.index('--only') + 1]
     cmd = a[0] if a else ''
     if cmd == 'extract':
         cmd_extract(rom)

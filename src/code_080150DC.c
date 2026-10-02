@@ -53,10 +53,23 @@ void sub_080762D0(u32 yx, u32 shapeSize, u32 attr2);
 void sub_08077AEC(u16 se);  /* PlaySE */
 void sub_08076448(u32 yx, u32 shapeSize, u32 attr2, u32 extra);
 
-#if 0 /* NONMATCHING: same instruction stream except for two things. The base address of
-       * gUnk_020185C0 is CSE-copied into a second register (r5) and reused by cases 2-4,
-       * and the timer address is hoisted out of the grid loop. The ROM reloads both
-       * literals each time. */
+/*
+ * Halfword view of the DuelCmd timer (0x80C bits 5-11) for the grid loops below.
+ * FAKEMATCH: reading the timer through a u16 container plus the (u8) casts in the
+ * loop add RTL insns that combine deletes later. They lift the inner loop above
+ * loop.c's hoisting threshold (13 * savings 3 * life 3 = 117 insns), so the timer
+ * address stays inside the loop and the base copy is spilled, as in the ROM.
+ */
+struct DuelCmdTimer16 {
+    u16 cmd;
+    u16 arg2;
+    u8 filler4[0x80C - 0x4];
+    u16 unk80C_0:5;
+    u16 timer:7;
+    u16 unk80C_12:4;
+};
+#define gDuelCmdT16 (*(struct DuelCmdTimer16 *)&gUnk_020185C0)
+
 /*
  * Grid zoom-in effect (sibling of sub_08014C30). Steps 2-4 call sub_08061A1C / sub_08061D24 /
  * sub_08061E54 and step 5 calls sub_0805ED9C / sub_0805F00C. Step 6 draws a 4x5 grid of 32x32
@@ -65,8 +78,8 @@ void sub_08076448(u32 yx, u32 shapeSize, u32 attr2, u32 extra);
  */
 void sub_080150DC(void)
 {
-    u16 i, j;
-    u32 x, y, dy, scale;
+    int i, j;
+    int x, y;
     int ta, tb, tc, td;
 
     switch (gUnk_020185C0.step) {
@@ -101,20 +114,20 @@ void sub_080150DC(void)
             for (j = 0; j <= 3; j++) {
                 x = j * 32 + 0x44;
                 y = i * 32 + 2;
-                if ((ta = gUnk_020185C0.timer) < 0x20) {
+                if ((ta = (u8)gDuelCmdT16.timer) <= 0x1F) {
                     x -= 0x68;
-                    dy = y - 0x40;
+                    y -= 0x40;
                     x *= ta;
-                    dy *= ta;
+                    y *= ta;
                     x /= 32;
-                    dy /= 32;
+                    y /= 32;
                     x += 0x68;
-                    y = dy + 0x40;
+                    y += 0x40;
                 }
-                tb = gUnk_020185C0.timer;
+                tb = (u8)gDuelCmdT16.timer;
                 if (tb < 16) {
                     REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
+                    REG_BLDALPHA = (u8)tb | ((u8)(16 - tb) << 8);
                 } else if (tb > 0x67) {
                     REG_BLDCNT = 0xF40;
                     REG_BLDALPHA = (u8)(0x78 - tb) | ((u8)(tb - 0x68) << 8);
@@ -122,9 +135,9 @@ void sub_080150DC(void)
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = gUnk_020185C0.timer;
+                tc = (u8)gDuelCmdT16.timer;
                 if (tc < 16)
-                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[tc] << 16);
+                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[(u8)tc] << 16);
                 else
                     sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
@@ -147,8 +160,6 @@ void sub_080150DC(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080150DC", sub_080150DC); /* 0x080150DC size 0x2F8 */
 void sub_080153D4(void)
 {
     int i, j;

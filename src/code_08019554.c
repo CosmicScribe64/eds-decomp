@@ -440,9 +440,6 @@ const u8 *sub_0801A238(u16 id)
     }
     return gUnk_0867897C;
 }
-#if 0 /* NONMATCHING: faithful 32-bit DrawText coordinates and shared next-index
- * staging reduce the draft to 0x490 bytes versus 0x488. Header-field addressing,
- * text-colour lifetimes and the shared animation-state tails still differ. */
 /* Card-list result screen (hypothesis: cards obtained after a duel), state machine in
  * gUnk_020185B8 (see code_0801A7B4). */
 struct CardListEntry {
@@ -454,7 +451,7 @@ struct CardListEntry {
 };
 struct CardList {
     struct CardListEntry entries[16];
-    int count;              /* +0x140 */
+    u16 count;              /* +0x140 */
 };
 struct ListScreen {
     struct CardList *list;  /* +0x00 */
@@ -463,16 +460,11 @@ struct ListScreen {
     u8 timer;               /* +0x05 */
 };
 extern struct ListScreen gUnk_020185B8;
-struct ListScreenHeader {
-    u8 color0;              /* +0x00 */
-    u8 unk1[3];
-    u8 color4;              /* +0x04 */
-    u8 unk5[3];
-    u16 tile;               /* +0x08 */
-    u8 unkA[2];
-    u8 title[0x40];         /* +0x0C */
-};
-extern const struct ListScreenHeader gUnk_08198DE4[2];
+/* Per-player header, 0x4C bytes each: +0x00 colour (shadow), +0x04 colour, +0x08 u16 tile,
+ * +0x0C title. A byte array, not a struct: with a 1-byte-aligned row, agbcc forms each field
+ * address as (sym + off) + player * 0x4C, as the ROM does (a 4-aligned struct folds the offset
+ * into the load instead). */
+extern const u8 gUnk_08198DE4[][0x4C];
 extern const u8 gUnk_0822C300[];
 extern const u8 gUnk_0867795C[];
 extern const u8 gUnk_080817C8[];
@@ -503,108 +495,95 @@ void sub_08060578(void);
 int sub_0801A32C(void)
 {
     int i, row, x, j;
-    int nextIndex;
     struct CardListEntry *e;
-    u8 *vram;
-    const u8 *str;
 
+    /* Every case returns (no break + trailing return 0): this puts the shared "return 0" block
+     * before the default case, and lets case 5's two timer stores cross-jump into one. */
     switch (gUnk_020185B8.state) {
     case 0:
         sub_0805ED9C();
         sub_080240A8(0, 0);
         gUnk_020185B8.state++;
-        break;
+        return 0;
     case 1:
         if (sub_08060BF0(1))
             gUnk_020185B8.state++;
-        break;
+        return 0;
     case 2:
         sub_080619E8();
         gUnk_020185B8.state++;
-        break;
+        return 0;
     case 3:
         sub_08075294((void *)0x05000200, gUnk_0822C300, 0x20);
         sub_080752B0((void *)0x05000220, gUnk_0867795C, 0x20);
         sub_08074B08(0x20, 2);
-        sub_0807501C(3, 3, gUnk_08198DE4[gUnk_020185B8.player].color4 | 0xC00, gUnk_08198DE4[gUnk_020185B8.player].title);
-        sub_0807501C(2, 2, gUnk_08198DE4[gUnk_020185B8.player].color0 | 0xC00, gUnk_08198DE4[gUnk_020185B8.player].title);
-        sub_08075114((void *)0x06010000, gUnk_08198DE4[gUnk_020185B8.player].tile);
+        sub_0807501C(3, 3, gUnk_08198DE4[gUnk_020185B8.player][4] | 0xC00, &gUnk_08198DE4[gUnk_020185B8.player][0xC]);
+        sub_0807501C(2, 2, gUnk_08198DE4[gUnk_020185B8.player][0] | 0xC00, &gUnk_08198DE4[gUnk_020185B8.player][0xC]);
+        sub_08075114((void *)0x06010000, *(u16 *)&gUnk_08198DE4[gUnk_020185B8.player][8]);
         i = 0;
         if (gUnk_020185B8.list->count > 4)
             i = gUnk_020185B8.list->count - 4;
-        row = 0;
-        if (i < gUnk_020185B8.list->count) {
-        next_row:
+        for (row = 0; i < gUnk_020185B8.list->count && row <= 3; row++, i++) {
             e = &gUnk_020185B8.list->entries[i];
             sub_08074B08(0x20, 4);
             sub_0807501C(0x22, 5, 0xA01, gUnk_080817C8);
             sub_0807501C(0x21, 4, 0xA07, gUnk_080817C8);
             x = sub_080753CC(gUnk_080817C8) * 5;
-            nextIndex = i + 1;
-            sub_080750E0(x + 0x22, 5, 0xA01, nextIndex);
-            sub_080750E0(x + 0x21, 4, 0xA07, nextIndex);
+            sub_080750E0(x + 0x22, 5, 0xA01, i + 1);
+            sub_080750E0(x + 0x21, 4, 0xA07, i + 1);
             if (i <= 9)
                 x += 10;
             else
                 x += 15;
             if (e->flags2 & 1) {
                 x += 4;
-                str = gUnk_080817D0;
-                sub_0807501C(x + 0x22, 5, 0xA01, str);
-                sub_0807501C(x + 0x21, 4, 0xA04, str);
+                sub_0807501C(x + 0x22, 5, 0xA01, gUnk_080817D0);
+                sub_0807501C(x + 0x21, 4, 0xA04, gUnk_080817D0);
+                x += sub_080753CC(gUnk_080817D0) * 5;
             } else {
                 x += 4;
-                str = gUnk_080817DC;
-                sub_0807501C(x + 0x22, 5, 0xA01, str);
-                sub_0807501C(x + 0x21, 4, 0xA06, str);
+                sub_0807501C(x + 0x22, 5, 0xA01, gUnk_080817DC);
+                sub_0807501C(x + 0x21, 4, 0xA06, gUnk_080817DC);
+                x += sub_080753CC(gUnk_080817DC) * 5;
             }
-            x += sub_080753CC(str) * 5;
             if (e->flags4 & 8) {
                 x += 4;
-                str = gUnk_080817E4;
-                sub_0807501C(x + 0x22, 5, 0xA0B, str);
-                sub_0807501C(x + 0x21, 4, 0xA03, str);
-                x += sub_080753CC(str) * 5;
+                sub_0807501C(x + 0x22, 5, 0xA0B, gUnk_080817E4);
+                sub_0807501C(x + 0x21, 4, 0xA03, gUnk_080817E4);
+                x += sub_080753CC(gUnk_080817E4) * 5;
             }
             if (e->flags4 & 4) {
                 x += 4;
-                str = gUnk_080817F0;
-                sub_0807501C(x + 0x22, 5, 0xA0D, str);
-                sub_0807501C(x + 0x21, 4, 0xA05, str);
-                x += sub_080753CC(str) * 5;
+                sub_0807501C(x + 0x22, 5, 0xA0D, gUnk_080817F0);
+                sub_0807501C(x + 0x21, 4, 0xA05, gUnk_080817F0);
+                x += sub_080753CC(gUnk_080817F0) * 5;
             }
             sub_0807501C(0x23, 0x12, 0xA01, gUnk_0822C720 + e->id * 64);
             sub_0807501C(0x22, 0x11, 0xA07, gUnk_0822C720 + e->id * 64);
             sub_08075114((void *)(0x06010000 + ((row * 128 + 64) << 5)), 0);
-            vram = (u8 *)(0x06010000 + ((row * 128 + 64) << 5));
-            for (j = 0; j <= 3; j++) {
-                sub_080752B0(vram, sub_0801A238(e->id) + j * 128, 0x80);
-                vram += 0x400;
-            }
-            row++;
-            i = nextIndex;
-            if (i < gUnk_020185B8.list->count && row <= 3)
-                goto next_row;
+            /* tile-index form keeps VRAM + offset out of GCSE, so loop.c rebuilds it for the giv */
+            for (j = 0; j <= 3; j++)
+                sub_080752B0((void *)(0x06010000 + ((row * 128 + 64 + j * 32) << 5)), sub_0801A238(e->id) + j * 128, 0x80);
         }
         gUnk_020185B8.timer = 0;
         gUnk_020185B8.state++;
-        break;
+        return 0;
     case 4:
         sub_0801A198();
         sub_0801A1B8(gUnk_020185B8.timer, 1, -1);
-        if (gUnk_020185B8.timer > 15) {
+        if (gUnk_020185B8.timer <= 15) {
+            gUnk_020185B8.timer++;
+            if (FAST()) {
+                if (gUnk_020185B8.timer <= 7)
+                    gUnk_020185B8.timer += 7;
+                else
+                    gUnk_020185B8.timer = 16;
+            }
+        } else {
             gUnk_020185B8.timer = 0;
-            break;
             gUnk_020185B8.state++;
         }
-        gUnk_020185B8.timer++;
-        if (FAST()) {
-            if (gUnk_020185B8.timer <= 7)
-                gUnk_020185B8.timer += 7;
-            else
-                gUnk_020185B8.timer = 16;
-        }
-        break;
+        return 0;
     case 5:
         sub_0801A198();
         sub_0801A1B8(0, 0, -1);
@@ -612,7 +591,7 @@ int sub_0801A32C(void)
         if ((KEYS.newKeys & 3) || gUnk_020185B8.timer > 120) {
             gUnk_020185B8.timer = 16;
             gUnk_020185B8.state++;
-            break;
+            return 0;
         }
         if (FAST()) {
             if (gUnk_020185B8.timer <= 103)
@@ -620,33 +599,29 @@ int sub_0801A32C(void)
             else
                 gUnk_020185B8.timer = 120;
         }
-        break;
+        return 0;
     case 6:
         sub_0801A198();
         sub_0801A1B8(gUnk_020185B8.timer, 1, -1);
-        if (gUnk_020185B8.timer == 0) {
+        if (gUnk_020185B8.timer != 0) {
+            gUnk_020185B8.timer--;
+            if (FAST()) {
+                if (gUnk_020185B8.timer > 8)
+                    gUnk_020185B8.timer -= 8;
+                else
+                    gUnk_020185B8.timer = 0;
+            }
+        } else {
             gUnk_020185B8.timer = 0;
             gUnk_020185B8.state++;
-            break;
         }
-        gUnk_020185B8.timer--;
-        if (FAST()) {
-            if (gUnk_020185B8.timer > 8)
-                gUnk_020185B8.timer -= 8;
-            else
-                gUnk_020185B8.timer = 0;
-        }
-        break;
+        return 0;
     case 7:
         if (sub_08060C68(1))
             gUnk_020185B8.state++;
-        break;
+        return 0;
     default:
         sub_08060578();
         return 1;
     }
-    return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08019554", sub_0801A32C); /* 0x0801A32C size 0x488 */
-#endif

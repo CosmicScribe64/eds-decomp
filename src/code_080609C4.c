@@ -603,36 +603,47 @@ void sub_08061580(void)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_08061580);
 /* Draw the small card sprites of each player's hand/deck strip (row 0xB), skipping the one under the cursor. */
-#if 0 /* NONMATCHING: register allocation (ROM keeps the player index in r7, y in r8, n in r6; ours spills it) (120 differing lines) */
+struct HandRow616 {
+    struct DuelCard c[80];
+    u8 pad[0xD64 - 80 * 4];
+};
+extern struct HandRow616 gUnk_02019968[2];
+struct PlayerHdr616 {           /* 0xD64 bytes at 0x020192E4 + player * 0xD64 */
+    u8 pad0[2];
+    u8 handCount;               /* +2 */
+    u8 pad3[0xD64 - 3];
+};
+extern struct PlayerHdr616 gHandHdr616_020192E4[2];
 void sub_080616D0(void)
 {
     s32 pl;
-    u32 sel;
+    u16 sel;
     u32 y;
     u32 x;
-    s8 id;
+    u32 id;
     u16 t;
     s32 n;
     s32 i;
+    struct DuelCard *p;
 
     if ((*(u8 *)&gUnk_0201CFB0 & 6) == 6) {
         for (pl = 0; pl <= 1; pl++) {
-            if (pl != 0)
-                sel = (u16)sub_0800A368(pl);
-            else
-                sel = 1;
+            /* Ternary (not if/else): sel then has 5 refs and loses r9 to the hoisted player offset. */
+            sel = pl != 0 ? sub_0800A368(pl) : 1;
             y = sub_080623EC(pl, 0xB, 0);
             if (y + 0x20 <= 0xBF) {
-                n = gUnk_020192E4[1 & pl].b2;
+                n = gHandHdr616_020192E4[1 & pl].handCount;
                 for (i = 0; i < n; i++) {
+                    /* Two statements so fold keeps (base + player offset) + i * 4. */
+                    p = gUnk_02019968[1 & pl].c;
+                    p += i;
                     x = sub_0806236C(pl, i, n);
-                    id = (*(u32 *)((u8 *)0x02019968 + (1 & pl) * 0xD64 + i * 4) << 20) >> 20;
-                    if (sel != 0)
-                        t = sub_08062140(id) + 0x1000;
-                    else
-                        t = 0x40;
+                    id = p->id;
+                    t = sel ? sub_08062140(id) + 0x1000 : 0x40;
                     if (id != 0) {
-                        if (!(gUnk_020192E0.f1B2C_0 && gUnk_0201CFB0.w824 == pl && gUnk_0201CFB0.w828 == 0xB
+                        /* Through a cast pointer the flag stays gUnk_020192E0 + 0x1B2C (two literals);
+                           a plain gUnk_020192E0.f1B2C_0 folds into one 0x0201AE0C literal. */
+                        if (!(((struct DuelGlobals *)&gUnk_020192E0)->f1B2C_0 && gUnk_0201CFB0.w824 == pl && gUnk_0201CFB0.w828 == 0xB
                               && gUnk_0201CFB0.w82C == i))
                             sub_080761F0((y << 16) | x, 0x80, t + 0x400);
                     }
@@ -641,8 +652,6 @@ void sub_080616D0(void)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_080616D0);
 void sub_080617F0(void)
 {
 }

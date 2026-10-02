@@ -110,64 +110,57 @@ extern u8 gUnk_02017A30[];
 extern u8 *gUnk_03006598;
 extern void CpuSet(const void *src, void *dst, u32 cnt);
 
-#if 0 /* NONMATCHING: same structure; differs only in register allocation of the LinkSio base (r1 copied to r5 vs loaded straight into r5) and hs/base swap; the (~0x40) neg form does match */
-/* Link main step (hypothesis): stage 0 waits for the multi-player handshake bits in SIOCNT, sets up Timer3/IE, then stage 1 runs sub_08074260 each frame. */
+/* SIOCNT in multi-player mode (+ SIOMLT_SEND), as the SDK's SioMultiCnt bitfield struct. */
+struct SioMultiCnt {
+    u16 baudRate : 2;
+    u16 si : 1;
+    u16 sd : 1;
+    u16 id : 2;
+    u16 error : 1;
+    u16 enable : 1;
+    u16 unused : 4;
+    u16 mode : 2;
+    u16 ifEnable : 1;
+    u16 unused2 : 1;
+    u16 data;
+};
+#define LINK_SIOCNT_BAK (*(struct SioMultiCnt *)&gUnk_03005B60.unkB0C)
+
+/* Link main step (MultiSioMain-like): stage 0 snapshots SIOCNT; when SD is high and no transfer runs it
+ * becomes the parent if SI is low and the IRQ state reached 0xC (Timer3 IRQ instead of serial IRQ),
+ * then stage 1 runs sub_08074260 each frame. Returns the receive flags | 0x80 when parent. */
 u16 sub_080740BC(u8 *rx) {
-    u32 hs;
-    struct LinkSio *s = &gUnk_03005B60;
-    switch (s->unkA1F) {
-    case 0: {
-        vu32 *sio;
-        u32 *dst;
-        dst = &s->unkB0C;
-        sio = (vu32 *)&REG_SIOCNT;
-        *dst = *sio;
-        hs = *(u8 *)&s->unkB0C & 0x88;
-        if (hs != 8)
-            goto done;
-        {
-            u8 t = *(u8 *)&s->unkB0C & 4;
-            if (t == 0 && s->unkA2C == 0xC) {
+    switch (gUnk_03005B60.unkA1F) {
+    case 0:
+        *(u32 *)&LINK_SIOCNT_BAK = *(vu32 *)&REG_SIOCNT;
+        if (LINK_SIOCNT_BAK.sd == 1 && LINK_SIOCNT_BAK.enable == 0) {
+            if (LINK_SIOCNT_BAK.si == 0 && gUnk_03005B60.unkA2C == 0xC) {
                 REG_IME = 0;
                 REG_IE &= 0xFF7F;
                 REG_IE |= 0x40;
                 REG_IME = 1;
-                {
-                    u32 v = *((vu8 *)sio + 1);
-                    u16 m = ~0x40;
-                    *((vu8 *)sio + 1) = v & m;
-                }
+                ((volatile struct SioMultiCnt *)&REG_SIOCNT)->ifEnable = 0;
                 REG_IF = 0xC0;
                 *(vu32 *)&REG_TM3CNT_L = 0xB1FC;
-                s->unkA1E = hs;
-                s->unkA24 = 1;
+                gUnk_03005B60.unkA1E = 8;
+                gUnk_03005B60.unkA24 = 1;
             }
+            if (gUnk_03005B60.txBuf[2] == 0)
+                gUnk_03005B60.txBuf[2] = 0x1000;
+            gUnk_03005B60.unkA1F = 1;
+        } else {
+            break;
         }
-        if (gUnk_03005B60.txBuf[2] == 0)
-            gUnk_03005B60.txBuf[2] = 0x1000;
-        gUnk_03005B60.unkA1F = 1;
-    }
-    /* fallthrough */
+        /* fallthrough */
     case 1:
         gUnk_03005B60.unkB14 = sub_08074260(rx);
         if ((gUnk_03005B60.unkB14 & 3) == 0 && gUnk_03005B60.unkA1E == 8)
             sub_080741D8();
         break;
-    default:
-        break;
     }
-done:
-    {
-        u16 *p = &gUnk_03005B60.unkB14;
-        u16 v = *p;
-        if (gUnk_03005B60.unkA1E == 8)
-            v |= 0x80;
-        *p = v;
-        return *p;
-    }
+    gUnk_03005B60.unkB14 |= (gUnk_03005B60.unkA1E == 8) << 7;
+    return gUnk_03005B60.unkB14;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080740BC", sub_080740BC); /* 0x080740BC size 0x11C */
 
 void sub_080741D8(void) {
     if (gUnk_03005B60.unkA1F != 0 && gUnk_03005B60.unkA24 != 0) {

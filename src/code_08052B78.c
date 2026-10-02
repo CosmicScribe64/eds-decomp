@@ -492,94 +492,91 @@ int sub_080538C8(void)
     return 0;
 }
 
-#if 0 /* NONMATCHING: logic fully decoded from asm, but almost every instruction differs in register allocation/scheduling (ROM keeps base 0x02017A40 in r5, &animation in r8 and shifted in r6; build rotates these). */
+struct AF8Card { u32 id:12; u32 rest:20; };
+struct AF8 {
+    u8 pad[0x53C];
+    u32 cursor:8;   /* +0x53C bits 0-7 */
+    u32 unk8:4;
+    u32 mode:8;     /* bits 12-19 */
+    u32 phase:8;    /* bits 20-27 */
+    u32 timer:8;    /* bits 28-35: straddles into +0x540 */
+    u32 unk36:8;
+    u32 unk44:20;
+    u32 cards[5]; /* +0x544 */
+};
+#define gAF8 (*(struct AF8 *)&gUnk_02017A40)
+
 int sub_08053AF8(int arg0)
 {
-    u8 *base = (u8 *)&gUnk_02017A40;
-    u32 shifted = *(u32 *)(base + 0x53C) << 12;
-
-    switch ((int)(shifted >> 24)) {
+    int mode = gAF8.mode;
+    switch (mode) {
     case 0:
         if (arg0 == 0) {
             sub_080602A4(0x206, 0x813, 0xB, &gUnk_080862C4);
             sub_08060308(5, sub_08053864, sub_080538C8);
-            base[0x53F] &= 0xF;
-            base[0x540] = (base[0x540] & 0xF0) | ((shifted >> 28) & 0xF);
+            gAF8.timer = mode;
             sub_0805ED9C();
-            sub_0805F074((*(u32 *)(base + 0x544) << 20) >> 20, 1);
+            ((void (*)(u16, u16))sub_0805F074)(gAF8.cards[0] << 20 >> 20, 1);
         }
-        *(u32 *)(base + 0x53C) = (*(u32 *)(base + 0x53C) & 0xFFF00FFF) | ((((shifted >> 24) + 1) & 0xFF) << 12);
+        gAF8.mode++;
         return 0;
     case 1:
         if (arg0 == 0)
             return 1;
         sub_080536D4(arg0);
-        {
-            s8 timer = ((base[0x540] & 0xF) << 4) | (base[0x53F] >> 4);
-            if (timer <= 0x1D) {
-                u32 next = timer + 1;
-                base[0x53F] = (base[0x53F] & 0xF) | ((next & 0xF) << 4);
-                base[0x540] = (base[0x540] & 0xF0) | ((next >> 4) & 0xF);
+        if (gAF8.timer <= 0x1D) {
+            gAF8.timer++;
+            return 0;
+        }
+        gAF8.timer = 0;
+        if (gAF8.cursor <= 3) {
+            u32 cur = *(gAF8.cards + gAF8.cursor) << 20 >> 20;
+            u32 nxt = *(gAF8.cards + (gAF8.cursor + 1)) << 20 >> 20;
+            if (sub_08056300(1, ((const u16 *)0x08622AB4)[cur & 0x7FF]) == 0 &&
+                sub_08056300(1, ((const u16 *)0x08622AB4)[nxt & 0x7FF]) != 0) {
+                gAF8.mode = 20;
+                gAF8.phase = 0;
                 return 0;
             }
         }
-        base[0x53F] &= 0xF;
-        base[0x540] &= 0xF0;
-        if (base[0x53C] <= 3) {
-            u32 cur = (*(u32 *)(base + 0x544 + base[0x53C] * 4) << 20) >> 20;
-            u32 nxt = (*(u32 *)(base + 0x548 + base[0x53C] * 4) << 20) >> 20;
-            if (sub_08056300(1, gUnk_08622AB4[cur & 0x7FF]) == 0 &&
-                sub_08056300(1, gUnk_08622AB4[nxt & 0x7FF]) != 0) {
-                *(u32 *)(base + 0x53C) = (*(u32 *)(base + 0x53C) & 0xFFF00FFF) | 0x14000;
-                *(u16 *)(base + 0x53E) &= 0xFFFFF00F;
+        if (gAF8.cursor != 0) {
+            u32 cur = *(gAF8.cards + gAF8.cursor) << 20 >> 20;
+            u32 prv = *(gAF8.cards + (gAF8.cursor - 1)) << 20 >> 20;
+            if (sub_08056300(1, ((const u16 *)0x08622AB4)[cur & 0x7FF]) != 0 &&
+                sub_08056300(1, ((const u16 *)0x08622AB4)[prv & 0x7FF]) == 0) {
+                gAF8.mode = 10;
+                gAF8.phase = 0;
                 return 0;
             }
         }
-        if (base[0x53C] != 0) {
-            u32 cur = (*(u32 *)(base + 0x544 + base[0x53C] * 4) << 20) >> 20;
-            u32 prv = (*(u32 *)(base + 0x540 + base[0x53C] * 4) << 20) >> 20;
-            if (sub_08056300(1, gUnk_08622AB4[cur & 0x7FF]) != 0 &&
-                sub_08056300(1, gUnk_08622AB4[prv & 0x7FF]) == 0) {
-                *(u32 *)(base + 0x53C) = (*(u32 *)(base + 0x53C) & 0xFFF00FFF) | 0xA000;
-                *(u16 *)(base + 0x53E) &= 0xFFFFF00F;
-                return 0;
-            }
-        }
-        if (base[0x53C] > 3)
+        if (gAF8.cursor > 3)
             return 1;
-        base[0x53C] = base[0x53C] + 1;
+        gAF8.cursor++;
         return 0;
     case 10:
         if (arg0 == 0)
             return 0;
-        if ((((u32)*(u16 *)(base + 0x53E)) << 20) >> 24 <= 0xF) {
-            s16 p;
-            sub_08053770(arg0, base[0x53C] - 1, base[0x53C]);
-            p = (((u32)*(u16 *)(base + 0x53E)) << 20) >> 24;
-            *(u16 *)(base + 0x53E) = (*(u16 *)(base + 0x53E) & 0xFFFFF00F) | (((p + 1) & 0xFF) << 4);
-            return 0;
+        if (gAF8.phase <= 15) {
+            sub_08053770(arg0, gAF8.cursor - 1, gAF8.cursor);
+            gAF8.phase++;
+        } else {
+            sub_08007560(&gAF8.cards[gAF8.cursor - 1], &gAF8.cards[gAF8.cursor]);
+            gAF8.mode = 1;
+            sub_080536D4(arg0);
         }
-        sub_080536D4(arg0);
-        sub_08007560(base + 0x540 + base[0x53C] * 4, base + 0x544 + base[0x53C] * 4);
-        *(u32 *)(base + 0x53C) = (*(u32 *)(base + 0x53C) & 0xFFF00FFF) | 0x1000;
         return 0;
     case 20:
         if (arg0 == 0)
             return 0;
-        if ((((u32)*(u16 *)(base + 0x53E)) << 20) >> 24 <= 0xF) {
-            u32 p;
-            p = (((u32)*(u16 *)(base + 0x53E)) << 20) >> 24;
-            sub_08053770(arg0, base[0x53C], base[0x53C] + 1);
-            *(u16 *)(base + 0x53E) = (*(u16 *)(base + 0x53E) & 0xFFFFF00F) | (((p + 1) & 0xFF) << 4);
-            return 0;
+        if (gAF8.phase <= 15) {
+            sub_08053770(arg0, gAF8.cursor, gAF8.cursor + 1);
+            gAF8.phase++;
+        } else {
+            sub_08007560(gAF8.cards + (gAF8.cursor + 1), &gAF8.cards[gAF8.cursor]);
+            gAF8.mode = 1;
+            sub_080536D4(arg0);
         }
-        sub_08007560(base + 0x548 + base[0x53C] * 4, base + 0x544 + base[0x53C] * 4);
-        *(u32 *)(base + 0x53C) = (*(u32 *)(base + 0x53C) & 0xFFF00FFF) | 0x1000;
-        sub_080536D4(arg0);
         return 0;
-    default:
-        return 1;
     }
+    return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_08053AF8); /* 0x08053AF8 size 0x360 */

@@ -533,17 +533,25 @@ int sub_0803266C(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the logic is decoded (0x80/0x7F steps on one target; sub_0801FBCC packed
-       * arg), but the control-flow branch layout and register allocation differ (ROM: tp r4,
-       * tz r5, id r6, const 0x5FA r7, p spilled to r8). */
+/* Two-step effect on one target: step 0x80 needs a card with flags & 3 == 1 there (sub_08018DC8, then
+ * step 0x7F); step 0x7F calls sub_08019840 + sub_08018DC8 when sub_0800C8A8 > 2000, otherwise
+ * sub_08019800, maybe the 0x1640 event (sub_0801FBCC) and the usual sub_08030028/sub_08046CB0 finish. */
 int sub_080326C4(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         int tp = (u8)ref->targets[0];
         int tz = ref->targets[0] >> 8;
-        u16 p = tp & 1;
-        struct DuelZone *z = ZB(p, tz);
-        int id = CARD_ID(CARD_WORD(z->card));
+        /* FAKEMATCH: the ROM keeps p in r8 and the 0x5FA constant in r7; as a plain pseudo p outranks
+         * the constant in global allocation (2*5/54 vs 3/18) and takes r7. */
+        register int p asm("r8");
+        struct DuelZone *z;
+        int id;
+
+        p = tp;
+        asm("" : "+r"(p)); /* FAKEMATCH: keeps the copy p = tp separate from the and (ROM: mov r8,r4 first) */
+        p &= 1;
+        z = ZB(p, tz);
+        id = CARD_ID(CARD_WORD(z->card));
 
         switch (EFF_PHASE) {
         case 0x80:
@@ -554,13 +562,20 @@ int sub_080326C4(struct CardRef *ref)
             break;
         case 0x7F:
             if (sub_0800C8A8(tp, tz) > 2000) {
-                sub_08019840(tp, id);
+                /* FAKEMATCH: call with an int id; the unit's u16 prototype adds a narrowing that
+                 * reorders the argument moves */
+                ((void (*)(int, int))sub_08019840)(tp, id);
                 sub_08018DC8(tp, tz, 0);
             } else {
                 sub_08019800(tp, id);
                 if (sub_08007590(CARD_NUMBER(id), 0) != 0 && sub_08008524(0, 0x5FA) == 0
-                    && sub_08008524(1, 0x5FA) == 0)
-                    sub_0801FBCC((u32)p << 31 | (tz & 0x1F) << 16 | 0x16400000 | id, 0);
+                    && sub_08008524(1, 0x5FA) == 0) {
+                    /* Separate statements: in one expression fold moves the constant next to p << 31. */
+                    u32 hi = (u32)p << 31;
+                    u32 ev = (tz & 0x1F) << 16 | 0x16400000;
+
+                    sub_0801FBCC(hi | ev | id, 0);
+                }
                 sub_08030028(tp, tz);
                 sub_08046CB0(ref->player, tp, tz);
             }
@@ -569,8 +584,6 @@ int sub_080326C4(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08031BC8", sub_080326C4); /* 0x080326C4 size 0x130 */
 int sub_080327F4(struct CardRef *ref)
 {
     if (!ref->skip4) {

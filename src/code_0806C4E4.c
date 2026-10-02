@@ -91,7 +91,6 @@ side_count:
     }
 }
 
-#if 0 /* NONMATCHING: built 0x34 bytes short. The ROM keeps a separate StatisticsKind range test (number<0x776 / number>0x778, reached via goto) and reloads the gUnk_08621DE0 base at each use; agbcc shares the base register and CSEs across the two CARD_TYPE evaluations per card. */
 struct CountState {
     u8 pad[0x644];
     union {
@@ -103,50 +102,58 @@ struct CountState {
     u16 count[2][3];
     u8 row[3];
 };
-extern struct CountState gUnk_0201DB20_count asm("gUnk_0201DB20");
-extern const u32 gUnk_08621DE0[];
-extern const u16 gUnk_08622AB4[];
+#define CS_STATE (*(struct CountState *)&gUnk_0201DB20)
 u32 sub_0806C534(int, int);
-#define CARD_TYPE(id) ((int)((gUnk_08621DE0[(id) & 0x7FF] & 0x1F00000) >> 20))
-static inline int StatisticsKind(u16 card)
+#define CS_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define CS_NUM(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+#define CS_KIND(id) ((int)((CS_STATS(id) & 0x1F00000) >> 20))
+/* Card frame kind: 3 ritual (0x776), 1 effect (0x777/0x778), 7/8/9 Magic/Trap/Ritual-magic, else the
+ * stats monster kind. Direct returns (not `v = ...; break;`) keep jump2 from threading `kind == 0` past the test. */
+static inline u8 CS_FrameKind(u16 id)
 {
-    int number = gUnk_08622AB4[card & 0x7FF];
-    if (number == 0x776) return 3;
-    if (number > 0x778) goto compute;
-    if (number < 0x776) goto compute;
-    return 1;
-compute:
-    switch (CARD_TYPE(card)) {
-    case 0x16: return 7;
-    case 0x15: return 8;
-    case 0x17: return 9;
+    switch (CS_NUM(id)) {
+    case 0x776: return 3;
+    case 0x777:
+    case 0x778: return 1;
+    default:
+        switch (CS_KIND(id)) {
+        case 0x16: return 7;
+        case 0x15: return 8;
+        case 0x17: return 9;
+        default: return (CS_STATS(id) & 0xC0000) >> 18;
+        }
     }
-    return (gUnk_08621DE0[card & 0x7FF] & 0xC0000) >> 18;
 }
 #define COUNT_KIND(kindValue) \
-    for (i = 0; i < gUnk_0201DB20_count.count[row][list]; i++) { \
+    for (i = 0; i < CS_STATE.count[row][list]; i++) { \
         u16 card = cards[i]; \
-        u8 type = CARD_TYPE(card); \
-        if (type < 0x15 || type > 0x16) { \
-            if (StatisticsKind(card) == (kindValue)) \
+        switch (CS_KIND(card)) { \
+        case 0x15: \
+        case 0x16: \
+            break; \
+        default: \
+            if (CS_FrameKind(cards[i]) == (kindValue)) \
                 total += sub_0806C534(list, cards[i]); \
+            break; \
         } \
     }
 #define COUNT_TYPE(typeValue) \
-    for (i = 0; i < gUnk_0201DB20_count.count[row][list]; i++) { \
+    for (i = 0; i < CS_STATE.count[row][list]; i++) { \
         u16 card = cards[i]; \
-        if (CARD_TYPE(card) == (typeValue)) total += sub_0806C534(list, card); \
+        if (CS_KIND(card) == (typeValue)) total += sub_0806C534(list, card); \
     }
+/* Sums sub_0806C534 copy counts over list `list`'s current row for category 1-6
+ * (frame kind 0/1/2, Magic, Trap, frame kind 3). */
 u32 sub_0806C590(u8 list, u8 category)
 {
-    s16 total = 0;
-    u8 row = gUnk_0201DB20_count.row[list];
+    u16 total = 0;
+    u8 row = CS_STATE.row[list];
     u16 *cards;
     u16 i;
     switch (list) {
-    case 0: cards = gUnk_0201DB20_count.lists.l0[row]; break;
-    case 1: cards = gUnk_0201DB20_count.lists.l1.cards[row]; break;
-    case 2: cards = gUnk_0201DB20_count.lists.l2.cards[row]; break;
+    case 0: cards = CS_STATE.lists.l0[row]; break;
+    case 1: cards = CS_STATE.lists.l1.cards[row]; break;
+    case 2: cards = CS_STATE.lists.l2.cards[row]; break;
     }
     switch (category) {
     case 1: COUNT_KIND(0); break;
@@ -158,8 +165,6 @@ u32 sub_0806C590(u8 list, u8 category)
     }
     return total;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806C4E4", sub_0806C590); /* 0x0806C590 size 0x5D8 */
 struct Save { u8 pad[0x20C6]; u16 total, main, side, extra; };
 extern struct Save gUnk_02011C20_s asm("gUnk_02011C20");
 struct CountRow { u16 count, percent; };

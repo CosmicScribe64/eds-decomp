@@ -92,14 +92,14 @@ void sub_08010C14(void)
         break;
     }
 }
-#if 0 /* NONMATCHING: register allocation only. The 0xF mask constant gets its
-       * own pseudo-register (r7), and `zone -= 5` is rematerialised as r7-20
-       * instead of r0(=1)-6. */
 /*
  * Set/activate a magic or trap card: moves hand card (arg4 bits 4-7) of the
  * acting player to spell/trap zone (arg4 bits 0-3; values 5..9 map to 0..4), or
  * to the field zone when the card is a Field magic. arg2 = card ID.
  */
+#define CSTATS_C(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define CTYPE_C(id) ((CSTATS_C(id) & 0x1F00000) >> 20)
+#define CSUB_C(id) ((CSTATS_C(id) & 0xE0000) >> 17)
 void sub_08010D94(void)
 {
     struct DuelLoc from, to;
@@ -130,7 +130,7 @@ void sub_08010D94(void)
         to.index = zone;
         to.flag14 = 0;
         to.flag15 = flag15;
-        if (CARD_TYPE(cardId) == 22 && CARD_SUBTYPE(cardId) == 2) {
+        if (CTYPE_C(cardId) == 22 && CSUB_C(cardId) == 2) {
             /* Field magic goes to the field zone */
             to.player = player;
             to.area = 10;
@@ -150,8 +150,6 @@ void sub_08010D94(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08010BDC", sub_08010D94); /* 0x08010D94 size 0x1F0 */
 
 void sub_08010F84(void)
 {

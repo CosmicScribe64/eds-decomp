@@ -399,7 +399,9 @@ int sub_080397F8(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the loop hoisting order and registers of the zone scan differ (ROM: 1, 0xD64, zone base and 2 in r8, r6, r5, r4), as does the register allocation of the three 0x0201CFB0 field addresses in step 0x7D */
+/* The card-name table is addressed as an integer constant (like CARD_NUMBER): the const_int stays in the add and
+ * reload loads it into the rotating reload register (r0 in case 0x7F, r3 in 0x7E), which the extern symbol does not. */
+#define NAMES_0822C720 ((const u8 *)0x0822C720)
 int sub_080398B0(struct CardRef *ref)
 {
     char buf[0x80];
@@ -415,9 +417,10 @@ int sub_080398B0(struct CardRef *ref)
                 return 0;
             for (i = 0; i <= 1; i++) {
                 int j;
-                struct DuelZone *z = gUnk_0201930C[i & 1].zones;
 
-                for (j = 0; j <= 4; j++, z++) {
+                for (j = 0; j <= 4; j++) {
+                    struct DuelZone *z = ZB2(i & 1, j);
+
                     if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2))
                         goto ret7F;
                 }
@@ -425,14 +428,14 @@ int sub_080398B0(struct CardRef *ref)
             return 0;
         }
         case 0x7F:
-            sub_080753F4(buf, gUnk_08083468, gUnk_0822C720 + ref->id * 64);
+            sub_080753F4(buf, gUnk_08083468, NAMES_0822C720 + ref->id * 64);
             sub_080602A4(0x206, 0x712, 0xB, buf);
             sub_08060308(1, 0, 0);
             return 0x7E;
         case 0x7E:
             if (gUnk_0201AE60.flag14 == 0)
                 return 0;
-            sub_080753F4(buf, gUnk_080834CC, gUnk_0822C720 + ref->id * 64);
+            sub_080753F4(buf, gUnk_080834CC, NAMES_0822C720 + ref->id * 64);
             sub_080602A4(0x206, 0x712, 0xB, buf);
         ret7D:
             return 0x7D;
@@ -447,7 +450,7 @@ int sub_080398B0(struct CardRef *ref)
                 c = DSV->w828 + DSV->w82C;
                 r = sub_08008C6C(ref->player);
                 sub_08077AEC(1);
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, (u16)DSV->w824, (u8)DSV->w82C << 8 | (u8)DSV->w828, 0);
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, (u16)DSV->w824, (u8)DSV->w828 | (u8)DSV->w82C << 8, 0);
                 sub_08009C08(ref->player, ref->id, (int *)(w = &ESH->lo));
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, w[0], w[1], 0);
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8077 : 0x77, (u8)r | 0x100, w[0], w[1]);
@@ -463,8 +466,6 @@ int sub_080398B0(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08039638", sub_080398B0); /* 0x080398B0 size 0x254 */
 int sub_08039B04(struct CardRef *ref)
 {
     if (!ref->skip4 && sub_08008A1C(ref->player) > 3) {

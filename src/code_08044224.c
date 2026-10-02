@@ -205,7 +205,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 2489): 0x3F0 player loop uses j (same var as dedupe/tail j): j r6; wf 2489 */
+#if 0 /* NONMATCHING (score 2363): tail loop 1 t-form; wf 2363 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -1109,7 +1109,8 @@ u16 sub_08044224(int player, u16 number, int arg)
     fieldCount = sub_08008668(player);
     if ((forceFilter || fieldCount == 0) && !skipFilter) {
         for (i = 0; i < gUnk_0201D810.count;) {
-            if (sub_0800756C(TARGET_NUMBER(TARGET_ID(gUnk_0201D810.cards[i]))) != 0) {
+            u32 *t = gUnk_0201D810.cards;
+            if (sub_0800756C(TARGET_NUMBER(TARGET_ID(t[i]))) != 0) {
                 /* Retain the ROM's final one-past-count copy and untouched area tags. */
                 for (j = i; j < gUnk_0201D810.count; j++)
                     gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];

@@ -419,227 +419,263 @@ typedef char effect_ref_offset_check[(u32)&((struct EffectStateView *)0)->select
 typedef char effect_cursor_flags_check[(u32)&((struct DuelSelectionView *)0)->flags == 0x1B2C ? 1 : -1];
 
 
-#if 0 /* NONMATCHING: candidate 0x638 vs ROM 0x664; block layout, extraction
-       * and allocation differ. It compiles, but behavior is not differentially
-       * verified. */
-int sub_0804244C(void) {
-    int text[0x100];
-    s32 area;
-    s32 selectedArea;
-    s32 level;
-    u16 player;
-    s32 index;
-    s32 sound;
-    s32 message;
-    u16 zoneMessage;
-    s32 keyMask;
-    s16 slot;
-    u16 accepted;
-    u16 choice;
-    u32 id;
-    u32 packedPlayer;
-    u32 packedZone;
-    int savedPackedZone;
-    u32 savedPackedPlayer;
-    u32 zoneKind;
-    int baseArea;
-    u32 packedIndex;
-    u8 *refBytes;
-    u8 *storeStep;
-    u8 *storeFlags;
-    u8 toggledFlags;
-    u8 startFlags;
-    s16 step;
-    int nextStep;
-    int nextStepValue;
-    int completedFlags;
-    u8 branchStep;
+struct Sel44C {
+    u16 flag0 : 1;
+    u16 active : 1;
+    u16 cursor : 4;
+    u16 rows : 4;
+    u32 mask : 16;
+    u32 state : 8;
+    u32 unk34 : 8;
+    u32 unk42 : 8;
+    u16 timer : 7;
+    u16 player : 1;
+    u32 zone : 7;
+    u16 index : 8;
+    u16 unk73 : 7;
+};
+struct D44C {
+    u8 unk0[0x1B12];
+    u8 turnFlags;
+    u8 unk1B13[0x1B28 - 0x1B13];
+    u16 cardId;
+    u8 unk1B2A[2];
+    struct Sel44C sel;
+};
+extern struct D44C gAliasB_020192E0;
+#define gD44C gAliasB_020192E0
+#define SEL44 gD44C.sel
+struct Z44C { u32 card; u8 unk4, unk5, flags6; u8 unk7[0x94 - 7]; };
+#define ZN44(p, z) ((struct Z44C *)((p) * 0xD64 + (z) * 0x94 + (u32)((u8 *)&gD44C + 0x2C)))
+struct E44C {
+    u8 unk0[0x48A];
+    u16 zone;           /* 0x48A */
+    u32 arg;            /* 0x48C */
+    u8 step;            /* 0x490 */
+    u8 lo : 4;          /* 0x491 */
+    u8 b4 : 1;
+    u8 b5 : 1;
+    u8 f6 : 1;
+    u8 f7 : 1;
+    u8 unk492[0x4A8 - 0x492];
+    struct CardRef ref; /* 0x4A8 */
+};
+extern struct E44C gAliasB_02017A40;
+#define gE44C gAliasB_02017A40
+struct W44C { u8 unk0[0x14]; u16 h14; };
+extern struct W44C gAliasB_0201AE60;
+struct K44C { u8 unk0[6]; u16 h6; };
+extern struct K44C gAliasB_03000040;
+struct C44C { u8 unk0[0x824]; u32 w824, w828, w82C; };
+extern struct C44C gAliasB_0201CFB0;
+struct F44C { u8 unk0[0x307]; u8 lo3 : 3; u8 b3 : 1; u8 hi : 4; };
+extern struct F44C gAliasB_02017FB0;
+void sub_0801DC04(void);
+void sub_0801EC58(u16 cmd, u16 a, u16 b, u16 c);
+void sub_0801FBCC(u32 a, u32 b);
+void sub_0802AF34(int player, int area, int a, int b);
+void sub_08049048(int a, int b, struct CardRef *ref);
+int sub_08052F38(u32 keys);
+int sub_08058514(struct CardRef *ref, int a);
+u32 sub_0805ECFC(void);
+void sub_080602A4(u16 a, u16 b, u16 c, const u8 *text);
+void sub_08060308(u16 mode, void (*cb1)(void), u16 (*cb2)(void));
+void sub_08077AEC(u32 sound);
 
-    step = gEffectState.requestStep;
-    switch (step) {
-    case 0xB:
-        baseArea = (u8) gDuelSelection.playerAndArea >> 2;
-        area = ((1 & gDuelSelection.index.byte[0]) << 6) | baseArea;
-        if (area != 5) {
-            if (area == 0xB) {
-                sub_08049048(1, 0, &gEffectState.queuedRef.ref);
-                if (2 & gDuelSelection.flags.byte[0]) {
-block_36:
-                    return 0;
-                }
-            }
-            goto block_63;
-        }
-        gDuelSelection.flags.byte[0] = (u8) (-3 & gDuelSelection.flags.byte[0]);
-        packedIndex = (u32)gDuelSelection.index.word << 0x17;
-        selectedArea = ((1 & gDuelSelection.index.byte[0]) << 6) | baseArea;
-        if (!(2 & *(gUnk_020192E0 + 0x2C + ((((packedIndex >> 0x18) + selectedArea) * 0x94) + (0xD64 * (1 & ((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F)))) + 6))) {
-            message = 0x7F;
-            if (2 & gDuelSelection.playerAndArea) {
-                message = 0x807F;
-            }
-            sub_0801EC58(message, (packedIndex >> 0x18) + selectedArea, 0, 0);
-        }
-        sub_0801FBCC((((u32) ((u32)gDuelSelection.playerAndArea << 0x1E) >> 0x1F) << 0x1F) | (((u8) gEffectState.queuedRef.raw.flags.byte[1] >> 2) << 0x19) | ((((((u32) ((u32)gDuelSelection.index.word << 0x17) >> 0x18) + (((1 & gDuelSelection.index.byte[0]) << 6) | ((u8) gDuelSelection.playerAndArea >> 2))) & 0x1F) << 0x10) | 0x200000) | gDuelSelection.cardId, ((u32)gEffectState.queuedRef.ref.unk8 << 0x10) | gEffectState.queuedRef.ref.pos);
-block_63:
-        gEffectState.requestFlags = (u8) ((0x80 | gEffectState.requestFlags) & ~0x40);
-block_90:
-        return 1;
-    case 0x2:
-        if (gEffectWait.pending == 0) {
-block_68:
-            nextStep = 0xF0;
-block_69:
-            gEffectState.requestStep = nextStep;
-        } else {
-            gDuelSelection.flags.byte[0] = (u8) (-2 & gDuelSelection.flags.byte[0] & ~2);
-            gEffectState.requestStep = 0xAU;
-        }
-        goto block_36;
-    case 0xA:
-        if (1 & gDuelSelection.flags.byte[0]) {
-            sub_0801DC04();
-        } else {
-            if (2 & gDuelSelection.flags.byte[0]) {
-                nextStep = gEffectState.requestStep + 1;
-                goto block_69;
-            }
-            if (2 & gEffectKeys.pressed) {
-                gEffectState.requestStep = 1U;
-            } else {
-                keyMask = 0xE;
-                if (!(2 & gDuelSelection.turnFlags)) {
-                    keyMask = 0xF;
-                }
-                if (sub_08052F38(keyMask) != 0) {
-                    player = gEffectCursor.player;
-                    zoneKind = gEffectCursor.area;
-                    index = gEffectCursor.index;
-                    choice = sub_0805ECFC();
-                    switch (zoneKind) {
-                    case 0:
-                    case 5:
-                    case 10:
-                    case 11:
-                        if (choice != 0) {
-                            gDuelSelection.flags.byte[0] = (u8) (1 | gDuelSelection.flags.byte[0]);
-                            gDuelSelection.flags.byte[3] = (u8) (3 & gDuelSelection.flags.byte[3]);
-                            gDuelSelection.auxiliaryFlags = (u8) (-4 & gDuelSelection.auxiliaryFlags);
-                            gDuelSelection.flags.word = (u32) ((gDuelSelection.flags.word & 0xFC0003FF) | ((u32) ((u32)sub_08042078(&gUnk_02017EE8, player, (s32) zoneKind, index) << 0x10) >> 6));
-                        } else {
-                            sound = 3;
-block_53:
-                            sub_08077AEC(sound);
-                        }
-                        break;
-                    case 13:
-                        sound = 3;
-                        goto block_53;
-                    case 12:
-                    case 14:
-                    case 15:
-                        sub_0802AF34(player, zoneKind, 0, 0);
-                        sound = 1;
-                        goto block_53;
-                    }
-                }
-            }
-        }
-        goto block_36;
-    case 0xC8:
-        slot = 5;
-loop_72:
-        id = (u32) (*(u32 *)((u8 *)gUnk_0201930C + slot * 0x94 + 0xD64 * ((u32)((u32)gEffectState.requestFlags << 0x1B) >> 0x1F)) << 0x14) >> 0x14;
-        if ((id != 0) && (level = sub_0802CD28((u16) id), refBytes = gUnk_02017A40 + 0x4A8, accepted = (u16) sub_08041DC4((struct CardRef *) refBytes, (s32) ((u32) ((u32)gEffectState.requestFlags << 0x1B) >> 0x1F), slot), (level > 1)) && (accepted != 0) && (sub_08058514((struct CardRef *) refBytes, 0) != 0)) {
-            gEffectState.requestFlags = (u8) ((-0x10 & gEffectState.requestFlags) | (slot & 0xF));
-            storeStep = &gEffectState.requestStep;
-            nextStepValue = gEffectState.requestStep + 1;
-        } else {
-            slot += 1;
-            if (slot > 9) {
-                storeStep = &gEffectState.requestStep;
-                nextStepValue = 0xF0;
-            } else {
-                goto loop_72;
-            }
-        }
-        *storeStep = nextStepValue;
-        goto block_36;
-    case 0x64:
-        sub_080229BC(0xF051U, gUnk_02017A40 + 0x4A8, 0x14);
-        gEffectState.requestFlags = (u8) (0x7F & gEffectState.requestFlags);
-        gUnk_02017FB0[0x307] = (u8) (-9 & gUnk_02017FB0[0x307]);
-        nextStep = gEffectState.requestStep + 1;
-        goto block_69;
-    case 0x65:
-        if ((s32) ((u32)gUnk_02017FB0[0x307] << 0x1C) >= 0) {
-            goto block_36;
-        }
-        storeFlags = &gEffectState.requestFlags;
-        if (!(0x80 & gEffectState.requestFlags)) {
-            goto block_68;
-        }
-        completedFlags = -0x41 & gEffectState.requestFlags;
-block_89:
-        *storeFlags = completedFlags;
-        goto block_90;
-    case 0xC9:
-        savedPackedZone = (u32)gEffectState.requestFlags << 0x1C;
-        if (!(2 & *((u8 *)gUnk_0201930C + (savedPackedZone >> 0x1C) * 0x94 + 0xD64 * ((u32)((u32)gEffectState.requestFlags << 0x1B) >> 0x1F) + 6))) {
-            zoneMessage = 0x7F;
-            if (0x10 & gEffectState.requestFlags) {
-                zoneMessage = 0x807F;
-            }
-            sub_0801EC58(zoneMessage, savedPackedZone >> 0x1C, 0, 0);
-        }
-        savedPackedPlayer = (u32)gEffectState.requestFlags << 0x1B;
-        packedZone = (u32)gEffectState.requestFlags << 0x1C;
-        sub_0801FBCC(((savedPackedPlayer >> 0x1F) << 0x1F) | (((u8) gEffectState.queuedRef.raw.flags.byte[1] >> 2) << 0x19) | ((packedZone >> 0xC) | 0x200000) | ((u32) (*(u32 *)((u8 *)gUnk_0201930C + 0x94 * (packedZone >> 0x1C) + 0xD64 * (savedPackedPlayer >> 0x1F)) << 0x14) >> 0x14), ((u32)gEffectState.queuedRef.ref.unk8 << 0x10) | gEffectState.queuedRef.ref.pos);
-        gEffectState.requestFlags = (u8) ((0x80 | gEffectState.requestFlags) & ~0x40);
-        goto block_90;
-    case 0xF0:
-        toggledFlags = (-0x11 & gEffectState.requestFlags) | (((1 - ((u32) ((u32)gEffectState.requestFlags << 0x1B) >> 0x1F)) & 1) * 0x10);
-        gEffectState.requestFlags = toggledFlags;
-        if (((u32) ((u32)toggledFlags << 0x1B) >> 0x1F) != ((u32) ((u32)toggledFlags << 0x1A) >> 0x1F)) {
-            gEffectState.requestStep = 0U;
+/* Effect-request step machine on 0x02017A40+0x490: queue the request (step 0), describe it and
+ * wait for the link reply (1/2), let the player pick a zone or hand card (10/11, widget at
+ * 0x020192E0+0x1B2C), or search spell/trap zones 5-9 for a usable card (200/201); 100/101 send
+ * and await the link message, 240 flips the player bit. Returns 1 when the request is finished. */
+int sub_0804244C(void)
+{
+    u8 text[0x100];
+    int slot;
+    int st = gE44C.step;
+
+    switch ((u8)st) {
+    case 0:
+        gE44C.f7 = 0;
+        gE44C.ref.id = 0;
+        gE44C.ref.player = gE44C.b4;
+        gE44C.ref.kind = gE44C.zone;
+        gE44C.ref.pos = gE44C.arg;
+        gE44C.ref.unk8 = gE44C.arg >> 16;
+        if ((u16)sub_080420A4(gE44C.b4) == 0) {
+            gE44C.step = 0xF0;
             return 0;
         }
-        goto block_90;
-    case 0x0:
-        startFlags = 0x7F & gEffectState.requestFlags;
-        gEffectState.requestFlags = startFlags;
-        gEffectState.queuedRef.raw.id = (s16) step;
-        gEffectState.queuedRef.raw.flags.byte[0] = (u8) ((-2 & gEffectState.queuedRef.raw.flags.byte[0]) | (packedPlayer >> 0x1F));
-        packedPlayer = (u32)startFlags << 0x1B;
-        gEffectState.queuedRef.raw.flags.byte[1] = (u8) ((3 & gEffectState.queuedRef.raw.flags.byte[1]) | (gEffectState.requestedZone.byte[0] * 4));
-        gEffectState.queuedRef.ref.pos = (u16) gEffectState.requestedArg;
-        gEffectState.queuedRef.ref.unk8 = (u16) ((u32) gEffectState.requestedArg >> 0x10);
-        if (((u32)sub_080420A4(packedPlayer >> 0x1F) << 0x10) == 0) {
-            goto block_68;
-        }
-        gEffectState.requestStep = (u8) (gEffectState.requestStep + 1);
-    case 0x1:
-        if (0x10 & gEffectState.requestFlags) {
-            branchStep = 0xC8;
-            if (1 & gUnk_02015EE8.b1) {
-                branchStep = 0x64;
-            }
-            gEffectState.requestStep = branchStep;
+        gE44C.step++;
+    case 1:
+        if (gE44C.b4) {
+            u8 s;
+            if (gUnk_02015EE8.b1 & 1)
+                s = 0x64;
+            else
+                s = 0xC8;
+            gE44C.step = s;
         } else {
-            sub_0804218C(&gEffectState.queuedRef.ref, text);
+            sub_0804218C(&gE44C.ref, text);
             sub_080602A4(0x204, 0x916, 0xB, text);
             sub_08060308(1, NULL, NULL);
-            gEffectState.requestStep = (u8) (gEffectState.requestStep + 1);
+            gE44C.step++;
         }
-        goto block_36;
+        return 0;
+    case 2:
+        if (gAliasB_0201AE60.h14 == 0) {
+            gE44C.step = 0xF0;
+            return 0;
+        }
+        gE44C.step = 0xA;
+        SEL44.flag0 = 0;
+        SEL44.active = 0;
+        return 0;
+    case 0xA:
+        if (SEL44.flag0) {
+            sub_0801DC04();
+            return 0;
+        }
+        if (SEL44.active) {
+            gE44C.step++;
+            return 0;
+        }
+        if (gAliasB_03000040.h6 & 2) {
+            gE44C.step = 1;
+            return 0;
+        }
+        {
+            u32 keys = 0xE;
+            if (!(gD44C.turnFlags & 2))
+                keys = 0xF;
+            if (sub_08052F38(keys) == 0)
+                return 0;
+        }
+        {
+            u32 p = gAliasB_0201CFB0.w824;
+            u32 area = gAliasB_0201CFB0.w828;
+            u32 idx = gAliasB_0201CFB0.w82C;
+            u16 choice = sub_0805ECFC();
+            switch (area) {
+            case 0:
+            case 5:
+            case 10:
+            case 11:
+                if (choice != 0) {
+                    SEL44.flag0 = 1;
+                    SEL44.state = 0;
+                    SEL44.mask = (u16)sub_08042078(&gUnk_02017EE8, p, area, idx);
+                    return 0;
+                }
+                sub_08077AEC(3);
+                return 0;
+            case 13:
+                sub_08077AEC(3);
+                return 0;
+            case 12:
+            case 14:
+            case 15:
+                sub_0802AF34(p, area, 0, 0);
+                sub_08077AEC(1);
+                return 0;
+            }
+        }
+        return 0;
+    case 0xB:
+        switch (SEL44.zone) {
+        case 0xB:
+            sub_08049048(1, 0, &gE44C.ref);
+            if (SEL44.active)
+                return 0;
+            break;
+        case 5:
+            SEL44.active = 0;
+            {
+                u32 p = 1 & SEL44.player;
+                if (!(ZN44(p, SEL44.index + SEL44.zone)->flags6 & 2)) {
+                    u16 msg;
+                    if (SEL44.player)
+                        msg = 0x807F;
+                    else
+                        msg = 0x7F;
+                    sub_0801EC58(msg, SEL44.index + SEL44.zone, 0, 0);
+                }
+            }
+            {
+                /* hi/z temporaries stop fold from moving the 0x200000 constant out of the zone term */
+                u32 hi = ((1 & SEL44.player) << 31) | (gE44C.ref.kind << 25);
+                u32 z = (((SEL44.index + SEL44.zone) & 0x1F) << 16) | 0x200000;
+                sub_0801FBCC(hi | z | gD44C.cardId, gE44C.ref.pos | (gE44C.ref.unk8 << 16));
+            }
+            break;
+        }
+        gE44C.f7 = 1;
+        gE44C.f6 = 0;
+        return 1;
+    case 0x64:
+        sub_080229BC(0xF051, &gE44C.ref, 0x14);
+        gE44C.f7 = 0;
+        gAliasB_02017FB0.b3 = 0;
+        gE44C.step++;
+        return 0;
+    case 0x65:
+        /* FAKEMATCH: "& 1" keeps fold from turning the bitfield test into a mask test (ROM tests via lsl #28) */
+        if (!(gAliasB_02017FB0.b3 & 1))
+            return 0;
+        if (!gE44C.f7) {
+            gE44C.step = 0xF0;
+            return 0;
+        }
+        gE44C.f6 = 0;
+        return 1;
+    case 0xC8:
+        for (slot = 5; slot <= 9; slot++) {
+            u32 id = ZN44(1 & gE44C.b4, slot)->card << 20 >> 20;
+            if (id != 0) {
+                int n = sub_0802CD28(id);
+                int ok = (u16)sub_08041DC4(&gE44C.ref, gE44C.b4, slot);
+                if (n > 1 && ok != 0 && sub_08058514(&gE44C.ref, 0) != 0)
+                    goto found;
+            }
+        }
+        gE44C.step = 0xF0;
+        return 0;
+    case 0xC9:
+        if (!(ZN44(gE44C.b4, gE44C.lo)->flags6 & 2)) {
+            u16 msg;
+            if (gE44C.b4)
+                msg = 0x807F;
+            else
+                msg = 0x7F;
+            sub_0801EC58(msg, gE44C.lo, 0, 0);
+        }
+        {
+            u32 hi = (gE44C.b4 << 31) | (gE44C.ref.kind << 25);
+            u32 z = (gE44C.lo << 16) | 0x200000;
+            sub_0801FBCC(hi | z | (ZN44(gE44C.b4, gE44C.lo)->card << 20 >> 20),
+                         gE44C.ref.pos | (gE44C.ref.unk8 << 16));
+        }
+        gE44C.f7 = 1;
+        gE44C.f6 = 0;
+        return 1;
+    case 0xF0:
+        {
+            /* FAKEMATCH: the int temporary keeps combine from turning (1 - b4) & 1 into an eor */
+            int t = 1 - gE44C.b4;
+            gE44C.b4 = t;
+        }
+        if (gE44C.b4 != gE44C.b5) {
+            gE44C.step = 0;
+            return 0;
+        }
+        return 1;
+    found:
+        gE44C.lo = slot;
+        gE44C.step++;
+        return 0;
     default:
-        storeFlags = &gEffectState.requestFlags;
-        completedFlags = -0x41 & gEffectState.requestFlags;
-        goto block_89;
+        gE44C.f6 = 0;
+        return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08041F9C", sub_0804244C); /* 0x0804244C size 0x664 */
 /* Queue a request (player, zone, 32-bit arg): sent as a message when the link flags allow, else stored in the 0x02017A40 request block. */
 void sub_08042AB0(int player, u16 zone, u32 arg)
 {

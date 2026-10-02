@@ -427,14 +427,39 @@ static inline u8 GetRecipeCardLevelV(u16 id)
     }
     return v;
 }
-#if 0 /* NONMATCHING: same size as target (0x594); only register allocation differs (ref in r8 vs r9 fixed by the nv/m locals, remaining: 0x80 call temps, an extra copy in the 0x64 hoist, r6/r7-style swaps in the 0x78 word loop). Needs: volatile re-read FAKEMATCH, nv/m locals */
+#if 0 /* NONMATCHING (score 4): NONMATCHING: 4 lines: only the case 0x64 hoist of hand base differs (built 'adds
+       * r0,r1,#0; ldr r1,=0x684; adds r0,r0,r1', ROM 'ldr r0,=0x684; adds r0,r0,r1': ROM's hoisted add has the 0x684
+       * pseudo as first operand). Keys: function-level u32 tab = gUnk_08622AB4 local (rematerialized as a reload in the
+       * hand loop, fixes reload rotation) with index-first (cid & 0x7FF) * 2 + tab; gUnk_02019968 symbol directly in the
+       * hand-word address (local-alloc tie p vs i*4); cast table ((const u16 *)0x08623DF4)[n] in case 0x80; u8 temp for
+       * need (ref r9/ok r8 priority); u16-type level helper W for levels 2/3 (cid r7/num r6 priority); volatile re-read
+       * of need (FAKEMATCH). Failed for the hoist: GetRecipeHandWord/sum-of-address forms (80-98), hoff local, int p,
+       * 1&player. */
 /* Ritual summon executor (hypothesis): 0x80 checks the recipe and starts tribute selection, 0x78 lets the
  * CPU pick tributes by level, 0x64 finds the ritual monster in hand, 0x63 plays it. */
+static inline u8 GetRecipeCardLevelW(u16 id)
+{
+    u16 type = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
+    u8 v;
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        v = 0;
+        break;
+    case 0x18:
+        v = 10;
+        break;
+    default:
+        v = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+        break;
+    }
+    return v;
+}
 int sub_08043B98(struct CardRef *ref)
 {
     u16 id = ref->id;
-    u32 nv;
-    u32 m;
+    u32 tab = (u32)gUnk_08622AB4;
     int i;
 
     u8 skip;
@@ -442,7 +467,6 @@ int sub_08043B98(struct CardRef *ref)
     if ((skip = REF_SKIP(ref)) != 0)
         return 0;
     {
-    nv = (u32)gUnk_02019968;
     switch (gUnk_02017A40[0x3E0]) {
     case 0x80: {
         int idx;
@@ -450,10 +474,10 @@ int sub_08043B98(struct CardRef *ref)
         EQ->need = skip;
         n = 0x58A;
         if (sub_08008524(0, n) > 0) {
-            sub_080197E0(ref->player, *(gUnk_08623DF4 + n));
+            sub_080197E0(ref->player, ((const u16 *)0x08623DF4)[n]);
             return 0;
         } else if (sub_08008524(1, n) > 0) {
-            sub_080197E0(ref->player, *(gUnk_08623DF4 + n));
+            sub_080197E0(ref->player, ((const u16 *)0x08623DF4)[n]);
             return 0;
         }
         if ((u16)((int (*)(struct CardRef *, int, int))sub_08043AA8)(ref, 0, 0) == 0)
@@ -461,7 +485,7 @@ int sub_08043B98(struct CardRef *ref)
         idx = sub_0804353C(ref->id);
         if (idx < 0 || (u16)sub_08043594(ref->player, idx) == 0)
             return 0;
-        EQ->need = gUnk_0819A990[idx].cnt;
+        { u8 c = gUnk_0819A990[idx].cnt; EQ->need = c; }
         gUnk_02017A40[0x510] = *(volatile u8 *)&EQ->need;
         if (ref->player)
             return 0x78;
@@ -488,20 +512,19 @@ int sub_08043B98(struct CardRef *ref)
         int handIdx = -1;
         int fieldLv = 0;
         int fieldIdx = -1;
-        m = 0x7FF;
         if (sub_08008860(ref->player) <= 4) {
             for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
                 int ok = 1;
                 int lv;
-                u16 cid = (*(u32 *)((ref->player & 1) * 0xD64 + i * 4 + nv) << 20) >> 20;
-                const u16 *num = &gUnk_08622AB4[cid & m];
+                u16 cid = (*(u32 *)((ref->player & 1) * 0xD64 + i * 4 + (u32)gUnk_02019968) << 20) >> 20;
+                const u16 *num = (const u16 *)((cid & 0x7FF) * 2 + tab);
                 if (*num == gUnk_0819A990[sub_0804353C(id)].a && sub_0800A2A8(ref->player, *num) <= 1)
                     ok = 0;
                 lv = GetRecipeCardLevelV(cid);
                 if (lv <= 0)
                     ok = 0;
-                if (ok && handLv < GetRecipeCardLevelV(cid)) {
-                    handLv = GetRecipeCardLevelV(cid);
+                if (ok && handLv < GetRecipeCardLevelW(cid)) {
+                    handLv = GetRecipeCardLevelW(cid);
                     handIdx = i;
                 }
             }

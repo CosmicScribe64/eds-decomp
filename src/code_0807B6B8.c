@@ -210,15 +210,12 @@ struct OamEntry *sub_0807B6B8(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h, u8 
     e->h = pal << 12 | tile | prio << 10;
     return (struct OamEntry *)e;
 }
-#if 0 /* NONMATCHING: register allocation only. The target keeps count in sl
-       * and arg11 in r8, spilling the other u8 args; the build keeps arg11 in
-       * sl and spills count. Structure and call arguments match. */
 /* Draws a decimal number with sprites (digit sprite table `base`, 8 bytes per digit), right to left. */
 void sub_0807B864(u16 num, u8 count, u8 mode, u16 x, u16 y, u8 *base, u32 unused, u8 step, u8 h, u8 i, u8 g, u32 l)
 {
-    int n;
+    u8 n;
     u8 k = 0;
-    s16 d;
+    u16 d;
 
     switch (mode) {
     case 0:
@@ -236,15 +233,14 @@ void sub_0807B864(u16 num, u8 count, u8 mode, u16 x, u16 y, u8 *base, u32 unused
                 d = num % 10;
                 num = num / 10;
                 if (d == 0 && num == 0)
-                    break;
+                    return;
                 sub_08077EF4(base + d * 8, 0, 1, x - k++ * step, y, 2, g, h, i, 0, 0, l);
             }
         }
         break;
     }
+    num++; /* FAKEMATCH: dead late use of num makes CSE keep num (not k) as the zero register */
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807B864); /* 0x0807B864 size 0x170 */
 void sub_0807B9D4(u16 x0, u16 y0, u16 x1, u16 y1, u16 dur, u16 b, struct Tween *t, u8 mode)
 {
     switch (mode) {
@@ -788,7 +784,7 @@ struct PwView {
     u8 digits[8];   /* +0x00 entered digits */
     u8 shown[8];    /* +0x08 copy used for the lookup */
     u8 pos : 4;     /* +0x10 cursor position 0-7 */
-    u32 key : 4;    /*       selected key: 0-9 digits, 10 = OK */
+    u16 key : 4;    /*       selected key: 0-9 digits, 10 = OK (u16: keeps the A-press extraction separate) */
     u8 blink : 6;   /* +0x11 */
     u32 timer : 6;  /* +0x10 bits 14-19 */
     u16 c : 12;     /* +0x12 bits 4-15 */
@@ -802,10 +798,9 @@ void sub_08077AEC(int se);
 void sub_0801A7DC(const u8 *fmt, ...);
 void sub_0801A7E8(void);
 #define PW ((struct PwView *)gUnk_0201F7B0)
-struct KeysView { u8 pad[6]; u16 pressed; };
+struct KeysView { u8 pad[6]; u16 pressed; u8 pad2[0x4859 - 8]; u8 step; /* +0x4859 */ };
 extern struct KeysView gKeys_C4CC asm("gUnk_03000040");
 #define PW_KEYS (gKeys_C4CC.pressed)
-#if 0 /* NONMATCHING: 63 lines; A-button block: target extracts key as (b<<24)>>28 with an unsigned compare */
 /* Password entry, one frame: L/R move the cursor, the d-pad moves between keys, A enters a digit (or looks up
  * the password on OK), B deletes or cancels. Returns 1 when the screen is done. */
 u32 sub_0807C4CC(void)
@@ -874,18 +869,21 @@ u32 sub_0807C4CC(void)
         }
     }
     if (PW_KEYS & 2) {
-        if (PW->pos == 0)
-            goto cancel;
+        if (PW->pos == 0) {
+            /* Same tail as the L/R+B cancel below; cross-jumping merges the two copies, and keeping
+             * them separate stops GCSE from reusing this block's 0x03000040 register below. */
+            sub_08077AEC(2);
+            gKeys_C4CC.step = 10;
+            return 1;
+        }
         PW->pos--;
         PW->blink = 0x20;
         sub_08077AEC(0x25);
     }
-    if (!(PW_KEYS & 0xC))
-        return 0;
-cancel:
-    sub_08077AEC(2);
-    ((u8 *)&gUnk_03000040)[0x4859] = 10;
-    return 1;
+    if (PW_KEYS & 0xC) {
+        sub_08077AEC(2);
+        gKeys_C4CC.step = 10;
+        return 1;
+    }
+    return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807C4CC); /* 0x0807C4CC size 0x2FC */

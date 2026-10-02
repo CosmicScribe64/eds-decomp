@@ -815,11 +815,16 @@ extern const u16 gUnk_08623DF4[];
 void sub_08007558(void *dst, void *src);
 #define PL(p) gUnk_020192E4[(p) & 1]
 
-#if 0 /* NONMATCHING: the instructions are identical. The only differences are the callee-saved
-       * registers of player/id (ROM: player r8, id r9; built: r9, r8) and w sitting in r3
-       * instead of r2. */
 /* Adds the card encoded by `w` (0xFFFF = none, 0..0x7CF, or 0x7D0.. = second table + 1) to the front of a list of
    player `player`: the fusion list (+0xA44, count +5) for kind 2 cards, otherwise the deck (+0x7C4, count +3). */
+static inline u16 CardNumberToId58(u16 no)
+{
+    if (no == 0xFFFF)
+        return 0;
+    if (no < 2000)
+        return ((const u16 *)0x08623DF4)[no & 0x7FF];
+    return ((const u16 *)0x08623DF4)[(no - 2000) & 0x7FF] + 1;
+}
 void sub_08058EDC(int player, u16 w)
 {
     u16 id;
@@ -827,15 +832,10 @@ void sub_08058EDC(int player, u16 w)
     int n;
     struct DuelCard *front;
 
-    if (w == 0xFFFF)
-        id = 0;
-    else if (w <= 0x7CF)
-        id = gUnk_08623DF4[w & 0x7FF];
-    else
-        id = gUnk_08623DF4[(w - 0x7D0) & 0x7FF] + 1;
+    id = CardNumberToId58(w);
     if (w > 0xFFF)
         return;
-    if (CARD_TYPE_A(id) <= 0x14) {
+    if (CARD_TYPE(id) <= 0x14) {
         switch (CARD_NUMBER(id)) {
         case 0x776:
             kind = 3;
@@ -845,7 +845,7 @@ void sub_08058EDC(int player, u16 w)
             kind = 1;
             break;
         default:
-            switch ((int)CARD_TYPE_A(id)) {
+            switch ((int)CARD_TYPE(id)) {
             case 0x16:
                 kind = 7;
                 break;
@@ -866,16 +866,15 @@ void sub_08058EDC(int player, u16 w)
                 sub_08007558(&PL(player).fusionDeck[n], &PL(player).fusionDeck[n - 1]);
             PL(player).fusionCount++;
             front = &PL(player).fusionDeck[0];
-            goto store;
+            front->id = id;
+            front->unk12 = player;
+            return;
         }
     }
     for (n = PL(player).deckCount; n > 0; n--)
         sub_08007558(&PL(player).deck[n], &PL(player).deck[n - 1]);
-    front = &PL(player).deck[0];
     PL(player).deckCount++;
-store:
+    front = &PL(player).deck[0];
     front->id = id;
-    front->unk12 = player & 1;
+    front->unk12 = player;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08057EE0", sub_08058EDC); /* 0x08058EDC size 0x208 */

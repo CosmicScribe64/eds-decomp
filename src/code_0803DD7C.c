@@ -138,23 +138,18 @@ void sub_0803DE40(struct CardRef *ref, int a, int z)
     sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, a, (u8)lo << 8 | hi, 0);
     sub_0803DD7C(ref, (u8)a | (u8)z << 8);
 }
-#if 0 /* NONMATCHING: two differences. (1) The AI arm scales i<<2 into r4
-       * instead of r1 and then adds the base (the ROM does r4=r1+base). (2)
-       * The default arm parks the list base in r5 (the ROM uses r4, which
-       * frees after the switch), so base+0xC in r5 survives the call and is
-       * reused; this build recomputes it from caller-saved r2. Case 0/1 and
-       * everything else match. */
 /* Pick a card from the list viewer (its 12-bit id and the two halves become targets). */
 int sub_0803DEB8(struct CardRef *ref)
 {
     u8 *es;
     u8 *st;
+    u16 *c;
     if (1 & ((u8 *)ref)[2]) {
         int i;
         ref->numTargets = 0;
         i = sub_08056ECC(ref->id);
         if (i >= 0) {
-            u16 *c = (u16 *)((u8 *)gUnk_0201D81C + (i << 2));
+            c = (u16 *)((u8 *)gUnk_0201D81C + (i << 2));
             sub_08019820(ref->player, *(u32 *)c << 20 >> 20);
             sub_0803DD7C(ref, c[0]);
             sub_0803DD7C(ref, c[1]);
@@ -175,19 +170,14 @@ int sub_0803DEB8(struct CardRef *ref)
         sub_0802AF34(ref->player, -1, ((const u16 *)0x08622AB4)[0x7FF & ref->id], 0);
         (*st)++;
         return 0;
-    default: {
-        struct ListView *lv = &gUnk_0201D810;
-        u32 *c;
-        sub_08019820(ref->player, lv->cards[lv->top + lv->row] << 20 >> 20);
-        c = &lv->cards[lv->top + lv->row];
-        sub_0803DD7C(ref, ((u16 *)c)[0]);
-        sub_0803DD7C(ref, ((u16 *)c)[1]);
+    default:
+        sub_08019820(ref->player, gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row] << 20 >> 20);
+        c = (u16 *)&gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row];
+        sub_0803DD7C(ref, c[0]);
+        sub_0803DD7C(ref, c[1]);
         return 1;
     }
-    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803DD7C", sub_0803DEB8); /* 0x0803DEB8 size 0x12C */
 
 /* Auto-pick / choose a spell-trap zone target (zones 5-9): first the face-down ones of type 0x15, then any card not flagged. */
 int sub_0803DFE4(struct CardRef *ref)

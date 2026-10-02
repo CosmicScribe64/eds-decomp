@@ -430,148 +430,300 @@ void sub_0807A298(void *), sub_0807883C(void *);
     } \
     D.slots.entry[5].visible = 0; D.slots.count = 5; D.selectionTimer = 30
 
-#if 0 /* NONMATCHING: prior reviewed-frontier draft, 0x111C vs 0x1134, first diff +0x66A, 493 diff lines; see build/fable/sub_0806B3B0/NOTES.md */
+/* sub_0806B3B0 is a near copy of the matched sub_08070F18 (code_0807093C); these views
+ * mirror that unit's declarations so the shared code compiles identically. The menu arm
+ * (menuOpen == 1) differs: selector-driven exchange choices 2/3 and a 3-bit choice cycle. */
+struct B3Frame {
+    u8 pad0[0x618];
+    u8 transition[6];           /* +0x618 */
+    u8 transitionState;         /* +0x61E */
+    u8 pad61F[0x628 - 0x61F];
+    u8 tweenState;              /* +0x628 */
+    u8 pad629;
+    s16 tweenStep;              /* +0x62A */
+    u8 pad62C[0x1710 - 0x62C];
+    u8 redraw : 1;              /* +0x1710 bit 0 */
+    u8 redrawOther : 7;
+    u8 pad1711[0x17DA - 0x1711];
+    u8 frameDirty;              /* +0x17DA */
+    u8 pad17DB[0x1866 - 0x17DB];
+    s8 menuOwner;               /* +0x1866 */
+    u8 pad1867[0x1BB4 - 0x1867];
+    u8 previousArrowDirty;      /* +0x1BB4 */
+    u8 previousArrowState;      /* +0x1BB5 */
+    u8 nextArrowDirty;          /* +0x1BB6 */
+    u8 nextArrowState;          /* +0x1BB7 */
+    u8 rowCount;                /* +0x1BB8 */
+    u8 pad1BB9[0x1C14 - 0x1BB9];
+    u8 rowAnimationState;       /* +0x1C14 */
+    u8 pad1C15[0x1C20 - 0x1C15];
+    u8 menuAnimationState;      /* +0x1C20 */
+    u8 pad1C21[0x1C3C - 0x1C21];
+    u32 menuOtherLow : 15;      /* +0x1C3C */
+    u16 menuSelected : 3;       /* bits 15-17 */
+    u32 menuOtherHigh : 14;
+    u8 pad1C40[0x1C58 - 0x1C40];
+    u16 rowAnimationTimer;      /* +0x1C58 */
+};
+struct B3MenuRaw { u8 pad0[0x1C3C]; u32 word; };
+struct B3PhaseFields { u8 pad0[0x1C3D]; u8 phase : 3; u8 rest3D : 5; };
+struct B3RowFrame { u8 pad0[12]; u8 active; u8 padD[3]; };
+struct B3RowFields { u8 pad0[0x1BB8]; struct B3RowFrame rows[6]; };
+struct B3Tween { u8 state; u8 pad1; s16 value; u8 pad4[9]; u8 direction; };
+#define B3_FRAME (*(struct B3Frame *)&gUnk_0201DB20)
+#define B3_MENU_RAW (((struct B3MenuRaw *)&gUnk_0201DB20)->word)
+#define B3_PHASE (((struct B3PhaseFields *)&gUnk_0201DB20)->phase)
+#define B3_ROWS ((struct B3RowFields *)&gUnk_0201DB20)->rows
+#define B3_TWEEN (*(struct B3Tween *)gUnk_0201E148)
+#define B3_PSTATE ((u8 *)&gUnk_0201DB20)
+#define B3_CURLIST gUnk_0201F73C
+#define B3_CNT(list) (gUnk_0201DB20.count[gUnk_0201DB20.row[list]][list])
+#define B3_TWEEN_STATE B3_FRAME.tweenState
+#define B3_TWEEN_STEP B3_FRAME.tweenStep
+#define B3_CURVE gUnk_080875D2[B3_TWEEN_STEP]
+#define B3_LOOKUP ((u32 (*)(u8, u8, int))sub_08068D1C)
+#define B3_ROW_DRAW ((void (*)(int, u8 *, int, int, u32, int))sub_08065108)
+#define B3_SLOT ((void (*)(int, int, int, u8 *, u8 *))sub_0806664C)
+#define B3_DETAIL ((void (*)(int, u8 *, int, int, void *))sub_0806518C)
+#define B3_CLEAR ((void (*)(int, u8 *, int, int, void *))sub_08065384)
+#define B3_CARD ((void (*)(int, u32, int))sub_0807AFFC)
+#define B3_MISC ((void (*)(int, int, int, int))sub_08068E20)
+#define B3_EASE ((s32 (*)(s32, u16))sub_0807B4D0)
+#define B3_BLEND ((void (*)(u32))sub_0807B4A8)
+#define B3_SLIDE ((void (*)(u16, u16, u16 *))sub_08065F34)
+#define B3_SLIDE_DRAW ((void (*)(u16, u16, u16 *))sub_08065F78)
+#define B3_TICK ((void (*)(s16, u8, u8, u8 *, u8 *))sub_08066260)
+#define B3_SOUND ((void (*)(int))sub_08077AEC)
+#define B3_FADE sub_080787F4
+/* FAKEMATCH: same callee under other return types, so the menu transition calls are not cross-jumped. */
+#define B3_FADE_INT ((int (*)(u32, u32, u32, void *))sub_080787F4)
+#define B3_FADE_U16 ((u16 (*)(u32, u32, u32, void *))sub_080787F4)
+#define B3_TAIL0 ((void (*)(void))sub_0806699C)
 int sub_0806B3B0(void)
 {
-    struct { u32 zero; u16 row; } scratch;
-    u32 keys = gUnk_03000040.keys & 0x3FF;
-    u8 i;
+    u16 row;
+    /* FAKEMATCH: keep the original fill slot and its stack-store scheduling. */
+    volatile u32 clear;
+    u32 keys;
+    u8 slot;
+    u8 horizontalOffset;
+    u8 blend;
+    u8 *tail;
+    u8 *list;
+    u8 *objects;
+    struct DeckState *state;
+
+    keys = gUnk_03000040.keys & 0x3FF;
     sub_0807B114(gUnk_0201E148);
-    if (gUnk_0201E148[0x10E8] & 1) {
-        int direction = *(s16 *)(gUnk_0201E148 + 2);
-        if ((direction == 4 && gUnk_0201E148[0xD] == 3) ||
-            (direction == 3 && gUnk_0201E148[0xD] == 4)) {
-            D.flag1710 = 0;
-            scratch.zero = 0;
-            CpuFastSet(&scratch.zero, (void *)0x0600D000, 0x01000200);
-            if ((s16)gUnk_0201E140[gUnk_0201F73C] - 2 >= 0)
-                sub_08065108(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C] - 2), (void *)0x0600D000, 0, (u8)D.h63A >> 3, D.cardsWork, 1);
-            if ((s16)gUnk_0201E140[gUnk_0201F73C] - 1 >= 0)
-                sub_08065108(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C] - 1), (void *)0x0600D000, 0, ((D.h63A + 0x10) & 0xFF) >> 3, D.cardsWork, 2);
-            if ((s16)gUnk_0201E140[gUnk_0201F73C] + 1 < DCOUNT(gUnk_0201F73C))
-                sub_08065108(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C] + 1), (void *)0x0600D000, 0, ((D.h63A + 0x48) & 0xFF) >> 3, D.cardsWork, 4);
-            if ((s16)gUnk_0201E140[gUnk_0201F73C] + 2 < DCOUNT(gUnk_0201F73C))
-                sub_08065108(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C] + 2), (void *)0x0600D000, 0, ((D.h63A + 0x58) & 0xFF) >> 3, D.cardsWork, 5);
-            sub_08079834(0, (void *)0x0600C000, 0, ((D.h63E + 0x20) & 0xFF) >> 3, 30, 6, D.cardsWork);
-            if (DCOUNT(gUnk_0201F73C) != 0) {
-                sub_0806518C(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C]), (void *)0x0600C000, 0, ((D.h63E + 0x20) & 0xFF) >> 3, D.cardsWork);
-                sub_080657F8(0);
-                sub_08065AB4((void *)0x0600C000, 11, ((D.h63E + 0x38) & 0xFF) >> 3, D.cardsWork);
-                sub_08065E6C((void *)0x0600C000, 17, ((D.h63E + 0x38) & 0xFF) >> 3, 6);
-            } else {
-                sub_08065384(sub_08068D1C(gUnk_0201F73C, DROW(gUnk_0201F73C), gUnk_0201E140[gUnk_0201F73C]), (void *)0x0600C000, 0, ((D.h63E + 0x20) & 0xFF) >> 3, D.cardsWork);
-            }
+    /* Crossing the midpoint of a horizontal page slide changes the visible rows. */
+    if ((*((u8 *)&gUnk_0201E148 + 0x10E8) & 1) &&
+        ((B3_TWEEN.value == 4 && B3_TWEEN.direction == 3) ||
+         (B3_TWEEN.value == 3 && B3_TWEEN.direction == 4))) {
+        B3_FRAME.redraw = 0;
+        clear = 0;
+        CpuFastSet((const void *)&clear, (void *)0x0600D000, 0x01000200);
+        if ((s16)gUnk_0201E140[B3_CURLIST] - 2 >= 0) {
+            B3_ROW_DRAW(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST] - 2),
+                         (u8 *)0x0600D000, 0, (u8)gUnk_0201DB20.h63A >> 3, (u32)(B3_PSTATE + 0x640), 1);
+        }
+        if ((s16)gUnk_0201E140[B3_CURLIST] - 1 >= 0) {
+            B3_ROW_DRAW(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST] - 1),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x10) & 0xFF) >> 3, (u32)(B3_PSTATE + 0x640), 2);
+        }
+        if ((s16)gUnk_0201E140[B3_CURLIST] + 1 < B3_CNT(B3_CURLIST)) {
+            B3_ROW_DRAW(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST] + 1),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x48) & 0xFF) >> 3, (u32)(B3_PSTATE + 0x640), 4);
+        }
+        if ((s16)gUnk_0201E140[B3_CURLIST] + 2 < B3_CNT(B3_CURLIST)) {
+            B3_ROW_DRAW(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST] + 2),
+                         (u8 *)0x0600D000, 0, ((gUnk_0201DB20.h63A + 0x58) & 0xFF) >> 3, (u32)(B3_PSTATE + 0x640), 5);
+        }
+        sub_08079834(0, (void *)0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, 30, 6, B3_PSTATE + 0x640);
+        if (B3_CNT(B3_CURLIST) != 0) {
+            B3_DETAIL(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST]),
+                         (u8 *)0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, B3_PSTATE + 0x640);
+            sub_080657F8(0);
+            sub_08065AB4((u8 *)0x0600C000, 11, ((gUnk_0201DB20.h63E + 0x38) & 0xFF) >> 3, B3_PSTATE + 0x640);
+            sub_08065E6C((u8 *)0x0600C000, 17, ((gUnk_0201DB20.h63E + 0x38) & 0xFF) >> 3, 6);
+        } else {
+            B3_CLEAR(B3_LOOKUP(B3_CURLIST, gUnk_0201DB20.row[B3_CURLIST], gUnk_0201E140[B3_CURLIST]),
+                         (u8 *)0x0600C000, 0, ((gUnk_0201DB20.h63E + 0x20) & 0xFF) >> 3, B3_PSTATE + 0x640);
         }
     }
-    sub_08066260(D.ramp.current, D.ramp.phase, D.b635, D.sprites, &D.slots);
-    switch (D.b635) {
-    case 1: case 2:
+    B3_TICK(B3_TWEEN_STEP, B3_TWEEN_STATE, gUnk_0201DB20.b635, B3_PSTATE + 0x18B0, B3_PSTATE + 0x1BB8);
 
-        switch (D.ramp.phase) {
+    /* Directions 1/2 move vertically; 3/4 move a five-card page horizontally. */
+    switch (gUnk_0201DB20.b635) {
+    case 1:
+    case 2:
+        switch (B3_TWEEN_STATE) {
         case 1:
-            REG16(0x1C) = D.h630;
-            REG16(0x1E) = D.h632 + EASE(0x5000);
-            REG16(0x14) = D.h638;
-            REG16(0x16) = D.h63A + EASE(0x1000);
-            REG16(0x10) = D.h63C;
-            REG16(0x12) = D.h63E + EASE(0x2800);
+            REG16(0x1C) = gUnk_0201DB20.h630;
+            REG16(0x1E) = gUnk_0201DB20.h632 + (B3_EASE(0x5000, B3_CURVE) >> 8);
+            REG16(0x14) = gUnk_0201DB20.h638;
+            REG16(0x16) = gUnk_0201DB20.h63A + (B3_EASE(0x1000, B3_CURVE) >> 8);
+            REG16(0x10) = gUnk_0201DB20.h63C;
+            REG16(0x12) = gUnk_0201DB20.h63E + (B3_EASE(0x2800, B3_CURVE) >> 8);
             break;
         case 2:
-            D.ramp.phase = 0;
-            D.h632 += EASE(0x5000);
-            D.h63A += EASE(0x1000);
-            D.h63E += EASE(0x2800);
-            FINISH_SCROLL();
+            B3_TWEEN_STATE = 0;
+            gUnk_0201DB20.h632 += B3_EASE(0x5000, B3_CURVE) >> 8;
+            gUnk_0201DB20.h63A += B3_EASE(0x1000, B3_CURVE) >> 8;
+            gUnk_0201DB20.h63E += B3_EASE(0x2800, B3_CURVE) >> 8;
+            if (B3_FRAME.previousArrowState) {
+                B3_FRAME.previousArrowState = 1;
+                B3_FRAME.previousArrowDirty |= 1;
+            }
+            if (B3_FRAME.nextArrowState) {
+                B3_FRAME.nextArrowState = 1;
+                B3_FRAME.nextArrowDirty |= 1;
+            }
+            gUnk_0201DB20.b635 = 0;
+            /* fall through */
         default:
-            REFRESH_SCROLL();
+            REG16(0x1C) = gUnk_0201DB20.h630;
+            REG16(0x1E) = gUnk_0201DB20.h632;
+            REG16(0x14) = gUnk_0201DB20.h638;
+            REG16(0x16) = gUnk_0201DB20.h63A;
+            REG16(0x10) = gUnk_0201DB20.h63C;
+            REG16(0x12) = gUnk_0201DB20.h63E;
             break;
         }
         break;
-    case 3: case 4:
-
-        switch (D.ramp.phase) {
-        case 1: {
-            u8 x, alpha;
-            REG16(0x1C) = D.h630 + EASE(0x5000);
-            REG16(0x1E) = D.h632;
-            x = EASE(0x4000);
-            alpha = gUnk_080875D2[D.ramp.current] >> 3;
+    case 3:
+    case 4:
+        switch (B3_TWEEN_STATE) {
+        case 1:
+            REG16(0x1C) = gUnk_0201DB20.h630 + (B3_EASE(0x5000, B3_CURVE) >> 8);
+            REG16(0x1E) = gUnk_0201DB20.h632;
+            horizontalOffset = B3_EASE(0x4000, B3_CURVE) >> 8;
+            blend = B3_CURVE >> 3;
             REG16(0x50) = 0x3F43;
-            if (D.ramp.current <= 3) {
-                REG16(0x14) = x; REG16(0x16) = D.h63A;
-                REG16(0x10) = x; REG16(0x12) = D.h63E;
-                sub_0807B4A8(alpha >> 1);
+            if (B3_TWEEN_STEP <= 3) {
+                REG16(0x14) = horizontalOffset;
+                REG16(0x16) = gUnk_0201DB20.h63A;
+                REG16(0x10) = horizontalOffset;
+                REG16(0x12) = gUnk_0201DB20.h63E;
+                B3_BLEND(blend >> 1);
             } else {
-                
-                REG16(0x14) = x + 0xFFC0; REG16(0x16) = D.h63A;
-                REG16(0x10) = x + 0xFFC0; REG16(0x12) = D.h63E;
-                sub_0807B4A8((0x20 - alpha) >> 1);
+                REG16(0x14) = horizontalOffset + 0xFFC0;
+                REG16(0x16) = gUnk_0201DB20.h63A;
+                REG16(0x10) = horizontalOffset + 0xFFC0;
+                REG16(0x12) = gUnk_0201DB20.h63E;
+                B3_BLEND((0x20 - blend) >> 1);
             }
             break;
-        }
         case 2:
-            D.ramp.phase = 0;
-            D.h630 += EASE(0x5000);
-            FINISH_SCROLL();
+            B3_TWEEN_STATE = 0;
+            gUnk_0201DB20.h630 += B3_EASE(0x5000, B3_CURVE) >> 8;
+            if (B3_FRAME.previousArrowState) {
+                B3_FRAME.previousArrowState = 1;
+                B3_FRAME.previousArrowDirty |= 1;
+            }
+            if (B3_FRAME.nextArrowState) {
+                B3_FRAME.nextArrowState = 1;
+                B3_FRAME.nextArrowDirty |= 1;
+            }
+            gUnk_0201DB20.b635 = 0;
+            /* fall through */
         default:
-            REFRESH_SCROLL();
+            REG16(0x1C) = gUnk_0201DB20.h630;
+            REG16(0x1E) = gUnk_0201DB20.h632;
+            REG16(0x14) = gUnk_0201DB20.h638;
+            REG16(0x16) = gUnk_0201DB20.h63A;
+            REG16(0x10) = gUnk_0201DB20.h63C;
+            REG16(0x12) = gUnk_0201DB20.h63E;
             REG16(0x50) = 0x3FC8;
             REG16(0x52) = 0x1000;
             break;
         }
         break;
     }
-    if (D.animState == 0) {
-        switch (D.menuOpen) {
+
+    if (B3_FRAME.transitionState == 0) {
+        switch (gUnk_0201DB20.menuOpen) {
         case 0:
-            if (D.ramp.phase != 1) {
+            if (B3_TWEEN_STATE != 1) {
                 switch (keys) {
                 case 2:
-                    sub_080787F4(0, 0x180, 0, D.fade);
-                    D.exitMode = 0;
-                    sub_08077AEC(2);
+                    B3_FADE(0, 0x180, 0, B3_PSTATE + 0x618);
+                    gUnk_0201DB20.exitMode = 0;
+                    B3_SOUND(2);
                     break;
                 case 0x40:
-                    sub_080679E0(&scratch.row);
+                    sub_080679E0(&row);
                     goto moved;
                 case 0x80:
-                    sub_08067DA4(&scratch.row);
+                    sub_08067DA4(&row);
                     goto moved;
                 default:
-                    if (DCOUNT(D.cursor) > 5) {
+                    if (B3_CNT(gUnk_0201DB20.cursor) > 5) {
                         switch (keys) {
                         case 0x10:
-                            if (D.col[D.cursor] + 5 > DCOUNT(D.cursor) - 1)
-                                D.col[D.cursor] = 0;
-                            else D.col[D.cursor] += 5;
-                            D.h18AC = 0xFC00;
-                            sub_0807B100(0, 6, 1, &D.ramp);
-                            D.b634 ^= 1;
-                            sub_0807AFFC(CURRENT_CARD, 0x06008000 + D.b634 * 0x1680, D.b634);
-                            sub_08068E20(((D.h630 & 0xFF) >> 3) + 0x1D, ((D.h632 & 0xFF) >> 3) + 2, D.b634, 1);
-                            D.b635 = 3;
-                            D.flag1710 = 1;
-                            sub_08065F34(DCOUNT(D.cursor), D.col[D.cursor], D.slide);
-                            if (D.b1BB7 != 0) { D.b1BB7 = 2; D.dirty6 = 1; }
-                            DRAW_SLOTS();
+                            if (gUnk_0201DB20.col[gUnk_0201DB20.cursor] + 5 > B3_CNT(gUnk_0201DB20.cursor) - 1)
+                                gUnk_0201DB20.col[gUnk_0201DB20.cursor] = 0;
+                            else
+                                gUnk_0201DB20.col[gUnk_0201DB20.cursor] += 5;
+                            gUnk_0201DB20.h18AC = 0xFC00;
+                            sub_0807B100(0, 6, 1, B3_PSTATE + 0x628);
+                            gUnk_0201DB20.b634 ^= 1;
+                            B3_CARD(B3_LOOKUP(gUnk_0201DB20.cursor, gUnk_0201DB20.row[gUnk_0201DB20.cursor], gUnk_0201DB20.col[gUnk_0201DB20.cursor]),
+                                         0x06008000 + gUnk_0201DB20.b634 * 0x1680, gUnk_0201DB20.b634);
+                            B3_MISC(((gUnk_0201DB20.h630 & 0xFF) >> 3) + 29, ((gUnk_0201DB20.h632 & 0xFF) >> 3) + 2, gUnk_0201DB20.b634, 1);
+                            gUnk_0201DB20.b635 = 3;
+                            B3_FRAME.redraw = 1;
+                            B3_SLIDE(B3_CNT(gUnk_0201DB20.cursor), gUnk_0201DB20.col[gUnk_0201DB20.cursor], gUnk_0201DB20.slide);
+                            if (B3_FRAME.nextArrowState) {
+                                B3_FRAME.nextArrowState = 2;
+                                B3_FRAME.nextArrowDirty |= 1;
+                            }
+                            row = gUnk_0201DB20.col[gUnk_0201DB20.cursor] - 2;
+                            for (slot = 0; slot < 5; row++, slot++) {
+                                if ((s16)row >= 0 && row < B3_CNT(gUnk_0201DB20.cursor)) {
+                                    B3_SLOT(slot, B3_LOOKUP(gUnk_0201DB20.cursor, gUnk_0201DB20.row[gUnk_0201DB20.cursor], row),
+                                                 slot + 1, B3_PSTATE + 0x1BB8, B3_PSTATE + 0x18B0);
+                                } else {
+                                    B3_ROWS[slot].active = 0;
+                                }
+                            }
+                            B3_FRAME.rowAnimationState = 0;
+                            B3_FRAME.rowCount = 5;
+                            B3_FRAME.rowAnimationTimer = 30;
                         moved:
-                            sub_08077AEC(0);
+                            B3_SOUND(0);
                             break;
                         case 0x20:
-                            if (D.col[D.cursor] <= 4) D.col[D.cursor] = DCOUNT(D.cursor) - 1;
-                            else D.col[D.cursor] -= 5;
-                            D.h18AC = 0xFC00;
-                            sub_0807B100(6, 0, -1, &D.ramp);
-                            D.b634 ^= 1;
-                            sub_0807AFFC(CURRENT_CARD, 0x06008000 + D.b634 * 0x1680, D.b634);
-                            sub_08068E20(((D.h630 & 0xFF) >> 3) + 9, ((D.h632 & 0xFF) >> 3) + 2, D.b634, 1);
-                            D.h630 -= 0x50;
-                            D.b635 = 4;
-                            D.flag1710 = 1;
-                            sub_08065F34(DCOUNT(D.cursor), D.col[D.cursor], D.slide);
-                            if (D.b1BB5 != 0) { D.b1BB5 = 2; D.dirty4 = 1; }
-                            DRAW_SLOTS();
-                            sub_08077AEC(0);
+                            if (gUnk_0201DB20.col[gUnk_0201DB20.cursor] <= 4)
+                                gUnk_0201DB20.col[gUnk_0201DB20.cursor] = B3_CNT(gUnk_0201DB20.cursor) - 1;
+                            else
+                                gUnk_0201DB20.col[gUnk_0201DB20.cursor] -= 5;
+                            gUnk_0201DB20.h18AC = 0xFC00;
+                            sub_0807B100(6, 0, -1, B3_PSTATE + 0x628);
+                            gUnk_0201DB20.b634 ^= 1;
+                            B3_CARD(B3_LOOKUP(gUnk_0201DB20.cursor, gUnk_0201DB20.row[gUnk_0201DB20.cursor], gUnk_0201DB20.col[gUnk_0201DB20.cursor]),
+                                         0x06008000 + gUnk_0201DB20.b634 * 0x1680, gUnk_0201DB20.b634);
+                            B3_MISC(((gUnk_0201DB20.h630 & 0xFF) >> 3) + 9, ((gUnk_0201DB20.h632 & 0xFF) >> 3) + 2, gUnk_0201DB20.b634, 1);
+                            gUnk_0201DB20.h630 -= 0x50;
+                            gUnk_0201DB20.b635 = 4;
+                            B3_FRAME.redraw = 1;
+                            B3_SLIDE(B3_CNT(gUnk_0201DB20.cursor), gUnk_0201DB20.col[gUnk_0201DB20.cursor], gUnk_0201DB20.slide);
+                            if (B3_FRAME.previousArrowState) {
+                                B3_FRAME.previousArrowState = 2;
+                                B3_FRAME.previousArrowDirty |= 1;
+                            }
+                            row = gUnk_0201DB20.col[gUnk_0201DB20.cursor] - 2;
+                            for (slot = 0; slot < 5; row++, slot++) {
+                                if ((s16)row >= 0 && row < B3_CNT(gUnk_0201DB20.cursor)) {
+                                    B3_SLOT(slot, B3_LOOKUP(gUnk_0201DB20.cursor, gUnk_0201DB20.row[gUnk_0201DB20.cursor], row),
+                                                 slot + 1, B3_PSTATE + 0x1BB8, B3_PSTATE + 0x18B0);
+                                } else {
+                                    B3_ROWS[slot].active = 0;
+                                }
+                            }
+                            B3_FRAME.rowAnimationState = 0;
+                            B3_FRAME.rowCount = 5;
+                            B3_FRAME.rowAnimationTimer = 30;
+                            B3_SOUND(0);
                             break;
                         }
                     }
@@ -579,101 +731,119 @@ int sub_0806B3B0(void)
                 }
             }
             if (keys == 1) {
-                D.menu.bytes.phase = 1;
-                sub_08077AEC(1); break;
+                B3_PHASE = 1;
+                B3_SOUND(1);
+                break;
             }
             sub_0806ADBC(&gUnk_0201F73C);
             break;
         case 1:
-            if (D.inputBusy == 0 && D.exchange == -1) {
+            if (B3_FRAME.menuAnimationState == 0 && B3_FRAME.menuOwner == -1) {
                 switch (keys) {
                 case 0x10:
-                    if (D.selector == 0) {
-                        int next = D.menu.bits.choice + 1;
-                        D.menu.bits.choice = next;
-                        if ((next & 7) == 1) D.menu.bits.choice++;
-                        switch (D.cursor + 1) {
+                    if (gUnk_0201DB20.selector != 0)
+                        break;
+                    if (++B3_FRAME.menuSelected == 1)
+                        B3_FRAME.menuSelected++;
+                    switch (gUnk_0201DB20.cursor + 1) {
+                    case 2:
+                        if ((B3_MENU_RAW & 0x38000) == 0x18000)
+                            B3_FRAME.menuSelected++;
+                        break;
+                    case 3:
+                        if ((B3_MENU_RAW & 0x38000) == 0x10000)
+                            B3_FRAME.menuSelected++;
+                        break;
+                    }
+                    if ((B3_MENU_RAW & 0x38000) == 0x38000)
+                        B3_FRAME.menuSelected = 0;
+                    /* FAKEMATCH: one more use of the GCSE copy of &gUnk_0201DB20 lifts its allocation
+                     * priority above the menu-arm constants, so it keeps r6 as in the ROM. */
+                    asm("" : : "r"(&gUnk_0201DB20));
+                    B3_PHASE = 3;
+                    goto menu_moved;
+                case 0x20:
+                    if (gUnk_0201DB20.selector != 0)
+                        break;
+                    if ((B3_MENU_RAW & 0x38000) == 0) {
+                        B3_FRAME.menuSelected = 6;
+                    } else {
+                        if (--B3_FRAME.menuSelected == 1)
+                            B3_FRAME.menuSelected = (u16)(B3_FRAME.menuSelected - 1);
+                        switch (gUnk_0201DB20.cursor + 1) {
                         case 2:
-                            if ((D.menu.word & 0x38000) == 0x18000) D.menu.bits.choice++;
+                            if ((B3_MENU_RAW & 0x38000) == 0x18000)
+                                B3_FRAME.menuSelected = (u16)(B3_FRAME.menuSelected - 1);
                             break;
                         case 3:
-                            if ((D.menu.word & 0x38000) == 0x10000) D.menu.bits.choice++;
+                            if ((B3_MENU_RAW & 0x38000) == 0x10000)
+                                B3_FRAME.menuSelected = (u16)(B3_FRAME.menuSelected - 2);
                             break;
                         }
-                        if ((D.menu.word & 0x38000) == 0x38000) D.menu.bits.choice = 0;
-                        D.menu.bytes.phase = 3;
-                        goto menuMoved;
                     }
-                    break;
-                case 0x20:
-                    if (D.selector == 0) {
-                        if ((D.menu.word & 0x38000) == 0) D.menu.bits.choice = 6;
-                        else {
-                            u16 next = D.menu.bits.choice - 1;
-                            D.menu.bits.choice = next;
-                            if ((next & 7) == 1)
-                                D.menu.bits.choice = (u16)(D.menu.bits.choice - 1);
-                            switch (D.cursor + 1) {
-                            case 2:
-                                if ((D.menu.word & 0x38000) == 0x18000)
-                                    D.menu.bits.choice = (u16)(D.menu.bits.choice - 1);
-                                break;
-                            case 3:
-                                if ((D.menu.word & 0x38000) == 0x10000)
-                                    D.menu.bits.choice = (u16)(D.menu.bits.choice - 2);
-                                break;
-                            }
-                        }
-                        D.menu.bytes.phase = 3;
-                    menuMoved:
-                        sub_08077AEC(0);
+                    {
+                        /* FAKEMATCH: a fourth local quantity in this block, so local-alloc sorts the phase-store temporaries by priority */
+                        u32 extra;
+                        asm volatile("" : "=r"(extra));
                     }
+                    {
+                        /* FAKEMATCH: r5 stays busy over the store so its reloads take r0/r1 */
+                        register u32 busy asm("r5");
+                        asm("" : "=r"(busy));
+                        B3_PHASE = 3;
+                        asm("" : : "r"(busy));
+                    }
+                menu_moved:
+                    B3_SOUND(0);
                     break;
                 case 1:
-                    switch (D.menu.bits.choice) {
+                    switch (B3_FRAME.menuSelected) {
                     case 0:
-                        D.exitMode = 2;
-                        sub_080787F4(0, 0x180, 0, D.fade);
-                        sub_08077AEC(1); break;
+                        gUnk_0201DB20.exitMode = 2;
+                        B3_FADE_INT(0, 0x180, 0, B3_PSTATE + 0x618);
+                        B3_SOUND(1);
+                        break;
                     case 2:
                         if (sub_08068434() != 0) {
-                            D.selector++;
-                            sub_08077AEC(1); break;
+                            gUnk_0201DB20.selector++;
+                            B3_SOUND(1);
                         }
                         break;
                     case 3:
                         if (sub_08068434() != 0) {
-                            D.selector++;
-                            sub_08077AEC(1); break;
+                            gUnk_0201DB20.selector++;
+                            B3_SOUND(1);
                         }
                         break;
                     case 4:
-                        D.exitMode = 1;
-                        sub_080787F4(0, 0x180, 0, D.fade);
-                        sub_08077AEC(1); break;
+                        gUnk_0201DB20.exitMode = 1;
+                        B3_FADE_U16(0, 0x180, 0, B3_PSTATE + 0x618);
+                        B3_SOUND(1);
+                        break;
                     case 5:
-                        D.exitMode = 3;
-                        sub_080787F4(0, 0x180, 0, D.fade);
-                        sub_08077AEC(1); break;
+                        gUnk_0201DB20.exitMode = 3;
+                        B3_FADE(0, 0x180, 0, B3_PSTATE + 0x618);
+                        B3_SOUND(1);
+                        break;
                     case 6:
-                        sub_080787F4(0, 0x180, 0, D.fade);
-                        D.exitMode = 0;
-                        sub_08077AEC(1);
+                        B3_FADE(0, 0x180, 0, B3_PSTATE + 0x618);
+                        gUnk_0201DB20.exitMode = 0;
+                        B3_SOUND(1);
                         break;
                     }
                     break;
                 case 2:
-                    if (D.selector == 2) {
+                    if (gUnk_0201DB20.selector == 2) {
                         sub_0806B2F8();
-                        sub_08077AEC(2);
+                        B3_SOUND(2);
                     }
                     break;
                 default:
                     sub_0806ADBC(&gUnk_0201F73C);
-                    if (D.ramp.phase != 1) {
+                    if (*((u8 *)&gUnk_0201F73C - 0x15F4) != 1) {
                         switch (keys) {
-                        case 0x40: sub_080679E0(&scratch.row); break;
-                        case 0x80: sub_08067DA4(&scratch.row); break;
+                        case 0x40: sub_080679E0(&row); break;
+                        case 0x80: sub_08067DA4(&row); break;
                         }
                     }
                     break;
@@ -682,44 +852,55 @@ int sub_0806B3B0(void)
             break;
         }
     }
+
     sub_0806B190();
-    sub_08077EF4(gUnk_081A6524, 5, 12, -1, -1, 3, 2, 0, 0, 0, 0, &D);
-    D.draw17DA = 1;
-    sub_08065F78(D.col[D.cursor], DCOUNT(D.cursor), D.slide);
-    sub_080665D4(D.slots.entry, &D);
-    for (i = 1; i <= 6; i++) sub_0807B5A0(D.sprites + i * 24);
-    sub_0806699C(gUnk_0201F740);
-    sub_0806704C(gUnk_0201F740 - 4, gUnk_0201F740 - 3, gUnk_0201F740 - 0x508);
-    sub_08067908(gUnk_0201F740 + 0x1C);
-    sub_08067660(gUnk_0201F740 + 0x1C);
-    sub_08077EF4(gUnk_081A6EA4, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, gUnk_0201F740 - 0x1C20);
-    sub_08068180(gUnk_0201F740[-4]);
-    sub_0807871C(gUnk_0201F740 - 0x508);
-    sub_08078534(gUnk_0201F740 - 0x508, 0, 0, 0, 0, 0, 3, 0, 0, gUnk_0201F740 - 0x1C20);
-    sub_08068B90(); sub_08068C48();
-    sub_0807A298(gUnk_0201F740 - 0x1C20);
-    sub_0807A2EC(gUnk_0201F740 - 0x1C20);
-    sub_0807883C(gUnk_0201F740 - 0x1608);
-    if (gUnk_0201F740[-0x1602] != 2) {
-    if (gUnk_0201F740[-0x1602] == 3) {
-        gUnk_0201F740[-0x1602] = 0;
-        REG16(0x50) = 0x3FC8; REG16(0x52) = 0x1000;
-    } else if (gUnk_0201F740[-0x15F8] == 0 && gUnk_0201F740[-0x1602] == 0) {
-        s16 *fade = (s16 *)(gUnk_0201F740 - 0x374);
-        if (*fade >= 0) {
+    sub_08077EF4(gUnk_081A6524, 5, 12, -1, -1, 3, 2, 0, 0, 0, 0, &gUnk_0201DB20);
+    B3_FRAME.frameDirty = 1;
+    B3_SLIDE_DRAW(gUnk_0201DB20.col[gUnk_0201DB20.cursor], B3_CNT(gUnk_0201DB20.cursor), gUnk_0201DB20.slide);
+    sub_080665D4(B3_PSTATE + 0x1BBC, &gUnk_0201DB20);
+    for (slot = 1; slot <= 6; slot++)
+        sub_0807B5A0(B3_PSTATE + 0x18B0 + slot * 24);
+    tail = gUnk_0201F740;
+    B3_TAIL0();
+    list = tail - 4;
+    sub_0806704C(list, tail - 3, objects = tail - 0x508);
+    sub_08067908(tail + 0x1C);
+    sub_08067660(tail + 0x1C);
+    sub_08077EF4(gUnk_081A6EA4, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, state = (struct DeckState *)(tail - 0x1C20));
+    sub_08068180(*list);
+    sub_0807871C(objects);
+    sub_08078534(objects, 0, 0, 0, 0, 0, 3, 0, 0, state);
+    sub_08068B90();
+    sub_08068C48();
+    sub_0807A298(state);
+    sub_0807A2EC(state);
+    sub_0807883C(tail - 0x1608);
+    if (tail[-0x1602] == 2)
+        goto complete;
+    if (tail[-0x1602] == 3) {
+        tail[-0x1602] = 0;
+        REG16(0x50) = 0x3FC8;
+        REG16(0x52) = 0x1000;
+        goto done;
+    }
+    goto fade;
+complete:
+    return 1;
+fade:
+    if (tail[-0x15F8] == 0 && tail[-0x1602] == 0) {
+        if (*(s16 *)(tail - 0x374) >= 0) {
             REG16(0x50) = 0x3FC8;
-            REG16(0x54) = *fade >> 8;
+            REG16(0x54) = *(s16 *)(tail - 0x374) >> 8;
         } else {
             REG16(0x50) = 0x3F88;
-            REG16(0x54) = -*fade >> 8;
+            REG16(0x54) = -*(s16 *)(tail - 0x374) >> 8;
         }
-        if ((s16)D.h18AC > 0x3FF) D.h18AC = 0x400;
-        else D.h18AC += 0x30;
+        if ((s16)gUnk_0201DB20.h18AC > 0x3FF)
+            gUnk_0201DB20.h18AC = 0x400;
+        else
+            gUnk_0201DB20.h18AC += 0x30;
     }
+done:
     return 0;
-    }
-    return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806A92C", sub_0806B3B0); /* 0x0806B3B0 size 0x1134 */
 

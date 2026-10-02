@@ -601,15 +601,19 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING: state machine audited against the ROM; same function size 0xE24 but ~547 differing insn lines (cmp.py): return-0/step-store tails cross-jump into other survivors, case 10 step++ must follow sub_08060308, case 102 msg typed s8 (typo, should be u16), register allocation */
+#if 0 /* NONMATCHING (score 1010): NONMATCHING: same structure; per-case return 0 tails, case 122 struct access,
+       * prologue matches; remaining: reload-register rotation and regalloc in cases 4,9,10,20,101,102,110,111,120; size
+       * +22 */
+struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
+struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
 int sub_0804FC4C(void)
 {
     u32 card; /* Written by sub_080195D0 on success before it is consumed. */
     char text[128];
     char format[128];
     u16 player=((u32)((struct FcState *)&gUnk_020192E0)->flags<<30)>>31;
-    struct FcFlags *ps=(struct FcFlags *)(FC_E+4+player*0xD64);
-    if ((s32)((u32)((u8 *)ps)[9]<<30)<0) {
+    u8 *base=FC_E; u8 *b4=base+4; struct FcFlagsS *ps=(struct FcFlagsS *)(b4+player*0xD64);
+    if (ps->bit1<0) {
         ps->bit1=0;
         goto done;
     }
@@ -619,19 +623,19 @@ int sub_0804FC4C(void)
         if (player) msg=0x8051;
         sub_0801EC58(msg,0,0,0);
         FC_STEP=20;
-        break;
+        return 0;
     }
     case 1:
         sub_0804F7A4(player);
         FC_CURSOR=0; FC_SUBCURSOR=0; FC_ZONE=0;
         FC_STEP++;
-        break;
+        return 0;
     case 2:
         if (sub_0804691C(player)) {
             FC_CURSOR=0; FC_SUBCURSOR=0; FC_ZONE=0;
             FC_STEP++;
         }
-        break;
+        return 0;
     case 3:
         if (((u32)(((struct FcPlayer *)gUnk_020192E4)[player].flagsC)<<28)>>29) {
             u16 msg=0x4B;
@@ -640,12 +644,12 @@ int sub_0804FC4C(void)
             if (sub_08008A1C(player)>0 && sub_080195D0(player,0x57D,&card)) {
                 sub_080197E0(player,EndTurnCardId(0x57D));
                 sub_08055F70(player,&card,1,1,0x20);
-            pending: return 0;
+                return 0;
             }
         }
         FC_STEP++;
         FC_CURSOR=0;
-        break;
+        return 0;
     case 4:
         for (;FC_CURSOR<FC_PLAYER(player).listCount;FC_CURSOR++) {
             if (FC_PLAYER(player).cardList[FC_CURSOR]==0x402) {
@@ -659,14 +663,14 @@ int sub_0804FC4C(void)
         }
         FC_CURSOR=0; FC_SUBCURSOR=0; FC_ZONE=0;
         FC_STEP++;
-        break;
+        return 0;
     case 5: {
         int other=1-player;
         if (sub_08008524(other,0x489) && FC_LIFE(other&1)>499 && (((struct FcPlayer *)gUnk_020192E4)[player&1].handCount)) {
             sub_08022678(other,15,0x489,0);
             FC_PLAYER_STEP++;
         } else FC_STEP=7;
-        break;
+        return 0;
     }
     case 6:
         if (FC_CHOICE) {
@@ -679,7 +683,7 @@ int sub_0804FC4C(void)
             sub_0801FBCC(((u32)(other&1)<<31)|((index&31)<<16)|0x6200000|EndTurnCardId(0x489),0);
             FC_STEP=5;
         } else FC_STEP=7;
-        break;
+        return 0;
     case 7: {
         int other=1-player;
         if (sub_080086CC(other,0x5ED) && sub_080088A4(player,1,0)>0) {
@@ -689,7 +693,7 @@ int sub_0804FC4C(void)
             FC_ZONE=5;
             FC_STEP=9;
         }
-        break;
+        return 0;
     }
     case 8:
         if (FC_CHOICE) {
@@ -699,11 +703,11 @@ int sub_0804FC4C(void)
         }
         FC_ZONE=5;
         FC_STEP=9;
-        break;
+        return 0;
     case 9:
         for (;FC_ZONE<=9;FC_ZONE++) {
             struct Zone *z=(struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64);
-            u8 id=FC_ID(z);
+            u32 id=FC_ID(z);
             if (id && (z->f6&2) && !(((u8 *)z)[0x91]&8) && FC_NUMBER(id)==0x592 && sub_08008A1C(player)>0) {
                 u16 msg;
                 sub_080197E0(player,FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64)));
@@ -716,23 +720,23 @@ int sub_0804FC4C(void)
         }
         sub_080241C4();
         FC_STEP++;
-        break;
+        return 0;
     case 10:
         if ((u16)sub_0804F6EC(player)==0) {
             sub_080241C4();
             FC_STEP=100;
         } else if (sub_0804A1C8()==0 && (gUnk_03000040.keys&2)) {
             sub_080602A4(0x206,0x713,11,gUnk_08085C9C);
-            FC_STEP++;
             sub_08060308(1,0,0);
+            FC_STEP++;
         }
-        break;
+        return 0;
     case 11:
         switch (gUnk_0201AE60.sel) {
         case 0: FC_STEP=10; break;
         case 1: FC_STEP=100; break;
         }
-        break;
+        return 0;
     case 20: {
         u16 count=sub_08008524(player,0x600);
         for (;count>0;count--) {
@@ -761,7 +765,7 @@ int sub_0804FC4C(void)
             }
         }
         FC_STEP=1;
-        break;
+        return 0;
     }
     case 21: FC_STEP=20; break;
     case 100:
@@ -771,7 +775,7 @@ int sub_0804FC4C(void)
     case 101:
         for (;FC_ZONE<=9;FC_ZONE++) {
             struct Zone *z=(struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64);
-            u8 id=FC_ID(z);
+            u32 id=FC_ID(z);
             if (id && (z->f6&2)) {
                 int destroy=0;
                 switch (FC_NUMBER(id)) {
@@ -784,8 +788,8 @@ int sub_0804FC4C(void)
                     destroy=1;
                     break;
                 case 0x3BA: case 0x44B: case 0x482: case 0x58C: case 0x590:
-                    if (FC_LIFE(player)>=sub_0804F654(FC_NUMBER(id))) { FC_PLAYER_STEP=110; return 0; }
-                    destroy=1;
+                    if (FC_LIFE(player)<sub_0804F654(FC_NUMBER(id))) destroy=1;
+                    else { FC_PLAYER_STEP=110; return 0; }
                     break;
                 }
                 if (destroy) {
@@ -797,7 +801,7 @@ int sub_0804FC4C(void)
             }
         }
         FC_STEP++;
-        break;
+        return 0;
     case 102: {
         int i;
         for (i=5;i<=9;i++) {
@@ -806,14 +810,14 @@ int sub_0804FC4C(void)
             if (id && (z->f6&2)) {
                 u16 number=FC_NUMBER(id);
                 if (number==0x416 || number==0x424) {
-                    s8 msg=0xB4;
+                    u16 msg=0xB4;
                     if (player) msg=0x80B4;
                     sub_0801EC58(msg,i,1,0);
                 }
             }
         }
         FC_STEP++;
-        break;
+        return 0;
     }
     case 110: {
         u32 id=FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+(player&1)*0xD64));
@@ -850,7 +854,7 @@ int sub_0804FC4C(void)
         }
         sub_080197C0(player,id);
         FC_STEP++;
-        break;
+        return 0;
     }
     case 111:
         if (gUnk_0201AE60.sel) {
@@ -866,34 +870,37 @@ int sub_0804FC4C(void)
         } else sub_08018544(player,FC_ZONE,1);
         FC_ZONE++;
         FC_STEP=101;
-        break;
+        return 0;
     case 120:
         sub_080753F4(text,gUnk_08085D08,gUnk_0822C720+(FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64))<<6));
         sub_080602A4(0x206,0x813,11,text);
         sub_08060308(1,0,0);
         FC_STEP++;
-        break;
+        return 0;
     case 121:
         if (gUnk_0201AE60.sel) {
             sub_080602A4(0x206,0x712,11,gUnk_08085D70);
             FC_STEP++;
+            return 0;
         } else {
             sub_08018544(player,FC_ZONE,1);
             FC_ZONE++;
             FC_STEP=101;
         }
-        break;
+        return 0;
     case 122:
         if (sub_08052F38(0xF0)) {
-            sub_08017FF4(*(int *)(gUnk_0201CFB0+0x824),*(int *)(gUnk_0201CFB0+0x82C));
+            sub_08017FF4(((struct FcCfb0 *)gUnk_0201CFB0)->a824,((struct FcCfb0 *)gUnk_0201CFB0)->a82C);
             FC_ZONE++;
             FC_STEP=101;
         }
-        break;
+        return 0;
     default:
-    done: return 1;
+        goto done;
     }
-    goto pending;
+    return 0;
+done:
+    return 1;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804FC4C); /* 0x0804FC4C size 0xE24 */

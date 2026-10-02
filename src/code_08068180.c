@@ -514,78 +514,66 @@ int sub_08069014(int a0, int b0)
     }
     return va - vb > 0;
 }
-#if 0 /* NONMATCHING: same instructions and size (0x1C0); only register
-       * allocation differs. The target keeps arr r7, cmp sl, t r9, hi r8, i
-       * r5, j r4, pivot r6 (shifted), and lo/top on the stack, while the build
-       * puts i in r8 and hi on the stack. Loop shapes (s16 i/j with
-       * arr[++i]/arr[--j], u16 t/p/u, s16 top) match. */
 struct Range { s16 lo; s16 hi; };
-#define RSTACK ((struct Range *)0x02030000)
+extern struct Range gUnk_02030000[];
+/* The original swap macro has no braces, so under an unbraced `if` only `t = a` is conditional.
+   The median-of-three below relies on that (the pivot is not a true median). */
+#define SORT_SWAP(a, b) t = a; a = b; b = t
 /* Quicksort of n s16 values in arr (insertion sort for ranges of <= 20); cmp(a, b) != 0 means a orders before b.
    The pending (lo, hi) ranges live in an explicit stack at 0x02030000. */
 void sub_080690C4(int n, s16 *arr, u16 (*cmp)(s16, s16))
 {
+    struct Range *stack = gUnk_02030000;
+    s16 lo, hi, i, j, x;
     s16 top;
     u16 t;
-    RSTACK[0].lo = 0;
-    RSTACK[0].hi = n - 1;
+
+    stack[0].lo = 0;
+    stack[0].hi = n - 1;
     top = 1;
     do {
-        s16 lo;
-        s16 hi;
         top--;
-        lo = RSTACK[top].lo;
-        hi = RSTACK[top].hi;
+        lo = stack[top].lo;
+        hi = stack[top].hi;
         if (lo < hi) {
             if (hi - lo > 20) {
-                s8 i = lo - 1;
-                s16 j = hi + 1;
-                s16 a = arr[(hi + lo) / 2];
-                s16 b = arr[lo];
-                s16 c = arr[hi];
-                u16 p;
-                u16 u;
-                if (a < b)
-                    t = a;
-                p = b;
-                u = t;
-                if ((s16)p > c) {
-                    t = p;
-                    if (c > (s16)u)
-                        t = c;
-                    p = u;
+                s16 y, z;
+                i = lo - 1;
+                j = hi + 1;
+                x = arr[(lo + hi) / 2];
+                y = arr[lo];
+                z = arr[hi];
+                if (x < y) SORT_SWAP(x, y);
+                if (x > z) {
+                    SORT_SWAP(x, z);
+                    if (x > y) SORT_SWAP(x, y);
                 }
                 for (;;) {
-                    while (cmp(arr[++i], (s16)p))
+                    while (cmp(arr[++i], x))
                         ;
-                    while (cmp((s16)p, arr[--j]))
+                    while (cmp(x, arr[--j]))
                         ;
-                    if (i < j) {
-                        t = arr[i];
-                        arr[i] = arr[j];
-                        arr[j] = t;
-                    } else
+                    if (i >= j)
                         break;
+                    SORT_SWAP(arr[i], arr[j]);
                 }
-                RSTACK[top].lo = j + 1;
-                RSTACK[top].hi = hi;
-                RSTACK[top + 1].lo = lo;
-                RSTACK[top + 1].hi = i - 1;
-                top += 2;
+                stack[top].lo = j + 1;
+                stack[top].hi = hi;
+                top++;
+                stack[top].lo = lo;
+                stack[top].hi = i - 1;
+                top++;
             } else {
-                s16 i;
                 for (i = lo + 1; i <= hi; i++) {
-                    s16 key = arr[i];
-                    s16 j = i - 1;
-                    while (j >= lo && cmp(key, arr[j])) {
+                    x = arr[i];
+                    j = i - 1;
+                    while (j >= lo && cmp(x, arr[j])) {
                         arr[j + 1] = arr[j];
                         j--;
                     }
-                    arr[j + 1] = key;
+                    arr[j + 1] = x;
                 }
             }
         }
     } while (top > 0);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08068180", sub_080690C4); /* 0x080690C4 size 0x1C0 */

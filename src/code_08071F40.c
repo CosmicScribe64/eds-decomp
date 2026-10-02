@@ -690,49 +690,64 @@ void sub_08072CAC(u32 a, u32 b, int val)
     }
 }
 
-#if 0 /* NONMATCHING: same body. The target computes e>>4, c<<7, d<<5, c<<4 and e<<8 in the entry
-       * block in that order (stack slots: e<<8 at sp0, off at sp4) and accumulates the map
-       * address as (base + (a&7)*0x800) then + b*2. The difference is register choice and
-       * ordering only. */
-/* Draw card portrait `c` (10 x 9 tile block at BG map (a & 7, b)), tiles from `d`>>1, 64-colour palette
-   to bank `e`>>4; unpacks its 6bpp image to 0x06004000 + d*32 (720 records of 6 bytes). */
+/* Draw card portrait `c`: fills a 9 x 10 cell block of the BG map buffer at (a & 7) * 0x800 + b * 2 with
+ * ascending tiles from d >> 1, copies the card's 64-colour palette to bank pal >> 4, unpacks its 6bpp image
+ * (720 x 3 halfwords) to 0x06004000 + d * 32, then adds the palette base (u8)pal to every pixel.
+ * Matching notes: GCSE/PRE hoists e>>4, c<<7, d<<5, c<<4 and e<<24 into the entry block, and the order of
+ * its expression hash table (size = insn count / 2) decides which spilled value gets which stack slot.
+ * `pal` as a u32 copy (no shortened u16 shift for pal >> 4) and the `lim` bound local keep the insn count
+ * at the ROM's, so e<<24 lands at sp+0 and d*32 at sp+4. `off` puts d*32 ahead of c*0x10E0 in that order
+ * while the pointer add stays after src; the ROM tables are integer addresses so reload rematerializes them. */
 void sub_08072D28(u16 a, u16 b, u16 c, u16 d, u16 e)
 {
-    u8 *row = gUnk_0300045C + (a & 7) * 0x800;
-    u16 *map = (u16 *)(row + b * 2);
-    u16 i = 0;
-    u16 tile = d >> 1;
+    u32 pal = e;
+    u16 *map = (u16 *)(0x0300045C + (a & 7) * 0x800);
+    u16 i;
+    u16 tile;
     u16 j;
-    u32 off = d * 32;
-    u16 *in;
-    u16 *out;
+    const u16 *src;
+    u16 *dst;
+    u32 off;
+    u16 m6, m12;
+    u32 lim;
+
+    map += b;
+    i = 0;
+    tile = d >> 1;
     for (; i < 10; i++) {
         for (j = 0; j < 9; j++)
             map[j] = tile++;
         map += 0x20;
     }
-    sub_08075294((void *)(0x05000000 + (e >> 4) * 32), gUnk_08608360 + c * 0x80, 0x80);
-    in = gUnk_082A6500 + c * 0x870;
-    out = (u16 *)(0x06004000 + off);
-    for (i = 0; i < 720; i++) {
-        s8 x = in[0];
-        u16 y = in[1];
-        u32 z = in[2];
-        out[0] = (x & 0x3F) | (x & 0xFC0) << 2;
-        out[1] = x >> 12 | (y & 3) << 4 | (y & 0xFC) << 6;
-        out[2] = (y >> 8 & 0x3F) | ((y >> 8 >> 6) | (z & 0xF) << 2) << 8;
-        out[3] = (z >> 4 & 0x3F) | (z >> 4 & 0xFC0) << 2;
-        in += 3;
-        out += 4;
+    sub_08075294((void *)(0x05000000 + (pal >> 4) * 32), (const void *)(0x08608360 + c * 0x80), 0x80);
+    off = d * 32;
+    src = (const u16 *)(0x082A6500 + c * 0x10E0);
+    dst = (u16 *)(0x06004000 + off);
+    i = 0;
+    m6 = 0x3F;
+    m12 = 0xFC0;
+    lim = 0x2CF;
+    for (; i <= lim; i++) {
+        u16 s0 = src[0];
+        u32 s1 = src[1];
+        u32 s2 = src[2];
+        u16 t, x;
+        dst[0] = (s0 & m6) | ((s0 & m12) << 2);
+        dst[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) * 64);
+        t = s1 >> 8;
+        dst[2] = (t & m6) | (((t >> 6) | ((s2 & 0xF) << 2)) << 8);
+        x = s2 >> 4;
+        dst[3] = (x & m6) | ((x & m12) << 2);
+        src += 3;
+        dst += 4;
     }
-    out = (u16 *)(0x06004000 + off);
+    dst = (u16 *)(0x06004000 + d * 32);
     for (i = 0; i < 0xB40; i++) {
-        *out = (*out & 0x3F3F) + ((u8)e << 8 | (u8)e);
-        out++;
+        *dst = (*dst & 0x3F3F) + ((u8)pal << 8 | (u8)pal);
+        dst++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08071F40", sub_08072D28); /* 0x08072D28 size 0x170 */
+
 
 /* Write tile entry `e` at (col b, row-block a) of the BG map buffer at 0x0300045C. */
 void sub_08072E98(u16 a, u16 b, u16 e)

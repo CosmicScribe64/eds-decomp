@@ -1,0 +1,1416 @@
+diff --git a/gcc/Makefile b/gcc/Makefile
+index c34b354..2212ae9 100644
+--- a/gcc/Makefile
++++ b/gcc/Makefile
+@@ -45,7 +45,7 @@ local-alloc.c global.c reload.c reload1.c caller-save.c gcse.c insn-peep.c \
+ final.c recog.c insn-opinit.c insn-recog.c insn-extract.c insn-output.c \
+ insn-emit.c lcm.c insn-attrtab.c thumb.c getpwd.c convert.c dyn-string.c \
+ splay-tree.c graph.c sbitmap.c resource.c c-parse.c c-lex.c c-decl.c \
+-c-typeck.c c-convert.c c-aux-info.c c-common.c c-iterate.c
++c-typeck.c c-convert.c c-aux-info.c c-common.c c-iterate.c regoracle.c
+ 
+ OBJS = $(SRCS:.c=.o)
+ 
+diff --git a/gcc/emit-rtl.c b/gcc/emit-rtl.c
+index 7d28df0..3b964b8 100755
+--- a/gcc/emit-rtl.c
++++ b/gcc/emit-rtl.c
+@@ -48,6 +48,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "recog.h"
+ #include "real.h"
+ #include "obstack.h"
++#include "regoracle.h"
+ #include "bitmap.h"
+ 
+ /* Commonly used modes.  */
+@@ -532,6 +533,7 @@ gen_reg_rtx (mode)
+ 
+   val = gen_rtx_raw_REG (mode, reg_rtx_no);
+   regno_reg_rtx[reg_rtx_no++] = val;
++  ro_new_reg (REGNO (val));
+   return val;
+ }
+ 
+@@ -2122,6 +2124,7 @@ make_insn_raw (pattern)
+     insn = rtx_alloc (INSN);
+ 
+   INSN_UID (insn) = cur_insn_uid++;
++  ro_new_insn (INSN_UID (insn));
+   PATTERN (insn) = pattern;
+   INSN_CODE (insn) = -1;
+   LOG_LINKS (insn) = NULL;
+@@ -2140,6 +2143,7 @@ make_jump_insn_raw (pattern)
+ 
+   insn = rtx_alloc (JUMP_INSN);
+   INSN_UID (insn) = cur_insn_uid++;
++  ro_new_insn (INSN_UID (insn));
+ 
+   PATTERN (insn) = pattern;
+   INSN_CODE (insn) = -1;
+@@ -2160,6 +2164,7 @@ make_call_insn_raw (pattern)
+ 
+   insn = rtx_alloc (CALL_INSN);
+   INSN_UID (insn) = cur_insn_uid++;
++  ro_new_insn (INSN_UID (insn));
+ 
+   PATTERN (insn) = pattern;
+   INSN_CODE (insn) = -1;
+@@ -3196,6 +3201,7 @@ init_emit ()
+   sequence_rtl_expr = NULL;
+   cur_insn_uid = 1;
+   reg_rtx_no = LAST_VIRTUAL_REGISTER + 1;
++  ro_reset_function ();
+   last_linenum = 0;
+   last_filename = 0;
+   first_label_num = label_num;
+diff --git a/gcc/final.c b/gcc/final.c
+index 2eabdae..822e93d 100755
+--- a/gcc/final.c
++++ b/gcc/final.c
+@@ -60,6 +60,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "real.h"
+ #include "hard-reg-set.h"
+ #include "output.h"
++#include "regoracle.h"
+ #include "except.h"
+ #include "toplev.h"
+ #include "reload.h"
+@@ -2038,6 +2039,8 @@ final_scan_insn (insn, file, optimize, prescan, nopeepholes)
+ 
+ 	/* Output assembler code from the template.  */
+ 
++	if (RO_ON)
++	  ro_final_insn (insn);
+ 	output_asm_insn (template, recog_operand);
+ 
+ 
+diff --git a/gcc/flow.c b/gcc/flow.c
+index 08db64d..ab0a24a 100755
+--- a/gcc/flow.c
++++ b/gcc/flow.c
+@@ -122,6 +122,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "output.h"
+ #include "except.h"
+ #include "toplev.h"
++#include "regoracle.h"
+ #include "recog.h"
+ 
+ #include "obstack.h"
+@@ -1974,6 +1975,13 @@ propagate_block (old, first, last, final, significant, bnum)
+ 	  if (final)
+ 	    EXECUTE_IF_SET_IN_REG_SET (old, 0, i,
+ 				       { REG_LIVE_LENGTH (i)++; });
++	  if (final && RO_ON && !strcmp (ro_pass, "flow"))
++	    {
++	      fprintf (ro_file, "LV %d", INSN_UID (insn));
++	      EXECUTE_IF_SET_IN_REG_SET (old, FIRST_PSEUDO_REGISTER, i,
++					 { fprintf (ro_file, " %d", i); });
++	      fputc ('\n', ro_file);
++	    }
+ 	}
+     flushed: ;
+       if (insn == first)
+@@ -4399,6 +4407,14 @@ recompute_reg_usage (f, loop_step)
+       else if (GET_RTX_CLASS (GET_CODE (insn)) == 'i')
+ 	{
+ 	  rtx links;
++	  int ro_regs[256], ro_before[256], ro_n = 0, ro_k;
++
++	  if (RO_ON)
++	    {
++	      ro_n = ro_collect_pseudos (insn, ro_regs, 256);
++	      for (ro_k = 0; ro_k < ro_n; ro_k++)
++		ro_before[ro_k] = REG_N_REFS (ro_regs[ro_k]);
++	    }
+ 
+ 	  /* This call will increment REG_N_SETS for each SET or CLOBBER
+ 	     of a register in INSN.  It will also increment REG_N_REFS
+@@ -4432,6 +4448,14 @@ recompute_reg_usage (f, loop_step)
+ 		if (GET_CODE (XEXP (note, 0)) == USE)
+ 		  count_reg_references (SET_DEST (XEXP (note, 0)));
+ 	    }
++	  if (RO_ON && ro_n)
++	    {
++	      fprintf (ro_file, "RF %d %d", INSN_UID (insn), loop_depth);
++	      for (ro_k = 0; ro_k < ro_n; ro_k++)
++		if (REG_N_REFS (ro_regs[ro_k]) != ro_before[ro_k])
++		  fprintf (ro_file, " %d:%d", ro_regs[ro_k], REG_N_REFS (ro_regs[ro_k]) - ro_before[ro_k]);
++	      fputc ('\n', ro_file);
++	    }
+ 	}
+     }
+ }
+diff --git a/gcc/global.c b/gcc/global.c
+index d6a0526..664cc65 100755
+--- a/gcc/global.c
++++ b/gcc/global.c
+@@ -32,6 +32,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "reload.h"
+ #include "output.h"
+ #include "toplev.h"
++#include "regoracle.h"
+ /* CYGNUS LOCAL live range */
+ #include "obstack.h"
+ #define obstack_chunk_alloc     xmalloc
+@@ -281,6 +282,8 @@ static void reg_becomes_live	(rtx, rtx);
+ static void reg_dies		(int, enum machine_mode);
+ static void build_insn_chain	(rtx);
+ static void global_init		(FILE *);
++static void ro_global_static	(void);
++static void ro_global_order	(void);
+ 
+ /* Perform allocation of pseudo-registers not allocated by local_alloc.
+    FILE is a file to output debugging information on,
+@@ -289,6 +292,73 @@ static void global_init		(FILE *);
+    Return value is nonzero if reload failed
+    and we must not do any more for this function.  */
+ 
++/* regoracle: global-alloc inputs, before prune_preferences.  */
++static void
++ro_global_static (void)
++{
++  static const char *const ro_class_names[] = REG_CLASS_NAMES;
++  int i, j, c;
++  fprintf (ro_file, "GSET fixed=%lx call_used=%lx call_fixed=%lx no_global=%lx losing_cs=%lx elim=%lx used_so_far=%lx caller_saves=%d nregs=%d\n",
++	   (unsigned long) fixed_reg_set, (unsigned long) call_used_reg_set,
++	   (unsigned long) call_fixed_reg_set, (unsigned long) no_global_alloc_regs,
++	   (unsigned long) losing_caller_save_reg_set, (unsigned long) eliminable_regset,
++	   (unsigned long) regs_used_so_far, flag_caller_saves, FIRST_PSEUDO_REGISTER);
++  for (c = 0; c < N_REG_CLASSES; c++)
++    fprintf (ro_file, "GC %d %s %lx\n", c, ro_class_names[c],
++	     (unsigned long) reg_class_contents[c]);
++  for (i = 0; i < FIRST_PSEUDO_REGISTER; i++)
++    fprintf (ro_file, "GR %d %d %d %d %d\n", i, (int) REGNO_REG_CLASS (i),
++	     local_reg_n_refs[i], local_reg_live_length[i], regs_ever_live[i]);
++  for (i = 0; i < max_allocno; i++)
++    {
++      int r = allocno_reg[i];
++      enum machine_mode mode = PSEUDO_REGNO_MODE (r);
++      unsigned long modeok = 0, nregs2 = 0;
++      for (j = 0; j < FIRST_PSEUDO_REGISTER; j++)
++	{
++	  if (HARD_REGNO_MODE_OK (j, mode))
++	    modeok |= 1UL << j;
++	  if (HARD_REGNO_NREGS (j, mode) > 1)
++	    nregs2 |= 1UL << j;
++	}
++      fprintf (ro_file, "A %d %d refs=%d live=%d size=%d calls=%d pclass=%d aclass=%d hconf=%lx pref=%lx cpref=%lx fpref=%lx modeok=%lx multi=%lx mode=%s local=%d regrefs=%d reglive=%d\n",
++	       i, r, allocno_n_refs[i], allocno_live_length[i], allocno_size[i],
++	       allocno_calls_crossed[i],
++	       (int) reg_preferred_class (r), (int) reg_alternate_class (r),
++	       (unsigned long) hard_reg_conflicts[i], (unsigned long) hard_reg_preferences[i],
++	       (unsigned long) hard_reg_copy_preferences[i],
++	       (unsigned long) hard_reg_full_preferences[i], modeok, nregs2,
++	       GET_MODE_NAME (mode), reg_renumber[r], REG_N_REFS (r), REG_LIVE_LENGTH (r));
++    }
++  for (i = 0; i < max_allocno; i++)
++    {
++      fprintf (ro_file, "C %d", i);
++      for (j = 0; j < max_allocno; j++)
++	if (j != i && (CONFLICTP (i, j) || CONFLICTP (j, i)))
++	  fprintf (ro_file, " %d", j);
++      fputc ('\n', ro_file);
++    }
++  for (i = FIRST_PSEUDO_REGISTER; i < max_regno; i++)
++    if (reg_allocno[i] >= 0 && allocno_reg[reg_allocno[i]] != i)
++      fprintf (ro_file, "GSHARE %d %d\n", i, reg_allocno[i]);
++}
++
++/* regoracle: allocation order and pruned preferences.  */
++static void
++ro_global_order (void)
++{
++  int i;
++  fprintf (ro_file, "GORDER");
++  for (i = 0; i < max_allocno; i++)
++    fprintf (ro_file, " %d", allocno_order[i]);
++  fputc ('\n', ro_file);
++  for (i = 0; i < max_allocno; i++)
++    fprintf (ro_file, "P %d someone=%lx pref=%lx cpref=%lx fpref=%lx\n", i,
++	     (unsigned long) regs_someone_prefers[i], (unsigned long) hard_reg_preferences[i],
++	     (unsigned long) hard_reg_copy_preferences[i],
++	     (unsigned long) hard_reg_full_preferences[i]);
++}
++
+ /* Initialize for allocating registers.  */
+ static void
+ global_init (FILE *file)
+@@ -499,6 +569,9 @@ global_init (FILE *file)
+ 
+       expand_preferences ();
+ 
++      if (RO_ON)
++	ro_global_static ();
++
+       /* Determine the order to allocate the remaining pseudo registers.  */
+ 
+       allocno_order = (int *) obstack_alloc (&global_obstack,
+@@ -539,6 +612,9 @@ global_init (FILE *file)
+ 
+       prune_preferences ();
+ 
++      if (RO_ON)
++	ro_global_order ();
++
+     if (file)
+         dump_conflicts (file);
+     }
+@@ -562,6 +638,13 @@ global_alloc (FILE *file)
+     gcc_obstack_init (&global_obstack);
+ 
+     global_init (file);
++
++    if (RO_ON)
++      {
++        ro_dump_decls (0);
++        ro_dump_regs ();
++        ro_dump_chain (get_insns ());
++      }
+   
+     for (i = 0; i < (size_t) max_allocno; i++)
+     {
+@@ -570,6 +653,18 @@ global_alloc (FILE *file)
+         {
+             int order = allocno_order[i];
+             int regno = allocno_reg[order];
++            int forced = ro_forced_reg (regno);
++
++            if (forced >= 0)
++              {
++                HARD_REG_SET f;
++                SET_HARD_REG_SET (f);
++                CLEAR_HARD_REG_BIT (f, forced);
++                find_reg (order, f, 0, 0, 0);
++                if (reg_renumber[regno] < 0)
++                  find_reg (order, f, 1, 0, 0);
++                continue;
++              }
+ 
+             /* If we have more than one register class,
+                first try allocating in the class that is cheapest
+@@ -589,9 +684,29 @@ global_alloc (FILE *file)
+     /* We need to eliminate regs even if there is no rtl code,
+        for the sake of debugging information.  */
+ 
++    if (RO_ON)
++      {
++        int k;
++        for (k = FIRST_PSEUDO_REGISTER; k < max_regno; k++)
++          if (reg_renumber[k] >= 0)
++            fprintf (ro_file, "Q %d %d\n", k, reg_renumber[k]);
++        fprintf (ro_file, "QEND\n");
++      }
++
++    if (RO_ON)
++      ro_map_pseudos ();
++
+     build_insn_chain (get_insns ());
++    RO_PASS("reload");
+     retval = reload (get_insns (), 1, file);
+ 
++    if (RO_ON)
++      {
++        int k;
++        for (k = FIRST_PSEUDO_REGISTER; k < max_regno; k++)
++          fprintf (ro_file, "Z %d %d\n", k, reg_renumber[k]);
++      }
++
+     obstack_free (&global_obstack, NULL);
+     free (conflicts);
+ 
+@@ -622,6 +737,11 @@ allocno_compare (v1p, v2p)
+     = (((double) (floor_log2 (allocno_n_refs[v2]) * allocno_n_refs[v2])
+ 	/ allocno_live_length[v2])
+        * 10000 * allocno_size[v2]);
++  if (ro_have_overrides ())
++    {
++      pri1 = ro_prio_override (allocno_reg[v1], pri1);
++      pri2 = ro_prio_override (allocno_reg[v2], pri2);
++    }
+   if (pri2 - pri1)
+     return pri2 - pri1;
+ 
+@@ -939,6 +1059,7 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+   HARD_REG_SET used_nopref;
+   register int pseudo = allocno_reg[allocno];
+   /* END CYGNUS LOCAL */
++  const char *ro_via = "none";
+ 
+   enum reg_class class = (alt_regs_p
+ 			  ? reg_alternate_class (allocno_reg[allocno])
+@@ -1013,6 +1134,9 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+ 	  }
+       }
+ 
++  if (best_reg >= 0)
++    ro_via = pass == 1 ? "pass0" : "pass1";
++
+   /* See if there is a preferred register with the same class as the register
+      we allocated above.  Making this restriction prevents register
+      preferencing from creating worse register allocation.
+@@ -1054,6 +1178,7 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+ 	      if (j == lim)
+ 		{
+ 		  best_reg = i;
++		  ro_via = "cpref";
+ 		  goto no_prefs;
+ 		}
+ 	    }
+@@ -1090,6 +1215,7 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+ 	      if (j == lim)
+ 		{
+ 		  best_reg = i;
++		  ro_via = "pref";
+ 		  break;
+ 		}
+ 	    }
+@@ -1122,6 +1248,11 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+ 	  if (reg_renumber[allocno_reg[allocno]] >= 0)
+ 	    {
+ 	      caller_save_needed = 1;
++	      if (RO_ON)
++		fprintf (ro_file, "T %d %d alt=%d acc=%d retry=%d losers=%lx used1=%lx nopref=%lx best=%d via=callersave\n",
++			 allocno, pseudo, alt_regs_p, accept_call_clobbered, retrying,
++			 (unsigned long) losers, (unsigned long) used1, (unsigned long) used_nopref,
++			 reg_renumber[allocno_reg[allocno]]);
+ 	      return;
+ 	    }
+ 	}
+@@ -1179,12 +1310,19 @@ find_reg (allocno, losers, alt_regs_p, accept_call_clobbered, retrying)
+ 		      }
+ 
+ 		  best_reg = regno;
++		  ro_via = "kick";
+ 		  break;
+ 		}
+ 	    }
+ 	}
+     }
+ 
++  if (RO_ON)
++    fprintf (ro_file, "T %d %d alt=%d acc=%d retry=%d losers=%lx used1=%lx nopref=%lx best=%d via=%s\n",
++	     allocno, pseudo, alt_regs_p, accept_call_clobbered, retrying,
++	     (unsigned long) losers, (unsigned long) used1, (unsigned long) used_nopref,
++	     best_reg, ro_via);
++
+   /* Did we find a register?  */
+ 
+   if (best_reg >= 0)
+diff --git a/gcc/local-alloc.c b/gcc/local-alloc.c
+index d4b45f0..eb80149 100755
+--- a/gcc/local-alloc.c
++++ b/gcc/local-alloc.c
+@@ -71,6 +71,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "recog.h"
+ #include "output.h"
+ #include "toplev.h"
++#include "regoracle.h"
+ 
+ /* Next quantity number available for allocation.  */
+ 
+@@ -850,6 +851,8 @@ update_equiv_regs ()
+ 	      /* Note that the statement below does not affect the priority
+ 		 in local-alloc!  */
+ 	      REG_LIVE_LENGTH (regno) *= 2;
++	      if (RO_ON)
++		fprintf (ro_file, "EQ %d %d\n", regno, INSN_UID (insn));
+ 
+ 
+ 	      /* If the register is referenced exactly twice, meaning it is
+@@ -1343,6 +1346,11 @@ block_alloc (b)
+ 	qty_phys_reg[q] = -1;
+     }
+ 
++  if (RO_ON)
++    for (i = 0; i < next_qty; i++)
++      if (qty_phys_reg[qty_order[i]] >= 0)
++	fprintf (ro_file, "LQS %d %d %d\n", b, qty_order[i], qty_phys_reg[qty_order[i]]);
++
+   /* Order the qtys so we assign them registers in order of 
+      decreasing length of life.  Normally call qsort, but if we 
+      have only a very small number of quantities, sort them ourselves.  */
+@@ -1405,6 +1413,22 @@ block_alloc (b)
+ 	}
+     }
+ 
++  if (RO_ON)
++    for (i = 0; i < next_qty; i++)
++      {
++	int r;
++	q = qty_order[i];
++	fprintf (ro_file, "LQ %d %d phys=%d birth=%d death=%d refs=%d size=%d pri=%d mclass=%d aclass=%d sugg=%d csugg=%d calls=%d regs=",
++		 b, q, qty_phys_reg[q], qty_birth[q], qty_death[q], qty_n_refs[q], qty_size[q],
++		 (int) (((double) (floor_log2 (qty_n_refs[q]) * qty_n_refs[q] * qty_size[q])
++			 / (qty_death[q] - qty_birth[q])) * 10000),
++		 (int) qty_min_class[q], (int) qty_alternate_class[q], qty_phys_num_sugg[q],
++		 qty_phys_num_copy_sugg[q], qty_n_calls_crossed[q]);
++	for (r = qty_first_reg[q]; r >= 0; r = reg_next_in_qty[r])
++	  fprintf (ro_file, r == qty_first_reg[q] ? "%d" : ",%d", r);
++	fputc ('\n', ro_file);
++      }
++
+   /* Now propagate the register assignments
+      to the pseudo regs belonging to the qtys.  */
+ 
+diff --git a/gcc/regoracle.c b/gcc/regoracle.c
+new file mode 100644
+index 0000000..22b7dfe
+--- /dev/null
++++ b/gcc/regoracle.c
+@@ -0,0 +1,673 @@
++/* regoracle: register-allocation trace for tools/regoracle.py (EDS decomp).
++
++   Environment:
++     REGORACLE_OUT=FILE       append the trace here
++     REGORACLE_FUNC=NAME      trace only this function
++     REGORACLE_PRIO=R=P,...   what-if: global-alloc priority of pseudo R is P (allocno_compare units)
++     REGORACLE_FORCE=R=H,...  what-if: global-alloc gives pseudo R only hard reg H
++
++   Record types written (one per line, first token is the type):
++     F name                       function starts (after RTL expansion)
++     O regno uid line rtx         first set of a pseudo in the expanded RTL (its source expression)
++     U uid line                   source line of an insn created during expansion
++     N regno pass line mode       pseudo creation (pass that created it)
++     D kind name origin line rtx  a decl and its DECL_RTL (at global-alloc time)
++     I/J/K/L/NB/NE/B ...          the insn chain at global-alloc time (see ro_dump_chain)
++     RF uid depth regno:delta..   REG_N_REFS contributions (recompute_reg_usage)
++     LV uid regno...              pseudos live at an insn (first life analysis)
++     EQ regno uid / EQZ regno     REG_EQUIV live-length doubling / refs zeroed (local-alloc)
++     LQS/LQ ...                   local-alloc quantities
++     G*, A, C, P, T, Q, Z         global-alloc tables, find_reg trace, dispositions
++     SP, SPILLS, RL, RLI          reload: spilled pseudos, spill regs, reload regs, reload insns  */
++
++#include "config.h"
++#include "system.h"
++#include "rtl.h"
++#include "tree.h"
++#include "regs.h"
++#include "hard-reg-set.h"
++#include "basic-block.h"
++#include "flags.h"
++#include "regoracle.h"
++
++extern rtx get_pool_constant (rtx);
++
++FILE *ro_file;
++int ro_active;
++const char *ro_pass = "expand";
++
++static char *ro_func;
++static int *ro_reg_line;
++static const char **ro_reg_pass;
++static int ro_reg_alloc;
++static int *ro_uid_line;
++static int ro_uid_alloc;
++
++#define RO_MAXOVR 4096
++static int ro_nprio, ro_prio_reg[RO_MAXOVR], ro_prio_val[RO_MAXOVR];
++static int ro_nforce, ro_force_reg[RO_MAXOVR], ro_force_hard[RO_MAXOVR];
++
++extern int emit_lineno;
++
++static void
++ro_parse_pairs (const char *s, int *n, int *a, int *b)
++{
++  *n = 0;
++  while (s && *s && *n < RO_MAXOVR)
++    {
++      char *end;
++      long x, y;
++      while (*s == ',' || *s == ' ')
++	s++;
++      if (!*s)
++	break;
++      x = strtol (s, &end, 10);
++      if (*end != '=')
++	break;
++      y = strtol (end + 1, &end, 10);
++      a[*n] = (int) x;
++      b[*n] = (int) y;
++      (*n)++;
++      s = end;
++    }
++}
++
++void
++ro_init (void)
++{
++  char *out = getenv ("REGORACLE_OUT");
++  ro_func = getenv ("REGORACLE_FUNC");
++  if (out && *out && ro_func && *ro_func)
++    ro_file = fopen (out, "a");
++  if (ro_file && getenv ("REGORACLE_UNBUFFERED"))
++    setvbuf (ro_file, NULL, _IONBF, 0);
++  ro_parse_pairs (getenv ("REGORACLE_PRIO"), &ro_nprio, ro_prio_reg, ro_prio_val);
++  ro_parse_pairs (getenv ("REGORACLE_FORCE"), &ro_nforce, ro_force_reg, ro_force_hard);
++}
++
++void
++ro_reset_function (void)
++{
++  int i;
++  ro_pass = "expand";
++  for (i = 0; i < ro_reg_alloc; i++)
++    {
++      ro_reg_line[i] = 0;
++      ro_reg_pass[i] = 0;
++    }
++  for (i = 0; i < ro_uid_alloc; i++)
++    ro_uid_line[i] = 0;
++}
++
++static void
++ro_grow (int **arr, const char ***parr, int *alloc, int need)
++{
++  int n = *alloc, i;
++  if (need < n)
++    return;
++  while (n <= need)
++    n = n ? n * 2 : 1024;
++  *arr = (int *) xrealloc (*arr, n * sizeof (int));
++  for (i = *alloc; i < n; i++)
++    (*arr)[i] = 0;
++  if (parr)
++    {
++      *parr = (const char **) xrealloc (*parr, n * sizeof (char *));
++      for (i = *alloc; i < n; i++)
++	(*parr)[i] = 0;
++    }
++  *alloc = n;
++}
++
++void
++ro_new_reg (int regno)
++{
++  if (!ro_file)
++    return;
++  ro_grow (&ro_reg_line, &ro_reg_pass, &ro_reg_alloc, regno);
++  ro_reg_line[regno] = emit_lineno;
++  ro_reg_pass[regno] = ro_pass;
++}
++
++void
++ro_new_insn (int uid)
++{
++  if (!ro_file || strcmp (ro_pass, "expand"))
++    return;
++  ro_grow (&ro_uid_line, 0, &ro_uid_alloc, uid);
++  ro_uid_line[uid] = emit_lineno;
++}
++
++/* Compact one-line RTL printer.  */
++void
++ro_print_rtx (FILE *f, rtx x)
++{
++  int i, j;
++  const char *fmt;
++  enum rtx_code code;
++
++  if (x == 0)
++    {
++      fputs ("nil", f);
++      return;
++    }
++  code = GET_CODE (x);
++  switch (code)
++    {
++    case REG:
++      fprintf (f, "(reg:%s %d)", GET_MODE_NAME (GET_MODE (x)), REGNO (x));
++      return;
++    case CONST_INT:
++      fprintf (f, "%ld", (long) INTVAL (x));
++      return;
++    case SYMBOL_REF:
++      if (CONSTANT_POOL_ADDRESS_P (x))
++	{
++	  fputc ('=', f);
++	  ro_print_rtx (f, get_pool_constant (x));
++	}
++      else
++	fprintf (f, "`%s'", XSTR (x, 0));
++      return;
++    case LABEL_REF:
++      fprintf (f, "(label_ref %d)", XEXP (x, 0) ? INSN_UID (XEXP (x, 0)) : 0);
++      return;
++    case CODE_LABEL:
++      fprintf (f, "L%d", INSN_UID (x));
++      return;
++    case PC:
++      fputs ("pc", f);
++      return;
++    case CC0:
++      fputs ("cc0", f);
++      return;
++    case INSN:
++    case JUMP_INSN:
++    case CALL_INSN:
++    case NOTE:
++    case BARRIER:
++      fprintf (f, "#%d", INSN_UID (x));
++      return;
++    default:
++      break;
++    }
++  fprintf (f, "(%s", GET_RTX_NAME (code));
++  if (GET_MODE (x) != VOIDmode)
++    fprintf (f, ":%s", GET_MODE_NAME (GET_MODE (x)));
++  fmt = GET_RTX_FORMAT (code);
++  for (i = 0; i < GET_RTX_LENGTH (code); i++)
++    switch (fmt[i])
++      {
++      case 'e':
++	fputc (' ', f);
++	ro_print_rtx (f, XEXP (x, i));
++	break;
++      case 'E':
++      case 'V':
++	fputs (" [", f);
++	if (XVEC (x, i))
++	  for (j = 0; j < XVECLEN (x, i); j++)
++	    {
++	      if (j)
++		fputc (' ', f);
++	      ro_print_rtx (f, XVECEXP (x, i, j));
++	    }
++	fputc (']', f);
++	break;
++      case 'i':
++	fprintf (f, " %d", XINT (x, i));
++	break;
++      case 'w':
++	fprintf (f, " %ld", (long) XWINT (x, i));
++	break;
++      case 's':
++	if (XSTR (x, i))
++	  fprintf (f, " \"%s\"", XSTR (x, i));
++	break;
++      default:
++	break;
++      }
++  fputc (')', f);
++}
++
++/* Collect the pseudos mentioned in X into LIST (no duplicates).  */
++static int
++ro_collect_1 (rtx x, int *list, int n, int max)
++{
++  int i, j;
++  const char *fmt;
++  enum rtx_code code;
++  if (x == 0)
++    return n;
++  code = GET_CODE (x);
++  if (code == REG)
++    {
++      int r = REGNO (x);
++      if (r >= FIRST_PSEUDO_REGISTER)
++	{
++	  for (i = 0; i < n; i++)
++	    if (list[i] == r)
++	      return n;
++	  if (n < max)
++	    list[n++] = r;
++	}
++      return n;
++    }
++  if (code == INSN || code == JUMP_INSN || code == CALL_INSN || code == CODE_LABEL
++      || code == NOTE || code == BARRIER)
++    return n;
++  fmt = GET_RTX_FORMAT (code);
++  for (i = 0; i < GET_RTX_LENGTH (code); i++)
++    if (fmt[i] == 'e')
++      n = ro_collect_1 (XEXP (x, i), list, n, max);
++    else if (fmt[i] == 'E' && XVEC (x, i))
++      for (j = 0; j < XVECLEN (x, i); j++)
++	n = ro_collect_1 (XVECEXP (x, i, j), list, n, max);
++  return n;
++}
++
++int
++ro_collect_pseudos (rtx insn, int *list, int max)
++{
++  int n = ro_collect_1 (PATTERN (insn), list, 0, max);
++  if (GET_CODE (insn) == CALL_INSN)
++    n = ro_collect_1 (CALL_INSN_FUNCTION_USAGE (insn), list, n, max);
++  n = ro_collect_1 (REG_NOTES (insn), list, n, max);
++  return n;
++}
++
++/* Split the pseudos of an insn pattern into sets and uses.  */
++static void
++ro_sets_uses (rtx x, int dest, int *s, int *ns, int *u, int *nu, int max)
++{
++  int i, j;
++  const char *fmt;
++  enum rtx_code code;
++  if (x == 0)
++    return;
++  code = GET_CODE (x);
++  switch (code)
++    {
++    case REG:
++      if (REGNO (x) >= FIRST_PSEUDO_REGISTER)
++	{
++	  int *l = dest ? s : u, *n = dest ? ns : nu;
++	  for (i = 0; i < *n; i++)
++	    if (l[i] == (int) REGNO (x))
++	      return;
++	  if (*n < max)
++	    l[(*n)++] = REGNO (x);
++	}
++      return;
++    case SET:
++      ro_sets_uses (SET_DEST (x), 1, s, ns, u, nu, max);
++      ro_sets_uses (SET_SRC (x), 0, s, ns, u, nu, max);
++      return;
++    case CLOBBER:
++      ro_sets_uses (XEXP (x, 0), 1, s, ns, u, nu, max);
++      return;
++    case MEM:
++      ro_sets_uses (XEXP (x, 0), 0, s, ns, u, nu, max);
++      return;
++    case SUBREG:
++    case STRICT_LOW_PART:
++      ro_sets_uses (XEXP (x, 0), dest, s, ns, u, nu, max);
++      return;
++    case ZERO_EXTRACT:
++    case SIGN_EXTRACT:
++      ro_sets_uses (XEXP (x, 0), dest, s, ns, u, nu, max);
++      ro_sets_uses (XEXP (x, 1), 0, s, ns, u, nu, max);
++      ro_sets_uses (XEXP (x, 2), 0, s, ns, u, nu, max);
++      return;
++    case INSN:
++    case JUMP_INSN:
++    case CALL_INSN:
++    case CODE_LABEL:
++    case NOTE:
++    case BARRIER:
++      return;
++    default:
++      break;
++    }
++  fmt = GET_RTX_FORMAT (code);
++  for (i = 0; i < GET_RTX_LENGTH (code); i++)
++    if (fmt[i] == 'e')
++      ro_sets_uses (XEXP (x, i), 0, s, ns, u, nu, max);
++    else if (fmt[i] == 'E' && XVEC (x, i))
++      for (j = 0; j < XVECLEN (x, i); j++)
++	ro_sets_uses (XVECEXP (x, i, j), 0, s, ns, u, nu, max);
++}
++
++void
++ro_insn_regs (rtx insn, int *s, int *ns, int *u, int *nu, int max)
++{
++  *ns = *nu = 0;
++  ro_sets_uses (PATTERN (insn), 0, s, ns, u, nu, max);
++  if (GET_CODE (insn) == CALL_INSN)
++    ro_sets_uses (CALL_INSN_FUNCTION_USAGE (insn), 0, s, ns, u, nu, max);
++}
++
++static void
++ro_print_list (const char *key, int *l, int n)
++{
++  int i;
++  fprintf (ro_file, " %s=", key);
++  for (i = 0; i < n; i++)
++    fprintf (ro_file, i ? ",%d" : "%d", l[i]);
++}
++
++/* The insn chain with loop notes, blocks, per-insn pseudos and patterns.
++     I uid code d=DEPTH s=SETS u=USES dead=DEAD unused=UNUSED eq=EQUIV-REG\tPATTERN
++     L uid (label)   NB / NE uid (loop begin / end)   NV uid (loop vtop)  NC uid (loop cont)
++     B block head end  */
++void
++ro_dump_chain (rtx first)
++{
++  rtx insn, link;
++  int depth = 1, b;
++  int s[256], u[256], d[256], un[256], ns, nu, nd, nun;
++
++  for (b = 0; b < n_basic_blocks; b++)
++    fprintf (ro_file, "B %d %d %d\n", b, INSN_UID (BLOCK_HEAD (b)), INSN_UID (BLOCK_END (b)));
++  for (insn = first; insn; insn = NEXT_INSN (insn))
++    {
++      enum rtx_code code = GET_CODE (insn);
++      if (code == NOTE)
++	{
++	  int k = NOTE_LINE_NUMBER (insn);
++	  if (k == NOTE_INSN_LOOP_BEG)
++	    {
++	      depth++;
++	      fprintf (ro_file, "NB %d\n", INSN_UID (insn));
++	    }
++	  else if (k == NOTE_INSN_LOOP_END)
++	    {
++	      depth--;
++	      fprintf (ro_file, "NE %d\n", INSN_UID (insn));
++	    }
++	  else if (k == NOTE_INSN_LOOP_VTOP)
++	    fprintf (ro_file, "NV %d\n", INSN_UID (insn));
++	  else if (k == NOTE_INSN_LOOP_CONT)
++	    fprintf (ro_file, "NC %d\n", INSN_UID (insn));
++	  continue;
++	}
++      if (code == CODE_LABEL)
++	{
++	  fprintf (ro_file, "L %d\n", INSN_UID (insn));
++	  continue;
++	}
++      if (GET_RTX_CLASS (code) != 'i')
++	continue;
++      ro_insn_regs (insn, s, &ns, u, &nu, 256);
++      nd = nun = 0;
++      for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
++	if (XEXP (link, 0) && GET_CODE (XEXP (link, 0)) == REG
++	    && REGNO (XEXP (link, 0)) >= FIRST_PSEUDO_REGISTER)
++	  {
++	    if (REG_NOTE_KIND (link) == REG_DEAD && nd < 256)
++	      d[nd++] = REGNO (XEXP (link, 0));
++	    else if (REG_NOTE_KIND (link) == REG_UNUSED && nun < 256)
++	      un[nun++] = REGNO (XEXP (link, 0));
++	  }
++      fprintf (ro_file, "I %d %s d=%d", INSN_UID (insn),
++	       code == JUMP_INSN ? "jump" : code == CALL_INSN ? "call" : "insn", depth);
++      ro_print_list ("s", s, ns);
++      ro_print_list ("u", u, nu);
++      ro_print_list ("dead", d, nd);
++      ro_print_list ("unused", un, nun);
++      for (link = REG_NOTES (insn); link; link = XEXP (link, 1))
++	if (REG_NOTE_KIND (link) == REG_EQUIV || REG_NOTE_KIND (link) == REG_EQUAL)
++	  {
++	    fprintf (ro_file, " %s=", REG_NOTE_KIND (link) == REG_EQUIV ? "equiv" : "equal");
++	    ro_print_rtx (ro_file, XEXP (link, 0));
++	  }
++      fputc ('\t', ro_file);
++      ro_print_rtx (ro_file, PATTERN (insn));
++      fputc ('\n', ro_file);
++    }
++}
++
++static void
++ro_walk_block (tree block, const char *origin)
++{
++  tree t;
++  if (block == 0)
++    return;
++  if (BLOCK_ABSTRACT_ORIGIN (block)
++      && TREE_CODE (BLOCK_ABSTRACT_ORIGIN (block)) == FUNCTION_DECL
++      && DECL_NAME (BLOCK_ABSTRACT_ORIGIN (block)))
++    origin = IDENTIFIER_POINTER (DECL_NAME (BLOCK_ABSTRACT_ORIGIN (block)));
++  for (t = BLOCK_VARS (block); t; t = TREE_CHAIN (t))
++    if ((TREE_CODE (t) == VAR_DECL || TREE_CODE (t) == PARM_DECL) && DECL_RTL (t))
++      {
++	fprintf (ro_file, "D %s %s %s %d ", TREE_CODE (t) == PARM_DECL ? "parm" : "var",
++		 DECL_NAME (t) ? IDENTIFIER_POINTER (DECL_NAME (t)) : "?", origin,
++		 DECL_SOURCE_LINE (t));
++	ro_print_rtx (ro_file, DECL_RTL (t));
++	fputc ('\n', ro_file);
++      }
++  for (t = BLOCK_SUBBLOCKS (block); t; t = BLOCK_CHAIN (t))
++    ro_walk_block (t, origin);
++}
++
++void
++ro_dump_decls (tree fndecl)
++{
++  tree t;
++  if (fndecl == 0)
++    fndecl = current_function_decl;
++  for (t = DECL_ARGUMENTS (fndecl); t; t = TREE_CHAIN (t))
++    if (DECL_RTL (t))
++      {
++	fprintf (ro_file, "D parm %s - %d ", DECL_NAME (t) ? IDENTIFIER_POINTER (DECL_NAME (t)) : "?",
++		 DECL_SOURCE_LINE (t));
++	ro_print_rtx (ro_file, DECL_RTL (t));
++	fputc ('\n', ro_file);
++      }
++  ro_walk_block (DECL_INITIAL (fndecl), "-");
++}
++
++void
++ro_begin_function (tree decl, rtx insns)
++{
++  rtx insn;
++  int i, max;
++  char *seen;
++
++  ro_active = 0;
++  if (!ro_file || !DECL_NAME (decl) || strcmp (IDENTIFIER_POINTER (DECL_NAME (decl)), ro_func))
++    return;
++  ro_active = 1;
++  fprintf (ro_file, "F %s\n", IDENTIFIER_POINTER (DECL_NAME (decl)));
++  for (insn = insns; insn; insn = NEXT_INSN (insn))
++    if (INSN_UID (insn) < ro_uid_alloc && ro_uid_line[INSN_UID (insn)]
++	&& GET_RTX_CLASS (GET_CODE (insn)) == 'i')
++      fprintf (ro_file, "U %d %d\n", INSN_UID (insn), ro_uid_line[INSN_UID (insn)]);
++  max = max_reg_num ();
++  seen = (char *) xmalloc (max + 1);
++  memset (seen, 0, max + 1);
++  for (insn = insns; insn; insn = NEXT_INSN (insn))
++    if (GET_RTX_CLASS (GET_CODE (insn)) == 'i')
++      {
++	rtx set = single_set (insn);
++	if (set && GET_CODE (SET_DEST (set)) == REG && REGNO (SET_DEST (set)) >= FIRST_PSEUDO_REGISTER
++	    && (int) REGNO (SET_DEST (set)) < max && !seen[REGNO (SET_DEST (set))])
++	  {
++	    int r = REGNO (SET_DEST (set));
++	    seen[r] = 1;
++	    fprintf (ro_file, "O %d %d %d ", r, INSN_UID (insn),
++		     INSN_UID (insn) < ro_uid_alloc ? ro_uid_line[INSN_UID (insn)] : 0);
++	    ro_print_rtx (ro_file, SET_SRC (set));
++	    fputc ('\n', ro_file);
++	  }
++      }
++  free (seen);
++}
++
++void
++ro_dump_regs (void)
++{
++  int i, max = max_reg_num ();
++  for (i = FIRST_PSEUDO_REGISTER; i < max && i < ro_reg_alloc; i++)
++    if (ro_reg_pass[i])
++      fprintf (ro_file, "N %d %s %d %s\n", i, ro_reg_pass[i], ro_reg_line[i],
++	       GET_MODE_NAME (GET_MODE (regno_reg_rtx[i])));
++}
++
++void
++ro_end_function (void)
++{
++  if (ro_active && ro_file)
++    {
++      fprintf (ro_file, "END\n");
++      fflush (ro_file);
++    }
++  ro_active = 0;
++}
++
++int
++ro_have_overrides (void)
++{
++  return ro_active && (ro_nprio || ro_nforce);
++}
++
++int
++ro_prio_override (int regno, int prio)
++{
++  int i;
++  if (!ro_active)
++    return prio;
++  for (i = 0; i < ro_nprio; i++)
++    if (ro_prio_reg[i] == regno)
++      return ro_prio_val[i];
++  return prio;
++}
++
++int
++ro_forced_reg (int regno)
++{
++  int i;
++  if (!ro_active)
++    return -1;
++  for (i = 0; i < ro_nforce; i++)
++    if (ro_force_reg[i] == regno)
++      return ro_force_hard[i];
++  return -1;
++}
++
++/* Pointer -> pseudo map of the shared REG rtx of every pseudo, taken before reload rewrites their
++   REGNO in place (alter_reg); final uses it to say which pseudo each hard-register operand was.  */
++struct ro_regmap { rtx x; int regno; };
++static struct ro_regmap *ro_map;
++static int ro_nmap;
++
++static int
++ro_map_cmp (const void *a, const void *b)
++{
++  const struct ro_regmap *p = a, *q = b;
++  return p->x < q->x ? -1 : p->x > q->x;
++}
++
++void
++ro_map_pseudos (void)
++{
++  int i, max = max_reg_num ();
++  ro_map = (struct ro_regmap *) xrealloc (ro_map, (max + 1) * sizeof (struct ro_regmap));
++  ro_nmap = 0;
++  for (i = FIRST_PSEUDO_REGISTER; i < max; i++)
++    if (regno_reg_rtx[i] && GET_CODE (regno_reg_rtx[i]) == REG)
++      {
++	ro_map[ro_nmap].x = regno_reg_rtx[i];
++	ro_map[ro_nmap].regno = i;
++	ro_nmap++;
++      }
++  qsort (ro_map, ro_nmap, sizeof (struct ro_regmap), ro_map_cmp);
++}
++
++static int
++ro_pseudo_of (rtx x)
++{
++  int lo = 0, hi = ro_nmap - 1;
++  while (lo <= hi)
++    {
++      int mid = (lo + hi) / 2;
++      if (ro_map[mid].x == x)
++	return ro_map[mid].regno;
++      if (ro_map[mid].x < x)
++	lo = mid + 1;
++      else
++	hi = mid - 1;
++    }
++  return -1;
++}
++
++static void
++ro_final_walk (rtx x, int dest, char *buf, int *len)
++{
++  int i, j;
++  const char *fmt;
++  enum rtx_code code;
++  if (x == 0)
++    return;
++  code = GET_CODE (x);
++  switch (code)
++    {
++    case REG:
++      if (*len < 900)
++	{
++	  int p = ro_pseudo_of (x);
++	  char item[40];
++	  if (p >= 0)
++	    sprintf (item, " %d:%d:%c", p, REGNO (x), dest ? 's' : 'u');
++	  else
++	    sprintf (item, " -:%d:%c", REGNO (x), dest ? 's' : 'u');
++	  if (!strstr (buf, item))
++	    {
++	      strcpy (buf + *len, item);
++	      *len += strlen (item);
++	    }
++	}
++      return;
++    case SET:
++      ro_final_walk (SET_DEST (x), 1, buf, len);
++      ro_final_walk (SET_SRC (x), 0, buf, len);
++      return;
++    case CLOBBER:
++      ro_final_walk (XEXP (x, 0), 1, buf, len);
++      return;
++    case MEM:
++      ro_final_walk (XEXP (x, 0), 0, buf, len);
++      return;
++    case SUBREG:
++    case STRICT_LOW_PART:
++      ro_final_walk (XEXP (x, 0), dest, buf, len);
++      return;
++    case INSN:
++    case JUMP_INSN:
++    case CALL_INSN:
++    case CODE_LABEL:
++    case NOTE:
++    case BARRIER:
++      return;
++    default:
++      break;
++    }
++  fmt = GET_RTX_FORMAT (code);
++  for (i = 0; i < GET_RTX_LENGTH (code); i++)
++    if (fmt[i] == 'e')
++      ro_final_walk (XEXP (x, i), 0, buf, len);
++    else if (fmt[i] == 'E' && XVEC (x, i))
++      for (j = 0; j < XVECLEN (x, i); j++)
++	ro_final_walk (XVECEXP (x, i, j), 0, buf, len);
++}
++
++/* FI uid pseudo:hardreg:s|u ...  (- for a register that is no pseudo's: reload or fixed reg).  */
++void
++ro_final_insn (rtx insn)
++{
++  char buf[1024];
++  int len = 0;
++  buf[0] = 0;
++  ro_final_walk (PATTERN (insn), 0, buf, &len);
++  fprintf (ro_file, "FI %d%s\n", INSN_UID (insn), buf);
++}
+diff --git a/gcc/regoracle.h b/gcc/regoracle.h
+new file mode 100644
+index 0000000..199216d
+--- /dev/null
++++ b/gcc/regoracle.h
+@@ -0,0 +1,36 @@
++/* regoracle: register-allocation trace for tools/regoracle.py (EDS decomp).
++   Inactive unless REGORACLE_OUT and REGORACLE_FUNC are set in the environment; it then appends a
++   line-oriented trace of the named function's register allocation to REGORACLE_OUT.  Tracing never
++   changes code generation.  REGORACLE_PRIO / REGORACLE_FORCE are what-if overrides (they do).  */
++
++#ifndef GCC_REGORACLE_H
++#define GCC_REGORACLE_H
++
++#include <stdio.h>
++
++extern FILE *ro_file;		/* trace stream, 0 when tracing is off */
++extern int ro_active;		/* nonzero while compiling the traced function */
++extern const char *ro_pass;	/* name of the pass now running */
++
++extern void ro_init (void);
++extern void ro_reset_function (void);
++extern void ro_new_reg (int);
++extern void ro_new_insn (int);
++extern void ro_begin_function (union tree_node *, struct rtx_def *);
++extern void ro_end_function (void);
++extern void ro_print_rtx (FILE *, struct rtx_def *);
++extern void ro_dump_chain (struct rtx_def *);
++extern void ro_dump_decls (union tree_node *);
++extern void ro_dump_regs (void);
++extern void ro_map_pseudos (void);
++extern void ro_final_insn (struct rtx_def *);
++extern int ro_prio_override (int, int);
++extern int ro_forced_reg (int);
++extern int ro_have_overrides (void);
++extern int ro_collect_pseudos (struct rtx_def *, int *, int);
++extern void ro_insn_regs (struct rtx_def *, int *, int *, int *, int *, int);
++
++#define RO_ON (ro_active && ro_file)
++#define RO_PASS(NAME) (ro_pass = (NAME))
++
++#endif
+diff --git a/gcc/reload1.c b/gcc/reload1.c
+index 8f57aa5..5de2f11 100755
+--- a/gcc/reload1.c
++++ b/gcc/reload1.c
+@@ -38,6 +38,7 @@ Boston, MA 02111-1307, USA.  */
+ #include "output.h"
+ #include "real.h"
+ #include "toplev.h"
++#include "regoracle.h"
+ 
+ /* This file contains the reload pass of the compiler, which is
+    run after register allocation has been done.  It checks that
+@@ -398,6 +399,7 @@ static int hard_reg_use_compare		(const void *, const void *);
+ static void count_pseudo		(struct hard_reg_n_uses *, int);
+ static void order_regs_for_reload	(struct insn_chain *);
+ static void reload_as_needed		(int);
++static void ro_print_reloads		(rtx);
+ static void forget_old_reloads_1	(rtx, rtx);
+ static int reload_reg_class_lower	(const void *, const void *);
+ static void mark_reload_reg_in_use	(int, int, enum reload_type,
+@@ -3549,6 +3551,8 @@ finish_spills (global, dumpfile)
+ 	if (reg_renumber[i] < 0)
+ 	  abort ();
+ 	SET_HARD_REG_BIT (pseudo_previous_regs[i], reg_renumber[i]);
++	if (RO_ON)
++	  fprintf (ro_file, "SP %d %d\n", i, reg_renumber[i]);
+ 	/* Mark it as no longer having a hard register home.  */
+ 	reg_renumber[i] = -1;
+ 	/* We will need to scan everything again.  */
+@@ -3872,6 +3876,15 @@ reload_as_needed (live_known)
+ 
+   set_initial_elim_offsets ();
+ 
++  if (RO_ON)
++    {
++      int k;
++      fprintf (ro_file, "SPILLS %d", n_spills);
++      for (k = 0; k < n_spills; k++)
++	fprintf (ro_file, " %d", spill_regs[k]);
++      fputc ('\n', ro_file);
++    }
++
+   for (chain = reload_insn_chain; chain; chain = chain->next)
+     {
+       rtx prev;
+@@ -3948,6 +3961,8 @@ reload_as_needed (live_known)
+ 		 load insns to reload them.  Maybe output store insns too.
+ 		 Record the choices of reload reg in reload_reg_rtx.  */
+ 	      choose_reload_regs (chain);
++	      if (RO_ON)
++		ro_print_reloads (insn);
+ 
+ 	      /* Merge any reloads that we didn't combine for fear of 
+ 		 increasing the number of spill registers needed but now
+@@ -3965,6 +3980,15 @@ reload_as_needed (live_known)
+ 		 and that we moved the structure into).  */
+ 	      subst_reloads ();
+ 
++	      if (RO_ON)
++		{
++		  fprintf (ro_file, "RLI %d", INSN_UID (insn));
++		  for (p = NEXT_INSN (prev); p != next; p = NEXT_INSN (p))
++		    if (p != insn && GET_RTX_CLASS (GET_CODE (p)) == 'i')
++		      fprintf (ro_file, " %d", INSN_UID (p));
++		  fputc ('\n', ro_file);
++		}
++
+ 	      /* If this was an ASM, make sure that all the reload insns
+ 		 we have generated are valid.  If not, give an error
+ 		 and delete them.  */
+@@ -5019,6 +5043,25 @@ reload_reg_free_for_value_p (regno, opnum, type, value, out, reloadnum,
+   return 1;
+ }
+ 
++/* regoracle: the reloads chosen for INSN.  */
++static void
++ro_print_reloads (rtx insn)
++{
++  int r;
++  for (r = 0; r < n_reloads; r++)
++    {
++      fprintf (ro_file, "RL %d %d reg=%d inh=%d opt=%d when=%d class=%d spill=%d last=%d in=",
++	       INSN_UID (insn), r,
++	       reload_reg_rtx[r] && GET_CODE (reload_reg_rtx[r]) == REG ? (int) REGNO (reload_reg_rtx[r]) : -1,
++	       reload_inherited[r], reload_optional[r], (int) reload_when_needed[r],
++	       (int) reload_reg_class[r], reload_spill_index[r], last_spill_reg);
++      ro_print_rtx (ro_file, reload_in_reg[r] ? reload_in_reg[r] : reload_in[r]);
++      fputs (" out=", ro_file);
++      ro_print_rtx (ro_file, reload_out[r]);
++      fputc ('\n', ro_file);
++    }
++}
++
+ /* Find a spill register to use as a reload register for reload R.
+    LAST_RELOAD is non-zero if this is the last reload for the insn being
+    processed.
+@@ -5194,6 +5237,9 @@ allocate_reload_reg (chain, r, last_reload, noerror)
+ 	       && ! HARD_REGNO_MODE_OK (regno, GET_MODE (reload_out[r]))))
+ 	  {
+ 	    /* The reg is OK.  */
++	    if (RO_ON)
++	      fprintf (ro_file, "RA %d %d idx=%d reg=%d prev=%d\n", INSN_UID (insn), r, i,
++		       spill_regs[i], last_spill_reg);
+ 	    last_spill_reg = i;
+ 
+ 	    /* Mark as in use for this insn the reload regs we use
+diff --git a/gcc/toplev.c b/gcc/toplev.c
+index ac8e21b..1055b9f 100755
+--- a/gcc/toplev.c
++++ b/gcc/toplev.c
+@@ -44,6 +44,7 @@
+ 
+ #if defined (DWARF2_DEBUGGING_INFO)
+ #include "dwarf2out.h"
++#include "regoracle.h"
+ #endif
+ 
+ extern int rtx_equal_function_value_matters;
+@@ -1921,6 +1922,8 @@ compile_file(char *name)
+     if (dump_base_name == 0)
+         dump_base_name = name ? name : "gccdump";
+ 
++    ro_init();
++
+     parse_time = 0;
+     varconst_time = 0;
+     integration_time = 0;
+@@ -2746,6 +2749,9 @@ rest_of_compilation(tree decl)
+ 
+     insns = get_insns();
+ 
++    ro_begin_function(decl, insns);
++    RO_PASS("jump");
++
+     /* Copy any shared structure that should not be shared.  */
+ 
+     unshare_all_rtl(insns);
+@@ -2799,6 +2805,7 @@ rest_of_compilation(tree decl)
+ 
+     if (optimize > 0)
+     {
++        RO_PASS("cse");
+         if (cse_dump)
+             open_dump_file(".cse", decl_printable_name(decl, 2));
+ 
+@@ -2836,6 +2843,7 @@ rest_of_compilation(tree decl)
+         }
+     }
+ 
++    RO_PASS("addressof");
+     purge_addressof(insns);
+     reg_scan(insns, max_reg_num(), 1);
+ 
+@@ -2850,6 +2858,7 @@ rest_of_compilation(tree decl)
+ 
+     if (optimize > 0 && flag_gcse)
+     {
++        RO_PASS("gcse");
+         if (gcse_dump)
+             open_dump_file(".gcse", IDENTIFIER_POINTER(DECL_NAME(decl)));
+ 
+@@ -2881,6 +2890,7 @@ rest_of_compilation(tree decl)
+ 
+     if (optimize > 0)
+     {
++        RO_PASS("loop");
+         if (loop_dump)
+             open_dump_file(".loop", decl_printable_name(decl, 2));
+ 
+@@ -2904,6 +2914,7 @@ rest_of_compilation(tree decl)
+                        analysis code depends on this information.  */
+                     reg_scan(insns, max_reg_num(), 1);
+                 }
++                RO_PASS("loop2");
+                 loop_optimize(insns, rtl_dump_file, flag_unroll_loops, 1);
+             });
+ 
+@@ -2919,6 +2930,7 @@ rest_of_compilation(tree decl)
+ 
+     if (optimize > 0)
+     {
++        RO_PASS("cse2");
+         if (cse2_dump)
+             open_dump_file(".cse2", decl_printable_name(decl, 2));
+ 
+@@ -2979,6 +2991,7 @@ rest_of_compilation(tree decl)
+         obey_regdecls = 0;      /* if optimizations being done.  */
+ 
+     regclass_init();
++    RO_PASS("flow");
+ 
+     /* Print function header into flow dump now
+        because doing the flow analysis makes some of the dump.  */
+@@ -3029,6 +3042,7 @@ rest_of_compilation(tree decl)
+ 
+     if (optimize > 0)
+     {
++        RO_PASS("combine");
+         TIMEVAR(combine_time, combine_instructions(insns, max_reg_num()));
+ 
+         /* Dump rtl code after insn combination.  */
+@@ -3045,6 +3059,7 @@ rest_of_compilation(tree decl)
+        necessary for two-address machines.  */
+     if (optimize > 0 && (flag_regmove || flag_expensive_optimizations))
+     {
++        RO_PASS("regmove");
+         if (regmove_dump)
+             open_dump_file(".regmove", decl_printable_name(decl, 2));
+ 
+@@ -3062,6 +3077,7 @@ rest_of_compilation(tree decl)
+     /* Unless we did stupid register allocation,
+        allocate pseudo-regs that are used only within 1 basic block.  */
+ 
++    RO_PASS("lalloc");
+     if (!obey_regdecls)
+         TIMEVAR(local_alloc_time,
+                 {
+@@ -3091,6 +3107,7 @@ rest_of_compilation(tree decl)
+        allocate remaining pseudo-regs, then do the reload pass
+        fixing up any insns that are invalid.  */
+ 
++    RO_PASS("galloc");
+     TIMEVAR(global_alloc_time,
+             {
+                 if (!obey_regdecls)
+@@ -3103,6 +3120,7 @@ rest_of_compilation(tree decl)
+     if (failure)
+         goto exit_rest_of_compilation;
+ 
++    RO_PASS("postreload");
+     /* Do a very simple CSE pass over just the hard registers.  */
+     if (optimize > 0)
+         reload_cse_regs(insns);
+@@ -3219,6 +3237,7 @@ rest_of_compilation(tree decl)
+ 
+ exit_rest_of_compilation:
+ 
++    ro_end_function();
+     free_bb_memory();
+ 
+     /* In case the function was not output,

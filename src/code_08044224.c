@@ -241,14 +241,52 @@ static inline int TargetTypeNV(u16 id)
 }
 #define TARGET_TYPE_NV(id) ((u32)TargetTypeNV(id))
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 338): r5: 0x3FA for-loop ending (cse2 path), skipFilter deck index
-       * 0x439/0x400/0x3FA, 0x58D/0x59F assign-inside-if, 0x5EB grouped id; wf 338 */
+/* TargetKind with a u16 id (case 0x455): all three `id & 0x7FF` ANDs are then HImode, so their constants match
+   and loop.c hoists 0x7FF in pass 1 (ROM preheader order); 0x454 needs the u32 TargetKind. */
+static inline s8 TargetKind16(u16 id)
+{
+    switch (TARGET_NUMBER(id)) {
+    case 0x776: return 3;
+    case 0x777:
+    case 0x778: return 1;
+    }
+    switch ((s32)((TARGET_STATS(id) & 0x1F00000) >> 20)) {
+    case 22:
+        return 7;
+    case 21:
+        return 8;
+    case 23:
+        return 9;
+    }
+    return (TARGET_STATS(id) & 0xC0000) >> 18;
+}
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
     struct TargetCard cards[80];
     u8 rest[0xD64 - 80 * 4];
 };
+/* Card type as a u8: the narrowing adds pass-1 loop insns (removed later by combine), which keeps loop.c
+   from hoisting &count in pass 1 (0x447/0x45C: areas pointer before count pointer, as in the ROM). */
+static inline u8 TargetType8(u16 id)
+{
+    return (TARGET_STATS(id) & 0x1F00000) >> 20;
+}
+/* u16 id: the parameter's zero-extension adds pass-1 loop insns, so 0x2F's &count is hoisted in loop
+   pass 2 (after the 1500 constant), as in the ROM. */
+static inline u16 TargetAttack16(u16 id)
+{
+    u32 type = ((TARGET_STATS(id) & 0x1F00000) >> 20);
+    switch ((s32)type) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    }
+    return ((TARGET_STATS(id) << 14) >> 23) * 10;
+}
 #define GRAVE2(pl) ((struct TargetPlayerListS *)gUnk_02019BE8)[(pl) & 1].cards
 #define PLS(pl) ((struct TargetPlayerS *)gUnk_020192E4)[(pl) & 1]
 #define ADD_TARGETB(word, area) { \
@@ -294,7 +332,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         asm volatile("" ::: "r4", "r5", "r6", "r7");
         for (; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(c.id) <= 20 && TargetAttack(c.id) <= 1500)
+            if (TARGET_TYPE(c.id) <= 20 && TargetAttack16(c.id) <= 1500)
                 ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
@@ -464,18 +502,36 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         skipFilter = 1;
-        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.deckCount && i <= 4; i++)
-            ADD_TARGETB(gUnk_020192E4[(skipFilter - player) & 1].w.deck[i], 2);
+        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.deckCount && i <= 4; i++) {
+            ADD_TARGETB(gUnk_020192E4[(1 - player) & 1].w.deck[i], 2);
+            /* FAKEMATCH: the empty asm emits nothing; it only makes loop.c's second pass count 27 insns
+               (26 without it). threshold(26) * savings(1) * life(1) < insn_count then keeps the cards base
+               (list + 12) inside the loop, while the body/latch use the same (1 - player) & 1 so the latch
+               pointer is hoisted in pass 1, before the deck-offset giv init (ROM order). */
+            asm("");
+        }
         break;
     }
     case 0x400:
     {
         CASE_LOCALS
         skipFilter = 1;
-        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++)
-            ADD_TARGETB(gUnk_020192E4[player & skipFilter].w.graveyard[i], 4);
-        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.graveCount; i++)
-            ADD_TARGETB(gUnk_020192E4[(skipFilter - player) & 1].w.graveyard[i], 4);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
+            ADD_TARGETB(gUnk_020192E4[player & 1].w.graveyard[i], 4);
+            /* FAKEMATCH: three empty asms pad loop.c's second pass from 24 to 27 insns so the cards base
+               (list + 12) stays in the loop; same index as the test, so the latch pointer copy is hoisted in
+               pass 1 before the giv init, as in the ROM (see case 0x3FA). Two are not enough. */
+            asm("");
+            asm("");
+            asm("");
+        }
+        for (i = 0; i < gUnk_020192E4[(1 - player) & 1].w.graveCount; i++) {
+            ADD_TARGETB(gUnk_020192E4[(1 - player) & 1].w.graveyard[i], 4);
+            /* FAKEMATCH: loop padding, as above. */
+            asm("");
+            asm("");
+            asm("");
+        }
         break;
     }
     case 0x410:
@@ -494,10 +550,12 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            u16 idv = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
-            if (((TARGET_STATS_NV(idv) & 0x1F00000) >> 20) <= 20 && TargetAttackNV16(idv) <= 1500
+            /* The test read folds to the constant gUnk_020192E4 + 0x7C4; loop.c matches the copy's
+               `base + 0x7C4` with it, so that add stays in the loop next to the hoisted base (sl). */
+            u16 idv = TARGET_ID(*(u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + i * 4 + (player & 1) * 0xD64));
+            if (TARGET_TYPE_NV(idv) <= 20 && TargetAttackNV16(idv) <= 1500
                 && sub_08007834(idv) == 0)
-                ADD_TARGETB(*(u32 *)&PLS(player).deck[i], 2);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         forceFilter = 1;
         break;
@@ -506,8 +564,17 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         skipFilter = 1;
-        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++)
-            ADD_TARGETB(gUnk_020192E4[player & skipFilter].w.deck[i], 2);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
+            ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
+            /* FAKEMATCH: three dead stores (nothing reads j/flag/fieldCount before the tail rewrites
+               them, so flow deletes them after loop.c). They keep the loop at 27 insns in the second
+               loop pass, so loop.c leaves the `list + 12` cards address in the loop
+               (threshold 26 * savings 1 * life 1 < 27), as the ROM does, while the plain
+               `player & 1` latch test still lets the first pass hoist the latch pointer copy. */
+            j = i;
+            flag = i;
+            fieldCount = i;
+        }
         break;
     }
     case 0x443:
@@ -587,8 +654,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
             u16 idv = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(idv) <= 20 && TargetKind(idv) == 3)
-                ADD_TARGETB(*(u32 *)&PLS(player).deck[i], 2);
+            if (TARGET_TYPE(idv) <= 20 && TargetKind16(idv) == 3)
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -609,9 +676,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            struct TargetCard c = gUnk_020192E4[player & 1].s.deck[i];
+            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_020192E4 + 0x7C4 + (i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(c.id) == 22 && TargetSpellKind(c.id) == 6)
-                ADD_TARGETB(*(u32 *)&gUnk_020192E4[player & 1].s.deck[i], 2);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -623,7 +690,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(TARGET_ID(*word)) <= 20
+            if (TargetType8(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGET(*word, 4);
         }
@@ -634,7 +701,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
             word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(TARGET_ID(*word)) <= 20
+            if (TargetType8(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGETB(*word, 4);
         }
@@ -658,10 +725,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
-            u16 idv = TARGET_ID(*(u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64));
-            if (((TARGET_STATS_NV(idv) & 0x1F00000) >> 20) <= 20 && TargetAttackNV16(idv) <= 1500
+            u16 idv = TARGET_ID(*(u32 *)((u8 *)gUnk_020192E4 + 0x904 + i * 4 + (player & 1) * 0xD64));
+            if (TARGET_TYPE_NV(idv) <= 20 && TargetAttackNV16(idv) <= 1500
                 && sub_08007730(idv) == 0)
-                ADD_TARGETB(*(u32 *)&PLS(player).graveyard[i], 4);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.graveyard[i], 4);
         }
         break;
     }
@@ -734,7 +801,10 @@ u16 sub_08044224(int player, u16 number, int arg)
             b = (u8 *)gUnk_020192E4;
             g = (u32 *)(b + 0x904);
             do {
-                struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
+                /* FAKEMATCH: off + g must stay in the loop ahead of the i << 2 (ROM 0x08045F6E); as a pseudo,
+                   loop pass 2 hoists it (lifetime 2, 49 insns) and the read becomes a giv. Pinning it keeps it. */
+                register u32 t asm("r0") = off + (u32)g;
+                struct TargetCard w = ((struct TargetPlayerListS *)t)->cards[i];
                 if (TARGET_TYPE(w.id) <= 20 && w.flag21)
                     ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
@@ -751,7 +821,10 @@ u16 sub_08044224(int player, u16 number, int arg)
             b = (u8 *)gUnk_020192E4;
             g = (u32 *)(b + 0x904);
             do {
-                struct TargetCard w = ((struct TargetCard *)((u8 *)g + off))[i];
+                /* FAKEMATCH: off + g must stay in the loop ahead of the i << 2 (ROM 0x08046012); as a pseudo,
+                   loop pass 2 hoists it (lifetime 2, 49 insns) and the read becomes a giv. Pinning it keeps it. */
+                register u32 t asm("r0") = off + (u32)g;
+                struct TargetCard w = ((struct TargetPlayerListS *)t)->cards[i];
                 if (TARGET_TYPE(w.id) == 22 && w.flag22)
                     ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
@@ -800,28 +873,34 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
+            /* ROM order: attribute = 0 after the id read. The u16 id and the u8 type/attribute values add
+               flow-time extension insns (combined away later) inside attribute's live range, which keeps
+               its global-alloc priority (refs 14 / live 70, doubled by the REG_EQUIV of its first set)
+               below number's (81 / 681), so number keeps r4 and attribute gets r5 as in the ROM. */
             u32 stats;
-            attribute = 0;
-            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64));
+            u16 id16;
+            u8 attr8;
+            id16 = TARGET_ID(*(u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64));
+            attr8 = 0;
             switch (number) {
             case 0x5EB:
-                attribute = 1;
+                attr8 = 1;
                 break;
             case 0x5EC:
-                attribute = 4;
+                attr8 = 4;
                 break;
             case 0x5ED:
-                attribute = 3;
+                attr8 = 3;
                 break;
             case 0x5EE:
-                attribute = 5;
+                attr8 = 5;
                 break;
             case 0x5EF:
-                attribute = 6;
+                attr8 = 6;
                 break;
             }
-            stats = ((const u32 *)0x08621DE0)[id & 0x7FF];
-            if (((stats & 0x1F00000) >> 20) <= 20 && (stats >> 29) == attribute)
+            stats = TARGET_STATS_NV(id16);
+            if ((u8)((stats & 0x1F00000) >> 20) <= 20 && (u8)(stats >> 29) == attr8)
                 ADD_TARGET(gUnk_020192E4[player & 1].w.graveyard[i], 4);
         }
         break;
@@ -907,6 +986,4 @@ u16 sub_08044224(int player, u16 number, int arg)
     }
     return gUnk_0201D810.count;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08044224", sub_08044224); /* 0x08044224 size 0x2514 */
 

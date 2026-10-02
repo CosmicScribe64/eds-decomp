@@ -104,22 +104,22 @@ void sub_08048FE0(void)
     ((struct ReqFlags *)(e + 0x1B2C))->b1 = 0;
 }
 
-#if 0 /* NONMATCHING (score 90): Rewritten: struct-global view of 0x020192E0 (asm label), inline
-       * ZoneCard49(u8,u8) helper for the zone card word, do{}while(0) around sub_080197E0 so cse restarts. Remaining:
-       * post-loop block reg alloc (sym r4 vs r5), call-arg order in B, constant-tied ANDs (0xF/0x1F) in packed args. */
+/* One field zone (0x94 bytes); the first word is the card: bits 0-11 id, bit 12 owner, bit 18 flag. */
 struct Zone49 {
-    u32 card; /* bits 0-11 id, bit 12 owner, bit 18 */
+    u32 card;
     u8 rest[0x94 - 4];
 };
+/* Per-player duel state (0xD64 bytes, two of them at 0x020192E4). */
 struct Player49 {
     u8 pad0[9];
-    u8 f9_lo : 5;
-    u8 f9_5 : 1;
-    u8 f9_hi : 2;
+    u8 flags9_lo : 5;
+    u8 flags9_5 : 1;  /* +0x09 bit 5 */
+    u8 flags9_hi : 2;
     u8 pad0A[0x28 - 0xA];
-    struct Zone49 zones[11];
+    struct Zone49 zones[11]; /* +0x28 */
     u8 filler[0xD64 - 0x28 - 11 * 0x94];
 };
+/* The duel state at 0x020192E0, seen as one struct (players, phase byte, pending request). */
 struct Duel49 {
     u32 pad0;
     struct Player49 players[2]; /* +0x004 */
@@ -128,31 +128,42 @@ struct Duel49 {
     u8 phase : 3;
     u8 f1B12_hi : 3;
     u8 pad1B13[0x1B28 - 0x1B13];
-    u16 card; /* +0x1B28 */
+    u16 card; /* +0x1B28: requested card */
     u16 pad1B2A;
     u8 f2C_0 : 1; /* +0x1B2C */
     u8 reqFlag : 1;
     u8 f2C_hi : 6;
     u8 pad1B2D[3];
     union {
-        struct { u16 lo : 2; u16 step : 8; u16 hi : 6; } s;
-        struct { u32 lo : 25; u32 player : 1; u32 hi : 6; } w;
-        struct { u8 pad[3]; u8 lo : 1; u8 player : 1; u8 hi : 6; } b;
+        struct { u16 lo : 2; u16 step : 8; u16 hi : 6; } s;            /* step counter */
+        struct { u32 lo : 25; u32 player : 1; u32 hi : 6; } w;         /* player, word view */
+        struct { u8 pad[3]; u8 lo : 1; u8 player : 1; u8 hi : 6; } b; /* player, byte view */
         struct { u8 pad[3]; u8 v; } v;
     } r30; /* +0x1B30 */
     union {
         struct { u16 lo : 1; u16 zone : 8; u16 hi : 7; } h;
         struct { u32 lo : 9; u32 zone2 : 8; u32 hi : 15; } w;
-        u16 hv;
-        u32 wv;
     } z; /* +0x1B34 */
 };
-extern struct Duel49 gDuel49 asm("gUnk_020192E0");
-#define D49 gDuel49
+#define D49 (*(struct Duel49 *)gUnk_020192E0)
 struct Zone2W49 { u32 lo : 9; u32 zone2 : 8; u32 hi : 15; };
+/* FAKEMATCH: the ROM extracts the second zone through r2 before masking it into r1. */
+#define ZONE2_R2_49 ({ register u32 z_ asm("r2") = D49.z.w.zone2; asm("" : "+r"(z_)); z_; })
 
+static inline int Low4_49(u8 x) { return x & 0xF; }
+static inline int Hi4_49(u8 x) { return (x & 0xF) << 4; }
+static inline void Lose49(u8 p) { sub_080197E0(p, gUnk_0862467A); }
 static inline u32 ZoneCard49(u8 p, u8 z) { return D49.players[p].zones[z].card; }
 
+/*
+ * Request step driver on the step counter at 0x020192E0+0x1B30 (bits 2-9). Step 0 picks a free
+ * spell/trap zone (sub_08008C6C) into the second zone field (0x1B34 bits 9-16); for trap subtype 2
+ * it runs sub_08018544(p, 10, 0) on both players whose zone 10 holds a card and forces zone 10;
+ * then it emits message 0xC5 (0x80C5 for player 1) and advances. Step 1 calls
+ * sub_08024134(player, 0, zone) and advances. Later steps (when arg0 is set) handle a flagged
+ * card owned by the other side (sub_080197E0 / sub_08019860), feed the request to
+ * sub_0801FBE0 / sub_0801FBCC, mark the player during phases 2+ and clear the request flag.
+ */
 void sub_08049048(u16 arg0, u16 arg1, struct CardRef *arg2)
 {
     switch (D49.r30.s.step) {
@@ -167,14 +178,14 @@ void sub_08049048(u16 arg0, u16 arg1, struct CardRef *arg2)
                 for (i = 0; i <= 1; i++) {
                     int pp = i ? 1 - D49.r30.b.player : D49.r30.b.player;
 
-                    if ((*(u32 *)((u8 *)gUnk_020192E0 + 0x5F4 + (pp & 1) * 0xD64) << 20) != 0)
+                    if ((*(u32 *)((u8 *)&D49 + 0x5F4 + (pp & 1) * 0xD64) << 20) != 0)
                         sub_08018544(pp, 10, 0);
                 }
-                ((struct Zone2W49 *)((u8 *)gUnk_020192E0 + 0x1B34))->zone2 = 10;
+                ((struct Zone2W49 *)((u8 *)&D49 + 0x1B34))->zone2 = 10;
             }
         }
         sub_0801EC58((2 & D49.r30.v.v) ? 0x80C5 : 0xC5, D49.card,
-                     (0xF & (D49.z.hv >> 1)) << 4 | (0xF & (D49.z.wv >> 9)) | (1 & arg0) << 8, 0);
+                     Hi4_49(D49.z.h.zone) | Low4_49(D49.z.w.zone2) | (1 & arg0) << 8, 0);
         sub_08046A74(D49.r30.b.player);
         D49.r30.s.step++;
         break;
@@ -186,34 +197,32 @@ void sub_08049048(u16 arg0, u16 arg1, struct CardRef *arg2)
         if (arg0) {
             if ((int)(ZoneCard49(1 & D49.r30.b.player, D49.z.w.zone2) << 13) < 0) {
                 if (((ZoneCard49(1 & D49.r30.b.player, D49.z.w.zone2) << 19) >> 31) != D49.r30.w.player) {
+                    /* FAKEMATCH: the loop note ends the cse block, so the next argument is reloaded. */
                     do {
-                        sub_080197E0(D49.r30.w.player, gUnk_0862467A);
+                        Lose49(D49.r30.w.player);
                     } while (0);
                     sub_08019860(D49.r30.b.player, 2000);
                 }
             }
-
             if (arg1) {
-                sub_0801FBE0(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & D49.z.w.zone2) << 16 | D49.card,
+                sub_0801FBE0(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & ZONE2_R2_49) << 16 | D49.card,
                              arg2->unk8 << 16 | arg2->pos);
             } else if (arg2 == NULL) {
-                sub_0801FBCC(D49.r30.b.player << 31 | (0x1F & D49.z.w.zone2) << 16 | D49.card, 0);
+                sub_0801FBCC(D49.r30.b.player << 31 | (0x1F & ZONE2_R2_49) << 16 | D49.card, 0);
             } else {
-                sub_0801FBCC(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & D49.z.w.zone2) << 16 | D49.card,
+                sub_0801FBCC(D49.r30.b.player << 31 | arg2->kind << 25 | (0x1F & ZONE2_R2_49) << 16 | D49.card,
                              arg2->unk8 << 16 | arg2->pos);
             }
         }
         if (D49.phase > 1) {
             struct Player49 *pl = (struct Player49 *)((u8 *)&D49 + 4);
 
-            pl[D49.r30.b.player].f9_5 = 1;
+            pl[D49.r30.b.player].flags9_5 = 1;
         }
         D49.reqFlag = 0;
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049048); /* 0x08049048 size 0x388 */
 /* Like sub_08048FE0 but with a step argument: for step 1 or 2 run sub_08018ED8 on the request zone first. */
 void sub_080493D0(u16 step)
 {

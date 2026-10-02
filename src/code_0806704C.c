@@ -214,12 +214,14 @@ void sub_0806704C(u8 *a, u8 *b, u8 *s)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_0806704C); /* 0x0806704C size 0xC0 */
-#if 0 /* NONMATCHING: identical instructions, register allocation only. The
-       * target keeps the base `&state+0x1712` in r4 and j in r5 (built
-       * swapped), and loads the trunk literal `0x02011C20` before the
-       * `lsl 16; lsr 14` of the id (built after). */
-/* Count, for both decks' pages, the card copies of the non-Trap/Magic cards of list 2 (2-bit field at bits 4-5 of the
-   trunk byte +9) into f1712[row]; the first sum is also stored at +0x1714 (hypothesis). */
+/* Save image 0x02011C20: 4-byte trunk entries from +0x08, indexed by card ID; f4 = bits 4-5 of byte +1 (copies in
+   the deck, hypothesis). Indexing the symbol as a struct array keeps the base load after the call (a constant or a
+   (u8 *) cast is folded into the add; a hoisted pointer moves to sl). */
+struct TrEnt_x { u8 b0; u8 lo4 : 4; u8 f4 : 2; u8 hi : 2; u16 w2; };
+struct Save_x { u8 pad0[8]; struct TrEnt_x trunk[0x800]; };
+extern struct Save_x gUnk_02011C20;
+/* For both rows: f1712[row] = sum of trunk f4 over the non-Trap/Magic cards of list 2 (cnt1494[row][2] cards via
+   sub_08068D1C(2, row, j)); then f1712[1] = f1712[0] (the store is at +0x1714). */
 void sub_0806710C(void)
 {
     u16 i;
@@ -234,15 +236,13 @@ void sub_0806710C(void)
                 break;
             default:
                 id = sub_08068D1C(2, i, j);
-                gUnk_0201DB20_p.f1712[i] += TRUNK_F4(TRUNK, id);
+                gUnk_0201DB20_p.f1712[i] += gUnk_02011C20.trunk[(u16)id].f4;
                 break;
             }
         }
     }
-    gUnk_0201DB20_p.f1714 = gUnk_0201DB20_p.f1712[0];
+    gUnk_0201DB20_p.f1712[1] = gUnk_0201DB20_p.f1712[0];
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_0806710C); /* 0x0806710C size 0xDC */
 #if 0 /* NONMATCHING: same instructions and control flow; register allocation of two temporaries (f634 byte in r2 / r4 in the target, r3 / r7+copy in built: built CSEs `D.f634` into a register kept across the fill branch, the target reloads it) and the literal 0x635 (target loads it, built derives it with `adds r7,#3` from 0x632) */
 /* Redraw the card panel after a page change: `a` = 2 / 3 is the direction. Sets up the window scroll, draws the current
    card's graphics (or clears them), places the page frame, then re-initialises the 5 card slots around the cursor. */

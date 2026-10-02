@@ -444,14 +444,16 @@ int sub_0803CDEC(int a, int b)
         return 1;
     return 0;
 }
-#if 0 /* NONMATCHING: the first exact-number hand scan intentionally has no zero-id guard, unlike the other scans. ROM hoists the 0x7FF mask into r9 for the first two loops and a + 0x7D0 into r1; registers and literal order still differ. */
+/* Hand card word; the player term written first makes agbcc compute i * 4 first, as the ROM does. */
+#define HAND_WORD_CE90(p, i) (*(u32 *)((p) * 0xD64 + (i) * 4 + (u32)gUnk_02019968))
 u16 sub_0803CE90(int player, u16 a, u16 b, u16 c)
 {
     int i;
+    u16 id; /* one id for all four scans: per-loop locals put it in r0/r1 instead of r2 */
 
     for (i = 0; i <= 4; i++) {
         struct DuelZone *z = ZB(player & 1, i);
-        u16 id = CARD_ID(CARD_WORD(z->card));
+        id = CARD_ID(CARD_WORD(z->card));
 
         if (id != 0) {
             if (CARD_NUMBER(id) == a || CARD_NUMBER(id) == a + 0x7D0) {
@@ -463,7 +465,7 @@ u16 sub_0803CE90(int player, u16 a, u16 b, u16 c)
         }
     }
     for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_02019968[player & 1].c[i]));
+        id = CARD_ID(HAND_WORD_CE90(player & 1, i));
 
         if (CARD_NUMBER(id) == a || CARD_NUMBER(id) == a + 0x7D0) {
             u16 pos = i + (int)0xFFFF8000;
@@ -474,7 +476,7 @@ u16 sub_0803CE90(int player, u16 a, u16 b, u16 c)
     }
     for (i = 0; i <= 4; i++) {
         struct DuelZone *z = ZB(player & 1, i);
-        u32 id = CARD_ID(CARD_WORD(z->card));
+        id = CARD_ID(CARD_WORD(z->card));
 
         if (id != 0 && sub_0803CB28(CARD_NUMBER(id)) != 0) {
             u16 pos = i + 0x4000;
@@ -484,7 +486,7 @@ u16 sub_0803CE90(int player, u16 a, u16 b, u16 c)
         }
     }
     for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_02019968[player & 1].c[i]));
+        id = CARD_ID(HAND_WORD_CE90(player & 1, i));
 
         if (id != 0 && sub_0803CB28(CARD_NUMBER(id)) != 0) {
             u16 pos = i + (int)0xFFFF8000;
@@ -495,8 +497,6 @@ u16 sub_0803CE90(int player, u16 a, u16 b, u16 c)
     }
     return 0xFFFF;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803CE90); /* 0x0803CE90 size 0x1B8 */
 u16 sub_0803D048(int player, u16 pos)
 {
     if (pos & 0x8000) {

@@ -129,21 +129,23 @@ extern u8 gUnk_02000000[];      /* text bitmap; +0x10000 width, +0x10001 height 
 
 /* Converts the 1-byte-per-pixel bitmap at 0x02000000 into 4bpp tiles at
  * dst; pixels of value 0 take the background nibble from bits 0-3 of bg. */
-#if 0 /* NONMATCHING: register allocation only (target: fill r4, row counter r5, byte temp r6; build r5/r6/r4) */
 void sub_08075114(u16 *dst, u16 bg)
 {
-    u16 fill = (bg << 16 & 0xF0000) >> 16;
     s32 i, next;
 
-    fill |= fill << 4;
-    fill |= fill << 8;
+    /* FAKEMATCH: the do-while(0) wrapper swaps the fill/row-counter registers (r4/r5) */
+    do {
+        bg &= 0xF;
+        bg |= bg << 4;
+        bg |= bg << 8;
+    } while (0);
     for (i = 0; i < gUnk_02000000[0x10000] * gUnk_02000000[0x10001]; i = next) {
         const u8 *src = gUnk_02000000 + i * 64;
         s32 j;
 
         next = i + 1;
         for (j = 15; j >= 0; j--) {
-            *dst = fill;
+            *dst = bg;
             if (src[0] != 0) {
                 *dst &= 0xFFF0;
                 *dst |= src[0];
@@ -165,8 +167,6 @@ void sub_08075114(u16 *dst, u16 bg)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080750E0", sub_08075114); /* 0x08075114 size 0x114 */
 
 void sub_08075228(void)
 {

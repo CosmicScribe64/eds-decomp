@@ -1,0 +1,16 @@
+# Mid-duel: the player's second turn, Main Phase 1, waiting for input. On turn 1 the player summoned Winged
+# Dragon, Guardian of the Fortress #1 (1400 ATK) and ended the turn; Yugi summoned Gazelle the King of
+# Mythical Beasts (1500 ATK) and destroyed it, so LP are 7900 (player) / 8000 (Yugi).
+from duel_main1
+frames 3000
+until 0x02015EE8=5
+settle 120
+0 LEFT              # hand cursor: rightmost card -> Winged Dragon
+15 A                # pick it up (command icons: Card View / Set / Summon)
+45 RIGHT
+55 RIGHT            # Summon
+70 A
+200 A               # close the summoned-card display
+290 B               # "End your turn?"
+320 A               # YES; Yugi's turn plays out without input
+2050-2990/20 A      # turn 2: draw (A on the deck), Standby Phase

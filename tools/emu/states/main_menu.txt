@@ -1,0 +1,8 @@
+# Main menu after New Game (Tea's intro advanced with A), cursor on Campaign. Scene CB_MainMenu (0x08003AA4).
+# A is tapped until the menu scene starts; then no input for 60 frames while it fades in.
+from title
+frames 2000
+stopat CB_MainMenu
+settle 60
+0 A                 # New Game
+40-1990/15 A        # advance the intro dialogue (deck choice = first option)

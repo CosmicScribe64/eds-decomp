@@ -1,0 +1,7 @@
+# Deck Edit showing the main deck list (R switches from the empty trunk view). Scene CB_DeckEdit (0x0806EF04).
+from main_menu
+frames 200
+0 DOWN              # Link Battle
+15 DOWN             # Deck Edit
+30 A
+150 R               # trunk -> main deck view

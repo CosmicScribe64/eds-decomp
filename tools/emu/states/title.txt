@@ -1,0 +1,3 @@
+# Title screen ("New Game" / "Continue"), cursor on New Game, blank SRAM. Scene CB_Title (0x080057BC).
+from boot
+frames 860

@@ -1,0 +1,8 @@
+# Start of the first Campaign duel (vs Yugi): the first frame the duel step DuelMainStep (0x08021A48) runs,
+# before the shuffle/deal. Reached by picking Campaign and tapping A through Yugi's dialogue, the
+# rock-paper-scissors pick (win) and "FIRST to go".
+from main_menu
+frames 1500
+stopat DuelMainStep
+0 A                 # Campaign
+30-1490/15 A        # dialogue, janken, first/second choice

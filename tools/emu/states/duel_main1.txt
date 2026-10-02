@@ -1,0 +1,8 @@
+# The player's first turn, Main Phase 1, waiting for input with the hand cursor shown (6 cards in hand,
+# LP 8000/8000). Duel phase byte 0x02015EE8 = 5 (phase handler 0x0804F460). The Draw Phase waits for A on
+# the deck.
+from duel_start
+frames 1500
+until 0x02015EE8=5
+settle 120
+450-1490/20 A       # draw, then through the Standby Phase

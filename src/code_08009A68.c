@@ -536,9 +536,9 @@ int sub_0800A668(int player, int zone, u16 needMagic, u16 needSubtype3)
     }
     return count;
 }
-#if 0 /* NONMATCHING: identical shape to matching sub_0800A8CC, but register allocation differs (ROM keeps the outer zone base on the stack, i in sl, linkKinds base in r8; GCC uses r8 for i and sl for the base). Declaring the zone/kind/lp locals, a number-switch vs if-OR, and declaration order did not resolve it. */
 /* Like sub_0800A8CC, but the linked zone's +0x91 bit 3 only disqualifies the link for card
- * numbers 348, 1058 and 1244. */
+ * numbers 348, 1058 and 1244. The linked zone number is a local (lz) shared by both lookups;
+ * lp is a u8 local (not int), which keeps loop.c from strength-reducing linkKinds[i] in its first pass. */
 int sub_0800A78C(int player, int zone, u16 number)
 {
     int i;
@@ -547,15 +547,16 @@ int sub_0800A78C(int player, int zone, u16 number)
     for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
         u16 link = ZB(player & 1, zone)->links[i];
         u8 kind = ZB(player & 1, zone)->linkKinds[i];
-        int lp = (u8)link;
-        u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, link >> 8)->card));
+        u8 lp = link;
+        int lz = link >> 8;
+        u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, lz)->card));
         int valid = 1;
 
         switch (number) {
         case 348:
         case 1058:
         case 1244:
-            if (ZB(lp & 1, link >> 8)->unk8C[5] & 8)
+            if (ZB(lp & 1, lz)->unk8C[5] & 8)
                 valid = 0;
             break;
         }
@@ -576,8 +577,6 @@ int sub_0800A78C(int player, int zone, u16 number)
     }
     return count;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08009A68", sub_0800A78C); /* 0x0800A78C size 0x140 */
 /* Count links of zone (player, zone) that refer to card number `number`: kinds 1, 2 and 10 link to
  * another zone (low byte player, high byte zone; skipped if that zone's +0x91 bit 3 is set),
  * kind 3 holds a card ID directly. */

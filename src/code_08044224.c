@@ -205,8 +205,8 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 2919): simple scans index the card array by i (u32 *t = g + off; word = t + i) so
-       * loop.c creates the giv; PP loop tests; plain ADD_TARGET; union view; tail loops 2-3 cards pointer */
+#if 0 /* NONMATCHING (score 2802): word address grouping (i*4 + (pl&1)*0xD64) in 0x3F0/0x447/0x45C; e9 simple
+       * loops; PP tests; plain ADD_TARGET; union view */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -508,7 +508,7 @@ u16 sub_08044224(int player, u16 number, int arg)
         pidx = 0;
         do {
             for (i = 0; i < gUnk_020192E4[pidx & 1].w.graveCount; i++) {
-                word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (pidx & 1) * 0xD64);
+                word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (pidx & 1) * 0xD64));
                 if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                     && (u16)sub_0804412C(pidx, i) != 0)
                     ADD_TARGETB(*word, 4);
@@ -782,7 +782,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
-            word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64);
+            word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGET(*word, 4);
@@ -793,7 +793,7 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.graveCount; i++) {
-            word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64);
+            word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGETB(*word, 4);
@@ -933,7 +933,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 if (TARGET_TYPE(w.id) <= 20 && w.flag21)
                     ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
-            } while (i < PP->graveCount);
+            } while (i < PPL->graveCount);
         }
         break;
     }
@@ -950,7 +950,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 if (TARGET_TYPE(w.id) == 22 && w.flag22)
                     ADD_TARGETB(*(u32 *)((u8 *)g + (off + i * 4)), 4);
                 i++;
-            } while (i < PP->graveCount);
+            } while (i < PPL->graveCount);
         }
         break;
     }

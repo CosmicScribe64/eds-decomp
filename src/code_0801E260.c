@@ -167,13 +167,50 @@ void sub_08077BCC(void);
 void sub_08077B24(u16 bgm);
 
 /* Execute the command chosen in the card command menu (SEL.cursor = 1..12). */
-#if 0 /* NONMATCHING: control flow and case order match, but the ROM keeps
-       * gUnk_020192E0 in r5 (zone in r4), addresses players as (sym+4) +
-       * p*0xD64 with +8 displacements, and tests zone +6 bit 1 with `and #2`. */
+#if 0 /* NONMATCHING (score 255): NONMATCHING: rewritten (2026-10-02): structure now matches except the zone-0
+       * 0x51 subState-0 fail path (ROM keeps its own active/subState clear, mine is cross-jumped). Needed: direct
+       * gUnk_020192E0 accesses (base = GCSE reaching reg r5), zone/player access through casts to local view structs
+       * (ZONEF/ZONEW/PLAYERF) so the +6/+8/+9 field offsets stay in the ldrb, a block-local players pointer at each flag
+       * site, s16 zone, zone-5 index as p = player&1; idx = column; idx += 5, sub_0801FBCC packings as (p<<31) | (ev =
+       * idx<<16 | K) | selCard (stops fold floating K), sub_08007FEC called as int-returning, and the 6F8 card lookup
+       * through the cast literal 0x08622AB4. Remaining: reload-register rotation (case-6 head etc.). */
+struct ZoneWord1E260 {
+    u32 cardId:12;
+    u32 unk0_12:6;
+    u32 flag0_18:1;                 /* bit 18 */
+    u32 unk0_19:13;
+};
+
+struct ZoneFlags1E260 {
+    u32 card;
+    u16 serial;
+    u8 flag6_0:1;
+    u8 flag6_1:1;                   /* +0x06 bit 1 */
+    u8 unk6_2:6;
+};
+
+struct PlayerFlags1E260 {
+    u8 unk0[8];
+    u8 unk8_0:4;
+    u8 flag8_4:1;                   /* 0x08 bit 4 */
+    u8 unk8_5:3;
+    u8 unk9_0:5;
+    u8 flag9_5:1;                   /* 0x09 bit 5 */
+    u8 unk9_6:2;
+};
+
+#define ZONEF(p, i) ((struct ZoneFlags1E260 *)&gUnk_020192E0View.players[p].zones[i])
+#define ZONEW(p, i) ((struct ZoneWord1E260 *)&gUnk_020192E0View.players[p].zones[i])
+#define PLAYERF(pl, p) ((struct PlayerFlags1E260 *)&(pl)[p])
+
 void sub_0801E260(void)
 {
-    u32 tmp;
+    u8 buf[4];
     s16 zone;
+    u32 ev;
+    int idx;
+    int p;
+    struct DuelPlayerView *pl;
 
     switch (SEL.cursor) {
     case 1:
@@ -217,32 +254,40 @@ void sub_0801E260(void)
             }
             switch (CARD_NUMBER(gUnk_020192E0View.selCard)) {
             case 0x47:
-                gUnk_020192E0View.players[SEL.player & 1].flag8_4 = 1;
+                pl = gUnk_020192E0View.players;
+                PLAYERF(pl, SEL.player & 1)->flag8_4 = 1;
                 sub_08049048(1, 0, 0);
                 return;
             case 0x1A8:
-                sub_0801FBCC(((SEL.player & 1) << 31) | 0x600000 | gUnk_020192E0View.selCard, 0);
                 sub_080193D4(SEL.player, SEL.column, 0, 1);
+                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = 0x600000 | gUnk_020192E0View.selCard), 0);
                 break;
             }
             break;
         case 10:
-            if (!gUnk_020192E0View.players[SEL.player & 1].zones[10].flag6_1)
+            if (!ZONEF(SEL.player & 1, 10)->flag6_1)
                 sub_0801EC58(SEL.player ? 0x807F : 0x7F, 10, 0, 0);
-            sub_0801FBCC(((SEL.player & 1) << 31) | (((SEL.column + zone) & 0x1F) << 16) | 0x200000 | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1)
-                gUnk_020192E0View.players[SEL.player & 1].flag9_5 = 1;
+            sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
+            if (gUnk_020192E0View.unk1B12_2 > 1) {
+                pl = gUnk_020192E0View.players;
+                PLAYERF(pl, SEL.player & 1)->flag9_5 = 1;
+            }
             break;
         case 5:
-            if (!gUnk_020192E0View.players[SEL.player & 1].zones[SEL.column + 5].flag6_1)
-                sub_0801EC58(SEL.player ? 0x807F : 0x7F, SEL.column + zone, 0, 0);
-            if (((struct ZoneWord *)&gUnk_020192E0View.players[SEL.player & 1].zones[SEL.column])->flag0_18) {
+            p = SEL.player & 1;
+            idx = SEL.column;
+            idx += 5;
+            if (!ZONEF(p, idx)->flag6_1)
+                sub_0801EC58(SEL.player ? 0x807F : 0x7F, SEL.column + SEL.zone, 0, 0);
+            if (ZONEW(SEL.player & 1, SEL.column)->flag0_18) {
                 sub_080197E0(SEL.player, gUnk_0862467A);
                 sub_08019860(SEL.player, 2000);
             }
-            sub_0801FBCC(((SEL.player & 1) << 31) | (((SEL.column + zone) & 0x1F) << 16) | 0x200000 | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1)
-                gUnk_020192E0View.players[SEL.player & 1].flag9_5 = 1;
+            sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
+            if (gUnk_020192E0View.unk1B12_2 > 1) {
+                pl = gUnk_020192E0View.players;
+                PLAYERF(pl, SEL.player & 1)->flag9_5 = 1;
+            }
             break;
         case 0:
             switch (CARD_NUMBER(gUnk_020192E0View.selCard)) {
@@ -258,9 +303,9 @@ void sub_0801E260(void)
                     SEL.subState = 0;
                     return;
                 case 1:
-                    if (sub_08007FEC(SEL.player, CARD_NUMBER(gUnk_020192E0View.selCard) == 0x51 ? 0x2E5 : 0x187, &tmp)) {
+                    if (((int (*)(int, u16, void *))sub_08007FEC)(SEL.player, ((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF] == 0x51 ? 0x2E5 : 0x187, buf)) {
+                        sub_08056094(SEL.player, buf, 1, 1);
                         SEL.subState++;
-                        sub_08056094(SEL.player, &tmp, 1, 1);
                         return;
                     }
                 }
@@ -270,10 +315,10 @@ void sub_0801E260(void)
             case 0x1A0:
             case 0x243:
             case 0x2DB:
-                sub_0801FBCC(((SEL.player & 1) << 31) | (((SEL.column + zone) & 0x1F) << 16) | 0x4400000 | gUnk_020192E0View.selCard, 0);
+                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x4400000) | gUnk_020192E0View.selCard, 0);
                 break;
             default:
-                sub_0801FBCC(((SEL.player & 1) << 31) | (((SEL.column + zone) & 0x1F) << 16) | 0x400000 | gUnk_020192E0View.selCard, 0);
+                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x400000) | gUnk_020192E0View.selCard, 0);
                 break;
             }
             break;
@@ -285,8 +330,8 @@ void sub_0801E260(void)
         break;
     case 8:
         gUnk_020192E0View.unk1B20++;
-        SEL.subState = 0;
         SEL.active = 0;
+        SEL.subState = 0;
         return;
     case 9:
         switch (SEL.subState) {
@@ -307,9 +352,8 @@ void sub_0801E260(void)
     SEL.active = 0;
     SEL.subState = 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0801E260", sub_0801E260); /* 0x0801E260 size 0x6E4 */
 #endif
+INCLUDE_ASM("asm/nonmatching/code_0801E260", sub_0801E260); /* 0x0801E260 size 0x6E4 */
 
 u16 sub_0801E944(void)
 {

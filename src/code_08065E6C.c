@@ -531,214 +531,247 @@ u16 sub_080668DC(u16 id)
         return 1;
     return 0;
 }
-#if 0 /* NONMATCHING: control flow and size are close (the build is 0x28 bytes short); register allocation differs (target keeps sub_080668DC result in r4, &cursor in r5, arr14A0/arr620 bases in r8/r7 across the state-1 switches) and the state-1 block layout/tail merging differs */
-#define CUR gUnk_0201DB20.cursor
-#define CARD() sub_08068D1C(CUR, gUnk_0201DB20.arr14A0[CUR], gUnk_0201DB20.arr620[CUR])
-#define STB(off) (*(u8 *)((u8 *)&gUnk_0201DB20 + (off)))
+struct DE699C {
+    u8 pad0[0x620];
+    u16 col[3];                 /* +0x620 */
+    u8 pad626[0x1494 - 0x626];
+    u16 count[2][3];            /* +0x1494 */
+    u8 row[3];                  /* +0x14A0 */
+    u8 pad14A3[0x1724 - 0x14A3];
+    struct { u8 pre[2]; s8 b0; u8 b1; u8 pad4[16]; } cells[63];  /* +0x1724, 20 bytes each; b0 at +0x1726 */
+    u8 pad1C10[0x1C1C - 0x1C10];
+    u8 cursor;                  /* +0x1C1C */
+    u8 pad1C1D[0x1C3C - 0x1C1D];
+    u8 menu0;                   /* +0x1C3C */
+    u8 phase : 3;               /* +0x1C3D */
+    u8 rest : 5;
+    u8 b1C3E;
+    u8 markA[3];                /* +0x1C3F */
+    u8 markB[3];                /* +0x1C42 */
+};
+struct FB699C { u8 f : 8; };
+#define DE (*(struct DE699C *)&gUnk_0201DB20)
+#define CARDC() sub_08068D1C(DE.cursor, DE.row[DE.cursor], DE.col[DE.cursor])
+/* Deck-edit add/remove step machine (s[0] = step): 1 checks the per-category limits and either starts the move
+ * (sub_080666D8 + SE 1) or cancels (SE 3); 2 claims the category cell; 3 animates the card sprite; 4 marks cell
+ * s[0xD] + 10; 5 applies the change and refreshes the lists.  Cells are 20 bytes from +0x1726; agbcc aligns the
+ * struct to 4, hence the 2-byte `pre`.  The `|= 0xFF` through a u8 bitfield keeps the ROM's dead ldrb; trunk
+ * pointers are scoped per case so &row gets r5 and trunk r4. */
 void sub_0806699C(u8 *s)
 {
-    u8 *q;
-    int cnt;
-    u8 idx;
+    u16 r;
+    u32 cnt;
+    u32 id;
+    int frameKind;
+
     switch (s[0]) {
     case 0:
         return;
     case 1:
         switch (s[0xD]) {
         case 0:
-            goto do_touch;
-        case 1: {
-            u16 r4 = sub_080668DC(CARD());
-            if (r4 != 0) {
-                if (gUnk_02011C20_s.f20CC > 0x13)
-                    goto zero_then_se3;
-                switch (CUR) {
-                case 0:
-                    if (sub_080771A8(sub_08068D1C(0, gUnk_0201DB20.arr14A0[0], gUnk_0201DB20.arr620[0])) != 0)
-                        goto do_touch;
-                    goto zero_then_se3;
-                case 1:
-                case 2:
-                    goto do_touch;
-                default:
-                    goto next2;
+            sub_080666D8(s);
+            sub_08077AEC(1);
+            break;
+        case 1:
+            r = sub_080668DC(CARDC());
+            if (r != 0) {
+                if (gUnk_02011C20_s.f20CC < 0x14) {
+                    switch (DE.cursor) {
+                    case 0:
+                        if (sub_080771A8(sub_08068D1C(0, DE.row[0], DE.col[0]))) {
+                            sub_080666D8(s);
+                            sub_08077AEC(1);
+                        } else {
+                            s[0] = 0;
+                            sub_08077AEC(3);
+                        }
+                        break;
+                    case 1:
+                    case 2:
+                        sub_080666D8(s);
+                        sub_08077AEC(1);
+                        break;
+                    }
+                } else {
+                    s[0] = 0;
+                    sub_08077AEC(3);
                 }
             } else {
-                if (gUnk_02011C20_s.f20C8 > 0x3B) {
-                    goto se3;
+                if (gUnk_02011C20_s.f20C8 < 0x3C) {
+                    switch (DE.cursor) {
+                    case 0:
+                        if (sub_080771A8(sub_08068D1C(0, DE.row[0], DE.col[0]))) {
+                            sub_080666D8(s);
+                            sub_08077AEC(1);
+                        } else {
+                            s[0] = 0;
+                            sub_08077AEC(3);
+                        }
+                        break;
+                    case 1:
+                    case 2:
+                        sub_080666D8(s);
+                        sub_08077AEC(1);
+                        break;
+                    }
+                } else {
                     s[0] = 0;
+                    sub_08077AEC(3);
                 }
-                switch (CUR) {
+            }
+            break;
+        case 2:
+            if (gUnk_02011C20_s.f20CA < 0xF) {
+                switch (DE.cursor) {
                 case 0:
-                    if (sub_080771A8(sub_08068D1C(0, gUnk_0201DB20.arr14A0[0], gUnk_0201DB20.arr620[0])) != 0)
-                        goto do_touch;
-                    s[0] = 0;
-                    goto se3;
+                    if (sub_080771A8(sub_08068D1C(0, DE.row[0], DE.col[0]))) {
+                        sub_080666D8(s);
+                        sub_08077AEC(1);
+                    } else {
+                        s[0] = 0;
+                        sub_08077AEC(3);
+                    }
+                    break;
                 case 1:
                 case 2:
-                    goto do_touch;
-                default:
-                    goto next2;
+                    sub_080666D8(s);
+                    sub_08077AEC(1);
+                    break;
                 }
-            }
-        }
-        case 2:
-            if (gUnk_02011C20_s.f20CA > 0xE) {
+            } else {
                 s[0] = 0;
                 sub_08077AEC(3);
-                goto next2;
             }
-            switch (CUR) {
-            case 0:
-                if (sub_080771A8(sub_08068D1C(0, gUnk_0201DB20.arr14A0[0], gUnk_0201DB20.arr620[0])) == 0)
-                    goto zero_then_se3;
-                goto do_touch;
-            case 1:
-            case 2:
-                goto do_touch;
-            default:
-                goto next2;
-            }
-        default:
-            goto next2;
+            break;
         }
-    do_touch:
-        sub_080666D8(s);
-        sub_08077AEC(1);
-        goto next2;
-    zero_then_se3:
-        s[0] = 0;
-    se3:
-        sub_08077AEC(3);
-    next2:
     case 2:
-        q = (u8 *)&gUnk_0201DB20 + gUnk_08087480[s[0xC]] * 0x1726 + 20;
-        if (*(s8 *)q != 0)
-            return;
-        *q = 0xFF;
+        {
+            u32 stateBase = (u32)&DE;
+            u32 k = gUnk_08087480[s[0xC]];
+            s8 *cell = (s8 *)(stateBase + k * 20) + 0x1726;
+            if (*cell != 0)
+                return;
+            ((struct FB699C *)cell)->f |= 0xFF;
+        }
         sub_0807B100(0, 6, 1, s + 4);
         s[0]++;
     case 3: {
-        int x = sub_0807B4D0(*(s16 *)(s + 0xE) << 8, gUnk_080875D2[*(s16 *)(s + 6)]) >> 8;
-        int y;
-        x -= 3;
-        y = sub_0807B4D0(*(s16 *)(s + 0x10) << 8, gUnk_080875D2[*(s16 *)(s + 6)]) >> 8;
-        y += 0x28;
-        sub_08077EF4(gUnk_081A6D84, 0, 1, x, y, 4, 0, 0, 0, 0, 0, (int)&gUnk_0201DB20);
+        int x, y;
+        x = (sub_0807B4D0(*(s16 *)(s + 0xE) << 8, gUnk_080875D2[*(s16 *)(s + 6)]) >> 8) - 3;
+        y = (sub_0807B4D0(*(s16 *)(s + 0x10) << 8, gUnk_080875D2[*(s16 *)(s + 6)]) >> 8) + 0x28;
+        sub_08077EF4(gUnk_081A6D84, 0, 1, x, y, 4, 0, 0, 0, 0, 0, (int)&DE);
         sub_0807B114(s + 4);
         if (s[4] != 2)
             return;
         s[0]++;
-        return;
+        break;
     }
     case 4:
-        idx = s[0xD] + 10;
-        *((u8 *)&gUnk_0201DB20 + idx * 20 + 0x1726) = 1;
-        idx = s[0xD] + 10;
-        *((u8 *)&gUnk_0201DB20 + idx * 20 + 0x1727) = 0;
+        DE.cells[s[0xD] + 10].b0 = 1;
+        DE.cells[s[0xD] + 10].b1 = 0;
         s[0]++;
-        return;
-    case 5: {
-        int v;
-        if (*(s8 *)((u8 *)&gUnk_0201DB20 + (s[0xD] + 10) * 20 + 0x1726) != 0)
+        break;
+    case 5:
+        if (DE.cells[s[0xD] + 10].b0 != 0)
             return;
         s[0] = 0;
-        switch (CUR) {
+        switch (DE.cursor) {
         case 0:
-            sub_0807761C(sub_08068D1C(0, gUnk_0201DB20.arr14A0[0], gUnk_0201DB20.arr620[0]));
+            sub_0807761C(CARDC());
             break;
         case 1:
-            if (sub_080668DC(sub_08068D1C(1, gUnk_0201DB20.arr14A0[1], gUnk_0201DB20.arr620[1])))
-                sub_08077784(CARD());
+            if (sub_080668DC(CARDC()))
+                sub_08077784(CARDC());
             else
-                sub_0807766C(CARD());
+                sub_0807766C(CARDC());
             break;
         case 2:
-            sub_080776F8(sub_08068D1C(2, gUnk_0201DB20.arr14A0[2], gUnk_0201DB20.arr620[2]));
+            sub_080776F8(CARDC());
             break;
         }
         switch (s[0xD]) {
         case 0:
-            sub_08077498(CARD());
+            sub_08077498(CARDC());
             break;
         case 1:
-            if (sub_080668DC(CARD()))
-                sub_080775BC(CARD());
+            if (sub_080668DC(CARDC()))
+                sub_080775BC(CARDC());
             else
-                sub_080774EC(CARD());
+                sub_080774EC(CARDC());
             break;
         case 2:
-            sub_08077554(CARD());
+            sub_08077554(CARDC());
             break;
         }
-        STB(0x14A0 + s[0xD]) = 0;
-        STB(0x1C3F + s[0xD]) = 0;
-        STB(0x1C42 + s[0xD]) = 0;
-        STB(0x1C3D) = (STB(0x1C3D) & ~7) | 3;
-        switch (CUR) {
+        DE.row[s[0xD]] = 0;
+        DE.markA[s[0xD]] = 0;
+        DE.markB[s[0xD]] = 0;
+        DE.phase = 3;
+        switch (DE.cursor) {
         case 0:
-            cnt = TRUNK_N(TRUNK, sub_08068D1C(0, gUnk_0201DB20.arr14A0[0], gUnk_0201DB20.arr620[0]));
+            {
+                u8 *trunk = (u8 *)&gUnk_02011C20_s;
+                cnt = TRUNK_N(trunk, sub_08068D1C(0, DE.row[0], DE.col[0]));
+            }
             break;
-        case 1: {
-            s8 id = (u16)sub_08068D1C(1, gUnk_0201DB20.arr14A0[1], gUnk_0201DB20.arr620[1]);
+        case 1:
+            id = (u16)sub_08068D1C(1, DE.row[1], DE.col[1]);
             switch (CARD_NUM(id)) {
             case 0x776:
-                v = 3;
+                frameKind = 3;
                 break;
             case 0x777:
             case 0x778:
-                v = 1;
+                frameKind = 1;
                 break;
             default:
                 switch (CARD_KIND(id)) {
                 case 0x16:
+                    frameKind = 7;
                     break;
-                    v = 7;
                 case 0x15:
-                    v = 8;
+                    frameKind = 8;
                     break;
                 case 0x17:
-                    v = 9;
+                    frameKind = 9;
                     break;
                 default:
-                    v = (CARD_STATS(id) & 0xC0000) >> 18;
+                    frameKind = (CARD_STATS(id) & 0xC0000) >> 18;
                     break;
                 }
                 break;
             }
-            if (v == 2)
-                cnt = TRUNK_B9(TRUNK, CARD()) >> 6;
-            else
-                cnt = (u32)(TRUNK_B9(TRUNK, CARD()) << 28) >> 30;
+            if (frameKind == 2) {
+                u8 *trunk = (u8 *)&gUnk_02011C20_s;
+                cnt = TRUNK_B9(trunk, CARDC()) >> 6;
+            } else {
+                u8 *trunk = (u8 *)&gUnk_02011C20_s;
+                cnt = ((u32)TRUNK_B9(trunk, CARDC()) << 28) >> 30;
+            }
             break;
-        }
         case 2:
-            cnt = (u32)(TRUNK_B9(TRUNK, sub_08068D1C(2, gUnk_0201DB20.arr14A0[2], gUnk_0201DB20.arr620[2])) << 26) >> 30;
+            {
+                u8 *trunk = (u8 *)&gUnk_02011C20_s;
+                cnt = ((u32)TRUNK_B9(trunk, sub_08068D1C(2, DE.row[2], DE.col[2])) << 26) >> 30;
+            }
             break;
         }
         sub_080686E8();
-        {
-            u16 a = *(u16 *)((u8 *)&gUnk_0201DB20 + 0x1494 + CUR * 2 + gUnk_0201DB20.arr14A0[CUR] * 6);
-            u16 *w = &gUnk_0201DB20.arr620[CUR];
-            if (a == *w) {
-                if (a == 0)
-                    *w = a;
-                else
-                    *w = a - 1;
-            }
+        if (DE.count[DE.row[DE.cursor]][DE.cursor] == DE.col[DE.cursor]) {
+            if (DE.count[DE.row[DE.cursor]][DE.cursor] == 0)
+                DE.col[DE.cursor] = 0;
+            else
+                DE.col[DE.cursor] = DE.count[DE.row[DE.cursor]][DE.cursor] - 1;
         }
         if (cnt == 0)
             sub_080671E8(2);
         sub_0806710C();
-        return;
-    }
+        break;
     default:
         s[0] = 0;
-        return;
+        break;
     }
 }
-#undef CUR
-#undef CARD
-#undef STB
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08065E6C", sub_0806699C); /* 0x0806699C size 0x6B0 */
+#undef DE
+#undef CARDC

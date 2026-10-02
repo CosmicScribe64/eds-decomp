@@ -54,14 +54,15 @@ extern struct BState gUnk_02018450;
 struct BSideV { u8 pad[8]; u8 raw; u8 f1; u16 cardId; u8 pad4[6]; u16 damage; };
 #define BSV(i) ((struct BSideV *)((u8 *)&gUnk_02018450 + (i) * 12))
 
-#if 0 /* NONMATCHING (score 36): score 36: same code and size as the ROM; only register choices differ. In case
-       * 0, after the switch, BS (0x02018450) and 1-p swap r4/r5 (global-alloc priority: q 3/44 vs BS 10/148), and in
-       * case 10 the reload registers for 0x1B16 and gUnk_0822C720 rotate. What got the shape right: one goto ret0 label
-       * after case 10's STEP++; STEP through a struct-pointer bitfield ((struct CbDuel *)gUnk_020192E0)->step, so the
-       * base symbol is a pseudo split from 0x1B16; flags as gUnk_020192E4[] (an ARRAY_REF stops fold merging f0/f1);
-       * case 1 STEP=10 relative to gUnk_020192E4 (CSE related value); (u8)p & 15 / (u8)(1-p) & 15 nibbles; case 2
-       * ev=(p&1)<<31; link bit b1 as s8 bitfield; side=(1-p)&1 local; loop with i=0, bs/k locals and BSV(i)->raw.
-       * asm-label externs give '*name' symbols that CSE does not relate, so avoid them. */
+#if 0 /* NONMATCHING (score 12): score 12: same code and size as the ROM; only the case 10 reload registers
+       * differ (ROM: gUnk_0822C720 in r5, then 0x1B16 in r0 and r1; ours: gUnk_0822C720 local-allocated to r0, so the
+       * round-robin for 0x1B16 gives r5, r0). Fixes so far: int k = key local before the 0x2DA/0x536 test (BS/q
+       * global-alloc swap); one goto ret0 label after case 10's STEP++; STEP through ((struct CbDuel
+       * *)gUnk_020192E0)->step bitfield so the base is a pseudo split from 0x1B16; flags as gUnk_020192E4[] (an
+       * ARRAY_REF stops fold merging f0/f1); case 1 STEP=10 relative to gUnk_020192E4 (CSE related value); (u8)p & 15
+       * and (u8)(1-p) & 15 nibbles; case 2 ev=(p&1)<<31; link bit b1 as s8 bitfield; side=(1-p)&1 local; loop i=0 with
+       * bs/k locals and BSV(i)->raw. asm-label externs give '*name' symbols that CSE does not relate. Tried with no
+       * effect: other sub_08019894 prototypes, 4 forms of the card-name pointer expression. */
 /* Battle resolution step machine (hypothesis: applies per-card effects after damage; steps 0-2 damage, 10-12 special). */
 #define CB_BS gUnk_02018450
 #define CB_SIDE(i) gUnk_02018450.side[i]
@@ -106,9 +107,12 @@ int sub_0804CB58(int p)
                 }
                 break;
             }
-            if ((CB_KEY(CB_SIDE(p).cardId) == 0x2DA || CB_KEY(CB_SIDE(p).cardId) == 0x536)
-                && sub_0800A430(p, CB_BS.atkSlot) != 0xFFFF && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1)
-                sub_08019894(1 - p, CB_SIDE(p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            {
+                int k = CB_KEY(CB_SIDE(p).cardId);
+                if ((k == 0x2DA || k == 0x536)
+                    && sub_0800A430(p, CB_BS.atkSlot) != 0xFFFF && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1)
+                    sub_08019894(1 - p, CB_SIDE(p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            }
         }
         CB_STEP++;
         goto ret0;
@@ -148,9 +152,12 @@ int sub_0804CB58(int p)
                 }
                 break;
             }
-            if ((CB_KEY(CB_SIDE(1 - p).cardId) == 0x2DA || CB_KEY(CB_SIDE(1 - p).cardId) == 0x536)
-                && sub_0800A430(1 - p, CB_BS.defSlot) != 0xFFFF && !CB_PF(p).f0 && !CB_PF(p).f1)
-                sub_08019894(p, CB_SIDE(1 - p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            {
+                int k = CB_KEY(CB_SIDE(1 - p).cardId);
+                if ((k == 0x2DA || k == 0x536)
+                    && sub_0800A430(1 - p, CB_BS.defSlot) != 0xFFFF && !CB_PF(p).f0 && !CB_PF(p).f1)
+                    sub_08019894(p, CB_SIDE(1 - p).damage, (u8)p | CB_BS.atkSlot << 8, (u8)(1 - p) | CB_BS.defSlot << 8);
+            }
         }
         CB_STEP++;
         goto ret0;

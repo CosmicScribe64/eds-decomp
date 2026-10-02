@@ -717,8 +717,9 @@ static inline u16 SummonCardIdSymbol(u16 number)
     return *(gUnk_08623DF4 + ((number - 0x7D0) & 0x7FF)) + 1;
 }
 
-#if 0 /* NONMATCHING (score 32): summon/tribute state machine; size matches; remaining: case 80 local/reload
-       * register picks (r0/r2 swap, reload regs r4/r5 vs r2/r3/r5/r0) */
+#if 0 /* NONMATCHING (score 28): summon/tribute state machine; size matches; remaining: case 80 block 1 reload
+       * rotation (first-DF4 r2, number2 r3, second-DF4 r1, step 0x1B30 r2); blocks 2/3 use const-int name table so
+       * reload picks match */
 void sub_080471E8(u16 faceUp, u16 special)
 {
     char text[0x80];
@@ -1428,16 +1429,12 @@ void sub_080471E8(u16 faceUp, u16 special)
                 sub_080602A4(0x206, 0x712, 0xB, text);
                 SD.step++;
             } else {
-                sub_080753F4(text, gUnk_08085850, SUMMON_CARD_NAME(((const u16 *)0x08623DF4)[number1]));
-                /* FAKEMATCH: retain the ROM name-table register lifetime. */
-                asm("" : : "r"(gUnk_0822C720));
+                sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + ((const u16 *)0x08623DF4)[number1] * 0x40);
                 sub_080602A4(0x206, 0x712, 0xB, text);
                 SD.step++;
             }
         } else if (second) {
-            sub_080753F4(text, gUnk_08085850, SUMMON_CARD_NAME(((const u16 *)0x08623DF4)[number2]));
-            /* FAKEMATCH: retain the ROM name-table register lifetime. */
-            asm("" : : "r"(gUnk_0822C720));
+            sub_080753F4(text, gUnk_08085850, (const char *)0x0822C720 + ((const u16 *)0x08623DF4)[number2] * 0x40);
             sub_080602A4(0x206, 0x712, 0xB, text);
             SD.step++;
         } else {

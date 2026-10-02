@@ -105,7 +105,7 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 482): pointer-plus symbol lookup in equip case; first rd diff +0xAB2 */
+#if 0 /* NONMATCHING (score 118): plain equip bodies, no replacementOut; size exact */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -114,8 +114,6 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
     int otherAtk = 0, otherDef = 0, addAtk = 0, addDef = 0;
     int pp = player & 1;
     u32 poff = pp * 0xD64;
-    /* FAKEMATCH: retain the equip replacement-stat output-pointer lifetime. */
-    struct ZoneCardInfo *replacementOut;
     u8 *base = (u8 *)gUnk_0201930C + poff;
     u32 zoff = slot * 0x94;
     struct DuelZone *zone = (struct DuelZone *)(base + zoff);
@@ -249,7 +247,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 306: if (out->attr == 1) { equipAtk += 400; equipDef -= 200; } break;
                 case 307: if (out->type == 11) { equipAtk += 300; equipDef += 300; } break;
                 case 308: if (out->attr == 3) { equipAtk += 400; equipDef -= 200; } break;
-                case 309: if (out->type == 13) goto equip_300_type16; break;
+                case 309: if (out->type == 13) { equipAtk += 300; equipDef += 300; } break;
                 case 310: equipAtk += 500; break;
                 case 311: if (out->type == 17) { equipAtk += 300; equipDef += 300; } break;
                 case 312: equipDef += 800; break;
@@ -259,25 +257,19 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 316:
                     if ((u16)(GetCardNumberS(out->id) - 61) <= 1 || GetCardNumberS(out->id) == 0x4E1) equipAtk += 500;
                     break;
-                case 318: if (out->type == 12) goto equip_300_type16; break;
+                case 318: if (out->type == 12) { equipAtk += 300; equipDef += 300; } break;
                 case 320: equipAtk += 700; break;
                 case 321: if (out->type == 2) { equipAtk += 300; equipDef += 300; } break;
                 case 322: if (out->type == 18) { equipAtk += 300; equipDef += 300; } break;
                 case 323: if (out->attr == 5) { equipAtk += 400; equipDef -= 200; } break;
                 case 324: if (out->type == 7) { equipAtk += 300; equipDef += 300; } break;
                 case 325: if (out->type == 9) { equipAtk += 300; equipDef += 300; } break;
-                case 326:
-                    if (out->type == 16) {
-                        /* FAKEMATCH: share this conditional +300 equip tail. */
-                    equip_300_type16:
-                        equipAtk += 300; equipDef += 300;
-                    }
-                    break;
+                case 326: if (out->type == 16) { equipAtk += 300; equipDef += 300; } break;
                 case 327: if (out->type == 14) { equipAtk += 300; equipDef += 300; } break;
                 case 650: equipAtk += 500; break;
                 case 653: if (out->attr == 4) equipAtk += 700; break;
                 case 656:
-                    if (((struct DuelPlayer *)((u8 *)gUnk_0201930C - 0x28))[lp & 1].lifePoints < ((struct DuelPlayer *)((u8 *)gUnk_0201930C - 0x28))[(1 - lp) & 1].lifePoints) { replacementOut = out; replacementOut->atk = BaseAttack(out->id) * 2; }
+                    if (((struct DuelPlayer *)((u8 *)gUnk_0201930C - 0x28))[lp & 1].lifePoints < ((struct DuelPlayer *)((u8 *)gUnk_0201930C - 0x28))[(1 - lp) & 1].lifePoints) out->atk = BaseAttack(out->id) * 2;
                     if (gUnk_020192E4[lp & 1].lifePoints > gUnk_020192E4[(1 - lp) & 1].lifePoints) out->atk = sub_0807548C(BaseAttack(out->id));
                     addAtk = 0;
                     otherAtk = 0;

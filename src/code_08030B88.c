@@ -134,78 +134,89 @@ void sub_08017FF4(int player, int zone);
 int sub_0802B9EC(struct CardRef *ref, u16 pos);
 
 
-#if 0 /* NONMATCHING: logic decoded. Loop and pointer strength reduction differ
-       * (cards base 0x0201D81C in r7/ip), as do the 7E/7D case layout and
-       * found-label sharing. */
+struct S15F00_30B88 { u8 unk0[0x1B22]; u16 listPos; };
+#define S15F00_30B88 ((struct S15F00_30B88 *)gUnk_02015F00)
 int sub_08030B88(struct CardRef *ref)
 {
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80: {
-            int n;
-            u16 i;
+    int i, n;
 
-            if (!(sub_08008524(0, 0x3D) || sub_08008524(1, 0x3D) || sub_08008524(0, 0x4E1)
-                  || sub_08008524(1, 0x4E1)))
-                return 0;
-            if (sub_08044224(ref->player, 0x13D, 0) == 0)
-                return 0;
-            if (sub_08008A1C(ref->player) == 0)
-                return 0;
-            if (1 & ((u8 *)ref)[2]) {
-                n = sub_08044224(1, 0x13D, 0);
-                for (i = 0; i < n; i++) {
-                    if (CARD_NUMBER(CARD_ID(gUnk_0201D810.cards[i])) == 0x3E)
-                        goto found;
-                }
-                for (i = 0; i < n; i++) {
-                    if (CARD_NUMBER(CARD_ID(gUnk_0201D810.cards[i])) == 0x4E1)
-                        goto found;
-                }
-                for (i = 0; i < n; i++) {
-                    if (CARD_NUMBER(CARD_ID(gUnk_0201D810.cards[i])) == 0x3D)
-                        goto found;
-                }
-                sub_08056ECC(ref->id);
-                gUnk_0201D810.row = 0;
-                return 0x7E;
-                gUnk_0201D810.top = *(u16 *)&gUnk_02015F00[0x1B22];
-            found:
-                gUnk_0201D810.row = 0;
-                gUnk_0201D810.top = i;
-                return 0x7E;
-            } else {
-                sub_080602A4(0x205, 0x914, 0xB, gUnk_08082988);
-                return 0x7F;
+    if (ref->skip4)
+        return 0;
+    switch (EFF_PHASE) {
+    case 0x80:
+        if (!sub_08008524(0, 0x3D) && !sub_08008524(1, 0x3D) && !sub_08008524(0, 0x4E1)
+            && !sub_08008524(1, 0x4E1))
+            return 0;
+        if (sub_08044224(ref->player, 0x13D, 0) == 0)
+            return 0;
+        if (sub_08008A1C(ref->player) == 0)
+            return 0;
+        if (1 & ((u8 *)ref)[2]) {
+            n = sub_08044224(1, 0x13D, 0);
+            /* `cards + i` (not cards[i]) keeps 0x0201D81C as one pool constant, so the
+             * found blocks address the viewer as base - 12. The u16 id locals in the first
+             * and third loops add the RTL insns that make loop.c hoist the card table only
+             * in its second pass (after the pointer copy), as the ROM does. */
+            for (i = 0; i < n; i++) {
+                u16 id = CARD_ID(*(gUnk_0201D810.cards + i));
+                if (CARD_NUMBER(id) == 0x3E)
+                    goto found1;
             }
-        }
-        case 0x7F:
-            sub_0802AF34(ref->player, -1, CARD_NUMBER(ref->id), 0);
+            for (i = 0; i < n; i++) {
+                if (CARD_NUMBER(CARD_ID(*(gUnk_0201D810.cards + i))) == 0x4E1)
+                    goto found2;
+            }
+            for (i = 0; i < n; i++) {
+                u16 id = CARD_ID(*(gUnk_0201D810.cards + i));
+                if (CARD_NUMBER(id) == 0x3D)
+                    goto found3;
+            }
+            sub_08056ECC(ref->id);
+            gUnk_0201D810.row = 0;
+            gUnk_0201D810.top = S15F00_30B88->listPos;
             return 0x7E;
-        case 0x7E: {
-            u16 idx = gUnk_0201D810.row + gUnk_0201D810.top;
-            u16 kind = gUnk_0201D810.kinds[idx];
-            u16 *c = (u16 *)&gUnk_0201D810.cards[idx];
+        } else {
+            sub_080602A4(0x205, 0x914, 0xB, gUnk_08082988);
+            return 0x7F;
+        }
+    case 0x7F:
+        sub_0802AF34(ref->player, -1, CARD_NUMBER(ref->id), 0);
+        return 0x7E;
+    case 0x7E: {
+        u16 *c = (u16 *)&gUnk_0201D810.cards[gUnk_0201D810.row + gUnk_0201D810.top];
 
-            if (kind == 1)
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80C2 : 0xC2, c[0], c[1], 0);
-            else if (kind == 2)
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8065 : 0x65, c[0], c[1], 0);
-            return 0x7D;
+        switch (gUnk_0201D810.kinds[gUnk_0201D810.row + gUnk_0201D810.top]) {
+        case 2:
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8065 : 0x65, c[0], c[1], 0);
+            break;
+        case 1:
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80C2 : 0xC2, c[0], c[1], 0);
+            break;
         }
-        case 0x7D:
-            sub_08056094(ref->player, &gUnk_0201D810.cards[gUnk_0201D810.row + gUnk_0201D810.top], 1, 1);
-            return 0x7C;
-        case 0x7C:
-            if (gUnk_0201D810.kinds[gUnk_0201D810.row + gUnk_0201D810.top] == 2)
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 0, 0, 0);
-            return 0x64;
-        }
+        return 0x7D;
+    }
+    case 0x7D:
+        sub_08056094(ref->player, &gUnk_0201D810.cards[gUnk_0201D810.top + gUnk_0201D810.row], 1, 1);
+        return 0x7C;
+    case 0x7C:
+        if (gUnk_0201D810.kinds[gUnk_0201D810.top + gUnk_0201D810.row] == 2)
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 0, 0, 0);
+        return 0x64;
+    found1:
+        gUnk_0201D810.row = 0;
+        gUnk_0201D810.top = i;
+        return 0x7E;
+    found2:
+        gUnk_0201D810.row = 0;
+        gUnk_0201D810.top = i;
+        return 0x7E;
+    found3:
+        gUnk_0201D810.row = 0;
+        gUnk_0201D810.top = i;
+        return 0x7E;
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08030B88", sub_08030B88); /* 0x08030B88 size 0x2C4 */
 int sub_08030E4C(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {

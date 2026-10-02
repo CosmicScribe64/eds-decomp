@@ -381,27 +381,29 @@ void sub_08018ED8(int player, int zone, u16 arg2, u16 arg3)
         sub_0801FBCC(ev | ev2 | id, 0);
     }
 }
-#if 0 /* NONMATCHING: zone extraction order matches; agbcc picks a different register set (target keeps arg1 in sl, arg2 in r9, zone2 in r8, 0x94 in r7) and computes p&1 before zone*0x94 */
+/* Move between two zones (`arg1`/`arg2` = player | zone << 8): if the source holds a
+ * card and the target is empty, announce 0x82; across players, card 0x1E3/0x222
+ * with +7 bit 0x20 hands its effect to the other player (0x92). Each zone is read
+ * through ZONE() in place: the array form keeps the zone base in a shared register. */
 void sub_08019078(int player, u16 arg1, u16 arg2)
 {
     int p1 = (u8)arg1;
     int zone1 = arg1 >> 8;
-    s16 p2 = (u8)arg2;
+    int p2 = (u8)arg2;
     int zone2 = arg2 >> 8;
-    struct DuelZone *z1 = ZONE_AT(p1, zone1);
     u32 id;
 
-    if (ZONE_CARD_ID(z1) == 0)
+    if (ZONE_CARD_ID(ZONE(p1, zone1)) == 0)
         return;
-    if (ZONE_CARD_ID(ZONE_AT(p2, zone2)) != 0)
+    if (ZONE_CARD_ID(ZONE(p2, zone2)) != 0)
         return;
     sub_0801EC58(EVT(p1, 0x82), arg1, arg2, 0);
     if (p1 == p2)
         return;
-    id = ZONE_CARD_ID(z1);
+    id = ZONE_CARD_ID(ZONE(p1, zone1));
     switch (CARD_NUMBER(id)) {
     case 0x1E3:
-        if (z1->unk7 & 0x20) {
+        if (ZONE(p1, zone1)->unk7 & 0x20) {
             sub_080197C0(p1, id);
             sub_08019860(p2, 0x7D0);
             sub_0801EC58(EVT(p2, 0x92), zone2, 0, 0);
@@ -409,7 +411,7 @@ void sub_08019078(int player, u16 arg1, u16 arg2)
         }
         break;
     case 0x222:
-        if (z1->unk7 & 0x20) {
+        if (ZONE(p1, zone1)->unk7 & 0x20) {
             sub_080197C0(p1, id);
             sub_08019980(p1, 0xBB8);
             sub_0801EC58(EVT(p2, 0x92), zone2, 0, 0);
@@ -417,8 +419,6 @@ void sub_08019078(int player, u16 arg1, u16 arg2)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080184D8", sub_08019078); /* 0x08019078 size 0x124 */
 #if 0 /* NONMATCHING: logic/instruction shapes match; agbcc permutes the high-register roles (target: arg2=sl, p1=r8, p2=r7, zone2=r9; ip holds const 1) */
 /* Two zones (arg1/arg2 = player|zone<<8): if both hold a card, announce 0x84;
  * then for card 0x1E3/0x222 in either zone with the 0x20 flag bit, hand its

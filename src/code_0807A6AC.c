@@ -334,47 +334,52 @@ extern const u16 gUnk_082A6500[];
 /* Unpacks a 6-bit-per-pixel image (idx-th 0x10E0-byte record at 0x082A6500)
  * into 8-bit pixels at dst and loads its 64 colour palette to OBJ/BG palette
  * bank `bank`; the top two pixel bits select the sub-palette. */
-#if 0 /* NONMATCHING: the 0x3F/0xFC0 masks do need to be locals (`u16 m6/m12`)
-       * to hoist into r8/r9 as the target does (bare literals let the first
-       * use stay an immediate). About 80 instruction lines of register
-       * allocation in the two loops still differ: the target keeps the pixel
-       * scratch in r0/r1/r2 and the second-loop counter in ip, while the build
-       * rotates them. */
-void sub_0807AEF0(u16 idx, u32 dstAddr, u16 bank)
+void sub_08075294(u32 dst, const void *src, u32 n);
+/* Twin of sub_0805DF34 (portrait loader): palette idx -> PLTT + (pal >> 4) * 32 with
+ * pal = bank * 64 + 0x80, unpacks record idx's 720 x 3 halfwords of packed 6-bit pixels to one
+ * pixel per byte at dst, then adds (pal & 0xFF) to all 0xB40 halfwords. The ROM tables are
+ * integer addresses so that both bases are rematerialized by reload (as in sub_0805DF34). */
+void sub_0807AEF0(u16 idx, u32 dst, u16 bank)
 {
-    u16 *dst = (u16 *)dstAddr;
-    u16 *in;
+    u16 pal = bank * 64 + 0x80;
+    const u16 *src;
     u16 *out;
-    s32 n;
-    u32 pal = ((u32)bank << 22) + 0x800000 >> 16;
-    s8 m6;
-    s8 m12;
-    s16 i;
+    int n;
+    /* FAKEMATCH: the ROM keeps the second loop's counter in ip (r2/r3 hold 0x3F3F/0xB3F);
+     * no ordinary form reproduced that allocation, so the counter is pinned. With the pin
+     * the loop must be a do-while (a pinned `for` keeps its entry test), and the bound is a
+     * local set before the loop so its literal is loaded first, as in the ROM. */
+    register u32 i asm("ip");
+    u32 lim;
+    u16 m6, m12;
 
-    sub_08075294((void *)(PLTT + (((u32)bank << 22) + 0x800000 >> 15)), gUnk_08608360 + idx * 0x80, 0x80);
+    sub_08075294(0x05000000 + (pal >> 4) * 0x20, (const void *)(0x08608360 + idx * 0x80), 0x80);
+    src = (const u16 *)(0x082A6500 + idx * 0x10E0);
+    out = (u16 *)dst;
     m6 = 0x3F;
     m12 = 0xFC0;
-    in = gUnk_082A6500 + idx * 0x870;
-    out = dst;
-    for (n = 0x2D0; n != 0; n--) {
-        u16 a = in[0];
-        u16 b = in[1];
-        int c = in[2];
-
-        out[0] = (a & m6) | (a & m12) << 2;
-        out[1] = a >> 12 | (b & 3) << 4 | (b & 0xFC) << 6;
-        out[2] = (b >> 8 & m6) | ((b >> 8 >> 6) | (c & 0xF) << 2) << 8;
-        out[3] = (c >> 4 & m6) | (c >> 4 & m12) << 2;
-        in += 3;
+    for (n = 720; n != 0; n--) {
+        u16 s0 = src[0];
+        u32 s1 = src[1];
+        u32 s2 = src[2];
+        u16 t, x;
+        out[0] = (s0 & m6) | ((s0 & m12) << 2);
+        out[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) * 64);
+        t = s1 >> 8;
+        out[2] = (t & m6) | (((t >> 6) | ((s2 & 0xF) << 2)) << 8);
+        x = s2 >> 4;
+        out[3] = (x & m6) | ((x & m12) << 2);
+        src += 3;
         out += 4;
     }
-    for (i = 0; i < 0xB40; i++) {
-        *dst = (*dst & 0x3F3F) + ((u8)pal << 8 | (u8)pal);
-        dst++;
-    }
+    i = 0;
+    lim = 0xB3F;
+    do {
+        *(u16 *)dst = (*(u16 *)dst & 0x3F3F) + ((u8)pal << 8 | (u8)pal);
+        dst += 2;
+        i++;
+    } while (i <= lim);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807A6AC", sub_0807AEF0); /* 0x0807AEF0 size 0x10C */
 void sub_0807AEF0(u16 a, u32 b, u16 c);
 
 void sub_0807AFFC(u16 a, u32 b, u16 c)

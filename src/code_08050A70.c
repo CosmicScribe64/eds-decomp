@@ -122,7 +122,7 @@ struct LinkBlk {
 typedef char chk452[(OFF(struct LinkBlk, h452) == 0x452) ? 1 : -1];
 typedef char chk45C[(OFF(struct LinkBlk, id45C) == 0x45C) ? 1 : -1];
 extern struct LinkBlk gUnk_02017FB0;
-struct EffEntry { u16 idx; u8 u2[0x10 - 2]; u32 fn10; u32 fn14; };
+struct EffEntry { u16 idx; u16 u2; u32 fn4; u8 u8_[0x10 - 8]; u32 fn10; u32 fn14; };
 extern struct EffEntry gUnk_0819A9D4[];
 struct DuelSel {
     u8 unk0[0x1B10];
@@ -368,40 +368,38 @@ u16 sub_08051098(void)
         return 1;
     }
 }
-#if 0 /* NONMATCHING: register allocation differs (ROM: base r7, &step r8, a persistent constant 1
-       * in r4; built: base r6, step r7) */
+/* Link copy of an effect source/target ref (0x14 bytes, at link block +0x45C and +0x470). */
+struct LinkRef {
+    u16 id;
+    u8 b2;              /* +0x02: bit 0 player (struct T8 view) */
+    u8 u3[3];
+    u16 pos;            /* +0x06: low byte player */
+    u16 w8;             /* +0x08: low byte player */
+    u8 uA[0x14 - 0xA];
+};
+#define LINK_REF(l, off) ((struct LinkRef *)((l) + (off)))
+#define LINK_REF_PLAYER(l, off) (((struct T8 *)&LINK_REF(l, off)->b2)->f0)
+/* Swaps the low-byte player of a packed halfword: 1 - player, high byte kept. */
+#define FLIP_LO_PLAYER(h) ((u8)(1 - (h)) | ((h) >> 8 << 8))
+/* Mirror both refs to the other side's point of view (player = 1 - player), then look up and start the
+ * effect handler fn4 (step 0); call it with (ref, target or NULL) until it returns 0 (step 1). */
 u16 sub_08051140(void)
 {
     u8 *l = (u8 *)&gUnk_02017FB0;
     u8 *step = l + 0x48F;
     switch (*step) {
     case 0:
-        ((struct T8 *)(l + 0x45E))->f0 = 1 - ((struct T8 *)(l + 0x45E))->f0;
-        ((struct T8 *)(l + 0x472))->f0 = 1 - ((struct T8 *)(l + 0x472))->f0;
-        {
-            u16 *hp = (u16 *)(l + 0x462);
-            s8 h = *hp;
-            *hp = (u8)(1 - h) | ((h >> 8) << 8);
-        }
-        {
-            u16 *hp = (u16 *)(l + 0x464);
-            s8 h = *hp;
-            *hp = (u8)(1 - h) | ((h >> 8) << 8);
-        }
-        {
-            u16 *hp = (u16 *)(l + 0x476);
-            s8 h = *hp;
-            *hp = (u8)(1 - h) | ((h >> 8) << 8);
-        }
-        {
-            u16 *hp = (u16 *)(l + 0x478);
-            s16 h = *hp;
-            *hp = (u8)(1 - h) | ((h >> 8) << 8);
-        }
+        /* FAKEMATCH: the u8 constant gives the minuend its own QImode register, as in the ROM */
+        { u8 v = LINK_REF_PLAYER(l, 0x45C); u8 one = 1; LINK_REF_PLAYER(l, 0x45C) = one - v; }
+        { u8 v = LINK_REF_PLAYER(l, 0x470); u8 one = 1; LINK_REF_PLAYER(l, 0x470) = one - v; }
+        { u16 *hp = &LINK_REF(l, 0x45C)->pos; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &LINK_REF(l, 0x45C)->w8; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &LINK_REF(l, 0x470)->pos; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &LINK_REF(l, 0x470)->w8; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
         gUnk_02017A40.effIdx = sub_08047058(gUnk_02017FB0.id45C);
         if (gUnk_02017A40.effIdx < 0)
             return 1;
-        gUnk_02017A40.fn3D8 = ((struct EffEntry4 *)gUnk_0819A9D4)[gUnk_02017A40.effIdx].fn4;
+        gUnk_02017A40.fn3D8 = gUnk_0819A9D4[gUnk_02017A40.effIdx].fn4;
         if (gUnk_02017A40.fn3D8 == 0)
             return 1;
         gUnk_02017A40.b3E0 = 0x80;
@@ -414,14 +412,15 @@ u16 sub_08051140(void)
         else
             gUnk_02017A40.b3E0 = ((u8(*)(void *, void *))gUnk_02017A40.fn3D8)(l + 0x45C, 0);
         if (gUnk_02017A40.b3E0 == 0)
-            ((struct LinkBlk *)&gUnk_02017FB0)->step48F++;
+            gUnk_02017FB0.step48F++;
         return 0;
     default:
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_08051140); /* 0x08051140 size 0x1B0 */
+#undef LINK_REF
+#undef LINK_REF_PLAYER
+#undef FLIP_LO_PLAYER
 u16 sub_080512F0(void)
 {
     if (gUnk_02017FB0.f450_0 && !((gUnk_02017FB0.b306 << 26) < 0)) {

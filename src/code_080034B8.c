@@ -494,36 +494,28 @@ void sub_08003F34(void)
 }
 
 /* Record scene: draw the up/down arrows left of each of the 4-5 shown cards. */
-#if 0 /* NONMATCHING: logic/instructions match but agbcc hoists `&gUnk_08198618[frame]` out of the loop and gives the base pointer r8 (ROM keeps the table in r9, 0x20D0 in sl, n in r8, base spilled in r3, and recomputes the record index for the ldr) */
+struct WF3F88Rec { u32 wins : 11; u32 losses : 11; u32 draws : 10; };
+struct WF3F88Save { u8 pad0[0x20D0]; struct WF3F88Rec rec[32]; };
+#define WF3F88Save (*(struct WF3F88Save *)gUnk_02011C20)
+
 void sub_08003F88(void)
 {
-    const u16 *tbl = gUnk_08198618;
-    u8 *s = gUnk_02011C20;
-    s16 i;
-    s8 n;
-    u32 frame;
-    u32 y;
+    s32 i, n;
+    u32 frame, y;
+    s32 diff, d;
 
-    if (6 & *(u8 *)&gRecord)
+    if (gRecord.unk0_1)
         return;
     n = (gRecord.unk1_5 <= 3) ? 5 : 4;
     frame = (gMain.frameCounter >> 3) & 7;
-    y = 0x2B0000;
     for (i = 0; i < n; i++) {
-        u32 rec = *(u32 *)&gRecord;
-        u32 k = (rec << 16) >> 29;
-        struct Card2Rec *wa = (struct Card2Rec *)(s + (k * 5 + i + 1) * 4);
-        struct Card2RecB *wb = (struct Card2RecB *)(s + (k * 5 + i + 1) * 4);
-        s32 diff = (s32)wa->a.a - (s32)wb->b.b;
-        s16 d = (u32)diff >> 31;
+        diff = WF3F88Save.rec[gRecord.unk1_5 * 5 + i + 1].wins - WF3F88Save.rec[gRecord.unk1_5 * 5 + i + 1].losses;
+        d = (u32)diff >> 31;
         if (diff > 0)
-            d = (u32)-1;
-        sub_080761F0(y | (0x84 + d * 0x30), 0x4000, tbl[frame] + 0x1000);
-        y += 0x180000;
+            d = -1;
+        sub_080761F0(((i * 24 + 0x2B) << 16) | (0x84 + d * 0x30), 0x4000, gUnk_08198618[frame] + 0x1000);
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080034B8", sub_08003F88); /* 0x08003F88 size 0xE4 */
 
 void sub_0800406C(void)
 {

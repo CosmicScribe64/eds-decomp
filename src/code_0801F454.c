@@ -511,55 +511,17 @@ u32 sub_0801FE54(void)
 }
 
 INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_0801FEA0); /* 0x0801FEA0 size 0x490 */
-/* 0x02017A40 beyond the lists: resolution step and the current entry's two handlers. */
-typedef u16 (*ActFn0330)(struct ActEntry *e, struct ActEntry *prev);
-struct ActState0330 {
-    struct ActEntry listA[32];
-    struct ActEntry listB[16];  /* +0x280 */
-    u16 countB;                 /* +0x3C0 */
-    u8 pad3C2[0x3D0 - 0x3C2];
-    u8 flag : 1;                /* +0x3D0 */
-    u8 step : 7;
-    u8 idx;                     /* +0x3D1 */
-    u8 b3D2;
-    u8 b3D3;
-    u8 pad3D4[0x3E4 - 0x3D4];
-    u8 b3E4;
-    u8 b3E5;
-    u8 pad3E6[0x480 - 0x3E6];
-    ActFn0330 fnA;              /* +0x480 */
-    ActFn0330 fnB;              /* +0x484 */
-    u8 b488;
-    u8 pad489[0x490 - 0x489];
-    u8 b490;
-    u8 b491;
-};
-extern struct ActState0330 gAct0330 asm("gUnk_02017A40");
-struct EffDef0330 { u8 pad[0x10]; ActFn0330 fnA; ActFn0330 fnB; };
-extern const struct EffDef0330 gUnk_0819A9D4[];
-struct Step150 { u8 pad[0x150]; u8 flag : 1; u8 step : 7; };
-extern struct Step150 gUnk_02017CC0;
-struct LogEnt0330 { s16 i; struct ActEntry e; };
-s32 sub_08047058(u16 card);
-void sub_080197C0(int player, u16 card);
-void sub_0801A7B4(void *p, int a);
-s32 sub_0801A32C(void);
-s32 sub_0801FEA0(struct ActEntry *e, u32 player);
-s32 sub_0802D30C(struct ActEntry *e, u32 player);
-#define LAST0330 (&gAct0330.listB[gAct0330.countB - 1])
-#if 0 /* NONMATCHING (score 8): score 8: only &countB address reg differs in cases 3/5 (ROM r2, ours r0 via
-       * local-alloc). Keys: every case ends in return 1 (new return label defeats cross-jumping of identical step++
-       * tails); u32 bitfield views for entry +4 flags and 0x02017FB0+0x308 (lsl/sign tests); one function-scope u32 r
-       * shared by case 1 (sub_08047058 result) and cases 3/5 (countB) puts countB in r4; if/else with two fn calls each
-       * with its own if (cross-jump merges from bl); default stores 3D2 via *(u8 *)& so the zero is not hoisted */
-/* Unit-local views for sub_08020330: the ROM tests the entry flags at +4 and the link flags at
- * 0x02017FB0+0x308 as u32-container bitfields (lsl/sign tests), as in code_08020AF4. */
+/*
+ * Unit-local views for sub_08020330. The ROM tests the entry flags at +4 and the link flags at
+ * 0x02017FB0+0x308 as u32-container bitfields (lsl/sign tests, as in code_08020AF4), so these
+ * views differ from struct ActEntry / struct LinkState above.
+ */
 struct Ent0330 {
-    u16 card;
-    u16 flag2_0:1;
+    u16 card;                   /* +0x00 */
+    u16 flag2_0:1;              /* +0x02 bit 0: player (hypothesis) */
     u16 rest2:15;
-    u32 flag4_0:1;
-    u32 flag4_1:1;
+    u32 flag4_0:1;              /* +0x04 bit 0: skip handler A */
+    u32 flag4_1:1;              /* +0x04 bit 1: skip handler B */
     u32 rest4:14;
     u16 w6;
     u16 w8;
@@ -571,10 +533,10 @@ struct St0330 {
     struct Ent0330 listB[16];   /* +0x280 */
     u16 countB;                 /* +0x3C0 */
     u8 pad3C2[0x3D0 - 0x3C2];
-    u8 active:1;                /* +0x3D0 */
+    u8 active:1;                /* +0x3D0 bit 0: sub_080213C0 runs this function */
     u8 step:7;
-    u8 idx;                     /* +0x3D1 */
-    u8 b3D2;
+    u8 idx;                     /* +0x3D1: list B entry being resolved */
+    u8 b3D2;                    /* +0x3D2: code_08020AF4's resolveFlags */
     u8 b3D3;
     u8 pad3D4[0x3E4 - 0x3D4];
     u8 b3E4;
@@ -588,32 +550,52 @@ struct St0330 {
     u8 b490;
     u8 b491_lo:4;
     u8 b491_mid:3;
-    u8 b491_hi:1;
+    u8 b491_hi:1;               /* +0x491 bit 7: restart from step 1 */
 };
-extern struct St0330 gSt0330 asm("gUnk_02017A40");
+#define gSt0330 (*(struct St0330 *)&gUnk_02017A40)
 struct Lnk0330 {
     u8 filler0[0x308];
-    u32 f0:1, f1:1, f2:1, f3:1, f4:1, f5:1, f6:1, f7:1;
+    u32 f0:1, f1:1, f2:1, f3:1, f4:1, f5:1, f6:1, f7:1;     /* +0x308 */
 };
-extern struct Lnk0330 gLnk0330 asm("gUnk_02017FB0");
+#define gLnk0330 (*(struct Lnk0330 *)&gUnk_02017FB0)
+/* Effect table, 24-byte entries: handlers A and B at +0x10 / +0x14. */
+struct EffDef0330 { u8 pad[0x10]; Fn0330 fnA; Fn0330 fnB; };
+extern const struct EffDef0330 gUnk_0819A9D4[];
+/* 0x02017CC0 is list B; its +0x150 is 0x02017A40+0x3D0, the step byte. */
+struct Step150 { u8 pad[0x150]; u8 flag : 1; u8 step : 7; };
+extern struct Step150 gUnk_02017CC0;
+s32 sub_08047058(u16 card);
+void sub_080197C0(int player, u16 card);
+void sub_0801A7B4(void *p, int a);
+s32 sub_0801A32C(void);
+s32 sub_0801FEA0(struct ActEntry *e, u32 player);
+s32 sub_0802D30C(struct ActEntry *e, u32 player);
 #define S gSt0330
 #define LAST (S.listB[S.countB - 1])
+/*
+ * Resolves list B one step per call: for each entry look up its two effect handlers
+ * (gUnk_0819A9D4 via sub_08047058), run A then B until each reports done (0x02017FB0+0x308
+ * bits 3 and 1), then send the list over the link, hand it to sub_0801A7B4, and run the
+ * per-player checks sub_0802D30C / sub_0801FEA0 for the last entry (hypothesis).
+ * Every case ends in its own `return 1`: the jump to the new return label is not cross-jumped,
+ * so each case keeps its own copy of the step++ tail, as in the ROM.
+ */
 int sub_08020330(void)
 {
-    u32 r;
+    u32 r; /* one temporary for the effect index and the list count, as in the ROM (r4) */
 
     switch (S.step) {
     case 0:
         S.idx = 0;
         S.step++;
-    case 1: {
+    case 1:
         r = sub_08047058(S.listB[S.idx].card);
         if (r == -1) {
             S.fnA = NULL;
             S.fnB = NULL;
         } else {
-            S.fnA = (Fn0330)gUnk_0819A9D4[r].fnA;
-            S.fnB = (Fn0330)gUnk_0819A9D4[r].fnB;
+            S.fnA = gUnk_0819A9D4[r].fnA;
+            S.fnB = gUnk_0819A9D4[r].fnB;
         }
         if (S.listB[S.idx].flag4_0)
             S.fnA = NULL;
@@ -626,7 +608,6 @@ int sub_08020330(void)
         S.b3E5 = 0;
         S.step++;
         return 1;
-    }
     case 2:
         if (S.fnA == NULL) {
             S.step += 2;
@@ -637,7 +618,13 @@ int sub_08020330(void)
         S.step++;
     case 3:
         if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
-            r = S.countB;
+            {
+                u16 *cnt = &S.countB;
+                /* FAKEMATCH: keeps r0/r1 busy while the count address is live, so local-alloc
+                 * puts it in r2 as the ROM does. Emits no instructions. */
+                asm volatile("" ::: "r0", "r1");
+                r = *cnt;
+            }
             if (r > 1) {
                 if (S.fnA(&S.listB[S.idx], &S.listB[r - 2]))
                     gLnk0330.f3 = 1;
@@ -659,7 +646,12 @@ int sub_08020330(void)
         S.step++;
     case 5:
         if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
-            r = S.countB;
+            {
+                u16 *cnt = &S.countB;
+                /* FAKEMATCH: as in case 3. */
+                asm volatile("" ::: "r0", "r1");
+                r = *cnt;
+            }
             if (r > 1) {
                 if (S.fnB(&S.listB[S.idx], &S.listB[r - 2]))
                     gLnk0330.f1 = 1;
@@ -743,6 +735,8 @@ int sub_08020330(void)
         return 1;
     default:
         S.active = 0;
+        /* FAKEMATCH: a plain byte store through a pointer. As a field store, the field-insert
+         * expansion leaves a zero constant that CSE hoists for the next store. */
         *(u8 *)&S.b3D2 = 1;
         S.b3D3 = 0;
         return 1;
@@ -750,5 +744,5 @@ int sub_08020330(void)
 }
 #undef S
 #undef LAST
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_08020330); /* 0x08020330 size 0x7C4 */
+#undef gSt0330
+#undef gLnk0330

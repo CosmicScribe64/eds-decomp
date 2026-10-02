@@ -389,81 +389,99 @@ s32 sub_08001770(void)
 /* Bustup step: advances the dialogue (A button), handles the page/settle
  * states and text-box dirty flags, and rebuilds the object arrays. Returns 1
  * once the scene is finished (B / box fully read). */
-#if 0 /* NONMATCHING: the structure is right, but the goto-join layout and the
-       * switch compile differently, and the object-loop bases are materialised
-       * from different literals, so the body does not line up. */
+/* TextBox (gUnk_02013DE0 + 0x9AC) state byte (+0x19) and page byte (+0x20). */
+#define TB_STATE_17E8 (*((s8 *)&gUnk_02013DE0 + 0x9C5))
+#define TB_PAGE_17E8 (*((u8 *)&gUnk_02013DE0 + 0x9CC))
+#define SPEAKER_17E8 (gUnk_02013DE0.speaker)
+/* Scene/box state at gUnk_02013DE0 + 0x12EC (== gUnk_020150CC); +0x90 holds the
+ * same bits as ScriptState unk137C_0 / autoAdvance. */
+struct Anim17E8 {
+    u8 filler0[4];
+    s16 unk4;
+    u8 unk6;
+    u8 unk7;
+    u8 filler8[0x80 - 0x08];
+    u16 dialogueIndex;
+    u8 filler82[0x90 - 0x82];
+    u8 started:1;
+    u8 autoAdvance:1;
+};
+#define gAnim17E8 (*(struct Anim17E8 *)((u8 *)&gUnk_02013DE0 + 0x12EC))
+/* FAKEMATCH: the ROM uses sub_08001BC8's result without re-extending it, so it
+ * is called through an int-returning type (the unit's prototype says u16). */
+typedef u32 (*EventOfFunc17E8)(u32);
+#define EventOf17E8 ((EventOfFunc17E8)sub_08001BC8)
 s32 sub_080017E8(void)
 {
     u8 i;
-    u16 *boxDirty;
     u8 *tb;
-    s8 st;
+    u16 *boxDirty;
+    u32 idx;
 
-    sub_0807883C(&gUnk_020150CC);
-    if (gUnk_020150CC.unk6 == 2)
-        gMain.seqIndex1 += gUnk_020150CC.unk7;
-    if (gUnk_020150CC.unk90 & 1) {
-        if (gUnk_020150CC.unk90 & 2) {
-            gUnk_020150CC.unk90 &= ~2;
-            gMain.seqIndex1 -= 1;
-            gUnk_020150CC.dialogueIndex += 1;
-            *((u8 *)&gUnk_020150CC - 1) = sub_08001BEC(gUnk_020150CC.dialogueIndex);
-            *((u8 *)&gUnk_020150CC - 0x920) = 0;
-            gMain.speaker = *((u8 *)&gUnk_020150CC - 1);
-            gMain.dialogueIndex = gUnk_020150CC.dialogueIndex;
-            sub_0801A7DC(gUnk_08080A84, gMain.dialogueIndex,
-                         sub_08001BC8(gMain.dialogueIndex), gMain.speaker);
-            sub_0801A7E8();
-            if (sub_08001BC8(gMain.dialogueIndex) == 0) {
-                gMain.speaker = 0;
-                goto block_26;
-                gMain.dialogueIndex = 0;
-            }
-        }
-        goto block_27;
-    }
-    if (gMain.newKeys & 1) {
-        st = *((u8 *)&gUnk_020150CC - 0x927);
-        switch (st) {
-        case 0:
-            *((u8 *)&gUnk_020150CC - 0x927) = 1;
-            break;
-        case -1:
-            *((u8 *)&gUnk_020150CC - 0x927) = 0;
-            if (gUnk_020150CC.unk90 & 2)
-                *((u8 *)&gUnk_020150CC - 0x927) = 1;
-            sub_08077AEC(1);
-            break;
-        case -2:
-            if (!(gUnk_020150CC.unk90 & 2)) {
-                if (gUnk_020150CC.unk4 == 0) {
-                    sub_080787F4(0, 0x180, 1, &gUnk_020150CC);
-                    sub_08077AEC(1);
-                    gUnk_020150CC.unk90 |= 1;
+    sub_0807883C(&gAnim17E8);
+    if (gAnim17E8.unk6 == 2)
+        gMain.seqIndex1 += gAnim17E8.unk7;
+    if (!(gAnim17E8.started)) {
+        if (gMain.newKeys & 1) {
+            switch (TB_STATE_17E8) {
+            case 0:
+                TB_STATE_17E8 = 1;
+                break;
+            case -1:
+                TB_STATE_17E8 = 0;
+                if (gAnim17E8.autoAdvance)
+                    TB_STATE_17E8 = 1;
+                sub_08077AEC(1);
+                break;
+            case -2:
+                if (!(gAnim17E8.autoAdvance)) {
+                    if (gAnim17E8.unk4 == 0) {
+                        sub_080787F4(0, 0x180, 1, &gAnim17E8);
+                        sub_08077AEC(1);
+                        gAnim17E8.started = 1;
+                    }
+                } else {
+                    gMain.seqIndex1--;
+                    gAnim17E8.dialogueIndex++;
+                    TB_PAGE_17E8 = 0;
+                    gMain.speaker = SPEAKER_17E8;
+                    /* FAKEMATCH: the int temporary makes the ROM reload the
+                     * just-incremented index instead of reusing it. */
+                    idx = gAnim17E8.dialogueIndex;
+                    gMain.dialogueIndex = idx;
+                    sub_0801A7DC(gUnk_08080A64, gMain.dialogueIndex,
+                                 EventOf17E8(gMain.dialogueIndex), gMain.speaker);
+                    sub_0801A7E8();
                 }
-            } else {
-                gMain.seqIndex1 -= 1;
-                gUnk_020150CC.dialogueIndex += 1;
-                *((u8 *)&gUnk_020150CC - 0x920) = 0;
-                gMain.speaker = *((u8 *)&gUnk_020150CC - 1);
-                gMain.dialogueIndex = gUnk_020150CC.dialogueIndex;
-                sub_0801A7DC(gUnk_08080A64, gMain.dialogueIndex,
-                             sub_08001BC8(gMain.dialogueIndex), gMain.speaker);
-                sub_0801A7E8();
+                break;
+            case -3:
+                TB_STATE_17E8 = 3;
+                sub_08077AEC(1);
+                break;
             }
-            break;
-        case -3:
-            *((u8 *)&gUnk_020150CC - 0x927) = 3;
-            sub_08077AEC(1);
-            break;
+        }
+        if (gMain.newKeys & 2) {
+            sub_08077AEC(2);
+            return 1;
+        }
+    } else if (gAnim17E8.autoAdvance) {
+        gAnim17E8.started = 0;
+        gMain.seqIndex1--;
+        gAnim17E8.dialogueIndex++;
+        SPEAKER_17E8 = sub_08001BEC(gAnim17E8.dialogueIndex);
+        TB_PAGE_17E8 = 0;
+        gMain.speaker = SPEAKER_17E8;
+        gMain.dialogueIndex = gAnim17E8.dialogueIndex;
+        sub_0801A7DC(gUnk_08080A84, gMain.dialogueIndex,
+                     EventOf17E8(gMain.dialogueIndex), gMain.speaker);
+        sub_0801A7E8();
+        if (EventOf17E8(gMain.dialogueIndex) == 0) {
+            gMain.speaker = 0;
+            gMain.dialogueIndex = 0;
+            sub_08077AEC(2);
+            return 1;
         }
     }
-    if (gMain.newKeys & 2) {
-block_26:
-        sub_08077AEC(2);
-        return 1;
-    }
-block_27:
     sub_08000994(gUnk_02013DE0.objs);
     for (i = 0; i < gUnk_02013DE0.objCount; i++)
         sub_080786D0(gUnk_02013DE0.objs + i * 0x14);
@@ -472,9 +490,9 @@ block_27:
                      gUnk_02013DE0.unkAA8);
     sub_0807A298(&gUnk_02014888);
     sub_0807A2EC(&gUnk_02014888);
-    sub_08000854(tb);
-    gMain.intrCheck &= 0xFFFE;
     tb = (u8 *)&gUnk_02014888 - 0xFC;
+    sub_08000854(tb);
+    gMain464.intrCheck &= 0xFFFE;
     boxDirty = (u16 *)((u8 *)&gUnk_02014888 - 0xDA);
     if (*boxDirty == 1) {
         sub_08000838(tb);
@@ -483,8 +501,6 @@ block_27:
     sub_08000C54(tb);
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08001364", sub_080017E8); /* 0x080017E8 size 0x2FC */
 
 /* "Bustup" scene callback: runs the step table at 0x0813ADD4. */
 u16 sub_08001AE4(void)

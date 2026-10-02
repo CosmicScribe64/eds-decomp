@@ -105,7 +105,7 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 118): plain equip bodies, no replacementOut; size exact */
+#if 0 /* NONMATCHING (score 62): switch(out->type) case 13 */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -294,7 +294,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 1242: equipAtk -= 500; break;
                 case 1420: equipAtk += 1000; equipDef -= 1000; break;
                 case 1422: if (out->type == 15) equipAtk += 800; break;
-                case 1448: out->attr = ZONE_VALUE(lp & 1, ls); break;
+                case 1448: out->attr = ((struct ZoneAux *)ZB(lp & 1, ls))->value; break;
                 case 1449:
                     equipAtk += sub_080088A4(lp, 1, 0) * 800;
                     equipDef += sub_080088A4(lp, 1, 0) * 800;
@@ -306,7 +306,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 1540: if (GetCardNumberS(out->id) == 0x53B) equipAtk += 300; break;
                 case 1550:
                     if (out->type == 15) { out->type = 1; equipAtk += 500; equipDef += 500; }
-                    if (ZB(lp & 1, ls)->serial > (u32)newest) out->type = 1;
+                    if (ZB(lp % 2, ls)->serial > (u32)newest) out->type = 1;
                     break;
                 }
             }
@@ -322,7 +322,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             }
             break;
         case 4: if (!immune) out->atk += link; break;
-        case 8: addAtk = BaseAttack(link) + addAtk; addDef = BaseDefense(link) + addDef; break;
+        case 8: { int t = BaseAttack(link) + addAtk; addAtk = t; } { int t = BaseDefense(link) + addDef; addDef = t; } break;
         case 9: addAtk -= (value + 1) * 500; addDef -= (value + 1) * 500; break;
         case 10: equipAtk += 200; break;
         case 11: equipAtk += value * 300; break;
@@ -393,9 +393,11 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
         if (player != gUnk_020192E0.linkSkip && gUnk_020192E0.phase1B12 == 3) addAtk += 300;
         break;
     }
-    if (out->type == 13) {
+    switch (out->type) {
+    case 13:
         addAtk += sub_080087EC(player, 0x4E4, 1) * 500;
         addDef += sub_080087EC(player, 0x4E4, 1) * 500;
+        break;
     }
     /* Opposing attribute auras affect ATK only, across both players. */
     switch (out->attr) {

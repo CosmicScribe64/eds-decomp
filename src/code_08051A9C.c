@@ -247,10 +247,6 @@ int sub_08051DF4(int player)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: 13 lines, 2 bytes short. Everything up to the level
-       * switch matches; the ROM reloads the stats table address in the level
-       * default case, the build reuses the earlier load (also tried: level as
-       * an inline function). */
 int sub_08051ED0(int player)
 {
     struct Duel *d = &gUnk_020192E0;
@@ -267,7 +263,19 @@ int sub_08051ED0(int player)
             u16 id = CARD_ID(((struct DuelP *)d)->players[p].hand[gUnk_0201CFB0.w82C]);
             if (sub_08054398(player, id) != 0 && sub_08007834(id) == 0) {
                 u32 lvl;
-                CARD_LEVEL(id, lvl);
+                switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+                case 0x15:
+                case 0x16:
+                case 0x17:
+                    lvl = 0;
+                    break;
+                case 0x18:
+                    lvl = 10;
+                    break;
+                default:
+                    lvl = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+                    break;
+                }
                 if (lvl <= 4) {
                     sub_0801EC58(player != 0 ? 0x80C4 : 0xC4, id,
                                  ((gUnk_0201CFB0.w82C & 0xF) << 4) | (sub_08008A44(player) & 0xF) | 0x200, 0);
@@ -282,9 +290,6 @@ int sub_08051ED0(int player)
         return 1;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051ED0); /* 0x08051ED0 size 0x148 */
-#endif
 #if 0 /* NONMATCHING: the selector/card fields and switch branches agree, but
        * the duel-base lifetime adds r8, cursor/card pointer allocation
        * differs, and the local flag-store pointer absorbs +0xC into its byte

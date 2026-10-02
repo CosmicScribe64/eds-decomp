@@ -57,33 +57,36 @@ struct Line {
     u8 major;
 };
 
-#if 0 /* NONMATCHING: loop-invariant hoisting and spilling differ. The target hoists (y & 0x1F) and spills x to [sp+0x18]; the build hoists y-1 and keeps x in r7 (structure and flag bitfield ops match). Tried: goto loop (trick 3) over-spills dst/a/b; named y&0x1F local (also with (yy-1)) double-hoists; `>1` if/else or a local nx spills x but shifts flags to r7 and picks wrong scratch registers */
+/* sub_08078E80's real x parameter is u16: with it, all four `& 0x1F` constants are one movable, so loop.c hoists
+   `y & 0x1F` (not `y - 1`), as in the ROM. The switch keeps cse_around_loop from reusing the loop test's *str load. */
+typedef void (*DrawGlyphCellFunc960C)(void *dst, u8 ch, u16 x, u16 y, u8 a, u16 b, void *flags);
+#define sub_08078E80_960C ((DrawGlyphCellFunc960C)sub_08078E80)
+
 /* Draws a string of 1-byte glyphs into a tilemap; \n / \r toggle flag bit 0, 0xDE/0xDF (dakuten marks) are drawn one cell up-left and do not advance. */
 void sub_0807960C(u8 *str, void *dst, u16 x, u16 y, u8 a, u16 b, u8 max, struct TextFlags *flags)
 {
-    u16 count = 0;
+    u8 count = 0;
 
     flags->newline = 1;
-    while (*str != 0 && max > count) {
-        if (*str != 0xA) {
-            if (*str == 0xD) {
-                flags->newline = 0;
-                str++;
-            }
-        } else {
+    while (*str != 0 && count < max) {
+        switch (*str) {
+        case '\r':
+            flags->newline = 0;
+            str++;
+            break;
+        case '\n':
             flags->newline = 1;
             str++;
+            break;
         }
         if ((u8)(*str + 0x22) <= 1) {
-            sub_08078E80(dst, *str++, (x - 1) & 0x1F, (y - 1) & 0x1F, a, b, flags);
+            sub_08078E80_960C(dst, *str++, (x - 1) & 0x1F, (y - 1) & 0x1F, a, b, flags);
         } else {
-            sub_08078E80(dst, *str++, x++ & 0x1F, y & 0x1F, a, b, flags);
+            sub_08078E80_960C(dst, *str++, x++ & 0x1F, y & 0x1F, a, b, flags);
             count++;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_0807960C); /* 0x0807960C size 0xF4 */
 /* sub_08078E80's real x parameter is u16 (see its definition in code_080784E4.c); the u8 prototype above
    narrows `x & 0x1F` in QImode, so its 0x1F constant is not shared with `y & 0x1F`. */
 typedef void (*DrawGlyphCellFunc)(void *dst, u8 ch, u16 x, u16 y, u8 a, u16 b, void *flags);

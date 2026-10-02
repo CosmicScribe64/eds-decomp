@@ -519,62 +519,50 @@ int sub_080365F0(struct CardRef *ref)
     return 0;
 }
 
-#if 0 /* NONMATCHING: logic decoded, and the differences are register
-       * allocation. The ROM hoists a `movs r5,#1` (for the later
-       * `1 & ref byte` message) right after reading ref->player and keeps skip
-       * in r6. */
+#define ZB2_367E4(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 int sub_080367E4(struct CardRef *ref)
 {
-    int skip = 4 & ((u8 *)ref)[4];
+    u8 skip = 4 & ((u8 *)ref)[4];
 
-    if (skip == 0 && ref->numTargets == 2) {
+    if (!skip && ref->numTargets == 2) {
         switch (EFF_PHASE) {
         case 0x80: {
-            int p = ref->player;
-            struct DuelZone *z = ZB(p, ref->zone);
+            int pp = 1 & ref->player;
+            struct DuelZone *z = ZB(pp, ref->zone);
+            u32 packed;
+            int j;
 
-            if (CARD_ID(CARD_WORD(z->card))) {
-                u16 packed = ref->targets[0] | ref->targets[1] << 16;
-                int j;
-
-                if (sub_08009C64(ref->player, &packed) == 0)
-                    return 0;
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, ref->targets[0], ref->targets[1], 0);
-                sub_08055F70(ref->player, &packed, 1, 0, 0x20);
-                EFF_SIDE = skip;
-                for (j = 0; j <= 4; j++) {
-                    int p1 = ref->player & 1;
-                    int p2 = ref->player & 1;
-                    struct DuelZone *z1 = ZB(p1, j);
-                    struct DuelZone *z2 = ZB(p2, j);
-
-                    if (CARD_ID(CARD_WORD(z1->card)) == ref->targets[0] && (((u8 *)z2)[7] & 0x80))
-                        EFF_SIDE++;
-                }
-                return 0x7F;
+            if (CARD_WORD(z->card) << 20 == 0)
+                return 0;
+            packed = ref->targets[1] << 16 | ref->targets[0];
+            if (sub_08009C64(ref->player, &packed) == 0)
+                return 0;
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, ref->targets[0], ref->targets[1], 0);
+            sub_08055F70(ref->player, &packed, 1, 0, 0x20);
+            EFF_SIDE = 0;
+            for (j = 0; j <= 4; j++) {
+                if (CARD_ID(CARD_WORD(ZB2_367E4(1 & ref->player, j)->card)) == ref->targets[0]
+                    && (ZB2_367E4(1 & ref->player, j)->unk7[0] & 0x80))
+                    EFF_SIDE++;
             }
-            break;
+            return 0x7F;
         }
         case 0x7F:
             switch (CARD_NUMBER(ref->id)) {
             case 0x447:
                 sub_08017AB4(ref->player, ref->player | ref->zone << 8,
-                             ref->player | (gUnk_0201CF90 << 26 >> 27) << 8, 2);
+                             ref->player | ((u32)(gUnk_0201CF90 << 26) >> 27) << 8, 2);
                 break;
             case 0x488:
                 sub_08017B04(ref->player, ref->player | ref->zone << 8,
-                             ref->player | (gUnk_0201CF90 << 26 >> 27) << 8);
+                             ref->player | ((u32)(gUnk_0201CF90 << 26) >> 27) << 8);
                 break;
-            default:
-                return 0x64;
             }
             return 0x64;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080361D0", sub_080367E4); /* 0x080367E4 size 0x1AC */
 int sub_08036990(struct CardRef *ref)
 {
     if (!ref->skip4)

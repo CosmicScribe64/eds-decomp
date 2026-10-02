@@ -260,12 +260,17 @@ int sub_0805809C(u16 drop)
     return r;
 }
 
-#if 0 /* NONMATCHING: control flow and instruction sequence match. It differs in loop rotation (the
-       * ROM tests handCount before entering, via sym+0xD66, and at the bottom via the folded
-       * address 0x0201A04A) and in the register numbering of the hoisted constants (0x7FF /
-       * table addresses). */
-/* Like sub_08058358, but also picks the extra cards (sub_080563B8) to send along with the hand card;
-   returns the chosen hand index (-1 if none) and stores the best simulated total in *out. */
+#if 0 /* NONMATCHING (score 4): NONMATCHING: only the default-case b&7|8 differs: regmove swaps the AND/IOR onto
+       * the constant pseudos (ands r0,r1 vs ands r1,r0). Keys found: u16 id, u16 mask with int a,b at loop scope,
+       * (int)CardCost switch, 0x1B21 byte and cntB read through gUnk_02015F00 (makes loop.c hoist the invariants, which
+       * then spill and rematerialise as the ROM's folded literals). */
+struct AiWorkB21x {
+    u8 filler[0x1B21];
+    u8 pad : 1;
+    u8 d : 3;
+    u8 rest : 4;
+};
+
 int sub_080580C8(int *out)
 {
     int best = -1;
@@ -278,12 +283,12 @@ int sub_080580C8(int *out)
     base = sub_08057F6C();
     sub_08057E3C();
     for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
-        int id = CARD_ID(CARD_WORD(gUnk_020192E4[1].hand[i]));
+        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1].hand[i]));
         int bad;
         int flag;
-        int mask;
-        int c;
+        u16 mask;
         int r;
+        int a, b;
 
         if (!sub_08054398(1, id))
             continue;
@@ -292,10 +297,9 @@ int sub_080580C8(int *out)
         if (sub_08007834(id))
             continue;
         bad = 0;
-        mask = 0;
         flag = 0;
-        c = CardCost(id);
-        switch (c) {
+        mask = 0;
+        switch ((int)CardCost(id)) {
         case 1:
         case 2:
         case 3:
@@ -303,22 +307,20 @@ int sub_080580C8(int *out)
             break;
         case 5:
         case 6:
-            mask = sub_080563B8(-1, 0);
-            if (mask == -1)
+            a = sub_080563B8(-1, 0);
+            if (a == -1)
                 bad = 1;
-            mask = (u16)(mask | 8);
+            mask = a | 8;
             break;
-        default: {
-            int b;
-
-            mask = sub_080563B8(-1, 0);
-            b = sub_080563B8(mask, 0);
-            if (mask == -1 || b == -1)
+        default:
+            a = sub_080563B8(-1, 0);
+            b = sub_080563B8(a, 0);
+            if (a == -1 || b == -1)
                 bad = 1;
-            b = (b & 7) | 8;
-            mask = (((u32)mask << 20) >> 16) | b;
+            b &= 7;
+            b |= 8;
+            mask = (((u32)a << 20) >> 16) | b;
             break;
-        }
         }
         if (bad)
             continue;
@@ -327,7 +329,7 @@ int sub_080580C8(int *out)
         sub_08057E70();
         r = sub_08057F6C();
         gUnk_02015F00.fl.h.c = sub_08008860(1);
-        gUnk_02017A21.d = sub_08008860(1);
+        ((struct AiWorkB21x *)&gUnk_02015F00)->d = sub_08008860(1);
         sub_08057E3C();
         if (base < r)
             flag = 1;
@@ -338,7 +340,7 @@ int sub_080580C8(int *out)
             case 0x2F:
             case 0x23D:
             case 0x463:
-                if (*(u16 *)((u8 *)gUnk_020192E4 + 0xD64) + r > 1000 && sub_080577FC() > 0 && sub_08057854() == 0 && sub_080578AC() == 0)
+                if (gUnk_020192E4[1].lp + r > 1000 && sub_080577FC() > 0 && sub_08057854() == 0 && sub_080578AC() == 0)
                     flag = 1;
                 break;
             }
@@ -346,7 +348,7 @@ int sub_080580C8(int *out)
         if (flag) {
             if (r > 0)
                 base = r;
-            bestCnt = gUnk_02017A20.b;
+            bestCnt = gUnk_02015F00.fl.b.cntB;
             best = i;
         }
     }

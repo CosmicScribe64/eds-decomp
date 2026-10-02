@@ -133,9 +133,6 @@ int sub_0802BB94(struct CardRef *ref, u16 pos)
     return 0;
 }
 
-#if 0 /* NONMATCHING: register allocation differs. The ROM keeps p*0xD64 in r9 and the zone
-       * pointer in sl and reloads the zone table base. Ours keeps the base in sl and spills
-       * the zone pointer. */
 int sub_0802BBDC(struct CardRef *ref, u16 pos)
 {
     u16 refId = ref->id;
@@ -148,8 +145,12 @@ int sub_0802BBDC(struct CardRef *ref, u16 pos)
     int p;
 
     p = player & 1;
-    if (zone <= 4 && CARD_ID(CARD_WORD(ZB(p, zone)->card)) && sub_0802B1B8(ref->id, player, zone)
-        && sub_0802B28C(player, zone) && (ZFLAGS(z) & 2) && id && refId) {
+    if (zone > 4)
+        return 0;
+    /* The zone address is recomputed with the player term first (the ROM's add order). */
+    if (CARD_ID(CARD_WORD(((struct DuelZone *)(p * 0xD64 + zone * 0x94 + (u32)gUnk_0201930C))->card))
+        && sub_0802B1B8(ref->id, player, zone) && sub_0802B28C(player, zone) && (ZFLAGS(z) & 2) && id
+        && refId) {
         switch (CARD_NUMBER(refId)) {
         case 0x28C:
             if (a == 0xF)
@@ -187,8 +188,6 @@ int sub_0802BBDC(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0802BAD0", sub_0802BBDC); /* 0x0802BBDC size 0x14C */
 int sub_0802BD28(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;

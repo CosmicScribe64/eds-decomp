@@ -581,9 +581,11 @@ void sub_08072C0C(u32 a, u32 b, s32 val, u32 zero);
 #define CARD_STATS(id) (gUnk_08621DE0[(id) & 0x7FF])
 #define CARD_TYPE2(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 
-#if 0 /* NONMATCHING: structure/calls all agree; ROM uses only r4-r7 (bit1 in r7, row in r5) and reloads the card-table base each use, while agbcc spills the base to r8 and swaps bit1/row; also the flags bit-3 toggle and the kind range check codegen differ slightly */
+/* Card table entry by integer address: each use reloads the table base literal. */
+#define A188_STATS_C(id) (((u32 *)0x08621DE0)[(id) & 0x7FF])
+
 /* Spell subtype (stats bits 17-19) for Magic cards, else 0 (cf. code_080619E8). */
-static inline int GetSpellSubtype(u32 stats)
+static inline int A188_SpellSub(u32 stats)
 {
     switch ((int)((stats & 0x1F00000) >> 20)) {
     case 0x15:
@@ -594,10 +596,9 @@ static inline int GetSpellSubtype(u32 stats)
     }
 }
 
-/* Level stars (0 for Magic/Trap/Ticket, 10 for Divine). */
-static inline int GetCardLevel(u16 id)
+static inline int A188_Level(u32 id)
 {
-    switch ((int)CARD_TYPE2(id)) {
+    switch ((int)((A188_STATS_C(id) & 0x1F00000) >> 20)) {
     case 0x15:
     case 0x16:
     case 0x17:
@@ -605,14 +606,13 @@ static inline int GetCardLevel(u16 id)
     case 0x18:
         return 10;
     default:
-        return (CARD_STATS(id) & 0x1E000000) >> 25;
+        return (A188_STATS_C(id) & 0x1E000000) >> 25;
     }
 }
 
-/* ATK * 10 (0 for Magic/Trap/Ticket, 4000 for Divine). */
-static inline int GetCardAtk10(u16 id)
+static inline u16 A188_Def10(u32 id)
 {
-    switch ((int)CARD_TYPE2(id)) {
+    switch ((int)((A188_STATS_C(id) & 0x1F00000) >> 20)) {
     case 0x15:
     case 0x16:
     case 0x17:
@@ -620,14 +620,13 @@ static inline int GetCardAtk10(u16 id)
     case 0x18:
         return 4000;
     default:
-        return ((CARD_STATS(id) << 14) >> 23) * 10;
+        return (A188_STATS_C(id) & 0x1FF) * 10;
     }
 }
 
-/* DEF * 10 (same special cases). */
-static inline int GetCardDef10(u16 id)
+static inline u16 A188_Atk10(u32 *p, u32 id)
 {
-    switch ((int)CARD_TYPE2(id)) {
+    switch ((int)((*p & 0x1F00000) >> 20)) {
     case 0x15:
     case 0x16:
     case 0x17:
@@ -635,21 +634,23 @@ static inline int GetCardDef10(u16 id)
     case 0x18:
         return 4000;
     default:
-        return (CARD_STATS(id) & 0x1FF) * 10;
+        return ((A188_STATS_C(id) << 14) >> 23) * 10;
     }
 }
+
+
+struct A188Flags { u16 b0:1; u16 b1:1; u16 b2:1; u16 b3:1; u16 mode:3; u8 pad[10]; };
+#define A188F ((struct A188Flags *)&gUnk_0201D810)
 
 /* Card detail page: draw the frame/type icons and ATK/DEF/level of the selected entry. */
 void sub_0802A188(u32 *entry)
 {
-    const u32 *stats;
-    u32 card;
+    u32 *stats;
     u32 id;
-    s32 row;
-    s16 b;
-    u32 flags;
-    s32 i;
-    s32 kind;
+    u32 b;
+    int row;
+    int i;
+    int kind;
 
     id = ((struct Entry *)entry)->id;
     b = SELF->b1;
@@ -657,49 +658,44 @@ void sub_0802A188(u32 *entry)
 
     sub_08073500(0, 0x1A1, 0x13, 6);
     sub_08073500(3, 0x155, 0xA, 0xA);
-    if ((gUnk_0201D810.flags & 0xE0) == 0x60
-            && ((u8 *)gUnk_020192E4 + 0xCC4)[0xD64 * b + row * 2] == 2
-            && b == 1)
-        return;
+    if ((gUnk_0201D810.flags & 0xE0) == 0x60) {
+        u8 *players = gUnk_020192E4;
+        int r = row * 2;
+        r += 0xD64 * b;
+        players += 0xCC4;
+        if (players[r] == 2 && b == 1)
+            return;
+    }
 
-    flags = gUnk_0201D810.flags;
-    flags = (flags & ~8) | (((1 - ((flags << 28) >> 31)) & 1) << 3);
-    gUnk_0201D810.flags = flags;
-    b = (flags << 28) >> 31;
-    sub_08072D28(3, 0x155, id, 0x178 + b * 0xB4, (b * 4 + 8) * 16);
+    A188F->b3 = 1 - A188F->b3;
+    sub_08072D28(3, 0x155, id, A188F->b3 * 0xB4 + 0x178, (A188F->b3 * 4 + 8) * 16);
 
     if (id == 0)
         return;
 
-    stats = &gUnk_08621DE0[id & 0x7FF];
+    stats = &A188_STATS_C(id);
     kind = (*stats & 0x1F00000) >> 20;
-    if (kind > 0x16)
-        goto not_special;
-    if (kind < 0x15)
-        goto not_special;
-
-    sub_0807326C(0x1A1, 0x50, 0x130,
-                 (const void *)(kind == 0x16 ? 0x08636DA0 : 0x08636CD8));
-    if (GetSpellSubtype(*stats))
-        sub_0807326C(0x1A3, 0x60, 0x134,
-                     (const void *)gUnk_081989D0[
-                         GetSpellSubtype(((const u32 *)(u32)gUnk_08621DE0)[id & 0x7FF])]);
-    return;
-
-not_special:
-    card = gUnk_08621DE0[id & 0x7FF];
-    sub_0807326C(0x1A1, 0x50, 0x130, (const void *)gUnk_081989A8[card >> 29]);
-    card = gUnk_08621DE0[id & 0x7FF];
-    sub_0807326C(0x1A3, 0x60, 0x134,
-                 (const void *)gUnk_081989EC[(card & 0x1F00000) >> 20]);
-
-    sub_08072C0C(0x701A7, 0x4013A, GetCardAtk10(id), 0);
-    sub_08072C0C(0x701C7, 0x4013E, GetCardDef10(id), 0);
-    for (i = 0; i < GetCardLevel(id); i++)
-        gUnk_0300045C[0xC + (i & 7) + (((i >> 3) + 0xD) << 5)] = 2;
+    switch (kind) {
+    case 0x15:
+    case 0x16:
+        sub_0807326C(0x1A1, 0x50, 0x130,
+                     (const void *)(kind == 0x16 ? 0x08636DA0 : 0x08636CD8));
+        if (A188_SpellSub(*stats))
+            sub_0807326C(0x1A3, 0x60, 0x134,
+                         (const void *)gUnk_081989D0[A188_SpellSub(A188_STATS_C(id))]);
+        break;
+    default: {
+        u32 *p;
+        sub_0807326C(0x1A1, 0x50, 0x130, (const void *)gUnk_081989A8[*(p = &A188_STATS_C(id)) >> 29]);
+        sub_0807326C(0x1A3, 0x60, 0x134, (const void *)gUnk_081989EC[(*p & 0x1F00000) >> 20]);
+        sub_08072C0C(0x701A7, 0x4013A, A188_Atk10(p, id), 0);
+        sub_08072C0C(0x701C7, 0x4013E, A188_Def10(id), 0);
+        for (i = 0; i < A188_Level(id); i++)
+            { int x = i & 7; int y = (i >> 3) + 0xD; x += 0xC; gUnk_0300045C[x + ((u16)y << 5)] = 2; }
+        break;
+    }
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08029750", sub_0802A188); /* 0x0802A188 size 0x2D4 */
 void sub_0802A188(u32 *entry);
 void sub_0802A45C(void)
 {

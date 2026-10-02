@@ -491,10 +491,6 @@ int sub_08037E94(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING (score 12): NONMATCHING: 5-step state machine; score 12, size matches. Only diff: in the
-       * 0x7E arm the E21 address (ROM r5) and E21 value (ROM r4) are swapped. Fixed so far: u16 *h = &E28H0 local in the
-       * 0x7C path (ROM derives E21 from E28); ED8Hand inline (base loaded before the index, QImode &1 so the constant 1
-       * is not CSE'd); gUnk_020192E4[i & 1].zones[j] in the zone loop. */
 static inline u32 ED8Level(int type, int id)
 {
     switch (type) {
@@ -551,10 +547,12 @@ ret7F:
             return 0x78;
         }
         case 0x7E: {
-            u32 w = E28W;
+            int e;
+            u32 w;
 
-            if (((w << 19) >> 31) != E21 && (int)(w << 14) < 0 && CARD_NUMBER(CARD_ID11(w)) == 0x2FA) {
-                if (sub_08008A1C(1 - E21) > 0) {
+            w = E28W;
+            if (((w << 19) >> 31) != (e = E21) && (int)(w << 14) < 0 && CARD_NUMBER(CARD_ID11(w)) == 0x2FA) {
+                if (sub_08008A1C(1 - e) > 0) {
                     sub_0801EC58(E21 ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
                     return 0x7D;
                 }
@@ -592,8 +590,6 @@ ret7F:
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803732C", sub_08037ED8); /* 0x08037ED8 size 0x344 */
 int sub_0803821C(struct CardRef *ref)
 {
     int flag = 0;

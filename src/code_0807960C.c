@@ -242,18 +242,22 @@ void sub_08079A48(u16 code, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8
         }
     }
 }
-#if 0 /* NONMATCHING: register allocation differs. The target keeps ch in r5, w in r9, e in r8, i in sl and spills y+1 to [sp+0x1C/0x20]; the build uses ip/sl/r8. Structure identical */
 /* Draws one 1-byte glyph (8x8, 10-row or 12-row font). */
 void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
 {
     u16 *p;
-    u32 t;
     int i;
 
+    /* FAKEMATCH: one extra flow ref each for e and w (no code) puts them ahead of i
+       in global-alloc priority, giving the target's e = r8, w = r9, i = sl */
+    asm("" : : "r"(e), "r"(w));
+
+    /* Integer font addresses keep the const_int inside the add, so reload loads each
+       base into its rotating spill register (r1 / r1 / r5) as in the target. */
     if (mode == 8) {
-        p = (u16 *)(gUnk_08228D00 + ch * 8);
-        for (i = 3; i >= 0; i--) {
-            t = *p++;
+        p = (u16 *)(0x08228D00 + ch * 8);
+        for (i = 0; i < 4; i++) {
+            u32 t = *p++;
             t <<= 17;
             sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
             sub_080798B8(t >> 24, x, y++, color, dst, w, e);
@@ -261,28 +265,23 @@ void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
     } else {
         switch (mode) {
         case 10:
-            p = (u16 *)(gUnk_08229500 + ch * 10);
+            p = (u16 *)(0x08229500 + ch * 10);
             break;
         case 12:
-            p = (u16 *)(gUnk_08229F00 + ch * 12);
+            p = (u16 *)(0x08229F00 + ch * 12);
             break;
         default:
             return;
         }
         mode >>= 1;
-        if (mode != 0) {
-            i = mode;
-            do {
-                t = *p++;
-                t <<= 17;
-                sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
-                sub_080798B8(t >> 24, x, y++, color, dst, w, e);
-            } while (--i != 0);
+        for (i = 0; i < mode; i++) {
+            u32 t = *p++;
+            t <<= 17;
+            sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
+            sub_080798B8(t >> 24, x, y++, color, dst, w, e);
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_08079B88); /* 0x08079B88 size 0x140 */
 void sub_08079CC8(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e);
 /* Draws a string of 1-byte glyphs with a drop shadow (colour b at +1,+1, colour a on top). */
 void sub_08079CC8(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)

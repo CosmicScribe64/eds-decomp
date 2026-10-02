@@ -333,67 +333,70 @@ void sub_0805FCF4(void)
     gUnk_0201AE60.gfx_ok = 1;
 }
 
-#if 0 /* NONMATCHING: structure and all values match. Only register allocation differs (target: s r4,
-       * Ui r5 [reused for 0xA00 later], col r8, px r9; built: s r5, Ui r4, col r9, px sl) */
 /* Lays out and draws the text `s` into the text box: a = x | y << 8, b = w | h << 8 (cells).
    '\n' = new line, '@d' = select colour d, 2-byte chars when bit 7 of 0x02011C20+4 is set. */
+typedef void (*Fd28DrawW)(u16 sjis, s32 x, s32 y, u16 sc);
+typedef void (*Fd28DrawB)(u8 ch, s32 x, s32 y, u16 sc);
+typedef int (*Fd28Width)(const u8 *s);
+
 void sub_0805FD28(u16 a, u16 b, const u8 *s)
 {
-    u8 col = 1;
-    int py = 0;
+    int col = 1;
     int px = 0;
-    register struct Ui *u = &gUnk_0201AE60;
-    u->x = (u8)a;
-    u->y = a >> 8;
-    u->w = (u8)b;
-    u->h = b >> 8;
-    if (u->w > 0x18)
-        u->w = 0x18;
-    if (u->h > 0xB)
-        u->h = 0xB;
-    if (u->w <= 4)
-        u->w = 5;
-    if (u->h <= 1)
-        u->h = 2;
+    int py = 0;
+    gUnk_0201AE60.x = (u8)a;
+    gUnk_0201AE60.y = a >> 8;
+    gUnk_0201AE60.w = (u8)b;
+    gUnk_0201AE60.h = b >> 8;
+    if (gUnk_0201AE60.w > 0x18)
+        gUnk_0201AE60.w = 0x18;
+    if (gUnk_0201AE60.h > 0xB)
+        gUnk_0201AE60.h = 0xB;
+    if (gUnk_0201AE60.w <= 4)
+        gUnk_0201AE60.w = 5;
+    if (gUnk_0201AE60.h <= 1)
+        gUnk_0201AE60.h = 2;
     sub_0805FCF4();
-    sub_08074B08(u->w, u->h);
+    sub_08074B08(gUnk_0201AE60.w, gUnk_0201AE60.h);
     while (*s != 0) {
-        int c = *s;
-        if (c == 0xA) {
+        switch (*s) {
+        case 0x40:
+            if ((u8)(s[1] - 0x30) <= 9) {
+                col = s[1] - 0x30;
+                if (col == 0)
+                    col = 1;
+                s++;
+            }
+            break;
+        case 0xA:
             px = 0;
             py += 12;
-        } else if (c == 0x40) {
-            if ((u8)(s[1] - 0x30) > 9)
-                goto next;
-            col = s[1] - 0x30;
-            if (col == 0)
-                col = 1;
-            s++;
-        } else if (gUnk_02011C20[4] & 0x80) {
-            if (px + gUnk_0201AE60.w <= 10 * 8) {
-                px = 0;
-                py += 12;
+            break;
+        default:
+            if (gUnk_02011C20[4] & 0x80) {
+                if (px + 10 >= gUnk_0201AE60.w * 8) {
+                    px = 0;
+                    py += 12;
+                }
+                ((Fd28DrawW)sub_08074C80)((*s << 8) | s[1], px + 1, py + 1, (u8)gUnk_081A4214[9] | 0xA00);
+                ((Fd28DrawW)sub_08074C80)((*s << 8) | s[1], px, py, (u8)gUnk_081A4214[col] | 0xA00);
+                px += 10;
+                s++;
+            } else {
+                if (((Fd28Width)sub_08074AB4)(s) * 5 + px > gUnk_0201AE60.w * 8) {
+                    px = 0;
+                    py += 12;
+                }
+                ((Fd28DrawB)sub_08074D48)(*s, px + 1, py + 1, (u8)gUnk_081A4214[9] | 0xA00);
+                ((Fd28DrawB)sub_08074D48)(*s, px, py, (u8)gUnk_081A4214[col] | 0xA00);
+                px += 5;
             }
-            sub_08074C80((c << 8) | s[1], px, py, (u8)gUnk_081A4214[col] | 0xA00);
-            px += 10;
-            sub_08074C80((c << 8) | s[1], px + 1, py + 1, (u8)gUnk_081A4214[9] | 0xA00);
-            s++;
-        } else {
-            if (sub_08074AB4(s) * 5 + px > gUnk_0201AE60.w * 8) {
-                px = 0;
-                py += 12;
-            }
-            sub_08074D48(*s, px + 1, py + 1, (u8)gUnk_081A4214[9] | 0xA00);
-            sub_08074D48(*s, px, py, (u8)gUnk_081A4214[col] | 0xA00);
-            px += 5;
+            break;
         }
-    next:
         s++;
     }
     sub_08075114(gUnk_0201AE84, *(u16 *)gUnk_081A4214);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805F96C", sub_0805FD28); /* 0x0805FD28 size 0x17C */
 
 /* Draws one scan row `row` of the text box frame (top border, h text rows, bottom border) into the
    BG map at 0x03002C5C; rows outside 0..0x13 are clipped. Frame tiles 0x82CE-0x82D6, text tiles 0x82D7+. */

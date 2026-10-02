@@ -107,10 +107,6 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 int sub_0802B9EC(int a, int b);
 
-#if 0 /* NONMATCHING (score 8): NONMATCHING: score 8; only L9E/p-preheader reload regs differ (poff reload r1 vs
-       * ROM r4, const-1 reload r4 vs ROM r5). Keys: int i; z2 address written (p&1)*0xD64 + j*0x94 (ZB2) so loop.c
-       * hoists (u8)player into the j preheader; (u8) cast on the case-0x62 bit test and TBL(card<<20>>20) shift i/z
-       * allocation priorities. */
 #define ZB2(p, z) ((struct Zone *)((p) * 0xD64 + (z) * 0x94 + (u32)&gUnk_0201930C[0]))
 void sub_0804EFF0(int player)
 {
@@ -120,13 +116,13 @@ void sub_0804EFF0(int player)
             int found = 0;
             if (ZB2(player & 1, i)->b8C_4)
                 ZB2(player & 1, i)->b8C_4 = 0;
-            switch (TBL(ZB2(player & 1, i)->card << 20 >> 20)) {
+            switch (((const u16 *)0x08622AB4)[(ZB2(player & 1, i)->card << 20 >> 20) & 0x7FF]) {
             case 0x52:
                 if (!(ZB2(player & 1, i)->f7 & 0x20))
                     found = 1;
                 break;
             case 0x62:
-                if ((u8)((u32)(ZB2(player & 1, i)->f6 << 26) >> 28) <= 3)
+                if (((u32)(ZB2(player & 1, i)->f6 << 26) >> 28) <= 3)
                     sub_08046738(player, i);
                 break;
             }
@@ -143,8 +139,6 @@ void sub_0804EFF0(int player)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804EFF0", sub_0804EFF0); /* 0x0804EFF0 size 0x178 */
 
 /* Byte +0x1B12 of the duel global: bit 1 is the current player. Padded past 4 bytes so it is read with ldrb. */
 struct F168Flags {

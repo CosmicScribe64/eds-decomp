@@ -148,17 +148,15 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 u16 sub_0805163C(u16 a, u16 b);
 
-#if 0 /* NONMATCHING (score 156): Rewritten from the asm (score 156). Prologue, jump table, case 0/1 zone loops
-       * and found blocks match up to registers. Forms that matter: D50 = *(struct *)&gUnk_020192E0 accessed directly
-       * (GCSE makes the r8 base copy); zone loop pointer via integer macro (z*0x94 + (p&1)*0xD64 + (u32)gUnk_0201930C)
-       * gives (t1+t2)+K with K hoisted; found-block zone access via a true ARRAY_REF (struct wrapper around
-       * gUnk_0201930C) gives i*0x94 first; hand loops 'i = 0; ps = P50; for (; i < ps[p&1].handCount; i++)' load the sym
-       * before the multiply; subtype via static inline (u16 id) with a switch (21,22) and switch(sub){case 2..4: ok=0}.
-       * Remaining: case 2 should be 'while (D50.idx <= 4) { u8 n = D50.idx; z = (n*0x94 + p*0xD64 +
-       * (u32)D50.players[0].zones); ... D50.idx = n + 1; }' (gives r8+0x1B21/r8+0x2C) but that raises the base pseudo's
-       * refs so global-alloc gives it r7 instead of r8 (ROM: zone-loop p*0xD64 gets r7). Also the ROM recomputes 1-p for
-       * the second call in the case-1 hand-found block, and its case-2 loop keeps movs #0x94 in the loop (loop.c
-       * threshold). */
+#if 0 /* NONMATCHING (score 99): Rewritten from the asm (score 99). Matching structure: D50 = *(struct
+       * *)&gUnk_020192E0 accessed directly (GCSE gives the r8 base copy); hand loops 'i = 0; ps = P50; for (; i <
+       * ps[p&1].handCount; i++)' (sym loaded before the multiply); zone loops/found blocks via ZONE50 = ((p&1)*0xD64 +
+       * z*0x94 + (u32)gUnk_0201930C) (p-term first gives the ROM's multiply order); subtype via static inline (u16 id) +
+       * switch; case 2 'while (D50.idx <= 4) { u8 n = D50.idx; z = (n*0x94 + p*0xD64 + (u32)D50.players[0].zones); s16
+       * id = c.id; ... D50.idx = n + 1; }' (s16 id pads the loop so loop.c keeps movs #0x94 inside, which lets K take
+       * r6). FAKEMATCH: u8 n1 = case-1 handCount local (permuter) keeps the base in r8. Remaining: hand-loop register
+       * assignment (ROM: off r2, count r1, count copy r3 after 'ps+0x684'), case-1 hand-found recomputes 1-p for the 2nd
+       * call (ROM r7 copy), reload regs (K/0x7FF loads, gUnk_0822C720 in r6). */
 struct S50Card { u32 id:12; u32 b12:6; u32 f18:1; u32 b19:13; };
 struct S50Zone {
     struct S50Card card;    /* +0x00 */
@@ -197,6 +195,7 @@ struct S50All { struct S50ZP pl[2]; };
 #define ZP50 ((*(struct S50All *)gUnk_0201930C).pl)
 #define Z50(p, z) (ZP50[(p) & 1].zones[z])
 #define ZONE50(p, z) ((struct S50Zone *)((z) * 0x94 + ((p) & 1) * 0xD64 + (u32)gUnk_0201930C))
+#define ZONE50F(p, z) ((struct S50Zone *)(((p) & 1) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 
 static inline int S50Sub(u16 id)
 {
@@ -217,6 +216,7 @@ int sub_08050A70(void)
     int p = D50.turn;
     int i;
     struct S50Player *ps;
+    u8 n1;
 
     switch (D50.step) {
     case 0:
@@ -244,7 +244,7 @@ int sub_08050A70(void)
                     }
                 }
                 if (ok) {
-                    Z50(p, i).card.f18 = 0;
+                    ZONE50F(p, i)->card.f18 = 0;
                     sub_080197E0(p, gUnk_0862467A);
                     sub_08018544(p, i, 0);
                     return 0;
@@ -256,7 +256,8 @@ int sub_08050A70(void)
     case 1:
         i = 0;
         ps = P50;
-        for (; i < ps[(1 - p) & 1].handCount; i++) {
+        n1 = ps[(1 - p) & 1].handCount;
+        for (; i < n1; i++) {
             struct S50Card c = ps[(1 - p) & 1].hand[i];
             if (c.f18) {
                 sub_080197E0(1 - p, gUnk_0862467A);
@@ -278,7 +279,7 @@ int sub_08050A70(void)
                     }
                 }
                 if (ok) {
-                    Z50(1 - p, i).card.f18 = 0;
+                    ZONE50F(1 - p, i)->card.f18 = 0;
                     sub_080197E0(1 - p, gUnk_0862467A);
                     sub_08018544(1 - p, i, 0);
                     return 0;
@@ -290,22 +291,23 @@ int sub_08050A70(void)
         D50.step++;
         D50.idx = 0;
         return 0;
-    case 2: {
-        u8 *pi = &D50.idx;
-        for (; *pi <= 4; (*pi)++) {
-            struct S50Zone *z = (struct S50Zone *)(*pi * 0x94 + p * 0xD64 + (u32)D50.players[0].zones);
+    case 2:
+        while (D50.idx <= 4) {
+            u8 n = D50.idx;
+            struct S50Zone *z = (struct S50Zone *)(n * 0x94 + p * 0xD64 + (u32)D50.players[0].zones);
             struct S50Card c = z->card;
-            if (c.id != 0 && z->cnt > 1) {
-                sub_080753F4(buf, gUnk_08085D94, gUnk_0822C720 + c.id * 0x40);
+            s16 id = c.id;
+            if (id != 0 && z->cnt > 1) {
+                sub_080753F4(buf, gUnk_08085D94, gUnk_0822C720 + id * 0x40);
                 sub_08075434(buf, buf, z->cnt - 1);
                 sub_080602A4(0x206, 0x712, 0xB, buf);
-                (*pi)++;
+                D50.idx++;
                 return 0;
             }
+            D50.idx = n + 1;
         }
         D50.step++;
         return 0;
-    }
     case 3:
         sub_0801EC58((D50.turn) ? 0x8002 : 2, 0, 0, 0);
         D50.step++;

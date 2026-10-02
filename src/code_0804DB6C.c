@@ -485,9 +485,15 @@ void sub_0804E780(int player)
         }
     }
 }
-#if 0 /* NONMATCHING: 0x6C0 bytes versus the ROM's 0x6A8. The source was
-       * audited against the assembly in full; the remaining differences are
-       * the frame size (4 vs 8) and register lifetimes. */
+#if 0 /* NONMATCHING (score 324): NONMATCHING: score 324 (from 715). Rewritten in the style of the matched
+       * sibling sub_0804FC4C (code_0804EFF0): typed externs gE9PS_020192E4[] (array of 0xD64 player structs, so the base
+       * loads first), links read as values (u16 link = Z->links[idx]; u8 who = link; slot = link >> 8) which gives the
+       * ROM's (pz + 10) + idx*2, linked zone via a separate row pointer (row = side*0xD64 + base; lz = &row[slot]), case
+       * 4 flags loaded inside the condition (f = z->f6), signed 1-bit field for flagsC bit 4, (s32)(card << 8) < 0,
+       * local table pointer t + (kind = 0x26600000 | t[0]) for the event word, player != 1 message tests. Case 3 now
+       * matches except two lines and the frame is 8. Remaining: reload-register choices (0x1B22/0x1B21/0x1B20 constants:
+       * ROM r6, build r4), case 10 hoists the step address (base+0x1B20) into r9 instead of 0x94, and case 21/22 tails
+       * get cross-jumped. */
 int sub_0800842C(int, u16);
 int sub_080086CC(int, u16);
 int sub_080088A4(int, int, int);
@@ -500,179 +506,222 @@ void sub_08046CB0(int, int, int);
 void sub_08046D3C(int, u8);
 int sub_0804E5B4(int);
 void sub_0804E780(int);
-extern const u16 gUnk_08622AB4[], gUnk_08623DF4[];
 extern const u16 gUnk_086249C8[], gUnk_08624A0C[];
-extern u32 gUnk_02019BE8[];
-struct E948State {
-    u8 pad[0x1B12]; u8 flags; u8 pad2[0x1B20-0x1B13];
-    u8 step, zone, effectStep, effectZone;
-    u8 pad3[0x1B64-0x1B24]; u16 choice;
+struct E9Zone {
+    u32 card;
+    u8 unk4, unk5;
+    u8 f6;
+    u8 unk7;
+    u16 unk8;
+    u16 links[0x43];
+    u8 unk90;
+    u8 b91;
+    u8 unk92[2];
 };
-struct E948Player { u8 pad[2]; u8 handCount, deckCount, graveCount; u8 rest[0xD64-5]; };
-#define E948 ((struct E948State *)gUnk_020192E0)
-#define E948_PS ((struct E948Player *)gUnk_020192E4)
-#define E948_ZONE(p,z) ((struct DuelZone *)((z)*0x94+((p)&1)*0xD64+0x0201930C))
+struct E9Player {
+    u16 life; u8 handCount; u8 pad3; u8 graveCount; u8 pad5[7];
+    u8 c0 : 4; s8 c4 : 1; u8 c5 : 3; u8 padD[0x904 - 0xD]; u32 grave[(0xD64 - 0x904) / 4];
+};
+extern struct E9Player gE9PS_020192E4[];
+struct E9State {
+    u32 header; struct E9Player players[2]; u8 pad1ACC[0x1B12 - 0x1ACC]; u8 flags; u8 pad13[0x1B20 - 0x1B13];
+    u8 step, zone, cursor, subcursor; u8 pad24[0x1B64 - 0x1B24]; u16 choice;
+};
+#define E9 ((struct E9State *)gUnk_020192E0)
+#define E9_E gUnk_020192E0
+#define E9_STEP (E9->step)
+#define E9_ZONE (E9->zone)
+#define E9_PS gE9PS_020192E4
+#define E9_ID(z) (((z)->card << 20) >> 20)
+#define E9_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+static inline u16 E9CardId(u16 number)
+{
+    if (number == 0xFFFF) return 0;
+    if (number <= 0x7CF) return ((const u16 *)0x08623DF4)[number & 0x7FF];
+    return ((const u16 *)0x08623DF4)[(number - 0x7D0) & 0x7FF] + 1;
+}
 int sub_0804E948(void)
 {
-    u16 player = ((u32)E948->flags << 30) >> 31;
-    switch (E948->step) {
-    case 0:
+    u32 player = ((u32)gUnk_020192E0[0x1B12] << 30) >> 31;
+    u32 kind;
+    switch (gUnk_020192E0[0x1B20]) {
+    case 0: {
         sub_0801EC58(player ? 0x8055 : 0x55, 0, 0, 0);
-        E948->effectStep = 0;
-        E948->effectZone = 0;
-        E948->step++;
-        /* The ROM runs the next state in the same call. */
+        E9_E[0x1B22] = 0;
+        E9_E[0x1B23] = 0;
+        E9_E[0x1B20]++;
+    }
     case 1:
         if ((u16)sub_0804E5B4(player)) {
-            sub_0801EC58(player ? 0x8047 : 0x47, 0, 0, 0);
+            u16 msg = 0x47;
+            if (player) msg = 0x8047;
+            sub_0801EC58(msg, 0, 0, 0);
             sub_0804E538(player);
-            E948->step++;
+            E9_STEP++;
         }
         return 0;
     case 2:
         sub_0804E780(player);
-        E948->step++;
+        E9_STEP++;
         return 0;
-    case 3:
-        {
-            int i, off;
-            int opponent = 1-player;
-            for (i=0, off=0; i<=4; i++, off+=0x94) {
-                struct DuelZone *z=(struct DuelZone *)(off+(opponent&1)*0xD64+0x0201930C);
-                if ((z->w0 << 20) && (z->flags6 & 2)) {
-                    u32 index=sub_0800AA40(player,i,0x60C);
-                    if (index>=0) {
-                        u16 *link=(u16 *)(off+(player&1)*0xD64+0x0201930C+10+index*2);
-                        s16 who=*(u8 *)link;
-                        u32 slot=*link>>8;
-                        struct DuelZone *linked=E948_ZONE(who,slot);
-                        int count=linked->flags6 & 0x3C;
-                        if (count==8 && !(count & ((u8 *)linked)[0x91])) {
-                            sub_08018AE8(who,slot,0);
-                            sub_08018544(opponent,i,1);
-                            sub_08046CB0(player,opponent,i);
-                        }
+    case 3: {
+        int i;
+        for (i = 0; i <= 4; i++) {
+            int other = 1 - player;
+            struct E9Zone *z = (struct E9Zone *)(i * 0x94 + (other & 1) * 0xD64 + (u32)gUnk_0201930C);
+            if (E9_ID(z) && (z->f6 & 2)) {
+                int idx = sub_0800AA40(player, i, 0x60C);
+                if (idx >= 0) {
+                    u16 link = ((struct E9Zone *)(i * 0x94 + (player & 1) * 0xD64 + (u32)gUnk_0201930C))->links[idx];
+                    u8 who = link;
+                    u32 slot = link >> 8;
+                    struct E9Zone *row = (struct E9Zone *)((who & 1) * 0xD64 + (u32)gUnk_0201930C);
+                    struct E9Zone *lz = &row[slot];
+                    if ((lz->f6 & 0x3C) == 8 && !(lz->b91 & 8)) {
+                        sub_08018AE8(who, slot, 0);
+                        sub_08018544(other, i, 1);
+                        sub_08046CB0(player, other, i);
                     }
                 }
             }
-            E948->step++;
-            E948->zone=5;
-            return 0;
         }
+        E9_STEP++;
+        E9_ZONE = 5;
+        return 0;
+    }
     case 4:
-        {
-            int opponent=1-player;
-            while (E948->zone<=9) {
-                struct DuelZone *z=E948_ZONE(opponent,E948->zone);
-                u8 id=ID(z);
-                if (id && (z->flags6 & 2)) {
-                    switch (gUnk_08622AB4[id & 0x7FF]) {
-                    case 0x15B:
-                        if ((((u32)z->flags6<<26)>>28)<=1)
-                            sub_0801EC58(player!=1 ? 0x808A : 0x8A,E948->zone,1,0);
-                        else
-                            sub_08018544(opponent,E948->zone,1);
-                        E948->zone++;
+        for (; E9_ZONE <= 9; E9_ZONE++) {
+            int other = 1 - player;
+            struct E9Zone *z = (struct E9Zone *)(E9_ZONE * 0x94 + (other & 1) * 0xD64 + E9_E + 0x2C);
+            u32 id = E9_ID(z);
+            u8 f;
+            if (id && ((f = z->f6) & 2)) {
+                switch (E9_NUMBER(id)) {
+                case 0x15B:
+                    if (((u32)f << 26) >> 28 <= 1) {
+                        u16 msg = 0x8A;
+                        if (player != 1) msg = 0x808A;
+                        sub_0801EC58(msg, E9_ZONE, 1, 0);
+                    } else
+                        sub_08018544(other, E9_ZONE, 1);
+                    E9_ZONE++;
+                    return 0;
+                case 0x4CE:
+                    if (!(f & 0x3C)) {
+                        u16 msg = 0x8A;
+                        if (player != 1) msg = 0x808A;
+                        sub_0801EC58(msg, E9_ZONE, 1, 0);
+                    } else
+                        sub_08018544(other, E9_ZONE, 1);
+                    E9_ZONE++;
+                    return 0;
+                case 0x5F8:
+                    if (sub_08008C6C(other) >= 0
+                        && !(((struct E9Zone *)(E9_ZONE * 0x94 + (other & 1) * 0xD64 + E9_E + 0x2C))->b91 & 8)) {
+                        u16 msg = 0x8A;
+                        if (player != 1) msg = 0x808A;
+                        sub_0801EC58(msg, E9_ZONE, 1, 0);
+                        sub_08046D3C(other, E9_ZONE);
+                        E9_ZONE++;
                         return 0;
-                    case 0x4CE:
-                        if (!(z->flags6 & 0x3C))
-                            sub_0801EC58(player!=1 ? 0x808A : 0x8A,E948->zone,1,0);
-                        else
-                            sub_08018544(opponent,E948->zone,1);
-                        E948->zone++;
-                        return 0;
-                    case 0x5F8:
-                        if (sub_08008C6C(opponent)>=0 && !(((u8 *)E948_ZONE(opponent,E948->zone))[0x91] & 8)) {
-                            sub_0801EC58(player!=1 ? 0x808A : 0x8A,E948->zone,1,0);
-                            sub_08046D3C(opponent,E948->zone);
-                            E948->zone++;
-                            return 0;
-                        }
-                        break;
                     }
+                    break;
                 }
-                E948->zone++;
             }
-            E948->step++;
-            return 0;
         }
-    case 5:
-        {
-            int opponent=1-player;
-            if (sub_080086CC(opponent,0x5EF) && sub_080088A4(player,1,0)>0) {
-                sub_08022678(opponent,15,0x5EF,0);
-                E948->step++;
-            } else E948->step=10;
-            return 0;
-        }
+        E9_STEP++;
+        return 0;
+    case 5: {
+        int other = 1 - player;
+        if (sub_080086CC(other, 0x5EF) && sub_080088A4(player, 1, 0) > 0) {
+            sub_08022678(other, 15, 0x5EF, 0);
+            E9_STEP++;
+        } else
+            E9_STEP = 10;
+        return 0;
+    }
     case 6:
-        if (E948->choice) {
-            s16 opponent=1-player;
-            int index=sub_0800842C(opponent,0x5EF);
-            sub_0801FBCC(((u32)(opponent&1)<<31) | ((index&31)<<16) | 0x06400000 | gUnk_08623DF4[0x5EF],0);
+        if (E9->choice) {
+            int other = 1 - player;
+            u32 kind;
+            int index = sub_0800842C(other, 0x5EF);
+            sub_0801FBCC(((u32)(other & 1) << 31) | (((index & 31) << 16) | (kind = 0x6400000)) | E9CardId(0x5EF), 0);
         }
-        E948->step=10;
+        E9_STEP = 10;
         return 0;
     case 10:
-        E948->zone=0;
+        E9_ZONE = 0;
         do {
-            if (sub_0800A78C(player,E948->zone,0x60C)) {
-                u16 index=sub_0800AA40(player,E948->zone,0x60C);
-                u16 *link=(u16 *)((u8 *)E948_ZONE(player,E948->zone)+10+index*2);
-                u8 who=*(u8 *)link;
-                u32 slot=*link>>8;
-                struct DuelZone *linked=E948_ZONE(who,slot);
-                if (!(((u8 *)linked)[0x91] & 8)) {
-                    if (!(linked->flags6 & 0x3C)) {
-                        sub_0801EC58(who ? 0x808A : 0x8A,slot,1,0);
+            if (sub_0800A78C(player, E9_ZONE, 0x60C)) {
+                u16 idx = sub_0800AA40(player, E9_ZONE, 0x60C);
+                u16 link = ((struct E9Zone *)(E9_ZONE * 0x94 + (player & 1) * 0xD64 + E9_E + 0x2C))->links[idx];
+                u8 who = link;
+                u32 slot = link >> 8;
+                struct E9Zone *lz = (struct E9Zone *)(slot * 0x94 + (who & 1) * 0xD64 + E9_E + 0x2C);
+                if (!(lz->b91 & 8)) {
+                    if (!(lz->f6 & 0x3C)) {
+                        u16 msg = 0x8A;
+                        if (who) msg = 0x808A;
+                        sub_0801EC58(msg, slot, 1, 0);
                     } else {
-                        sub_080197E0(player,gUnk_08624A0C[0]);
-                        sub_08018AE8(who,slot,0);
-                        E948->step++;
+                        sub_080197E0(player, gUnk_08624A0C[0]);
+                        sub_08018AE8(who, slot, 0);
+                        E9_STEP++;
                         return 0;
                     }
                 }
             }
-            E948->zone++;
-        } while (E948->zone<=4);
-        E948->step=20;
+            E9_ZONE++;
+        } while (E9_ZONE <= 4);
+        E9_STEP = 20;
         return 0;
     case 11:
-        sub_08018544(player,E948->zone,1);
-        E948->zone++;
-        E948->step=10;
+        sub_08018544(player, E9_ZONE, 1);
+        E9_ZONE++;
+        E9_STEP = 10;
         return 0;
-    case 20:
-        {
-            int i;
-            for (i=0; i<E948_PS[player].graveCount; i++) {
-                u32 card=*(u32 *)((u8 *)gUnk_02019BE8+player*0xD64+i*4);
-                if ((s32)(card<<8)<0)
-                    sub_0801EC58(player ? 0x80D2 : 0xD2,card,card>>16,0);
+    case 20: {
+        int i;
+        for (i = 0; i < E9_PS[player & 1].graveCount; i++) {
+            u32 card = E9_PS[player & 1].grave[i];
+            if ((s32)(card << 8) < 0) {
+                u16 msg = 0xD2;
+                if (player) msg = 0x80D2;
+                sub_0801EC58(msg, card, card >> 16, 0);
             }
-            E948->step++;
-            return 0;
         }
+        E9_STEP++;
+        return 0;
+    }
     case 21:
-        if (((u8 *)gUnk_020192E4)[(player&1)*0xD64+12] & 0x10) {
-            sub_0801EC58(player ? 0x804C : 0x4C,0,0,0);
-            if (sub_080088A4(1-player,1,0)>0)
-                sub_0801FBCC(((player&1)<<31) | (0x26600000 | gUnk_086249C8[0]),0);
+        if (E9_PS[player & 1].c4 < 0) {
+            u16 msg = 0x4C;
+            if (player) msg = 0x804C;
+            sub_0801EC58(msg, 0, 0, 0);
+            if (sub_080088A4(1 - player, 1, 0) > 0) {
+                const u16 *t = gUnk_086249C8;
+                sub_0801FBCC(((player & 1) << 31) | (kind = 0x26600000 | t[0]), 0);
+            }
         }
-        E948->step++;
+        E9_STEP++;
         return 0;
     case 22:
-        if (((u8 *)gUnk_020192E4)[(player^1)*0xD64+12] & 0x10) {
-            sub_0801EC58(player!=1 ? 0x804C : 0x4C,0,0,0);
-            if (sub_080088A4(player,1,0)>0)
-                sub_0801FBCC(((player^1)<<31) | (0x26600000 | gUnk_086249C8[0]),0);
+        if (E9_PS[player ^ 1].c4 < 0) {
+            u16 msg = 0x4C;
+            if (player != 1) msg = 0x804C;
+            sub_0801EC58(msg, 0, 0, 0);
+            if (sub_080088A4(player, 1, 0) > 0) {
+                const u16 *t = gUnk_086249C8;
+                sub_0801FBCC(((player ^ 1) << 31) | (kind = 0x26600000 | t[0]), 0);
+            }
         }
-        E948->step++;
+        E9_STEP++;
         return 0;
     default:
-        if (sub_08008524(0,0x593)<=0 && sub_08008524(1,0x593)<=0) {
-            u32 hand=E948_PS[player].handCount;
-            if (hand>6) sub_0802272C(player,hand-6,0,0);
+        if (sub_08008524(0, 0x593) <= 0 && sub_08008524(1, 0x593) <= 0) {
+            u32 hand = E9_PS[player].handCount;
+            if (hand > 6)
+                sub_0802272C(player, hand - 6, 0, 0);
         }
         return 1;
     }

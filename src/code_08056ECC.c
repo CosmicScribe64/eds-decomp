@@ -222,37 +222,71 @@ struct Main {
 };
 extern struct Main gUnk_03000040;
 
-#if 0 /* NONMATCHING: control flow (switch trees, loops, inlined CardValue expansions) mirrors the
-       * ROM, but the built code is 0x48 bytes smaller. The ROM keeps the 0x7FF mask and the card
-       * table in hoisted registers (so `(w << 20 >> 20) & 0x7FF` is not fused into lsl 21/lsr 20)
-       * and uses different register allocation. */
+#if 0 /* NONMATCHING (score 172): NONMATCHING: (wip) structure matches; k pinned to r6 breaks loop opts */
 /* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in gUnk_02015F00.handPick, -1 if none. */
+static inline int AtkVal56(int id)
+{
+    switch ((int)CARD_TYPE(id)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 4000;
+    default:
+        return ((CARD_STATS(id) & 0x3FE00) >> 9) * 10;
+    }
+}
+static inline int AtkVal56b(int id)
+{
+    switch ((int)CARD_TYPE(id)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 4000;
+    default:
+        return ((CARD_STATS(id) << 14) >> 23) * 10;
+    }
+}
+static inline int DefVal56(int id)
+{
+    switch ((int)CARD_TYPE(id)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 4000;
+    default:
+        return (CARD_STATS(id) & 0x1FF) * 10;
+    }
+}
+#define CNS56(x) (*(const u16 *)(((x) & 0x7FF) * 2 + (u32)gUnk_08622AB4))
 int sub_08056ECC(u16 id)
 {
-    const u16 *p = &CARD_NUMBER_A(id);
     int n;
-    int k, j;
-    s16 best, bestIdx, maxAtk, ok;
-    u16 buf[3];
+    register int k asm("r6");
+    int j;
+    int ok;
+    int best, bestIdx, maxAtk, maxDef;
+    int buf[3];
 
-    n = sub_08044224(1, *p, 0);
+    n = sub_08044224(1, CNS56(id), 0);
     gUnk_02015F00.handPick = 0;
     if (n == 0)
-        return -1;
+        goto fail;
     if (gUnk_02015EE8.flags & 0x200) {
         for (k = 0; k < n; k++) {
-            int num;
-            u32 cid = CARD_ID(gUnk_0201D81C[k]);
-
             ok = 0;
-            num = CARD_NUMBER_A(cid);
-            switch (num) {
+            switch (CARD_NUMBER_A(CARD_ID(gUnk_0201D81C[k]))) {
             case 0x10:
             case 0x11:
             case 0x12:
             case 0x13:
             case 0x14:
-                switch (*p) {
+                switch (CNS56(id)) {
                 case 0x2F:
                 case 0x23D:
                 case 0x47B:
@@ -261,9 +295,11 @@ int sub_08056ECC(u16 id)
                 }
                 break;
             case 0x2F:
-            case 0x23D:
-                if (*p == 0x463)
+            case 0x23D: {
+                int v = CNS56(id);
+                if (v == 0x463)
                     ok = 1;
+            }
                 break;
             }
             if (ok) {
@@ -271,54 +307,49 @@ int sub_08056ECC(u16 id)
                 return gUnk_02015F00.handPick;
             }
         }
-        if (CARD_NUMBER_A(id) == 0x463)
-            return -1;
+        if (CARD_NUMBER(id) == 0x463)
+            goto fail;
     }
-    switch (CARD_NUMBER_A(id)) {
+    switch (CARD_NUMBER(id)) {
     case 0x1AB:
     case 0x65:
     case 0x443:
-        for (k = 0; k <= 0xC; k++) {
+        for (k = 0; (u32)k <= 0xC; k++) {
             for (j = 0; j < n; j++) {
                 if (CARD_NUMBER_A(CARD_ID(gUnk_0201D81C[j])) == gUnk_0819D2FC[k])
-                    return gUnk_02015F00.handPick;
+                    goto found2;
             }
         }
         goto random;
     }
     if (n <= 0)
-        return -1;
-    bestIdx = -1;
+        goto fail;
     best = 0;
-    maxAtk = 0;
+    bestIdx = -1;
+    maxAtk = maxDef = 0;
     for (k = 0; k <= 4; k++) {
         sub_0800ABC8(0, k, buf);
         if (maxAtk < buf[1])
             maxAtk = buf[1];
     }
     for (k = 0; k < n; k++) {
-        u32 cid = CARD_ID(gUnk_0201D81C[k]);
+        int cid = CARD_ID(gUnk_0201D81C[k]);
 
-        if (best < CardDefValueA(cid) + CardValueA(cid)) {
-            if (maxAtk <= CardValueA(cid))
-                goto take;
-            if (0 < CardDefValueA(cid))
-                goto take;
-            if (maxAtk > CardDefValueA(cid))
-                continue;
-take:
-            best = CardDefValueA(cid) + CardValueA(cid);
-            bestIdx = k;
+        if (best < AtkVal56(cid) + DefVal56(cid)) {
+            if (maxAtk <= AtkVal56(cid) || maxDef < AtkVal56(cid) || maxAtk <= DefVal56(cid)) {
+                best = AtkVal56(cid) + DefVal56(cid);
+                bestIdx = k;
+            }
         }
     }
     if (bestIdx <= -1) {
-        best = 0;
         bestIdx = -1;
+        best = 0;
         for (k = 0; k < n; k++) {
-            u16 cid = CARD_ID(gUnk_0201D81C[k]);
+            int cid = CARD_ID(gUnk_0201D81C[k]);
 
-            if (best < CardValueA(cid)) {
-                best = CardValueA(cid);
+            if (best < AtkVal56b(cid)) {
+                best = AtkVal56b(cid);
                 bestIdx = k;
             }
         }
@@ -330,6 +361,10 @@ take:
 random:
     gUnk_02015F00.handPick = sub_08076F9C() % n;
     return gUnk_02015F00.handPick;
+found2:
+    return gUnk_02015F00.handPick;
+fail:
+    return -1;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08056ECC", sub_08056ECC); /* 0x08056ECC size 0x504 */

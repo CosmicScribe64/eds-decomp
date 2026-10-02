@@ -42,39 +42,29 @@ void sub_0807A6AC(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
     }
 }
 /* Fills a w x h rectangle (w even) with one tile using 32-bit stores. */
-#if 0 /* NONMATCHING: the target keeps half = w>>1 in [sp] (reloaded per row),
-       * next = i+1 in [sp+8] and the row stride (0x10-half)*4 in [sp+4] (frame
-       * `sub sp,#12`), and recomputes v = tile|tile<<16 per row. The build
-       * folds the narrowing and keeps all three in registers (frame
-       * `sub sp,#4`). */
 void sub_0807A754(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u32 *p = (u32 *)(VRAM + bg * 0x800 + x * 2 + y * 64);
-    s16 half = w >> 1;
     u8 i;
     u8 j;
 
     for (i = 0; i < h; i++) {
-        s16 v = tile | tile << 16;
-
-        for (j = 0; j < half; j++) {
+        for (j = 0; j < w / 2; j++) {
             s32 xx = x + j * 2;
 
             if ((u32)(xx - 0x20) <= 0x1F) {
-                *(u32 *)((u8 *)p + 0x7C0) = v;
+                *(u32 *)((u8 *)p + 0x7C0) = tile | tile << 16;
                 p++;
             } else if (xx > 0x3F) {
-                *(u32 *)((u8 *)p - 0x80) = v;
+                *(u32 *)((u8 *)p - 0x80) = tile | tile << 16;
                 p++;
             } else {
-                *p++ = v;
+                *p++ = tile | tile << 16;
             }
         }
-        p += 0x10 - half;
+        p += 0x10 - w / 2;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807A6AC", sub_0807A754); /* 0x0807A754 size 0xB4 */
 /* Same as sub_0807A6AC but every entry gets the same tile. */
 void sub_0807A808(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {

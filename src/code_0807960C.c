@@ -682,18 +682,15 @@ void sub_0807A568(u8 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
         p += 0x20 - w;
     }
 }
-#if 0 /* NONMATCHING: target keeps ((w<<24)>>25) plus a redundant u8 narrowing of half (spilled to [sp], reloaded per row); the build drops the narrowing (same issue as sub_0807A754). Tried: exact double-narrowing expression and explicit stride/next locals (tricks 1,6) do not raise register pressure enough to spill half */
 void sub_0807A5D4(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u32 *p = (u32 *)(0x06000000 + bg * 0x800 + x * 2 + y * 64);
-    u8 half = (u32)w >> 1;
     u8 i;
-    u16 j;
-    s32 xx;
+    u8 j;
 
     for (i = 0; i < h; i++) {
-        for (j = 0; j < half; j++) {
-            xx = x + j * 2;
+        for (j = 0; j < w / 2; j++) {
+            s32 xx = x + j * 2;
             if ((u32)(xx - 0x20) <= 0x1F) {
                 *(u32 *)((u8 *)p + 0x7C0) = tile++ | tile++ << 16;
                 p++;
@@ -704,8 +701,6 @@ void sub_0807A5D4(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
                 *p++ = tile++ | tile++ << 16;
             }
         }
-        p += 0x10 - half;
+        p += 0x10 - w / 2;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_0807A5D4); /* 0x0807A5D4 size 0xD8 */

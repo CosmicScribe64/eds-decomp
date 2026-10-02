@@ -170,9 +170,6 @@ struct Z7 { u8 pad[7]; u8 f0 : 5; u8 f5 : 1; u8 rest : 2; u8 pad2[0x8C]; };
 #define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)&gUnk_020192E4[0].zones[0]))
 #define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)&gUnk_020192E4[0].zones[0]))
 
-#if 0 /* NONMATCHING: the ROM shares only the sub_08049DF0 call between the 3 call sites (the tail
-       * sits in case 10). Ours also merges the argument setup and keeps the tail in the first
-       * branch. */
 u16 sub_0804A008(void)
 {
     struct ScratchRef ref;
@@ -182,63 +179,60 @@ u16 sub_0804A008(void)
         return 1;
     if (gUnk_020192E0.b1B12 & 2) {
         struct DuelScreenView *cur = &gUnk_0201CFB0;
-        if (cur->w828 == 5 && sub_0802CD28(id) > 1 && cur->w824 == 0) {
-            s16 zn = cur->w82C;
-            flags |= sub_08049DF0(id, 0, zn);
+        if (cur->w828 == 5 && sub_0802CD28(id) > 1 && cur->w824 == 0)
+            flags |= sub_08049DF0(id, 0, cur->w82C);
+    } else {
+        switch (gUnk_0201CFB0.w828) {
+        case 11:
+            if (id == 0)
+                return 0;
+            if (gUnk_0201CFB0.w824 == 0)
+                flags |= sub_08049514(id, 0, gUnk_0201CFB0.w82C);
+            break;
+        case 0:
+            if (id == 0)
+                return 0;
+            if (gUnk_0201CFB0.w824 == 0)
+                flags |= sub_08049B74(id, 0, gUnk_0201CFB0.w82C);
+            break;
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+        case 6:
+        case 7:
+        case 8:
+        case 9:
+            break;
+        case 5:
+            if (id == 0)
+                return 0;
+            if (gUnk_0201CFB0.w824 == 0)
+                flags |= sub_08049DF0(id, 0, gUnk_0201CFB0.w82C);
+            break;
+        case 10:
+            if (id == 0)
+                return 0;
+            if (gUnk_0201CFB0.w824 == 0)
+                flags |= sub_08049DF0(id, 0, 5);
+            break;
+        case 13:
+            if (((u32)(gUnk_020192E0.b1B12 << 27) >> 29) == 0)
+                flags = 0x100;
+            else
+                flags = 0x200;
+            break;
+        case 12:
+            if (sub_080094E4() == 0x60B) {
+                ref.f0 = 0;
+                if (sub_0802DEC4(&ref, 0, 0))
+                    flags |= 0x400;
+            }
+            break;
         }
-        return flags;
-    }
-    switch (gUnk_0201CFB0.w828) {
-    case 11:
-        if (id == 0)
-            return 0;
-        if (gUnk_0201CFB0.w824 == 0)
-            flags |= sub_08049514(id, 0, gUnk_0201CFB0.w82C);
-        break;
-    case 0:
-        if (id == 0)
-            return 0;
-        if (gUnk_0201CFB0.w824 == 0)
-            flags |= sub_08049B74(id, 0, gUnk_0201CFB0.w82C);
-        break;
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 6:
-    case 7:
-    case 8:
-    case 9:
-        break;
-    case 5:
-        if (id == 0)
-            return 0;
-        if (gUnk_0201CFB0.w824 == 0)
-            flags |= sub_08049DF0(id, 0, gUnk_0201CFB0.w82C);
-        break;
-    case 10:
-        if (id == 0)
-            return 0;
-        if (gUnk_0201CFB0.w824 == 0)
-            flags |= sub_08049DF0(id, 0, 5);
-        break;
-    case 13:
-        flags = 0x200;
-        if (((u32)(gUnk_020192E0.b1B12 << 27) >> 29) == 0)
-            flags = 0x100;
-        break;
-    case 12:
-        if (sub_080094E4() == 0x60B) {
-            ref.f0 = 0;
-            if (sub_0802DEC4(&ref, 0, 0))
-                flags |= 0x400;
-        }
-        break;
     }
     return flags;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804A008); /* 0x0804A008 size 0x1C0 */
 #if 0 /* NONMATCHING: the logic is decoded and the structure is close (0x370 vs 0x394 bytes). The ROM
        * keeps the flag0=1 stores of the 3 pick paths separate, keeps the sel pointer in r4
        * across sub_0804A008, and orders the zone address (p&1 first) differently. */

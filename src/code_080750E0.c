@@ -798,19 +798,12 @@ struct LinkSio {
 extern struct LinkSio gUnk_03005B60;
 extern u16 gUnk_03006644[4]; /* SIOMULTI0-3 snapshot (overlaps LinkSio.recv) */
 
-#if 0 /* NONMATCHING: only the prologue differs: target derives &LinkSio.state / base from the SIOMULTI-snapshot literal (0x03006644) via reg+const CSE; the build loads the base literal into r5 early */
 void sub_08075F74(void)
 {
     struct LinkSio *link;
-    u16 lo, hi;
-    u16 *recv = gUnk_03006644;
-    vu32 *sio = (vu32 *)0x04000120;
 
-    hi = sio[1];
-    *(u32 *)&recv[0] = lo;
-    lo = sio[0];
-    *(u32 *)&recv[2] = hi;
-    if (recv[0] == 0xFEFE && gUnk_03005B60.state > 9) {
+    *(unsigned long long *)gUnk_03005B60.recv = *(volatile unsigned long long *)0x04000120;
+    if (gUnk_03005B60.recv[0] == 0xFEFE && gUnk_03005B60.state > 9) {
         gUnk_03005B60.state = -3;
     } else if (gUnk_03005B60.state >= 0) {
         gUnk_03005B60.i = 0;
@@ -847,8 +840,6 @@ void sub_08075F74(void)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080750E0", sub_08075F74); /* 0x08075F74 size 0x128 */
 extern const u16 gUnk_081A77A8[];
 
 /* Sets the affine parameters of OAM group `idx` from a rotation angle

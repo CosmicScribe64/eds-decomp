@@ -252,65 +252,86 @@ void sub_08001374(s32 arg0)
 /* Bustup step: re-initialises both script object arrays and the sparkle trail,
  * programs the horizontal-scroll registers from the dialogue state, and
  * finalises the dialogue box. */
-#if 0 /* NONMATCHING: the loops and object-pointer arithmetic are semantically
-       * right, and the ROM's scroll reload and signed object sentinel are
-       * reproduced, but base allocation, literal materialization and layout
-       * differ. The current candidate is 0x230 bytes; the ROM function is
-       * 0x244. */
+struct Obj464 {
+    u8 filler0[0xE];
+    s8 unkE;
+    u8 fillerF[0x14 - 0xF];
+};
+struct Scr464 {
+    u8 filler0[0x9A4];
+    u8 objCount:3;
+    u8 filler9A5[0xAA8 - 0x9A5];
+    u8 unkAA8[0x10C0 - 0xAA8];
+    struct Obj464 objs[(0x12E9 - 0x10C0) / 0x14];
+    u8 filler12DC[0x12E9 - 0x12DC];
+    u8 unk12E9;
+    u8 filler12EA[0x12EE - 0x12EA];
+    u16 unk12EE;
+    u8 filler12F0[0x136F - 0x12F0];
+    u8 unk136F;
+};
+#define gScr464 (*(struct Scr464 *)&gUnk_02013DE0)
+struct Main464 {
+    u8 filler0[0x40C];
+    vu16 intrCheck;
+    u8 filler40E[0x4859 - 0x40E];
+    u8 seqIndex1;
+};
+#define gMain464 (*(struct Main464 *)&gUnk_03000040)
+
 s32 sub_08001464(void)
 {
     u8 i;
-    s8 v;
-    u16 st;
+    u16 v;
 
-    for (i = 0; i < gUnk_02013DE0.objCount; i++) {
-        sub_080786D0(gUnk_02013DE0.objs + i * 0x14);
-        ((struct AnimObj *)(gUnk_02013DE0.objs + i * 0x14))->unkE = 0xFF;
+    for (i = 0; i < gScr464.objCount; i++) {
+        sub_080786D0(&gScr464.objs[i]);
+        gScr464.objs[i].unkE = 0xFF;
     }
-    ((struct AnimObj *)(gUnk_02013DE0.objs + gUnk_02013DE0.unk12E9 * 0x14))->unkE = 0;
-    for (i = 0; i < gUnk_02013DE0.objCount; i++) {
-        if ((s8)((struct AnimObj *)(gUnk_02013DE0.objs + i * 0x14))->unkE != -1)
-            sub_08078534(gUnk_02013DE0.objs + i * 0x14, 0, 0, 0, 1, 0, 0, 0, 0,
-                         gUnk_02013DE0.unkAA8);
+    gScr464.objs[gScr464.unk12E9].unkE = 0;
+    for (i = 0; i < gScr464.objCount; i++) {
+        if (gScr464.objs[i].unkE != -1)
+            sub_08078534(&gScr464.objs[i], 0, 0, 0, 1, 0, 0, 0, 0, gScr464.unkAA8);
     }
     sub_0807A420(&gUnk_020147B4);
     sub_0807A420(&gUnk_020147B4);
     sub_0807A420(&gUnk_020147B4);
-    v = gUnk_020147B4.unk91A;
-    sub_08000AC8(v, 1);
+    sub_08000AC8(gUnk_020147B4.unk91A, 1);
     if (gUnk_020147B4.unk91E == 0)
         sub_08001374(1);
-    /* The ROM reloads the scroll value after the preceding calls. */
-    st = gUnk_020147B4.unk99B;
     v = gUnk_020147B4.unk91A;
-    if (st == 1) {
-        *(vu16 *)0x04000028 = v * 2;
-        *(vu16 *)0x0400002A = (v * 2) >> 16;
-    } else if (st == 2) {
-        *(vu16 *)0x04000028 = (u16)(-v * 2);
-        *(vu16 *)0x0400002A = ((u16)(-v * 2) << 4) >> 0x14;
-    } else {
+    switch (gUnk_020147B4.unk99B) {
+    default:
         *(vu16 *)0x0400002C = v * 2;
-        *(vu16 *)0x0400002E = (v * 2) >> 16;
-    }
-    v = gUnk_02013DE0.unk12EE;
-    if (gUnk_02013DE0.unk136F == 1) {
+        *(vu16 *)0x0400002E = ((v * 2) >> 16) & 0xFFF;
+        break;
+    case 1:
         *(vu16 *)0x04000028 = v * 2;
-        *(vu16 *)0x0400002A = (v * 2) >> 16;
+        *(vu16 *)0x0400002A = ((v * 2) >> 16) & 0xFFF;
+        break;
+    case 2:
+        *(vu16 *)0x04000028 = -v * 2;
+        *(vu16 *)0x0400002A = ((-v * 2) >> 16) & 0xFFF;
+        break;
+    }
+    v = gScr464.unk12EE;
+    if (gScr464.unk136F == 1) {
+        *(vu16 *)0x04000028 = v * 2;
+        *(vu16 *)0x0400002A = ((v * 2) >> 16) & 0xFFF;
     } else {
-        *(vu16 *)0x04000028 = (u16)(-v * 2);
-        *(vu16 *)0x0400002A = ((u16)(-v * 2) << 4) >> 0x14;
+        *(vu16 *)0x04000028 = -v * 2;
+        *(vu16 *)0x0400002A = ((-v * 2) >> 16) & 0xFFF;
     }
     sub_0807A298(&gUnk_02014888);
     sub_0807A2EC(&gUnk_02014888);
-    gMain.intrCheck &= 0xFFFE;
-    sub_0807883C((u8 *)&gUnk_02014888 + 0x844);
+    gMain464.intrCheck &= 0xFFFE;
+    sub_0807883C(gUnk_02014888.unk844);
     if (gUnk_02014888.unk84A == 2) {
         if (gUnk_02014888.unk842 == 4)
             gUnk_02014888.unk851 = 1;
         else
             gUnk_02014888.unk851 = 0;
-        gMain.seqIndex1 = 1;
+        gMain464.seqIndex1 = 1;
         *(vu16 *)0x04000028 = 0;
         *(vu16 *)0x0400002A = 0;
         *(vu16 *)0x0400002C = 0;
@@ -318,8 +339,6 @@ s32 sub_08001464(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08001364", sub_08001464); /* 0x08001464 size 0x244 */
 /* Bustup step: loads the current dialogue's scene (large box for a speaker at
  * 0x20-0x23, small box otherwise) and resets the dialogue state, then enables
  * forced-blank and Mode 4. */

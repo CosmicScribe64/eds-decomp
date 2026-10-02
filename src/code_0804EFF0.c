@@ -630,8 +630,8 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 102): NONMATCHING: same size; function-scope u16 id shared by cases 101/110/111;
-       * remaining register/reload differences in cases 20 (level/destroy), 101, 110, 111 */
+#if 0 /* NONMATCHING (score 50): NONMATCHING: same size; cases 0-102,120-122 match; remaining register/reload
+       * differences in cases 110 and 111 */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -795,7 +795,7 @@ int sub_0804FC4C(void)
                     u32 id=FC_ID(z);
                     if (id && (z->f6&2)) {
                         int level=EndTurnLevel(id);
-                        int destroy=0;
+                        register int destroy asm("r0")=0; /* FAKEMATCH: the ROM gives destroy r0 and level r1; global alloc otherwise hands level r0 first */
                         if (level==die) destroy=1;
                         if (level>5 && die==6) destroy=1;
                         if (destroy) sub_08018544(p,i,1);

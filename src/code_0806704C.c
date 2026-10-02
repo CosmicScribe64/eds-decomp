@@ -375,51 +375,63 @@ void sub_08067630(void)
     *(u16 *)0x04000042 = 0xF0;
     *(u16 *)0x04000046 = (gUnk_0201DB20_bits.win << 11) | 0x70;
 }
-#if 0 /* NONMATCHING (score 60): NONMATCHING: everything up to the sub_0807A9C0 block matches (score 60). Keys:
-       * tables as integer-address casts so the add's constant is reloaded (round-robin reload regs), not a symbol
-       * pseudo; per-call temps i1..i5 extracted then overwritten (i = p->phase; i = b2 - i) to get the shared lsl/double
-       * lsr; base+2 written twice (b2/b3) so PRE inserts it before the phase cmp; calls 3/4 as (i + 0x086F17D4 + idx *
-       * 120); call 5 dst via an 18-bit view (lo18 >> 15) for the second sel extraction; u8 prototype for sub_0807AA4C.
-       * Left: A9C0 block (target compares X, copies to Y for src/dst, re-extracts phase for 2 - phase). */
-struct Slide18_8067660 { u32 lo18 : 18; u32 hi : 14; };
-#define SEL18(p) (((struct Slide18_8067660 *)(p))->lo18 >> 15)
+/* The real prototype (code_0807A6AC.c) takes u8 sizes: calling through it narrows the height argument, which is why
+   each call re-extracts p->phase from the shared shift. sub_0807A9C0 keeps the unit's int prototype (no narrowing). */
 typedef void (*TileCopyFn_8067660)(const void *src, u32 dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi);
-#define TILECOPY ((TileCopyFn_8067660)sub_0807AA4C)
-#define MAP_8067660 ((const u8 (*)[60])0x086F17B0)
+#define TILECOPY_8067660 ((TileCopyFn_8067660)sub_0807AA4C)
+/* Wider views of the first word of the record, used for the second extraction of a field that shares its shift.
+   FAKEMATCH: sel read as (bits 0-17) >> 15 and phase as (bits 11-14) >> 2 keep CSE from reusing the first
+   extraction. The 4-bit view is padded to 12 bytes so it is BLKmode and read with ldrb like struct Slide. */
+struct Slide18_8067660 { u32 lo18 : 18; u32 hi : 14; };
+struct SlideP4_8067660 { u32 ctr : 8; u32 lo3 : 3; u32 pp : 4; u32 hi : 17; u8 pad[8]; };
+#define SEL18_8067660(p) (((struct Slide18_8067660 *)(p))->lo18 >> 15)
+#define PHASE4_8067660(p) (((struct SlideP4_8067660 *)(p))->pp >> 2)
+/* Tile maps in ROM, 30 tiles (60 bytes) per row, addressed as integers: the add's constant is then reloaded at each
+   use (ldr into the next round-robin reload register) instead of living in a pseudo. */
+#define TILEMAP_8067660(addr) ((const u8 (*)[60])(addr))
+/* Draw one frame of the slide animation of the panel record `p` (the word at 0x0201DB20+0x1C3C): the frame, card and
+   arrow pieces for the current phase (sub_0807AA4C), the phase<=1 extra rows (sub_0807A9C0), selects the HBlank/VBlank
+   callback, then places the two sprite pairs (sub_08077EF4). */
 void sub_08067660(struct Slide *p)
 {
     int base;
     int b2;
     int b3;
     int i1, i2, i3, i4, i5;
-    u8 i6;
     if (D.mode == 2)
         base = 4;
     else
         base = 0;
     if (PA(p)->dir != 0) {
+        /* FAKEMATCH: each temp receives the extracted phase and is then overwritten, so the height argument
+           re-extracts it from the shared shift (lsl #25 / two lsr #30). base + 2 is written twice (b2, b3) so
+           that PRE computes it once, just before the phase test. */
         if (PA(p)->phase != 0) {
             b2 = base + 2;
             i1 = p->phase;
             i1 = b2 - i1;
-            TILECOPY(((const u8 (*)[60])0x086F17B0)[i1], 0x0600E000, 0x12, p->phase, 0x1E, 3, 2);
+            TILECOPY_8067660(TILEMAP_8067660(0x086F17B0)[i1], 0x0600E000, 0x12, p->phase, 0x1E, 3, 2);
             i2 = p->phase;
             i2 = 2 - i2;
-            TILECOPY(((const u8 (*)[60])0x086F17E8)[i2], 0x0600E038, 1, p->phase, 0x1E, 3, 2);
+            TILECOPY_8067660(TILEMAP_8067660(0x086F17E8)[i2], 0x0600E038, 1, p->phase, 0x1E, 3, 2);
         }
         i3 = p->phase;
         i3 = (2 - i3) * 60;
-        TILECOPY((const void *)(i3 + 0x086F17D4 + p->arr3[D.cursor] * 120), 0x0600E024, 6, p->phase, 0x1E, 3, 2);
+        TILECOPY_8067660((const void *)(i3 + 0x086F17D4 + p->arr3[D.cursor] * 120), 0x0600E024, 6, p->phase, 0x1E, 3, 2);
         i4 = p->phase;
         i4 = (2 - i4) * 60;
-        TILECOPY((const void *)(i4 + 0x086F17E0 + p->arr6[D.cursor] * 120), 0x0600E030, 4, p->phase, 0x1E, 3, 2);
+        TILECOPY_8067660((const void *)(i4 + 0x086F17E0 + p->arr6[D.cursor] * 120), 0x0600E030, 4, p->phase, 0x1E, 3, 2);
         b3 = base + 2;
         i5 = p->phase;
         i5 = (b3 - i5) * 60;
-        TILECOPY((const void *)(i5 + 0x086F17B0 + (p->sel * 2 + 0x40) * 2), 0x0600E000 + (SEL18(p) * 2 + 4) * 2, 2, p->phase, 0x1E, 3, 2);
-        i6 = p->phase;
-        if (i6 <= 1)
-            sub_0807A9C0(((const u8 (*)[60])0x086E26D0)[i6], 0x0600E000 + (i6 << 6), 0x1E, 2 - p->phase, 0x1E, 0, 0);
+        TILECOPY_8067660((const void *)(i5 + 0x086F17B0 + (p->sel * 2 + 0x40) * 2),
+                         0x0600E000 + (SEL18_8067660(p) * 2 + 4) * 2, 2, p->phase, 0x1E, 3, 2);
+        /* FAKEMATCH: reusing i1 (live since the first block) makes it the CSE class head, so the compare keeps its
+           own register and the body works on the copy. */
+        if (p->phase <= 1u) {
+            i1 = p->phase;
+            sub_0807A9C0(TILEMAP_8067660(0x086E26D0)[i1], 0x0600E000 + (i1 << 6), 0x1E, 2 - PHASE4_8067660(p), 0x1E, 0, 0);
+        }
         p->prev = p->phase;
         if (PA(p)->dir == 3 || PA(p)->dir == 1) {
             gUnk_03000040_cb.cb = sub_08067540;
@@ -436,8 +448,6 @@ void sub_08067660(struct Slide *p)
     if (PA(p)->phase == 2)
         sub_08077EF4(gUnk_081A6D8C[p->sel], 0, 5, -1, -1, 0, 0, 0, 0, 0, 0, (int)&D);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_08067660); /* 0x08067660 size 0x2A8 */
 void sub_08067908(struct Slide *p)
 {
     if (PA(p)->dir != 0) {

@@ -417,77 +417,80 @@ void sub_08053864(void)
         break;
     }
 }
-#if 0 /* NONMATCHING: cached pointers change register allocation and RMW scheduling. */
+struct PW38C8Card { u32 id:12; u32 rest:20; };
+struct PW38C8 {
+    u8 pad[0x53C];
+    u32 cursor:8;
+    u32 unk8:4;
+    u32 mode:8;
+    u32 phase:8;
+    u32 unk28:4;
+    u32 unk540;
+    u32 cards[5];
+};
+#define gPW38C8 (*(struct PW38C8 *)&gUnk_02017A40)
+
 int sub_080538C8(void)
 {
-    struct PromptWork *work = &gUnk_02017A40;
-    u32 *animation = &work->animation;
-    u8 *cursor = (u8 *)animation;
-    u16 *phase = (u16 *)((u8 *)work + 0x53E);
-    u32 *cards = (u32 *)((u8 *)work + 0x544);
-    switch ((int)((*animation << 12) >> 24)) {
+    switch (gPW38C8.mode) {
     case 10:
-        if ((int)(((u32)*phase << 20) >> 24) <= 15) {
-            int next = (((u32)*phase << 20) >> 24) + 1;
-            *phase = (*phase & ~0xFF0) | ((next & 0xFF) << 4);
+        if (gPW38C8.phase <= 15) {
+            gPW38C8.phase++;
         } else {
-            sub_08007560((u8 *)work + 0x540 + *cursor * 4, cards + *cursor);
-            --*cursor;
-            *animation = (*animation & ~0xFF000) | 0x1000;
+            sub_08007560(&gPW38C8.cards[gPW38C8.cursor - 1], &gPW38C8.cards[gPW38C8.cursor]);
+            gPW38C8.cursor--;
+            gPW38C8.mode = 1;
         }
         return 0;
     case 20:
-        if ((int)(((u32)*phase << 20) >> 24) <= 15) {
-            int next = (((u32)*phase << 20) >> 24) + 1;
-            *phase = (*phase & ~0xFF0) | ((next & 0xFF) << 4);
+        if (gPW38C8.phase <= 15) {
+            gPW38C8.phase++;
         } else {
-            sub_08007560((u8 *)work + 0x548 + *cursor * 4, cards + *cursor);
-            ++*cursor;
-            *animation = (*animation & ~0xFF000) | 0x1000;
+            sub_08007560(&gPW38C8.cards[gPW38C8.cursor + 1], &gPW38C8.cards[gPW38C8.cursor]);
+            gPW38C8.cursor++;
+            gPW38C8.mode = 1;
         }
         return 0;
     default:
         if (gUnk_03000040.keys & 0x20) {
             sub_08077AEC(0);
-            *cursor = (*cursor + 4) % 5;
+            gPW38C8.cursor = (gPW38C8.cursor + 4) % 5;
             sub_0805ED9C();
-            sub_0805F074((cards[*cursor] << 20) >> 20, 1);
+            sub_0805F074((gPW38C8.cards[gPW38C8.cursor] << 20) >> 20, 1);
         }
         break;
     }
     if (gUnk_03000040.keys & 0x10) {
         sub_08077AEC(0);
-        *cursor = (*cursor + 1) % 5;
+        gPW38C8.cursor = (gPW38C8.cursor + 1) % 5;
         sub_0805ED9C();
-        sub_0805F074((cards[*cursor] << 20) >> 20, 1);
+        sub_0805F074((gPW38C8.cards[gPW38C8.cursor] << 20) >> 20, 1);
     }
     if (gUnk_03000040.keys & 0x200) {
-        if (*cursor != 0) {
+        if (gPW38C8.cursor != 0) {
             sub_08077AEC(6);
-            *animation = (*animation & ~0xFF000) | 0xA000;
-            *phase &= ~0xFF0;
+            gPW38C8.mode = 10;
+            gPW38C8.phase = 0;
             return 0;
         }
         sub_08077AEC(3);
     }
     if (gUnk_03000040.keys & 0x100) {
-        if (*cursor <= 3) {
+        if (gPW38C8.cursor <= 3) {
             sub_08077AEC(6);
-            *animation = (*animation & ~0xFF000) | 0x14000;
-            *phase &= ~0xFF0;
+            gPW38C8.mode = 20;
+            gPW38C8.phase = 0;
             return 0;
         }
         sub_08077AEC(3);
     }
     if (gUnk_03000040.keys & 1) {
         sub_08077AEC(1);
-        *animation = (*animation & ~0xFF000) | 0xF000;
+        gPW38C8.mode = 15;
         return 1;
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_080538C8);
 
 #if 0 /* NONMATCHING: logic fully decoded from asm, but almost every instruction differs in register allocation/scheduling (ROM keeps base 0x02017A40 in r5, &animation in r8 and shifted in r6; build rotates these). */
 int sub_08053AF8(int arg0)

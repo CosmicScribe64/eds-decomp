@@ -65,35 +65,37 @@ extern u16 sub_08068D1C(u8 list, u8 row, u16 col);
 extern u16 sub_080668DC(u16 id);
 extern void sub_08064E28(u8 col, u8 row, u8 set, u8 wrap, u32 base);
 
-#if 0 /* NONMATCHING: same call sequence; register allocation of hoisted constants differs (target keeps &state in r9, tbl in sl, arr14A0 addr in r8, 0 in r7; built hoists 1 and tbl instead and rematerialises &state) and the sum of the two byte-9 fields is an add vs lsrs in one place */
 #define NUMCALL(a, b, c, d, e) sub_0807B864(a, b, c, d, e, gUnk_081A6EB4, 1, 8, 0, 0, 0, (int)st)
+#define CUR() sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])
+/* u16 at byte offset `off` of the trunk block; the same symbol as TN/T9, so CSE shares its base. */
+#define T16(off) (*(u16 *)((u8 *)gTrunk32 + (off)))
 /* Draw the card-count numbers of the deck-edit side panel for list `list` (hypothesis). */
 void sub_08068180(u8 list)
 {
     struct PageState *st = &gUnk_0201DB20_p;
-    NUMCALL(TRUNK_N(TRUNK, sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])), 2, 1, 0x30, 0x88);
-    NUMCALL(((u32)(TRUNK_B9(TRUNK, sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])) << 28) >> 30)
-            + (TRUNK_B9(TRUNK, sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])) >> 6), 2, 1, 0x68, 0x77);
-    NUMCALL(gUnk_02011C20_s.f20CA, 2, 1, 0xA8, 0x88);
+    NUMCALL(TN(CUR()), 2, 1, 0x30, 0x88);
+    NUMCALL(((u32)(T9(CUR()) << 28) >> 30) + (T9(CUR()) >> 6), 2, 1, 0x68, 0x77);
     NUMCALL(gUnk_02013CE8[0] + gUnk_02013CEC[0], 2, 1, 0x68, 0x88);
-    NUMCALL((u32)(TRUNK_B9(TRUNK, sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])) << 26) >> 30, 2, 1, 0xA8, 0x77);
+    CUR(); /* result unused in the ROM too */
+    NUMCALL((u32)(T9(CUR()) << 26) >> 30, 2, 1, 0xA8, 0x77);
+    NUMCALL(T16(0x20CA), 2, 1, 0xA8, 0x88);
     switch (list) {
     case 0:
-        NUMCALL(gUnk_02011C20_s.f20C6 + gUnk_02013CE8[0] + gUnk_02011C20_s.f20CA + gUnk_02013CEC[0], 4, 1, 0xE0, 0x88);
+        NUMCALL(T16(0x20C6) + gUnk_02013CE8[0] + T16(0x20CA) + gUnk_02013CEC[0], 4, 1, 0xE0, 0x88);
         break;
     case 1:
         NUMCALL(gUnk_02013CE8[0], 2, 1, 0xE0, 0x78);
         NUMCALL(gUnk_02013CEC[0], 2, 1, 0xE0, 0x8B);
         break;
     case 2:
-        NUMCALL(st->f1712[gUnk_0201EFC0[2]], 2, 1, 0xE0, 0x79);
-        NUMCALL(gUnk_02011C20_s.f20CA - st->f1712[gUnk_0201EFC0[2]], 2, 1, 0xE0, 0x8A);
+        NUMCALL(st->f1712[st->arr14A0[list]], 2, 1, 0xE0, 0x79);
+        NUMCALL(T16(0x20CA) - st->f1712[st->arr14A0[list]], 2, 1, 0xE0, 0x8A);
         break;
     }
 }
 #undef NUMCALL
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08068180", sub_08068180); /* 0x08068180 size 0x2B4 */
+#undef CUR
+#undef T16
 #define ST gUnk_0201DB20_p
 /* Copies of the current card (by cursor) the deck still holds / may add, from the trunk entry's 2-bit fields (hypothesis). */
 /* Editor rows are 0..1 and each selected column belongs to its list.

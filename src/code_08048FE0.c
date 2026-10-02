@@ -227,40 +227,37 @@ void sub_080493D0(u16 step)
     z->b7 |= 4;
     ((struct ReqFlags *)(e + 0x1B2C))->b1 = 0;
 }
-#if 0 /* NONMATCHING: ROM shares the loaded halfword of the step counter between the switch and both increments (no reload after the 02017A40 byte store) and does not fold the +1 in case 0 */
 /* Two-step request driver on the step counter at 0x020192E0+0x1B30 (bits 2-9): step 0 sets 02017A40[0x3E0] = 0x80 and advances,
  * step 1 runs the picker sub_0803D57C on a new CardRef and advances when it returns 0; other steps clear the request flag. */
 void sub_08049450(void)
 {
     struct CardRef ref;
-    s8 v;
     u8 *e = gUnk_020192E0;
-    u16 *sp = (u16 *)(e + 0x1B30);
-    s16 w = *sp;
-    switch ((u32)w << 22 >> 24) {
+
+    switch (((struct ReqStep *)(e + 0x1B30))->cnt) {
     case 0:
         gUnk_02017A40[0x3E0] = 0x80;
-        *sp = (w & 0xFC03) | ((((u32)w << 22 >> 24) + 1) & 0xFF) << 2;
+        ((struct ReqStep *)(e + 0x1B30))->cnt++;
         /* fall through */
-    case 1:
-        v = gUnk_08624A0A[0];
-        ref.id = v;
+    case 1: {
+        u16 id = gUnk_08624A0A[0];
+
+        ref.id = id;
         ref.player = 0;
         ref.skip4 = 0;
         gUnk_02017A40[0x3E0] = sub_0803D57C(&ref, 0);
         if (gUnk_02017A40[0x3E0] == 0) {
-            sp = (u16 *)(e + 0x1B30);
-            w = *sp;
-            *sp = (w & 0xFC03) | ((((u32)w << 22 >> 24) + 1) & 0xFF) << 2;
+            u8 *e2 = gUnk_020192E0; /* a fresh base: reusing e keeps it live across the call */
+
+            ((struct ReqStep *)(e2 + 0x1B30))->cnt++;
         }
         break;
+    }
     default:
         ((struct ReqFlags *)(e + 0x1B2C))->b1 = 0;
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049450);
 #if 0 /* NONMATCHING: register allocation and literal CSE differ. The ROM keeps e in r8 (build r9), reloads the 0x7FF mask and both card tables at every use (build CSEs them into r8/r9), and emits an explicit `& 0xFFFF` after each `flags |= ...` that the u16-typed build folds away. Control flow, switch bodies and every call are identical. */
 /*
  * Usability flags for card `id` held by `player`: only when the duel state at 0x020192E0+0x1B12

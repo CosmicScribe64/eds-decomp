@@ -487,33 +487,41 @@ int sub_08009298(int player, int zone)
     }
     return count;
 }
-#if 0 /* NONMATCHING: zone address scheduling (player & 1 first) and register allocation differ.
-       * The ROM also reads the low byte of linkInfo with ldrb. */
 /* Add a link from zone `at` ((zone << 8) | player) to `target` with the given kind. Unless kind
- * is 10, an existing link to the same target just gets its count (high byte) incremented. */
+ * is 10, an existing link to the same target just gets its count (high byte of linkInfo) incremented. */
 void sub_0800935C(u16 at, u16 target, u16 kind)
 {
-    u8 p = at;
-    u8 zn = at >> 8;
-    struct DuelZone *z = ZONEP(p, zn);
-    s16 n = z->numLinks;
-    s16 i;
+    int p = (u8)at;
+    int zn = at >> 8;
+    struct DuelZone *z2;
+    int zoneOfs, playerOfs;
+    struct DuelZone *z;
+    int pp, n, i;
 
+    pp = p & 1;
+    zoneOfs = zn * 0x94;
+    playerOfs = pp * 0xD64;
+    z = (struct DuelZone *)((u32)gUnk_020192E4[0].zones + (zoneOfs + playerOfs));
+    n = z->numLinks;
     if (kind != 10) {
         for (i = 0; i < n; i++) {
             if (z->links[i] == target) {
-                z->linkInfo[i] = ((u8)((z->linkInfo[i] >> 8) + 1) << 8) | (u8)z->linkInfo[i];
+                /* The ROM re-derives this address as base + zone * 0x94 + player * 0xD64 (a separate
+                 * loop giv from links[i]). */
+                u16 *info = &((struct DuelZone *)((u32)gUnk_020192E4[0].zones + zn * 0x94 + pp * 0xD64))->linkInfo[i];
+
+                /* The low byte (kind) is re-read with ldrb. */
+                *info = ((u8)((*info >> 8) + 1) << 8) | *(u8 *)info;
                 return;
             }
         }
     }
-    z = ZONEP(p, zn);
-    z->links[n] = target;
-    z->linkInfo[n] = kind;
-    z->numLinks++;
+    pp = p & 1;
+    z2 = (struct DuelZone *)((u32)gUnk_020192E4[0].zones + (zn * 0x94 + pp * 0xD64));
+    z2->links[n] = target;
+    z2->linkInfo[n] = kind;
+    z2->numLinks++;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_0800935C);
 #if 0 /* NONMATCHING: the switch tree and all loads match (each field read where used, no
        * shared pointer). Only register allocation differs: the ROM keeps target in sl and
        * player in r8, and GCC swaps them. Advisor confirmed this is the right shape. */

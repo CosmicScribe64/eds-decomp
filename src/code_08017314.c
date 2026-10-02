@@ -290,7 +290,6 @@ void sub_08017F98(int player, int zone)
     }
 }
 
-#if 0 /* NONMATCHING: prologue scratch-register allocation and operand order differ */
 int sub_08017FF4(int player, int zone)
 {
     int t = player & 1;
@@ -303,7 +302,7 @@ int sub_08017FF4(int player, int zone)
     if (sub_08008524(0, 1418) > 0 || sub_08008524(1, 1418) > 0)
         return 0;
     if (id != 0) {
-        struct DuelZone *z = &gUnk_020192E4[t].zones[zone];
+        struct DuelZone *z = &gUnk_020192E4[player & 1].zones[zone];
         if (sub_080086CC(0, 1107) > 0 || sub_080086CC(1, 1107) > 0) {
             sub_0801EC58(player ? 0x807A : 0x7A, zone, 1, 0);
             sub_08017DE0(player, zone, 1);
@@ -328,13 +327,13 @@ int sub_08017FF4(int player, int zone)
             sub_0801FBCC((CARD(z->card).owner << 31) | 0x28600000 | id, 0);
             break;
         case 461:
-            if (!(ZONE_PTR_ZP(player, zone)->flags7 & 0x20)) {
+            if (!(ZONE_PTR(player, zone)->flags7 & 0x20)) {
                 sub_0801EC58(player ? 0x8073 : 0x73, id, 1, 0);
                 sub_08019860(player, 5000);
             }
             break;
         case 1116:
-            if (!(ZONE_PTR_ZP(player, zone)->flags7 & 0x20))
+            if (!(ZONE_PTR(player, zone)->flags7 & 0x20))
                 sub_0801FBCC(((CARD(z->card).owner & 1) << 31) | 0x3C600000 | id, 0);
             break;
         }
@@ -349,8 +348,6 @@ int sub_08017FF4(int player, int zone)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017FF4); /* 0x08017FF4 size 0x28C */
 /* A monster was placed in (player, zone): queue the "summoned" event, set the player's +0x0B bit 3
  * for monsters, fire the card's on-summon effects, then re-evaluate the zone's links.
  * Returns 1 if handled, 0 for non-monster zones / empty zones. */

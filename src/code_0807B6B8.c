@@ -542,11 +542,16 @@ extern const u8 gUnk_08608360[];
 extern const u16 gUnk_082A6500[];
 
 /* Fill or clear the ten-row portrait map, then unpack the card's 6bpp art. */
-#if 0 /* NONMATCHING: clear/fill and pixel-repacking logic follows the ROM; i uses ip rather than r8 and ROM-table/0xFC0 hoisting differs. */
+/* Card portrait (hypothesis: RenderCardPortrait): fills a 9 x 10 tile block of the BG map
+ * at 0x0300045C + (a & 7) * 0x800 + b * 2 with ascending tile numbers from c / 2 (or clears
+ * a 10 x 10 block when id == 0xFFFF), copies card id's 64-colour palette to 0x05000100 and
+ * unpacks its 6bpp image (720 x 3 halfwords) to 0x06004000 + c * 32 with bit 7 set.
+ * The ROM tables are integer addresses so GCSE does not hoist their pool loads; t is an int
+ * (its 0x3F mask then shares the SImode constant with the other two masks) and is shifted
+ * as u16 to keep the logical shift separate from y >> 8. */
 void sub_0807C058(u16 a, u16 b, u16 id, u16 c)
 {
-    u8 *row = (u8 *)(0x0300045C + (a & 7) * 0x800);
-    u16 *map = (u16 *)(row + b * 2);
+    u16 *map = (u16 *)(0x0300045C + (a & 7) * 0x800);
     u16 i;
     u16 j;
     u16 tile;
@@ -554,6 +559,7 @@ void sub_0807C058(u16 a, u16 b, u16 id, u16 c)
     const u16 *src;
     u16 *dst;
 
+    map += b;
     if (id == 0xFFFF) {
         i = 0;
         do {
@@ -581,20 +587,21 @@ void sub_0807C058(u16 a, u16 b, u16 id, u16 c)
             i++;
         } while (i <= 9);
         id &= 0x7FF;
-        sub_08075294(0x05000100, (void *)(gUnk_08608360 + id * 0x80), 0x80);
-        src = gUnk_082A6500 + id * 0x870;
+        sub_08075294(0x05000100, (void *)(0x08608360 + id * 0x80), 0x80);
+        src = (const u16 *)(0x082A6500 + id * 0x10E0);
         dst = (u16 *)(0x06004000 + off);
+
         for (i = 0; i <= 0x2CF; i++) {
             u32 x = src[0];
-            int y = src[1];
+            u32 y = src[1];
             u32 z = src[2];
-            u32 t;
+            int t;
             u16 p0, p1, p2, p3;
 
             p0 = (x & 0x3F) | (x & 0xFC0) << 2;
-            p1 = x >> 12 | (y & 3) << 4 | (y & 0xFC) << 6;
+            p1 = x >> 12 | (y & 3) << 4 | (y & 0xFC) * 64;
             t = y >> 8;
-            p2 = (t & 0x3F) | ((t >> 6) | (z & 0xF) << 2) << 8;
+            p2 = (t & 0x3F) | (((u16)t >> 6) | (z & 0xF) << 2) << 8;
             z >>= 4;
             p3 = (z & 0x3F) | (z & 0xFC0) << 2;
             dst[0] = p0 | 0x8080;
@@ -606,8 +613,6 @@ void sub_0807C058(u16 a, u16 b, u16 id, u16 c)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807B6B8", sub_0807C058); /* 0x0807C058 size 0x178 */
 #define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define CARD_KIND(id) ((int)((CARD_STATS(id) & 0x1F00000) >> 20))
 

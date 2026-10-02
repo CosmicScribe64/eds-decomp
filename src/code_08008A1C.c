@@ -651,24 +651,21 @@ void sub_08009768(struct DuelCard *card)
     }
 }
 
-#if 0 /* NONMATCHING: the ROM keeps 1 in r9 and narrows the new removedMask value to 16 bits
-       * (lsl #16; lsr #16) before splitting it over bytes +0x0B/+0x0C. The field type is unclear. */
 /* Temporarily banish a monster from `zone`: banished list entry of kind 1 remembering the zone,
- * and the zone's bit set in the owner's removedMask. */
+ * and the zone's bit set in the owner's removedMask. The `& 1` on the owner leaves the SImode 1
+ * that the ROM keeps in r9; the (u16) gives the ROM's lsl/lsr #16 before the field split. */
 void sub_080097F0(struct DuelCard *card, int zone)
 {
-    u32 owner = card->owner;
+    u32 owner = card->owner & 1;
     struct DuelCard *dst = &CARD(gUnk_020192E4[owner].banished[gUnk_020192E4[owner].numBanished]);
 
     if (card->id && !IS_TOKEN(card->id)) {
         sub_08007558(dst, card);
         gUnk_020192E4[owner].banishedInfo[gUnk_020192E4[owner].numBanished] = ((u8)zone << 8) | 1;
         gUnk_020192E4[owner].numBanished++;
-        gUnk_020192E4[owner].removedMask |= 1 << zone;
+        gUnk_020192E4[owner].removedMask = (u16)(gUnk_020192E4[owner].removedMask | 1 << zone);
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_080097F0);
 #if 0 /* NONMATCHING: the semantics are right and the direct gUnk_020192E4[p] indexing is closest
        * (96 vs the ROM's 99 instructions), but the ROM spills arg0 and two address bases
        * to its 12-byte frame while GCC keeps them in registers, so register allocation and spills differ. */

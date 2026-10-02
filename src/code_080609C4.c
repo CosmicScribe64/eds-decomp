@@ -359,16 +359,27 @@ void sub_08060FD0(u32 player, u32 zone)
     sub_08060DD8_i(gUnk_081A42A4[player][zone].x / 8, gUnk_081A42A4[player][zone].y / 8);
 }
 /* Redraw the board tile block for one slot `kind` (0-4 / 5-9 / 10 zone rows, 12-15 special slots) of `player`. */
-#if 0 /* NONMATCHING: register allocation differs. The ROM keeps idx in r2, table in r6, x in r5,
-       * y in r7 (saves r8); ours moves idx to r6, table to r2, x to r7, y to r5. Tried a zp
-       * local, an xy swap and u32 copies. */
+/* Private 0xD64-byte view of the per-player block (the unit's struct PlayerState is 0xDC4 bytes). */
+struct PlayerState_08061004 {   /* 0xD64 bytes, at 0x020192E4 + player * 0xD64 */
+    u8 pad0[3];
+    u8 b3;                      /* +3 */
+    u8 b4;                      /* +4 count of a904 */
+    u8 b5;                      /* +5 */
+    u8 b6;                      /* +6 count of aB84 */
+    u8 pad7[0x904 - 7];
+    u32 a904[0xA0];             /* +0x904 card words */
+    u32 aB84[0x50];             /* +0xB84 card words */
+    u8 aCC4[0xA0];              /* +0xCC4 2-byte entries */
+};
+extern struct PlayerState_08061004 gPS1004_020192E4[2];
+#define PS04 gPS1004_020192E4
+
 void sub_08061004(u32 player, u32 kind, u32 idx)
 {
     s32 x = gUnk_081A42A4[player][kind].x / 8;
     s32 y = gUnk_081A42A4[player][kind].y / 8;
-    struct PlayerState *ps;
-    s16 t;
-    s8 v;
+    u16 t;
+    u8 v;
 
     switch (kind) {
     case 0:
@@ -377,48 +388,62 @@ void sub_08061004(u32 player, u32 kind, u32 idx)
         sub_08060ECC(player, kind + idx);
         break;
     case 12:
-        v = gUnk_020192E4[1 & player].b5;
-        if (v == 0)
-            goto clear;
-        if (v <= 5)
-            goto t1070;
-    t1230:
-        t = 0x1230;
-        goto draw;
-    case 13:
-        v = gUnk_020192E4[1 & player].b3;
-        if (v == 0)
-            goto clear;
-        if (v > 5)
-            goto t1230;
-        goto t1070;
-    case 14:
-        ps = &gUnk_020192E4[1 & player];
-        if (ps->b4 == 0)
-            goto clear;
-        t = sub_0806226C((ps->a904[ps->b4 - 1] << 20) >> 20) + 0x2000;
-        goto draw;
-    clear:
-        sub_08060DD8_i(x, y);
-        break;
-    case 15:
-        ps = &gUnk_020192E4[1 & player];
-        if (ps->b6 == 0) {
-            break;
+        v = PS04[1 & player].b5;
+        if (v != 0) {
+            if (v > 5)
+                sub_08060E2C_i(x, y, 0x1230);
+            else
+                sub_08060E2C_i(x, y, 0x1070);
+        } else {
             sub_08060DD8_i(x, y);
         }
-        t = sub_0806226C((ps->aB84[ps->b6 - 1] << 20) >> 20) + 0x2000;
-        if (ps->aCC4[(ps->b6 - 1) * 2] != 2)
-            goto draw;
-    t1070:
-        t = 0x1070;
-    draw:
-        sub_08060E2C_i(x, y, t);
+        break;
+    case 13:
+        v = PS04[1 & player].b3;
+        if (v != 0) {
+            if (v > 5)
+                sub_08060E2C_i(x, y, 0x1230);
+            else
+                sub_08060E2C_i(x, y, 0x1070);
+        } else {
+            sub_08060DD8_i(x, y);
+        }
+        break;
+    case 14:
+        if (PS04[1 & player].b4 != 0) {
+            u32 *list;
+            s32 o;
+
+            /* FAKEMATCH: the byte-offset variable gives the ROM's "lsl; sub #4; add list" order;
+             * list[count - 1] is distributed into (list + count*4) - 4 instead. */
+            list = PS04[1 & player].a904;
+            o = PS04[1 & player].b4 * 4 - 4;
+            list = (u32 *)((u8 *)list + o);
+            sub_08060E2C_i(x, y, (u16)(sub_0806226C((*list << 20) >> 20) + 0x2000));
+        } else {
+            sub_08060DD8_i(x, y);
+        }
+        break;
+    case 15:
+        if (PS04[1 & player].b6 != 0) {
+            u32 *list;
+            s32 o;
+
+            /* FAKEMATCH: same byte-offset form as case 14. */
+            list = PS04[1 & player].aB84;
+            o = PS04[1 & player].b6 * 4 - 4;
+            list = (u32 *)((u8 *)list + o);
+            t = sub_0806226C((*list << 20) >> 20) + 0x2000;
+            if (PS04[1 & player].aCC4[(PS04[1 & player].b6 - 1) * 2] == 2)
+                sub_08060E2C_i(x, y, 0x1070);
+            else
+                sub_08060E2C_i(x, y, t);
+        } else {
+            sub_08060DD8_i(x, y);
+        }
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_08061004);
 void sub_080611AC(void)
 {
     s32 i;

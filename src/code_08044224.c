@@ -145,8 +145,9 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 5939): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; bitfield
-       * TargetCard view; GCSE/loop/regalloc still differ; see build/wf/sub_08044224/NOTES.md */
+#if 0 /* NONMATCHING (score 5928): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; bitfield
+       * TargetCard view; natural loops in 0x47B/0x5EB/0x454; GCSE/loop/regalloc still differ; see
+       * build/wf/sub_08044224/NOTES.md */
 struct TargetCard {
     u32 id:12;
     u32 owner:1;
@@ -602,11 +603,8 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x463:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++) {
-            id = TARGET_ID(ReadTargetDeckWord(player, i));
+        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(id) > 20 || TargetAttack(id) > 1500)
                 continue;
             allowed = 0;
@@ -958,10 +956,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x5EF:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->graveCount; i++) {
+        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+            u32 stats;
+            id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
             attribute = 0;
             switch (number) {
             case 0x5EB:
@@ -980,9 +977,9 @@ u16 sub_08044224(int player, u16 number, int arg)
                 attribute = 6;
                 break;
             }
-            id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
-            if (TARGET_TYPE(id) <= 20 && (TARGET_STATS(id) >> 29) == attribute)
-                ADD_TARGET(PP->graveyard[i], 4);
+            stats = ((const u32 *)0x08621DE0)[id & 0x7FF];
+            if (((stats & 0x1F00000) >> 20) <= 20 && (stats >> 29) == attribute)
+                ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
         }
         break;
     }

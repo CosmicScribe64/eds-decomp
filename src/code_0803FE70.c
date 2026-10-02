@@ -292,7 +292,7 @@ int sub_08040294(struct CardRef *ref)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0803FE70", sub_08040294); /* 0x08040294 size 0x1E4 */
-#if 0 /* NONMATCHING: loop-invariant hoisting differs. The ROM hoists base/1/0xD64/0x7FF into ip/r9/r8/r7 and builds the loop-2 start as (player*0xD64 + base) + 0x2E4; our build hoists three (base/1/0xD64) and leaves 0x7FF as a load, so the registers and save set differ. */
+/* AI side: per player, zones 5-10, first a card with flags6 bit 1 and type 0x16, then any card without that flag; human side: prompt + cursor. */
 int sub_08040478(struct CardRef *ref)
 {
     int pl = 1 & ((u8 *)ref)[2];
@@ -302,22 +302,22 @@ int sub_08040478(struct CardRef *ref)
         int i;
         ref->numTargets = 0;
         for (i = 0; i <= 1; i++) {
-            u16 j;
+            int j;
             for (j = 5; j <= 10; j++) {
                 struct DuelZone *z = ZB(1 & i, j);
-                u32 id = (*(u32 *)z << 20) >> 20;
+                u16 id = (*(u32 *)z << 20) >> 20;
+                /* FAKEMATCH: the empty use raises z's allocation priority above id's, so z gets r1 and id r3 as in the ROM */
+                asm("" : : "r"(z));
                 if (id != 0 && (z->flags6 & 2) && CARD_TYPE(id) == 0x16) {
                     sub_0803DDAC(ref, i, j);
                     return 1;
                 }
             }
-            {
-                struct DuelZone *z = ZB(1 & i, 5);
-                for (j = 5; j <= 10; j++, z++) {
-                    if ((*(u32 *)z << 20) != 0 && !(z->flags6 & 2)) {
-                        sub_0803DDAC(ref, i, j);
-                        return 1;
-                    }
+            for (j = 5; j <= 10; j++) {
+                struct DuelZone *z = ZB2(1 & i, j);
+                if ((*(u32 *)z << 20) != 0 && !(z->flags6 & 2)) {
+                    sub_0803DDAC(ref, i, j);
+                    return 1;
                 }
             }
         }
@@ -339,8 +339,6 @@ int sub_08040478(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803FE70", sub_08040478); /* 0x08040478 size 0x16C */
 int sub_080405E4(struct CardRef *ref)
 {
     u8 *es = gUnk_02017A40;

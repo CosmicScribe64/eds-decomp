@@ -610,9 +610,6 @@ void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
     }
 }
 
-#if 0 /* NONMATCHING (score 50): oam.x = (s16)x gives the ROM's lsl#23/lsr#23 x mask; inline BEC_SetSize(int i,
-       * u16 sz) for the size switch stops the 0x4433 literal hoisting (score 201->50); left: switch index copy (ROM ldrh
-       * r0; adds r1,r0,#0; compares on r1) and the shared 0x3F reg (r2 vs r4) */
 struct OamBitsBEC {
     u32 y:8;
     u32 affineMode:2;
@@ -640,7 +637,16 @@ static inline u16 BEC_Read16(u8 **pp) {
     return v;
 }
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-static inline void BEC_SetSize(int i, u16 sz) {
+static inline void BEC_SetSize(int i, struct SprAnim *a, u16 fmt) {
+    u8 *p = a->base;
+    u16 sz, t;
+    p += 0x22;
+    p += fmt * 4;
+    t = *(u16 *)p;
+    /* FAKEMATCH: keeps the ROM's `ldrh r0; adds r1, r0, #0` copy, with every compare on the copy */
+    asm("" : "+r"(t));
+    sz = t;
+    asm("" : "+r"(sz));
     switch (sz) {
     case 0:
         gMainBEC.oam[i].size = 0;
@@ -693,22 +699,14 @@ void sub_08076BEC(u16 x, u16 y, struct SprAnim *a, u16 flag) {
         gMainBEC.oam[i].paletteNum = 15;
         gMainBEC.oam[i].priority = 0;
         gMainBEC.oam[i].shape = 0;
-        p = a->base;
-        p += 0x22;
-        p += fmt * 4;
-        BEC_SetSize(i, *(u16 *)p);
+        BEC_SetSize(i, a, fmt);
     }
     if (flag != 0) {
         a->cur = cur;
         a->unkA++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076BEC); /* 0x08076BEC size 0x1C0 */
 
-#if 0 /* NONMATCHING (score 28): BEC-style loop (next = i + 1 before the inner do/while, bitfield struct, x via
-       * u16 bitfield store) + inline DAC_SetSize(int i, u16 sz) for the size switch (stops 0x4433 hoisting/CSE with the
-       * hflip address); score 593->28; left: switch index copy (ROM ldrh r0; adds r1,r0,#0; compares on r1) */
 struct OamBitsDAC {
     u32 y:8;
     u32 affineMode:2;
@@ -737,7 +735,16 @@ static inline u16 DAC_Read16(u8 **pp) {
     *pp += 2;
     return v;
 }
-static inline void DAC_SetSize(int i, u16 sz) {
+static inline void DAC_SetSize(int i, struct SprAnim *a, u16 fmt) {
+    u8 *p = a->base;
+    u16 sz, t;
+    p += 0x22;
+    p += fmt * 4;
+    t = *(u16 *)p;
+    /* FAKEMATCH: keeps the ROM's `ldrh r0; adds r1, r0, #0` copy, with every compare on the copy */
+    asm("" : "+r"(t));
+    sz = t;
+    asm("" : "+r"(sz));
     switch (sz) {
     case 0:
         gMainDAC.oam[i].size = 0;
@@ -793,18 +800,13 @@ void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
         gMainDAC.oam[i].priority = 0;
         gMainDAC.oam[i].shape = 0;
         gMainDAC.oam[i].hflip = hflip;
-        p = a->base;
-        p += 0x22;
-        p += fmt * 4;
-        DAC_SetSize(i, *(u16 *)p);
+        DAC_SetSize(i, a, fmt);
     }
     if (flag != 0) {
         a->cur = cur;
         a->unkA++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076DAC); /* 0x08076DAC size 0x1F0 */
 /* Random: LCG (MSVC constants) on gMain.rngState, rotated by 16 (written as shifts, not a rotate); returns 15 bits. */
 /* The generator returns a zero-extended 15-bit value to word consumers. */
 int sub_08076F9C(void) {

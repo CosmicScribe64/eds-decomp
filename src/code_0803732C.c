@@ -491,20 +491,36 @@ int sub_08037E94(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: large 5-step state machine. ref lands in r7 (ROM: r6); the table symbol is hoisted in the zone loop instead of the 0x7FF mask; the zone pointer is strength-reduced; the base of 0x02017A40 is hoisted to ip (the ROM keeps it in r2 and reloads it); scratch registers differ in the 0x7E arm. */
+#if 0 /* NONMATCHING (score 44): NONMATCHING: 5-step state machine; score 44, size +2. Remaining: register
+       * allocation and a 2-byte size delta (in progress). */
+static inline u32 ED8Level(int type, int id)
+{
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 0xA;
+    default:
+        return (CARD_STATS(id) & 0x1E000000) >> 25;
+    }
+}
+static inline int ED8Idx(int p) { return (u8)p & 1; }
+static inline int ED8Idx2(u8 p) { return p & 1; }
 int sub_08037ED8(struct CardRef *ref)
 {
     if (!ref->skip4) {
         switch (EFF_PHASE) {
         case 0x80: {
-            u16 i, j;
+            int i, j;
 
             for (i = 0; i <= 1; i++) {
                 ref->targets[i] = 0;
                 for (j = 0; j <= 4; j++) {
-                    int id = CARD_ID(CARD_WORD(ZB(i & 1, j)->card));
+                    u16 id = CARD_ID(CARD_WORD(ZB(i & 1, j)->card));
 
-                    if (id != 0 && ((gUnk_08621DE0[id & 0x7FF] & 0x1F00000) >> 20) <= 0x14)
+                    if (id != 0 && CARD_TYPE(id) <= 0x14)
                         ref->targets[i]++;
                 }
             }
@@ -514,39 +530,39 @@ ret7F:
             return 0x7F;
         }
         case 0x7F: {
-            struct DuelPlayer *pl = gUnk_020192E4;
-            s8 b = EFF_SIDE;
+            if (gUnk_020192E4[ED8Idx(EFF_SIDE)].deckCount != 0 && ref->targets[EFF_SIDE] != 0) {
+                struct DuelCard *deck = gUnk_020192E4[ED8Idx(EFF_SIDE)].deck;
 
-            if (pl[b & 1].deckCount != 0 && ref->targets[b] != 0) {
-                sub_08007558(&gUnk_02017A40[0x3E8], &pl[b & 1].deck[0]);
+                sub_08007558(&gUnk_02017A40[0x3E8], deck);
                 sub_0801EC58(EFF_SIDE ? 0x8061 : 0x61, 1, 1, 0);
-                sub_08019840(EFF_SIDE, CARD_ID(CARD_WORD(pl[b & 1].deck[0])));
+                sub_08019840(EFF_SIDE, CARD_ID(CARD_WORD(*deck)));
                 return 0x7E;
             }
             EFF_SIDE = 1 - EFF_SIDE;
-            if (ref->player != EFF_SIDE)
+            /* FAKEMATCH: the ROM re-reads EFF_SIDE after the store */
+            asm("" ::: "memory");
+            if (EFF_SIDE != ref->player)
                 goto ret7F;
             return 0x78;
         }
         case 0x7E: {
             u32 w = E28W;
-            s8 side = E21;
 
-            if (((w << 19) >> 31) != side && (int)(w << 14) < 0 && gUnk_08622AB4[CARD_ID11(w)] == 0x2FA) {
-                if (sub_08008A1C(1 - side) > 0) {
-                    sub_0801EC58(side ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
+            if (((w << 19) >> 31) != E21 && (int)(w << 14) < 0 && CARD_NUMBER(CARD_ID11(w)) == 0x2FA) {
+                if (sub_08008A1C(1 - E21) > 0) {
+                    sub_0801EC58(E21 ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
                     return 0x7D;
                 }
-                sub_080193D4(E21, PH(E21 & 1)->handCount - 1, 0, 1);
+                sub_080193D4(E21, gUnk_020192E4[ED8Idx(E21)].handCount - 1, 0, 1);
+                asm("");
                 goto ret7F;
             }
             {
                 int id = CARD_ID(E28W);
-                u32 lvl;
+                u32 type = CARD_TYPE(id);
 
-                if (CARD_TYPE(id) <= 0x14) {
-                    CARD_LEVEL(id, lvl);
-                    if (lvl <= 4 && sub_08007834(id) == 0) {
+                if (type <= 0x14) {
+                    if (ED8Level(type, id) <= 4 && sub_08007834(id) == 0) {
                         sub_0801EC58(E21 ? 0x80C2 : 0xC2, E28H0, E28H1, 0);
                         ref->targets[E21]--;
                         return 0x7C;
@@ -554,7 +570,10 @@ ret7F:
                     ref->targets[EFF_SIDE]--;
                 }
             }
-            sub_080193D4(EFF_SIDE, PH(EFF_SIDE & 1)->handCount - 1, ref->player != EFF_SIDE, 1);
+            {
+                int s = EFF_SIDE;
+                sub_080193D4(s, gUnk_020192E4[ED8Idx(s)].handCount - 1, ref->player != s, 1);
+            }
             goto ret7F;
         }
         case 0x7D:

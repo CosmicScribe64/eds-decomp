@@ -130,19 +130,49 @@ void sub_08017ADC(u32 player, u16 id, u16 pos, u16 a);
 #define CMD_PLAYER() ((gUnk_020185C0.cmd & 0x8000) != 0)
 #define CUR_PLAYER() (gUnk_020192E4_lp[CMD_PLAYER()])
 
-#if 0 /* NONMATCHING: loop-invariant hoisting and register allocation differ. The ROM keeps player in r7 and recomputes player*0xD64 inside the zone loop (it hoists only the 0x0201930C base and the ~0x3C mask); our build hoists player*0xD64 and shifts all registers. */
+#if 0 /* NONMATCHING (score 104): NONMATCHING: zone loop now recomputes player*0xD64 per iteration like the ROM
+       * (base struct array + direct indexing); remaining diffs are register allocation in the zone-loop address setup
+       * (r3/r2 swapped, extra mov r1,sl), the CARD_NUMBER lookup operand order, and the final link loop (ROM
+       * rematerialises player*0xD64 with muls r1,r7 and keeps n in r1). */
+struct Zone08013CDC {
+    u32 id:12;
+    u32 unk0_12:20;
+    u16 serial;
+    u8 flag6_0:1;
+    u8 flag6_1:1;
+    u8 counter6:4;
+    u8 unk6_6:2;
+    u8 flag7_0:2;
+    u8 flag7_2:1;
+    u8 flag7_3:2;
+    u8 flag7_5:1;
+    u8 turns7_6:2;
+    u8 unk8[0x91 - 8];
+    u8 flag91_0:2;
+    u8 flag91_2:1;
+    u8 flag91_3:5;
+    u8 unk92[2];
+};
+struct ZonesPlayer08013CDC {
+    struct Zone08013CDC zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+extern struct ZonesPlayer08013CDC gUnk_0201930C_z[2] asm("gUnk_0201930C");
+extern u8 gUnk_0201930C_b[] asm("gUnk_0201930C");
+extern u8 gUnk_020195F0[];
+
 void sub_08013CDC(void)
 {
     u32 player = gUnk_020185C0.cmd >> 15;
-    struct DuelPlayer08013CDC *self = &gUnk_020192E4_lp[player & 1];
     int i;
+    int j;
     u16 id, stId;
-    struct DuelZone *mon, *st;
+    struct Zone08013CDC *mon, *st;
 
-    if ((s8)0 != self->turnsB_0)
-        self->turnsB_0--;
+    if (gUnk_020192E4_lp[player & 1].turnsB_0)
+        gUnk_020192E4_lp[player & 1].turnsB_0--;
     gUnk_020192E4_lp[(1 - player) & 1].flag8_3 = 0;
-    self->flag8_3 = 0;
+    gUnk_020192E4_lp[player & 1].flag8_3 = 0;
 
     for (i = 0; i <= 1; i++) {
         if (gUnk_020192E4_lp[i & 1].turns6_14)
@@ -153,20 +183,22 @@ void sub_08013CDC(void)
         gUnk_020192E4_lp[1].turns6_14 = 0;
     }
 
-    for (i = 0; i <= 4; i++) {
-        mon = ZONE(player, i);
-        st = ZONE(player, i + 5);
-        stId = ((struct DuelCard *)ZONE_SP(player, i + 5))->id;
-        id = ((struct DuelCard *)ZONE_SP(player, i))->id;
+    for (j = 0; j <= 4; j++) {
+        struct ZonesPlayer08013CDC *base = gUnk_0201930C_z;
+        struct ZonesPlayer08013CDC *zp = &base[player];
+        mon = &zp->zones[j];
+        st = &zp->zones[j + 5];
+        id = ((struct DuelCard *)&gUnk_0201930C_z[player].zones[j])->id;
+        stId = ((struct DuelCard *)&gUnk_0201930C_z[player].zones[j + 5])->id;
 
         if (id) {
-            mon->unk7 &= ~0x04;         /* canonical unk7 bit 2 (= flag7_2) */
+            mon->flag7_2 = 0;
             if (mon->flag6_1) {
                 if (mon->counter6 < 15)
                     mon->counter6++;
                 switch (CARD_NUMBER(id)) {
                 case 0x052:
-                    if (!(mon->unk7 & 0x20))   /* canonical unk7 bit 5 (= flag7_5) */
+                    if (!mon->flag7_5)
                         mon->counter6++;
                     if (mon->counter6 > 6)
                         mon->counter6 = 6;
@@ -184,12 +216,13 @@ void sub_08013CDC(void)
                 case 0x458:
                 case 0x536:
                 case 0x5E9:
-                    mon->unk7 |= 0x20;      /* canonical unk7 bit 5 (= flag7_5) */
-                    sub_08017ADC(player, id, ((u8)i << 8) | player, 11);
+                    mon->flag7_5 = 1;
+                    sub_08017ADC(player, id, ((u8)j << 8) | player, 11);
                     break;
                 case 0x540:
-                    if (!(mon->unk7 & 0x20)) {
-                        mon->unk7 |= 0x24;  /* canonical unk7 bits 2 and 5 */
+                    if (!mon->flag7_5) {
+                        mon->flag7_2 = 1;
+                        mon->flag7_5 = 1;
                     }
                     break;
                 }
@@ -200,16 +233,19 @@ void sub_08013CDC(void)
                 if (CARD_NUMBER(stId) == 0x47 && st->counter6 < 12)
                     st->counter6++;
             } else if (CARD_TYPE(stId) > 20) {
-                st->unk8C[5] |= 0x04;       /* +0x91 bit 2 (= flag91_2) */
+                st->flag91_2 = 1;
             }
         }
     }
 
-    /* +0x06 = countB84 and +0xCC4 = arrCC4 by offset (this draft's local numLinks/links). */
     for (i = 0; i < gUnk_020192E0.players[player].countB84; i++) {
         u16 *link = &gUnk_020192E0.players[player].arrCC4[i];
-        if (*(u8 *)link == 2 && (*link >> 8) <= 4)
-            *link = ((u8)((*link >> 8) + 1) << 8) | 2;
+        u16 v = *link;
+        if (*(u8 *)link == 2) {
+            u8 n = v >> 8;
+            if (n <= 4)
+                *link = ((u8)(n + 1) << 8) | 2;
+        }
     }
     gUnk_020185C0.running = 0;
 }

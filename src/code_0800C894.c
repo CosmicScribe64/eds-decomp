@@ -304,12 +304,12 @@ int sub_0800CD24(u32 player, u32 slot)
                 count++;
     return count;
 }
-#if 0 /* NONMATCHING: same issue as sub_0800CC18, with cardType hoisted and register allocation differing */
-u32 sub_0800CD68(s32 player, s32 slot)
+u16 sub_0800CD68(s32 player, s32 slot)
 {
+    u16 *tab = gUnk_08622AB4;
     u16 cardId;
     s32 p, s;
-    cardId = (*(u32 *)&gUnk_0201930C[slot * 0x94 + (player & 1) * 0xD64] << 20) >> 20;
+    cardId = *(u32 *)&gUnk_0201930C[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
     if (cardId == 0) {
         return 0;
     }
@@ -322,15 +322,13 @@ u32 sub_0800CD68(s32 player, s32 slot)
             if (!(zone[6] & 2)) {
                 continue;
             }
-            if (sub_0800AA40(p, s, gUnk_08622AB4[cardId & 0x7FF]) != -1) {
-                return (((u32)p << 24) >> 8 | (u32)s << 24) >> 16;
+            if (sub_0800AA40(p, s, tab[cardId & 0x7FF]) != -1) {
+                return (u8)p | ((u8)s << 8);
             }
         }
     }
     return 0xFFFF;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800CD68); /* 0x0800CD68 size 0xC0 */
 #if 0 /* NONMATCHING: ROM-reviewed animation states; allocation, scheduling and shared tails differ */
 s32 sub_080623AC(u32, s32, u16);
 s32 sub_080623EC(u32, s32, u16);

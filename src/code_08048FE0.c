@@ -490,10 +490,11 @@ struct DZones { struct DZone z[11]; u8 filler[0xD64 - 11 * 0x94]; };
 #define CARD_NUM(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define ZONE_ADDR(p, z) ((struct DZone *)(0xD64 * ((p) & 1) + (u32)gUnk_0201930C + 0x94 * (z)))
 #define ZONE_R(p, z) ((struct DZone *)(0x94 * (z) + 0xD64 * ((p) & 1) + (u32)gUnk_0201930C))
-#if 0 /* NONMATCHING: register allocation and a few pairings differ (ROM keeps arg1 in r5, build r6; ROM pairs `muls r1,r0` / `adds r1,r7,#0; muls r1,r0` / recomputes the zone address in the tail and 0x536 check with (0x94*zone + 0xD64*player) + base; build reassociates). Structure matches. */
+struct WfPl49B74 { u8 pad[0x2A]; u16 f2A; u8 rest[0xD64 - 0x2C]; };
+struct WfDuel49B74 { struct WfPl49B74 p[2]; };
 u16 sub_08049B74(u16 arg0, int arg1, int arg2)
 {
-    s8 id = arg0;
+    u16 id = arg0;
     int s1 = 0xD64 * (arg1 & 1);
     u32 base = (u32)gUnk_0201930C;
     struct DZone *z = (struct DZone *)(s1 + base + 0x94 * arg2);
@@ -508,7 +509,8 @@ u16 sub_08049B74(u16 arg0, int arg1, int arg2)
     e = gUnk_020192E0;
     switch ((int)((u32)(e[0x1B12] << 27) >> 29)) {
     case 1: {
-        int s1 = arg2 * 0x94 + (arg1 & 1) * 0xD64;
+        int t = arg1 & 1;
+        int s1 = arg2 * 0x94 + t * 0xD64;
         u8 *zb = e + 0x2C;
         struct DZone *zn = (struct DZone *)(s1 + (int)zb);
         if ((zn->b6 & 2) != 0) {
@@ -529,36 +531,41 @@ u16 sub_08049B74(u16 arg0, int arg1, int arg2)
         if ((z->b7 & 4) == 0 && (s32)(gUnk_020192E4[arg1 & 1].b7 << 26) >= 0 &&
             sub_0800A78C(arg1, arg2, 0x15C) == 0 &&
             sub_0800A78C(arg1, arg2, 0x4DC) == 0 && found == 0) {
-            u8 f6 = z->b6;
-            if ((f6 & 2) != 0) {
-                if ((f6 & 1) != 0)
+            if ((z->b6 & 2) != 0) {
+                if ((z->b6 & 1) != 0)
                     flags = (u16)(flags | 4);
                 else
                     flags = (u16)(flags | 2);
             } else {
                 flags = (u16)(flags | 8);
-                if ((f6 & 1) == 0)
+                if ((z->b6 & 1) == 0)
                     flags = (u16)(flags | 2);
                 if ((u16)sub_08047114(0) == 0)
                     flags &= 0xFFF7;
             }
-            if ((sub_08008524(0, 0x536) > 0 || sub_08008524(1, 0x536) > 0) &&
-                CARD_NUM(((u32)ZONE_R(arg1, arg2)->w0 << 21) >> 21) != 0x536)
-                flags &= 0xFFF1;
+            if (sub_08008524(0, 0x536) > 0 || sub_08008524(1, 0x536) > 0) {
+                int t = arg1 & 1;
+                int s2 = arg2 * 0x94 + t * 0xD64;
+                if (CARD_NUM(((u32)((struct DZone *)(s2 + (u32)gUnk_0201930C))->w0 << 21) >> 21) != 0x536)
+                    flags &= 0xFFF1;
+            }
         }
-        if ((ZONE_R(arg1, arg2)->b6 & 2) != 0 && (u16)sub_08049880(id, arg1, arg2) != 0)
-            flags = (u16)(flags | 0x40);
+        {
+            int t = arg1 & 1;
+            int s2 = arg2 * 0x94 + t * 0xD64;
+            if ((((struct DZone *)(s2 + (u32)gUnk_0201930C))->b6 & 2) != 0 && (u16)sub_08049880(id, arg1, arg2) != 0)
+                flags = (u16)(flags | 0x40);
+        }
         break;
     case 3:
+        asm("" : "+r"(e)); /* FAKEMATCH: hide e's constant value from CSE so `e + t*0xD64` keeps its operand order */
         if (sub_0804A528(arg1, arg2, 1) != 0 &&
-            !(((*(u16 *)(e + (arg1 & 1) * 0xD64 + 0x2A)) >> arg2) & 1))
+            !(((((struct WfDuel49B74 *)e)->p[arg1 & 1].f2A) >> arg2) & 1))
             flags = (u16)(flags | 0x80);
         break;
     }
     return flags;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049B74); /* size 0x27C */
 /* Which usability flags (bit 6 = can be activated) does the card `id` have when set in spell/trap zone `zone` + 5 of `player`?
  * Only player 0 is ever evaluated (hypothesis: "is a face-down trap/spell of the current player usable"). */
 /* Duel flags byte at gUnk_020192E0+0x1B12 (DuelState.linkSkip / phase1B12 in duel.h). */

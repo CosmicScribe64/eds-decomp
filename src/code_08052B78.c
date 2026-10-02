@@ -37,82 +37,90 @@ int sub_080538C8(void);
 extern const u16 gUnk_08622AB4[];
 extern u8 gUnk_080862C4;
 
-#if 0 /* NONMATCHING: switch layout and register allocation differ; player stride is hoisted. */
+/* Per-player duel block at 0x020192E4: stride 0xD64, hand count at +2. */
+struct Side52B78 { u8 pad[2]; u8 handCount; u8 rest[0xD64 - 3]; };
 u16 sub_08052B78(u16 direction, int *player, int *zone, int *index, u32 mask)
 {
     int p = *player, z = *zone, i = *index;
     int oldP = p, oldZ = z, oldI = i;
-    struct Player *players = gUnk_020192E4;
+    struct Side52B78 *players = (struct Side52B78 *)gUnk_020192E4;
     int side = p & 1;
-    do {
-        if (direction & 4) {
-            switch (z) {
-            case 0:
-                if (p != 0) {
-                    if (i > 0) i--;
-                    else { z = 10; i = 0; }
-                } else {
-                    if (i <= 3) i++;
-                    else { z = 10; i = 0; }
-                }
-                break;
-            case 5:
-                i = (p != 0 ? i + 4 : i + 1) % 5;
-                break;
-            case 10:
-                z = 0;
-                i = p != 0 ? 4 : 0;
-                break;
-            case 11:
-                if (p != 0) {
-                    i--;
-                    if (i <= 0) i = *(u8 *)((u32)players + side * 0xD64 + 2);
-                } else {
-                    if (i < players[0].handCount - 1) i++;
-                    else i = 0;
-                }
-                break;
+    /* Assigning the player offset to one variable in both direction blocks
+     * keeps the multiply inside the loop: a twice-set destination is not
+     * loop-invariant, so loop.c leaves the 0xD64 multiply in place as in ROM. */
+    int off;
+    for (;;) {
+    if (direction & 4) {
+        switch (z) {
+        case 11:
+            if (p != 0) {
+                if (i <= 0) { off = side * 0xD64; i = *(u8 *)(off + (u32)players + 2); }
+            dec4:
+                i--;
+            } else {
+                if (i < players[0].handCount - 1) i++;
+                else i = 0;
             }
-        }
-        if (direction & 8) {
-            switch (z) {
-            case 0:
-                if (p != 0) {
-                    if (i <= 3) i++;
-                    else { z = 10; i = 0; }
-                } else {
-                    if (i > 0) i--;
-                    else { z = 10; i = 0; }
-                }
-                break;
-            case 5:
-                i = (p != 0 ? i + 1 : i + 4) % 5;
-                break;
-            case 10:
-                z = 0;
-                i = p != 0 ? 0 : 4;
-                break;
-            case 11:
-                if (p != 0) {
-                    if (i < *(u8 *)((u32)players + side * 0xD64 + 2) - 1) i++;
-                    else i = 0;
-                } else {
-                    if (i <= 0) i = players[0].handCount;
-                    i--;
-                }
-                break;
+            break;
+        case 0:
+            if (p != 0) {
+                if (i > 0) goto dec4; /* shares case 11's decrement, as in ROM */
+                z = 10; i = 0;
+            } else {
+                if (i <= 3) i++;
+                else { z = 10; i = 0; }
             }
+            break;
+        case 5:
+            i = (p != 0 ? i + 4 : i + 1) % 5;
+            break;
+        case 10:
+            z = 0;
+            i = p != 0 ? 4 : 0;
+            break;
         }
-        if (oldP == p && oldZ == z && oldI == i)
-            return 0;
-    } while (!sub_08052908(p, z, i, mask));
-    *zone = z;
-    *player = p;
-    *index = i;
-    return 1;
+    }
+    if (direction & 8) {
+        switch (z) {
+        case 11:
+            if (p != 0) {
+                off = side * 0xD64;
+                if (i < *(u8 *)(off + (u32)players + 2) - 1) i++;
+                else i = 0;
+            } else {
+                if (i <= 0) i = players[0].handCount;
+            dec8:
+                i--;
+            }
+            break;
+        case 0:
+            if (p != 0) {
+                if (i <= 3) i++;
+                else { z = 10; i = 0; }
+            } else {
+                if (i > 0) goto dec8; /* shares case 11's decrement, as in ROM */
+                z = 10; i = 0;
+            }
+            break;
+        case 5:
+            i = (p != 0 ? i + 1 : i + 4) % 5;
+            break;
+        case 10:
+            z = 0;
+            if (p != 0) i = 0; else i = 4;
+            break;
+        }
+    }
+    if (oldP == p && oldZ == z && oldI == i)
+        return 0;
+    if (sub_08052908(p, z, i, mask)) {
+        *player = p;
+        *zone = z;
+        *index = i;
+        return 1;
+    }
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_08052B78);
 
 u16 sub_08052CE8(u16 direction, int *player, int *zone, int *index, u32 mask)
 {

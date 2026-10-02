@@ -370,18 +370,21 @@ extern const u8 gUnk_0867917C[], gUnk_0867997C[], gUnk_0867A17C[], gUnk_0867B17C
 extern const u8 gUnk_0863CA9C[], gUnk_0863CB3C[], gUnk_0863CABC[], gUnk_0863CB5C[];
 extern struct { u32 pad0; void (*hblankCallback)(void); } gUnk_03000000;
 
-#if 0 /* NONMATCHING: same stores in the same order, but register allocation and scheduling differ
-       * (loop counters, which BG-map pointer lives in r1/r2, constants chain for 0x2200..0x2208) */
-/* Pack list scene setup: display registers, palettes, tiles, BG maps. */
+/* Pack list scene setup: display registers, palettes, tiles, BG maps, reveal-state reset. */
+/* Two u16 fields of the pack buffer after the scroll byte; as 16-bit bitfields their zero store
+ * goes through an SImode constant that the reveal-state loop reuses (plain u16 stores reload it). */
+struct PackTail {
+    u8 pad[0x116];
+    u16 x116 : 16;
+    u16 x118 : 16;
+};
 int sub_08063040(void)
 {
-    s8 i;
-    s16 j;
-    s8 k;
+    int i;
+    int j;
     u16 *p;
     u16 *q;
-    u16 *t;
-    u8 *sp;
+    struct PackBuf *pb;
     gUnk_03000040.vblankFlags = 0xB83;
     REG_DISPCNT = 0x40;
     REG_BG0CNT = 4;
@@ -406,11 +409,12 @@ int sub_08063040(void)
     sub_08075294((void *)0x05000020, gUnk_0863CA9C, 0x20);
     sub_08075294((void *)0x05000040, gUnk_0863CB3C, 0x20);
     sub_08075294((void *)0x06006600, gUnk_0863CABC, 0x80);
-    p = gUnk_03000040.bgMap[3];
     sub_08075294((void *)0x06008000, gUnk_0863CB5C, 0x120);
-    for (i = 15; i >= 0; i--) {
+    p = gUnk_03000040.bgMap[3];
+    for (i = 0; i < 16; i++) {
+        j = 15; /* set before q: lengthens j's live range so p wins r2 in global alloc */
         q = p + 32;
-        for (j = 15; j >= 0; j--) {
+        for (; j >= 0; j--) {
             p[0] = 0x1130;
             p[1] = 0x1131;
             q[0] = 0x1132;
@@ -422,23 +426,26 @@ int sub_08063040(void)
     }
     p = gUnk_03000040.bgMap[1];
     p[0] = 0x2200;
-    q = p + 96;
-    q[0] = 0x2201;
-    q += 29;
-    q[0] = 0x2202;
+    p[96] = 0x2201;
+    p[125] = 0x2202;
     p[29] = 0x2203;
-    for (k = 1; k <= 28; k++) {
-        t[0] = 0x2204;
-        t[32] = 0x2208;
-        t = &p[(u16)k];
-        t[64] = 0x2208;
-        t[96] = 0x2205;
+    for (i = 1; i <= 28; i++) {
+        q = (u16 *)((u16)i * 2 + (u32)p); /* offset-first sum: adds r1, r0, r2 */
+        q[0] = 0x2204;
+        q[32] = 0x2208;
+        q[64] = 0x2208;
+        q[96] = 0x2205;
     }
-    q = p + 32;
-    q[32] = 0x2206;
-    q[0] = 0x2206;
-    q[29] = 0x2207;
-    q[61] = 0x2207;
+    p[32] = 0x2206;
+    p[64] = 0x2206;
+    p[61] = 0x2207;
+    p[93] = 0x2207;
+    sub_080757AC();
+    pb = &gUnk_02015160;
+    ((struct PackTail *)pb)->x116 = 0;
+    ((struct PackTail *)pb)->x118 = 0;
+    for (i = 0; i < 5; i++) /* loop.c reverses this into the ROM's 0x110-down store loop */
+        pb->state[i] = 0;
     sub_080757AC();
     gUnk_03000040.vblankCallback = 0;
     REG_IME = 0;
@@ -452,8 +459,6 @@ int sub_08063040(void)
     gUnk_03000040.bgVofs[0] = 3;
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080629F0", sub_08063040); /* 0x08063040 size 0x2F0 */
 void sub_0806245C(void);
 int sub_08075AE4(int a);
 

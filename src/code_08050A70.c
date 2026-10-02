@@ -148,15 +148,16 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 u16 sub_0805163C(u16 a, u16 b);
 
-#if 0 /* NONMATCHING (score 99): Rewritten from the asm (score 99). Matching structure: D50 = *(struct
-       * *)&gUnk_020192E0 accessed directly (GCSE gives the r8 base copy); hand loops 'i = 0; ps = P50; for (; i <
-       * ps[p&1].handCount; i++)' (sym loaded before the multiply); zone loops/found blocks via ZONE50 = ((p&1)*0xD64 +
-       * z*0x94 + (u32)gUnk_0201930C) (p-term first gives the ROM's multiply order); subtype via static inline (u16 id) +
-       * switch; case 2 'while (D50.idx <= 4) { u8 n = D50.idx; z = (n*0x94 + p*0xD64 + (u32)D50.players[0].zones); s16
-       * id = c.id; ... D50.idx = n + 1; }' (s16 id pads the loop so loop.c keeps movs #0x94 inside, which lets K take
-       * r6). FAKEMATCH: u8 n1 = case-1 handCount local (permuter) keeps the base in r8. Remaining: hand-loop register
-       * assignment (ROM: off r2, count r1, count copy r3 after 'ps+0x684'), case-1 hand-found recomputes 1-p for the 2nd
-       * call (ROM r7 copy), reload regs (K/0x7FF loads, gUnk_0822C720 in r6). */
+#if 0 /* NONMATCHING (score 12): Score 12: only 3 reload-register choices differ (case-2 found block loads
+       * gUnk_0822C720 into r0 vs ROM r6; default's ldrb gUnk_02015EE8+1 into r6 vs r7; 0x1B10 into r7 vs r1) - the
+       * reload round-robin is one step off. Structure that matched: D50 = *(struct *)&gUnk_020192E0 accessed directly
+       * (GCSE makes the r8 base copy); hand loops as 'i = 0; ps = P50; if (i < ps[x].handCount) { [case 1: op = 1 - p;]
+       * hands = (u8 *)ps->hand; n = ps[x].handCount; do { c = *(card *)(x * 0xD64 + (u32)hands + i * 4); ... i++; }
+       * while (i < n); }' with separate ps variables per case; case-1 found block calls sub_080197E0(op) then
+       * sub_080193D4(1 - p) (ROM recomputes 1 - p); zone loops/found blocks via ZONE50 = ((p&1)*0xD64 + z*0x94 +
+       * (u32)gUnk_0201930C) (p-term first); subtype via static inline (u16 id) + switch; case 2 while loop with 'u8 n =
+       * D50.idx; z = (n*0x94 + p*0xD64 + (u32)D50.players[0].zones); s16 id = c.id; ... D50.idx = n + 1' (s16 id pads
+       * the loop so loop.c keeps movs #0x94 inside). */
 struct S50Card { u32 id:12; u32 b12:6; u32 f18:1; u32 b19:13; };
 struct S50Zone {
     struct S50Card card;    /* +0x00 */
@@ -216,19 +217,28 @@ int sub_08050A70(void)
     int p = D50.turn;
     int i;
     struct S50Player *ps;
+    struct S50Player *ps0;
     u8 n1;
+    u8 n0;
+    u8 n2;
+    int op;
 
     switch (D50.step) {
     case 0:
         i = 0;
-        ps = P50;
-        for (; i < ps[p & 1].handCount; i++) {
-            struct S50Card c = ps[p & 1].hand[i];
-            if (c.f18) {
-                sub_080197E0(p, gUnk_0862467A);
-                sub_080193D4(p, i, 0, 1);
-                return 0;
-            }
+        ps0 = P50;
+        if (i < ps0[p & 1].handCount) {
+            u8 *hands = (u8 *)ps0->hand;
+            n0 = ps0[p & 1].handCount;
+            do {
+                struct S50Card c = *(struct S50Card *)((p & 1) * 0xD64 + (u32)hands + i * 4);
+                if (c.f18) {
+                    sub_080197E0(p, gUnk_0862467A);
+                    sub_080193D4(p, i, 0, 1);
+                    return 0;
+                }
+                i++;
+            } while (i < n0);
         }
         for (i = 5; i <= 10; i++) {
             struct S50Zone *z = ZONE50(p, i);
@@ -256,14 +266,20 @@ int sub_08050A70(void)
     case 1:
         i = 0;
         ps = P50;
-        n1 = ps[(1 - p) & 1].handCount;
-        for (; i < n1; i++) {
-            struct S50Card c = ps[(1 - p) & 1].hand[i];
-            if (c.f18) {
-                sub_080197E0(1 - p, gUnk_0862467A);
-                sub_080193D4(1 - p, i, 0, 1);
-                return 0;
-            }
+        if (i < ps[(1 - p) & 1].handCount) {
+            u8 *hands;
+            op = 1 - p;
+            hands = (u8 *)ps->hand;
+            n2 = ps[(1 - p) & 1].handCount;
+            do {
+                struct S50Card c = *(struct S50Card *)((op & 1) * 0xD64 + (u32)hands + i * 4);
+                if (c.f18) {
+                    sub_080197E0(op, gUnk_0862467A);
+                    sub_080193D4(1 - p, i, 0, 1);
+                    return 0;
+                }
+                i++;
+            } while (i < n2);
         }
         for (i = 5; i <= 10; i++) {
             struct S50Zone *z = ZONE50(1 - p, i);

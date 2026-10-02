@@ -102,10 +102,42 @@ static inline int CardKind(u16 id)
     return k;
 }
 
-#if 0 /* NONMATCHING: control flow, filter loops and sort dispatch reproduce the ROM (8-way filter
-       * jump table, 6-way sort table, extras appended after the sort), but register allocation
-       * differs (ROM keeps n in r7, out in r5, src r9, list*2 r8 and spills dst to [sp+0xC];
-       * the list base is rematerialised per branch via a local base pointer) */
+/* Frame kind (as CS_FrameKind in code_0806C4E4): direct returns keep jump2 from threading the `== k` test. */
+static inline u8 FS_FrameKind(u16 id)
+{
+    switch (CARD_NUMBER(id)) {
+    case 0x776: return 3;
+    case 0x777:
+    case 0x778: return 1;
+    default:
+        switch (CARD_TYPE(id)) {
+        case 0x16: return 7;
+        case 0x15: return 8;
+        case 0x17: return 9;
+        default: return (CARD_STATS(id) & 0xC0000) >> 18;
+        }
+    }
+}
+#define FS_COUNT gUnk_0201DB20_ls.cnt1494[0][list]
+#define FS_KIND(kindValue) \
+    for (i = 0; i < FS_COUNT; i++) { \
+        u16 card = src[i]; \
+        switch ((u8)CARD_TYPE(card)) { \
+        case 0x15: \
+        case 0x16: \
+            break; \
+        default: \
+            if (FS_FrameKind(src[i]) == (kindValue)) \
+                dst[n++] = src[i]; \
+            break; \
+        } \
+    }
+#define FS_TYPE(typeValue) \
+    for (i = 0; i < FS_COUNT; i++) { \
+        u16 card = src[i]; \
+        if ((u8)CARD_TYPE(card) == (typeValue)) \
+            dst[n++] = card; \
+    }
 /* Deck-edit filter and sort of card list `list`: rebuilds the lists, copies list `list` (u16 ids) to a scratch array,
    keeps the cards of category `filter` (0 = all, 1-3 monster categories, 4 = Magic, 5 = Trap, 6 = category 3, 7 = monsters
    only) and sorts by `sort` (0 none, 1 ATK, 2 DEF, 3 type, 4 attribute, 5 level). */
@@ -113,10 +145,9 @@ void sub_08069284(u8 list, u8 filter, u8 sort)
 {
     u16 *src;
     u16 *dst;
-    u8 n2 = 0;
-    u8 n = 0;
+    int n = 0;
+    u16 n2 = 0;
     u16 i;
-    u16 *out;
     u16 *base = gUnk_0201EFC4;
 
     sub_080686E8();
@@ -139,105 +170,57 @@ void sub_08069284(u8 list, u8 filter, u8 sort)
     case 0:
         if (sort == 0)
             break;
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            u16 id = src[i];
+        for (i = 0; i < FS_COUNT; i++) {
+            u16 card = src[i];
 
-            switch (CARD_TYPE(id)) {
+            switch (CARD_TYPE(card)) {
             case 0x15:
             case 0x16:
             case 0x17:
             case 0x18:
-                base[n2++] = id;
+                base[n2++] = card;
                 break;
             default:
-                *out++ = src[i], n++;
+                dst[n++] = src[i];
                 break;
             }
         }
         break;
     case 1:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            u16 id = src[i];
-
-            switch (CARD_TYPE(id)) {
-            case 0x15:
-            case 0x16:
-                continue;
-            }
-            if (CardKind(id) == 0)
-                *out++ = src[i], n++;
-        }
+        FS_KIND(0);
         break;
     case 2:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            u16 id = src[i];
-
-            switch (CARD_TYPE(id)) {
-            case 0x15:
-            case 0x16:
-                continue;
-            }
-            if (CardKind(id) == 1)
-                *out++ = src[i], n++;
-        }
+        FS_KIND(1);
         break;
     case 3:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            u16 id = src[i];
-
-            switch (CARD_TYPE(id)) {
-            case 0x15:
-            case 0x16:
-                continue;
-            }
-            if (CardKind(id) == 2)
-                *out++ = src[i], n++;
-        }
+        FS_KIND(2);
         break;
     case 4:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            int id = src[i];
-
-            if (CARD_TYPE(id) == 0x16)
-                *out++ = id, n++;
-        }
+        FS_TYPE(0x16);
         break;
     case 5:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            s16 id = src[i];
-
-            if (CARD_TYPE(id) == 0x15)
-                *out++ = id, n++;
-        }
+        FS_TYPE(0x15);
         break;
     case 6:
-        out = dst + n;
-        for (i = 0; gUnk_0201DB20_ls.cnt1494[0][list] > i; i++) {
-            u16 id = src[i];
-
-            if (CardKind(id) == 3)
-                *out++ = src[i], n++;
+        for (i = 0; i < FS_COUNT; i++) {
+            if (FS_FrameKind(src[i]) == 3)
+                dst[n++] = src[i];
         }
         break;
     case 7:
-        out = dst + n;
-        for (i = 0; i < gUnk_0201DB20_ls.cnt1494[0][list]; i++) {
-            u16 id = src[i];
+        for (i = 0; i < FS_COUNT; i++) {
+            u16 card = src[i];
 
-            switch (CARD_TYPE(id)) {
+            switch (CARD_TYPE(card)) {
             case 0x15:
             case 0x16:
             case 0x17:
             case 0x18:
-                continue;
+                break;
+            default:
+                dst[n++] = src[i];
+                break;
             }
-            *out++ = id, n++;
         }
         break;
     }
@@ -252,6 +235,9 @@ void sub_08069284(u8 list, u8 filter, u8 sort)
         gUnk_0201DB20_ls.cnt1494[1][list] = n;
     }
     switch (sort) {
+    case 0:
+        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        break;
     case 1:
         sub_080690C4(n, (s16 *)dst, (u16 (*)(s16, s16))sub_08068E44);
         gUnk_0201DB20_ls.arr14A0[list] = 1;
@@ -270,22 +256,20 @@ void sub_08069284(u8 list, u8 filter, u8 sort)
         break;
     case 5:
         sub_080690C4(n, (s16 *)dst, (u16 (*)(s16, s16))sub_08069014);
-        /* fall through */
-    case 0:
         gUnk_0201DB20_ls.arr14A0[list] = 1;
         break;
     }
     if (filter == 0 && sort != 0) {
-        s8 total = n2 + n;
+        int total;
 
-        for (i = 0; i < n2; i++)
+        i = 0;
+        total = n2 + n;
+        for (; i < n2; i++)
             dst[n + i] = base[i];
         gUnk_0201DB20_ls.cnt1494[1][list] = total;
     }
     gUnk_0201DB20_ls.arr620[list] = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08069284", sub_08069284); /* 0x08069284 size 0x80C */
 /* Clears the flag block at +0x1C49..+0x1C53 of the scene state; returns 1. */
 int sub_08069A90(void)
 {

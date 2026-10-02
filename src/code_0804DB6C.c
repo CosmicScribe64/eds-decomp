@@ -485,15 +485,17 @@ void sub_0804E780(int player)
         }
     }
 }
-#if 0 /* NONMATCHING (score 324): NONMATCHING: score 324 (from 715). Rewritten in the style of the matched
+#if 0 /* NONMATCHING (score 190): NONMATCHING: score 190 (from 715). Rewritten in the style of the matched
        * sibling sub_0804FC4C (code_0804EFF0): typed externs gE9PS_020192E4[] (array of 0xD64 player structs, so the base
-       * loads first), links read as values (u16 link = Z->links[idx]; u8 who = link; slot = link >> 8) which gives the
-       * ROM's (pz + 10) + idx*2, linked zone via a separate row pointer (row = side*0xD64 + base; lz = &row[slot]), case
-       * 4 flags loaded inside the condition (f = z->f6), signed 1-bit field for flagsC bit 4, (s32)(card << 8) < 0,
-       * local table pointer t + (kind = 0x26600000 | t[0]) for the event word, player != 1 message tests. Case 3 now
-       * matches except two lines and the frame is 8. Remaining: reload-register choices (0x1B22/0x1B21/0x1B20 constants:
-       * ROM r6, build r4), case 10 hoists the step address (base+0x1B20) into r9 instead of 0x94, and case 21/22 tails
-       * get cross-jumped. */
+       * loads first), links read as values (u16 link = Z->links[idx]; who = (u8)link as u32 in case 10; slot = link >>
+       * 8) which gives the ROM's (pz + 10) + idx*2, linked zone via a separate row pointer in case 3 (row = side*0xD64 +
+       * base; lz = &row[slot]), link zone written side-first in case 3, case 4 side = other & 1 as its own statement and
+       * flags loaded inside the condition (f = z->f6), signed 1-bit field for flagsC bit 4, (s32)(card << 8) < 0, local
+       * table pointer t + (kind = 0x26600000 | t[0]) for the event word, player != 1 message tests. Cases 0-6 match
+       * except case 4's 0x4CE and (ROM ties the result to the 0x3C register; f as u16 fixes it but adds a copy).
+       * Remaining: case 10 hoists the step address (base+0x1B20) into r8 and the const 1 into sl, where the ROM hoists
+       * 0x94/0xD64 and forms the in-loop step++ as (base+0x2C)+0x1AF4; case 20 and default allocation; case 21/22 tails
+       * cross-jump. */
 int sub_0800842C(int, u16);
 int sub_080086CC(int, u16);
 int sub_080088A4(int, int, int);
@@ -572,7 +574,7 @@ int sub_0804E948(void)
             if (E9_ID(z) && (z->f6 & 2)) {
                 int idx = sub_0800AA40(player, i, 0x60C);
                 if (idx >= 0) {
-                    u16 link = ((struct E9Zone *)(i * 0x94 + (player & 1) * 0xD64 + (u32)gUnk_0201930C))->links[idx];
+                    u16 link = ((struct E9Zone *)((player & 1) * 0xD64 + i * 0x94 + (u32)gUnk_0201930C))->links[idx];
                     u8 who = link;
                     u32 slot = link >> 8;
                     struct E9Zone *row = (struct E9Zone *)((who & 1) * 0xD64 + (u32)gUnk_0201930C);
@@ -592,7 +594,8 @@ int sub_0804E948(void)
     case 4:
         for (; E9_ZONE <= 9; E9_ZONE++) {
             int other = 1 - player;
-            struct E9Zone *z = (struct E9Zone *)(E9_ZONE * 0x94 + (other & 1) * 0xD64 + E9_E + 0x2C);
+            int side = other & 1;
+            struct E9Zone *z = (struct E9Zone *)(E9_ZONE * 0x94 + side * 0xD64 + E9_E + 0x2C);
             u32 id = E9_ID(z);
             u8 f;
             if (id && ((f = z->f6) & 2)) {
@@ -617,7 +620,7 @@ int sub_0804E948(void)
                     return 0;
                 case 0x5F8:
                     if (sub_08008C6C(other) >= 0
-                        && !(((struct E9Zone *)(E9_ZONE * 0x94 + (other & 1) * 0xD64 + E9_E + 0x2C))->b91 & 8)) {
+                        && !(((struct E9Zone *)(side * 0xD64 + E9_ZONE * 0x94 + E9_E + 0x2C))->b91 & 8)) {
                         u16 msg = 0x8A;
                         if (player != 1) msg = 0x808A;
                         sub_0801EC58(msg, E9_ZONE, 1, 0);
@@ -655,7 +658,7 @@ int sub_0804E948(void)
             if (sub_0800A78C(player, E9_ZONE, 0x60C)) {
                 u16 idx = sub_0800AA40(player, E9_ZONE, 0x60C);
                 u16 link = ((struct E9Zone *)(E9_ZONE * 0x94 + (player & 1) * 0xD64 + E9_E + 0x2C))->links[idx];
-                u8 who = link;
+                u32 who = (u8)link;
                 u32 slot = link >> 8;
                 struct E9Zone *lz = (struct E9Zone *)(slot * 0x94 + (who & 1) * 0xD64 + E9_E + 0x2C);
                 if (!(lz->b91 & 8)) {

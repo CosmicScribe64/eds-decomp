@@ -152,8 +152,6 @@ int sub_08032CB0(struct EffCtx *ctx)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: the tid and zone locals get swapped registers (r9/sl) compared with the ROM.
-       * Everything else is identical. */
 int sub_08032D10(struct EffCtx *ctx)
 {
     int cnt = sub_08008C6C(ctx->player);
@@ -162,15 +160,17 @@ int sub_08032D10(struct EffCtx *ctx)
         sub_0801EC58(PLAYER_RAW(ctx) ? 0x8092 : 0x92, ctx->zone, 0, 0);
         if ((ctx->phaseA & 7) == 1 && cnt >= 0) {
             u16 player;
-            int zone;
+            register int zone asm("sl"); /* FAKEMATCH: ROM keeps zone in sl and the target id in r9 */
             struct DuelZone *tz;
             u32 tid;
             int p1;
+            int p0;
             struct DuelZone *z1;
 
             player = ((u8 *)&ctx->pos)[0];
             zone = ctx->pos >> 8;
-            tz = (struct DuelZone *)(zone * 0x94 + (player & 1) * 0xD64 + (u32)gUnk_0201930C);
+            p0 = player & 1;
+            tz = (struct DuelZone *)(zone * 0x94 + p0 * 0xD64 + (u32)gUnk_0201930C);
             tid = CARD_ID(CARD_WORD(tz->card));
             p1 = 1 & ctx->player;
             z1 = (struct DuelZone *)(ctx->zone * 0x94 + p1 * 0xD64 + (u32)gUnk_0201930C);
@@ -179,17 +179,17 @@ int sub_08032D10(struct EffCtx *ctx)
                 int p2 = 1 & ctx->player;
                 struct DuelZone *z2 = (struct DuelZone *)(ctx->zone * 0x94 + p2 * 0xD64 + (u32)gUnk_0201930C);
 
+                /* FAKEMATCH: the r7 clobber stops reload reusing the 0xD64 constant in r7, as the ROM reloads it */
+                asm volatile("" ::: "r7");
                 if (CARD_NUMBER(CARD_ID11(CARD_WORD(z2->card))) == 0x2DA) {
                     int p3 = 1 & ctx->player;
                     struct DuelZone *z3 = (struct DuelZone *)(ctx->zone * 0x94 + p3 * 0xD64 + (u32)gUnk_0201930C);
 
                     if ((z3->flag6_1) && tid != 0) {
-                        s16 c8 = (u8)cnt << 8;
-
-                        sub_08019078(ctx->player, ctx->pos, ctx->player | c8);
+                        sub_08019078(ctx->player, ctx->pos, ctx->player | (u8)cnt << 8);
                         sub_08017DE0(player, zone, 0);
                         sub_0801EC58(PLAYER_RAW(ctx) ? 0x808C : 0x8C, cnt, 1, 0);
-                        sub_08017AB4(ctx->player, ctx->player | c8, ctx->player | (ctx->zone << 8), 5);
+                        sub_08017AB4(ctx->player, ctx->player | (u8)cnt << 8, ctx->player | (ctx->zone << 8), 5);
                     }
                 }
             }
@@ -197,8 +197,6 @@ int sub_08032D10(struct EffCtx *ctx)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08032CB0", sub_08032D10); /* 0x08032D10 size 0x16C */
 int sub_08032E7C(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {

@@ -435,30 +435,38 @@ void sub_08027D34(u16 *tiles, u8 *pals, u8 angle, u8 sel, u8 bump, u16 flags, u8
     gWork.aff[0].scaleY = sub_0807B4D0(0x40, c) + 0xC0;
 }
 
-#if 0 /* NONMATCHING: logic and size match; ROM keeps r7 free (0x38 built in r7, y = 0x6E - 0x42) and puts the table base in sl */
 void sub_080280D0(u8 idx, u16 flags)
 {
+    /* Constants held in locals declared outside the loop: CSE cannot see them inside the
+       loop, so reload rematerializes them (x0 in r7, y0 into r3), and the round-robin reload
+       register choice depends on w/h/pal being variables. */
     s32 w = 0x40;
-    u32 i;
+    s32 h = 0x20;
+    u8 i;
+    const u16 *tbl;
+    s32 x0 = 0x38;
+    s32 y0 = 0x6E;
+    s32 pal = 4;
     u16 hflip;
 
-    for (i = 0, hflip = flags & 4; i < 2; i++) {
-        s16 tile = gUnk_080826EA[idx * 2 + i];
-        s32 x = 0x38;
-        s32 y = 0x6E;
+    i = 0;
+    tbl = gUnk_080826EA;
+    hflip = flags & 4;
+    for (; i < 2; i++) {
+        u16 tile = tbl[idx * 2 + i];
+        s32 x, y;
         u32 *oam;
         u32 attr;
-        x += i * w;
+        x = x0 + i * w;
+        y = y0;
         if (idx == 0)
             y -= 0x42;
-        oam = sub_0807B6B8(0, tile, x, y, w, 0x20, 4, gUnk_080826FE[idx], 0x200, 0, 0, 0, &gWork);
+        oam = sub_0807B6B8(0, tile, x, y, w, h, pal, gUnk_080826FE[idx], 0x200, 0, 0, 0, &gWork);
         attr = *oam;
         if (hflip)
             *oam = attr | 0x400;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08027580", sub_080280D0); /* 0x080280D0 size 0xA8 */
 
 void sub_08028178(u8 idx, u8 t, u16 flags)
 {

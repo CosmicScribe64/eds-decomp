@@ -69,7 +69,7 @@ See [[compiler-flags]] for the details and the evidence matrix, and [[agbcc]] fo
 
 ## Conventions
 
-- **Names:** functions are `sub_08XXXXXX` and globals `gUnk_0XXXXXXX`, until they get a real name. Keep the asm symbol names, because other units call `sub_...` by name. Put proposed names on the unit's wiki page. A later global rename pass applies them.
+- **Names:** functions are `sub_08XXXXXX` and globals `gUnk_0XXXXXXX`, until they get a real name. Keep the asm symbol names, because other units call `sub_...` by name. Put proposed names on the unit's wiki page. A later global rename pass applies them. Before proposing a name, check what the function touches with [[xref]] and what it does at run time with the [[emulator]].
 - **Declarations:** declare prototypes, `extern`s and structs **locally in your unit's C file** (for now). Don't edit shared headers during parallel work.
 - **No new data in C (yet):** string literals, `const` tables and initialised globals would create `.rodata` or `.data` sections that have to be placed in the ROM layout. Instead, reference the existing ROM data by address:
 

@@ -751,3 +751,14 @@ updated: 2026-09-29
   - [[overview]]: 1,975/1,976 functions with only `sub_08044224` left; assets complete; milestones.
   - [[index]]: the new pages.
 - `scripts/wiki_lint.py`: no broken links, orphans, index gaps or frontmatter problems.
+
+## [2026-10-02] setup | Emulator and xref analysis tools
+- Two analysis tools for the readability pass (commit `c441483`), written up from their authors' READMEs (`build/emu/README.md`, `build/xref/README.md`, local only):
+  - [[emulator]] (new): `tools/emu.py` and `docker/emu/`, a headless mGBA 0.10.5 harness with Lua and a GDB stub. The page covers setup, every command with an example, the six-state savestate library (`title` to `duel_turn2`), outputs under `build/emu/` (gitignored; the ROM never leaves the machine), the author's verification, findings from those runs (LP write path, duel phase byte sequence, IRQ counts; phases 6–8 are hypotheses) and limitations.
+  - [[xref]] (new): `tools/xref.py`, a static cross-reference database built from `build/eds.elf`. The page covers build and rebuild rules, every command with an example, how to read a `func` card, how it works, verification (selftest 16/16, 2940/2940 globals, 1936/1960 parameter counts) and limitations.
+- Re-checked for this entry: `python3 tools/xref.py selftest` gives 16 PASS. `tools/emu.py sym` and `states list` run, and all six states report `ok`. `build/eds.elf` is unstripped, with 16,694 symbols.
+- Also updated:
+  - [[agent-tooling]]: Analysis table rows for both tools, and a Ghidra note (not set up on purpose; `build/eds.elf` loads directly).
+  - [[decomp-workflow]]: check names with [[xref]] and the [[emulator]] before proposing them.
+  - [[overview]]: tooling bullet; milestone 2 notes that the readability pass has started.
+  - [[index]]: the two new pages under Tools.

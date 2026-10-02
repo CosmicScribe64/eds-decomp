@@ -25,7 +25,7 @@ The project is a byte-matching decompilation of *Yu-Gi-Oh! The Eternal Duelist S
 - **Matching policy:** ordinary C is preferred. Byte-identical, behaviour-neutral fakematches, such as the permuter's redundant tests, register bindings and empty `asm` constraints, are accepted when marked `FAKEMATCH` and documented in [[matching-tricks]]. A whole-unit byte match is the acceptance test.
 - **Last function:** `sub_08044224` ([[code-08044224]], 0x2514 bytes) is the only `INCLUDE_ASM` left. Its parked draft is at score 338 (commit `2eafe08`; see [[code-08044224]] for the metric). The [[sound-driver]] is complete in C; the ARM mixer is authored assembly ([[sound-mixer]]).
 - **Shared headers:** `include/main.h`, `include/duel.h`, `include/duel_ui.h` and `include/sound.h` hold the canonical `gMain`, duel and duel-screen layouts. About 30 units use them ([[shared-headers]], [[duel-engine]]).
-- **Tooling:** `tools/check.py` and `tools/check_all.py` compare units with their original bytes, and work without the ROM ([[rom-free-workflow]]). The permuter, a semantic hill-climber over parked drafts and the agent setup are described in [[decomp-permuter]] and [[agent-tooling]]. `tools/wf.py` gives each agent a private per-function working copy of a unit, RTL dumps, and a locked merge back into `src/` ([[agent-tooling]]).
+- **Tooling:** `tools/check.py` and `tools/check_all.py` compare units with their original bytes, and work without the ROM ([[rom-free-workflow]]). The permuter, a semantic hill-climber over parked drafts and the agent setup are described in [[decomp-permuter]] and [[agent-tooling]]. `tools/wf.py` gives each agent a private per-function working copy of a unit, RTL dumps, and a locked merge back into `src/` ([[agent-tooling]]). For the readability pass (2026-10-02), `tools/xref.py` gives static cross-references from `build/eds.elf` ([[xref]]), and `tools/emu.py` runs the game headless in mGBA, with traces, watchpoints and a savestate library ([[emulator]]).
 - **Hardware reference:** the GBA sound, DMA, timer, memory and interrupt sections of [[gbatek]] were checked against ROM accesses. The NDS, DSi and 3DS portions were not reviewed.
 
 ## Hand-written and SDK source
@@ -55,7 +55,7 @@ See [[rom-map]] for the full map.
 
 ## Next milestones
 1. Match the last function, `sub_08044224` ([[code-08044224]]), and write up the 2026-10-02 matches on their unit pages.
-2. Do the global rename pass with the names proposed in `config/names.txt` and on the unit pages. The convention is pret-style: `CamelCase` functions and `gCamelCase` globals. Semantic names are also a prerequisite for a second game version ([[rom-versions]]).
+2. Do the global rename pass with the names proposed in `config/names.txt` and on the unit pages. The convention is pret-style: `CamelCase` functions and `gCamelCase` globals. Semantic names are also a prerequisite for a second game version ([[rom-versions]]). This readability pass has started: names are being proposed using the evidence from [[xref]] and the [[emulator]].
 3. ~~Replace `.incbin` data with real data files and extract assets.~~ Done 2026-10-02 ([[assets]]). Next for data: a relocatable layout, so edited items can grow and move instead of fitting their original slots.
 4. Finish the shared headers by migrating the remaining units, folding the local views back into the headers, and adding save data ([[shared-headers]]).
 5. After USA reaches 100%, add the Japanese build to the same source ([[rom-versions]]).

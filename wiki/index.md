@@ -77,6 +77,8 @@ Start with [[overview]]. The schema and workflows live in `CLAUDE.md` at the rep
 - [[shared-headers]]: canonical `include/main.h` and `include/duel.h`, and how units migrate to them.
 - [[m2c]]: ARM decompiler for first drafts (`tools/m2c_draft.py`).
 - [[objdiff]]: progress report in the decomp.dev format (`make objdiff-report`, CI workflow) and the object differ.
+- [[xref]]: static cross-reference database from `build/eds.elf` (`tools/xref.py`): function cards, global users, strings, call graphs, units, subsystems, address lookup. *verified (selftest 16/16)*
+- [[emulator]]: headless mGBA 0.10.5 harness (`tools/emu.py`, image `eds-emu`): traces, watchpoints, breakpoints, Lua, GDB, ROM comparison, and a savestate library from title to mid-duel. *verified (selftest)*
 
 ## Sources
 - [[rom-analysis]]: facts checked directly against the baserom.

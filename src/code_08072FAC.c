@@ -173,42 +173,40 @@ u16 sub_0807326C(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     }
     return hdrT[0];
 }
-#if 0 /* NONMATCHING (2 lines): the row binding's mov sl,r0 comes after the u16 parameter narrowing; ROM copies rowArg to sl first, during parameter setup */
+/* FAKEMATCH: the row binding is declared inside the guarded block (permuter); the register pins and the
+   empty asm keep row in sl and the mask in ip like the ROM */
 u16 sub_0807332C(u32 rowArg, u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
-    register u32 row __asm__("r10") = rowArg;
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
     u8 *dst = (u8 *)(0x06004000 + tileBase * 32);
     u16 *hdrC = (u16 *)((u8 *)tiles + hdrT[0] * 32);
     u16 *cells = hdrC + 4;
-
     u16 i;
     register u32 mask __asm__("r12");
     u16 n;
+
     sub_08075294(dst, tiles, hdrT[0] * 32);
     sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
 
     i = 0;
     n = hdrC[0];
     if (i < n) {
-    mask = 0xFF00;
-
-    row = (u32)gUnk_0300045C + row * 0x800;
-    __asm__ volatile("" : "+r"(row));
-    do {
-        u16 pos = *cells++;
-        u16 tile = *cells++;
-        u16 idx = (pos & 0x3F) | ((pos & mask) >> 3);
-        idx += mapBase;
-        ((u16 *)row)[idx] = (tile + tileBase) | (palIdx >> 4) << 12;
-        i++;
-    } while (i < hdrC[0]);
+        register u32 row __asm__("r10") = rowArg;
+        mask = 0xFF00;
+        row = (u32)gUnk_0300045C + row * 0x800;
+        __asm__ volatile("" : "+r"(row));
+        do {
+            u16 pos = *cells++;
+            u16 tile = *cells++;
+            u16 idx = (pos & 0x3F) | ((pos & mask) >> 3);
+            idx += mapBase;
+            ((u16 *)row)[idx] = (tile + tileBase) | (palIdx >> 4) << 12;
+            i++;
+        } while (i < hdrC[0]);
     }
     return hdrT[0];
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_0807332C); /* 0x0807332C size 0xC8 */
 
 u16 sub_080733F4(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {

@@ -123,6 +123,7 @@ def main():
     ap.add_argument('--norm', action='store_true', help='with --diff: hide branch targets, pc offsets and comments')
     ap.add_argument('--asm', metavar='FUNC')
     ap.add_argument('--keep', action='store_true', help='keep temp dir')
+    ap.add_argument('--src', metavar='FILE', help='compile FILE instead of src/<unit>.c (a private working copy)')
     a = ap.parse_args()
 
     lo, hi, funcs = unit_range(a.unit)
@@ -139,7 +140,7 @@ def main():
         print('\n'.join(objdump_bin(ROM[f[0] - BASE:f[0] - BASE + f[1]], f[0], f[0], f[0] + f[1], fmode.get(a.asm, 't'))))
         return
 
-    src = f'src/{a.unit}.c'
+    src = a.src or f'src/{a.unit}.c'
     if not os.path.exists(src):
         sys.exit(f'{src} does not exist')
     tmp = tempfile.mkdtemp(prefix='check_')
@@ -223,6 +224,10 @@ def main():
                   f'({100 * off / fsize:.1f}% matching prefix), {changed} differing lines')
         if bstart != fa:
             print(f'note: built {name} starts at 0x{bstart:08X}, target 0x{fa:08X} (earlier code differs in size)')
+        if name in syms and bsize != fsize:
+            print(f'size: built 0x{bsize:X} vs target 0x{fsize:X} ({bsize - fsize:+d} bytes)')
+        elif name not in syms:
+            print(f'note: {name} is not defined by the build')
         return
 
     ok = 0

@@ -41,7 +41,11 @@ REGALLOC_WEIGHTS = {
 }
 
 
-def draft_source(unit, func, from_file):
+def draft_source(unit, func, from_file, src_file=None):
+    if src_file:
+        # a private working copy with the function already enabled (tools/wf.py): other functions stay asm
+        source = open(src_file).read()
+        return '\n'.join(l for l in source.split('\n') if not re.match(r'^\s*INCLUDE_ASM\(', l)) + '\n'
     source = open(f'src/{unit}.c').read()
     lines = source.split('\n')
     inc = re.compile(r'^\s*INCLUDE_ASM\(\s*"[^"]*"\s*,\s*' + re.escape(func) + r'\s*\)')
@@ -152,6 +156,7 @@ def main():
     ap.add_argument('unit')
     ap.add_argument('func')
     ap.add_argument('--from', dest='from_file')
+    ap.add_argument('--src', dest='src_file', help='a whole-unit working copy with FUNC enabled (tools/wf.py)')
     ap.add_argument('--run', action='store_true', help='run the permuter after setup')
     ap.add_argument('-j', type=int, default=4)
     ap.add_argument('--minutes', type=float, default=30, help='time limit for --run')
@@ -177,7 +182,7 @@ def main():
 
     # base.c: preprocessed unit with only the target function's body
     with open(f'{d}/unit.c', 'w') as fh:
-        fh.write(draft_source(a.unit, a.func, a.from_file))
+        fh.write(draft_source(a.unit, a.func, a.from_file, a.src_file))
     r = run(['cpp', '-P', '-nostdinc', '-undef', '-I', 'include', '-I', f'{AGBCC_DIR}/include', '-iquote', '.',
              '-iquote', 'src', f'{d}/unit.c', '-o', f'{d}/unit.i'])
     if r.returncode:

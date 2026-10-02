@@ -382,34 +382,42 @@ void sub_0805DF04(int a, int b, u16 c)
         k = sub_08076F9C() & 3;
     sub_0805DDC4(x, 0x40, b, k);
 }
-#if 0 /* NONMATCHING: same structure; register numbering of the hoisted constants 0x3F/0xFC0 (target ip=0x3F,r8=0xFC0; build r8=0x3F,ip=0xFC0), of the running temps, and `(s1 & 3)` (target movs r1,#3/adds r0,r3/ands r0,r1) differ */
-void sub_0805DF34(int a, u16 b, u16 c, u32 d)
+/* Portrait loader: copies portrait b's 64-colour palette to palette slot d >> 4, unpacks its
+ * 720 x 3 halfwords of packed 6-bit pixels (8 pixels per 3 halfwords) to one pixel per byte at
+ * VRAM 0x06004000 + a * 0x4000 + c * 32, then adds the palette base (d & 0xFF) to all 0xB40
+ * halfwords. The ROM tables are integer addresses (as in sub_08061D24) so that both bases are
+ * rematerialized by reload, which sets the ROM's reload-register rotation. `(s1 & 0xFC) * 64`
+ * (not `<< 6`) keeps that term out of the u16 narrowing, so its mask ties to the output. */
+void sub_0805DF34(int a, u16 b, u16 c, u16 d)
 {
-    u16 pal = d;
     const u16 *src;
     u16 *dst;
+    u16 *p;
     int n;
     u32 i;
-    u16 *p;
-    sub_08075294(0x05000000 + (pal >> 4) * 0x20, gUnk_08608360 + b * 0x80, 0x80);
-    src = (const u16 *)((const u8 *)gUnk_082A6500 + b * 135 * 32);
+    u16 m6, m12;
+
+    sub_08075294(0x05000000 + (d >> 4) * 0x20, (const void *)(0x08608360 + b * 0x80), 0x80);
+    src = (const u16 *)(0x082A6500 + b * 0x10E0);
     {
         u32 addr = a << 14;
-        addr += c << 5;
         addr += 0x06004000;
+        addr += c << 5;
         dst = (u16 *)addr;
     }
+    m6 = 0x3F;
+    m12 = 0xFC0;
     for (n = 720; n != 0; n--) {
         u16 s0 = src[0];
-        int s1 = src[1];
+        u32 s1 = src[1];
         u32 s2 = src[2];
-        s16 t;
-        dst[0] = (s0 & 0x3F) | ((s0 & 0xFC0) << 2);
-        dst[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) << 6);
+        u16 t, x;
+        dst[0] = (s0 & m6) | ((s0 & m12) << 2);
+        dst[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) * 64);
         t = s1 >> 8;
-        dst[2] = (t & 0x3F) | ((((t >> 6) | ((s2 & 0xF) << 2))) << 8);
-        s2 >>= 4;
-        dst[3] = (s2 & 0x3F) | ((s2 & 0xFC0) << 2);
+        dst[2] = (t & m6) | (((t >> 6) | ((s2 & 0xF) << 2)) << 8);
+        x = s2 >> 4;
+        dst[3] = (x & m6) | ((x & m12) << 2);
         src += 3;
         dst += 4;
     }
@@ -419,16 +427,11 @@ void sub_0805DF34(int a, u16 b, u16 c, u32 d)
         addr += c << 5;
         p = (u16 *)addr;
     }
-    {
-        s16 v = (u8)pal;
-        v = (v << 8) | v;
-        for (i = 0; i <= 0xB3F; p++, i++)
-            *p = (*p & 0x3F3F) + v;
+    for (i = 0; i <= 0xB3F; i++) {
+        *p = (*p & 0x3F3F) + ((u8)d << 8 | (u8)d);
+        p++;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805DF34); /* 0x0805DF34 size 0x120 */
-#endif
 void sub_0805E054(int a, u16 *p, u16 y, u16 b)
 {
     int off = *p * 2;

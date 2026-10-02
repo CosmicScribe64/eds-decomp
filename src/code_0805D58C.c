@@ -283,28 +283,21 @@ void sub_0805DB90(void)
         break;
     }
 }
-#if 0 /* NONMATCHING: same instruction count and the (h*4 + k*640) + table add order matches the ROM; only the register chosen for the running index differs (target r1, build r2/r0) and the initial IO/table literal loads are swapped */
-#define TBL32(t) (*(const u32 *)((H << 2) + K * 640 + (u32)(t)))
-#define TBL16(t) (*(const u16 *)((H << 1) + K * 320 + (u32)(t)))
+struct WarpTbl32 { u32 a[16][160]; };
+struct WarpTbl16 { u16 a[16][160]; };
+#define WA (((const struct WarpTbl32 *)gUnk_0819DD94)->a)
+#define WB (((const struct WarpTbl32 *)gUnk_081A0594)->a)
+#define WC (((const struct WarpTbl16 *)gUnk_081A2D94)->a)
 void sub_0805DC38(void)
 {
-    const u32 *ta;
-    const u32 *tb;
-    const u16 *tc;
     H = *(vu16 *)0x04000006;
-    ta = gUnk_0819DD94;
-    IO32(0x28) = TBL32(ta);
-    tb = gUnk_081A0594;
-    IO32(0x2C) = TBL32(tb);
-    tc = gUnk_081A2D94;
-    IO16(0x20) = TBL16(tc);
-    IO32(0x38) = TBL32(ta);
-    IO32(0x3C) = TBL32(tb);
-    IO16(0x30) = TBL16(tc);
+    IO32(0x28) = WA[K][H];
+    IO32(0x2C) = WB[K][H];
+    IO16(0x20) = WC[K][H];
+    IO32(0x38) = WA[K][H];
+    IO32(0x3C) = WB[K][H];
+    IO16(0x30) = WC[K][H];
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805DC38); /* 0x0805DC38 size 0x104 */
-#endif
 void sub_0805DD3C(void)
 {
     IO32(0x28) = 0;

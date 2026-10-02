@@ -463,14 +463,10 @@ u16 sub_0804A528(int player, int zone, u16 flag)
     return 1;
 }
 
-#if 0 /* NONMATCHING: register allocation of the player/zero/g/loop copies differs (the ROM copies
-       * me/g into new registers at the loop head). */
 void sub_0804A848(struct PlayerState *ps, int player, int a, u16 flag)
 {
+    int i, x, zero, lp;
     struct PlayerState *me = &ps[player & 1];
-    struct PlayerState *g;
-    s16 w24;
-    int i, x, zero;
     me->w24 = 0;
     if (sub_08008524(1 - player, 0x15B) != 0)
         return;
@@ -479,23 +475,22 @@ void sub_0804A848(struct PlayerState *ps, int player, int a, u16 flag)
     zero = sub_08008524(1, 0x4CE);
     if (zero != 0)
         return;
-    w24 = gUnk_020192E4[player & 1].lp;
+    lp = gUnk_020192E4[player & 1].lp;
     x = sub_08008524(0, 0x42A);
     x += sub_08008524(1, 0x42A);
-    if (w24 < x * 500)
+    if (lp < x * 500)
         return;
-    g = &gUnk_020192E4[player & 1];
     if (flag != 0)
         me->w26 = zero;
     for (i = 0; i <= 4; i++) {
+        struct PlayerState *m = &ps[player & 1];
+        struct PlayerState *g = &gUnk_020192E4[player & 1];
         if (sub_0804A528(player, i, 1) != 0) {
             if (flag != 0 || !((g->w26 >> i) & 1))
-                me->w24 |= 1 << i;
+                m->w24 |= 1 << i;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804A848); /* 0x0804A848 size 0xE4 */
 
 int sub_0804A92C(int player)
 {

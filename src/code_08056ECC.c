@@ -222,10 +222,11 @@ struct Main {
 };
 extern struct Main gUnk_03000040;
 
-#if 0 /* NONMATCHING (score 30): same size/layout; only the scoring init differs: ROM n-test reload uses r0
-       * (ours r1) and ROM inits maxAtk with mov sl,r7 (reload inheritance) where ours does mov r1,#0; mov sl,r1. Single
-       * loop counter k for all loops needs global-alloc priority below the 1AB mask (7 empty asm volatile in the ABC8
-       * loop pad k's live length = FAKEMATCH) */
+#if 0 /* NONMATCHING (score 14): same size/layout; only reload regs differ: ROM n-test uses r0 / -1 via r1 /
+       * 0x3FE00->ip via r0, ours r1/r0/r1 (spill-reg round-robin off by one somewhere before 0x08057054). maxAtk init
+       * 'mov sl,r7' needs the duplicated 'maxAtk = maxDef = 0' (cse then emits maxAtk = best with REG_EQUAL 0; r7 can
+       * never be reload-inherited, it is the frame pointer). Single loop counter k needs 7 empty asm volatile in the
+       * ABC8 loop (FAKEMATCH live-length padding) to drop below the 1AB mask priority. */
 /* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in gUnk_02015F00.handPick, -1 if none. */
 static inline int AtkVal56(u16 id)
 {
@@ -336,6 +337,7 @@ int sub_08056ECC(u16 id)
     if (n <= 0)
         goto fail;
     best = 0;
+    maxAtk = maxDef = 0;
     bestIdx = -1;
     maxAtk = maxDef = 0;
     for (k = 0; k <= 4; k++) {

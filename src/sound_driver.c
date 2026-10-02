@@ -538,11 +538,6 @@ scale:
     out->volume = (out->volume * track->volume) >> 4;
 }
 
-#if 0 /* NONMATCHING (score 26): NONMATCHING (score 26): structured rewrite. Generic s32 temps a (r4) and b (r5)
-       * reused across the whole function are essential. Remaining: reset loop (for i=0..9, reversed by loop.c) hoists a
-       * dead QI zero (r7) and the 0xFE constant, and the post-loop 0x04000072 zero lands in r1 instead of r7. int temps
-       * avoid HImode/QImode narrowing of masks and MMIO values; chained t[4]=t[6]=t[8]=t[5]=t[7]=t[9]=0x33 routing;
-       * array-decl vs pointer-arith table forms steer constant-pool load placement. */
 struct SoundBgmTrack {
     u16 pitch;
     u8 instrument;
@@ -561,6 +556,8 @@ struct SoundBgmTrack {
     u8 routing;
     u8 unk15[3];
 };
+/* Channel output record built per tick; same layout as SoundChannelParams with
+ * the signed pitch and unsigned sample id this function reads. */
 struct SoundTickOut {
     s16 pitch;
     u8 envelope;
@@ -574,11 +571,18 @@ extern const u16 gUnk_081AA20C[];
 extern const s16 gUnk_081ABC4C[];
 void sub_0807D6B4(s32 index, struct SoundChannelParams *output);
 void sub_0807E918(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note);
+/* The driver keeps the NR51 routing byte right after struct SoundDriver. */
 struct SoundDriverTick {
     struct SoundDriver base;
     u8 routing;
 };
 typedef char bgm_track_size_check[sizeof(struct SoundBgmTrack) == 0x18 ? 1 : -1];
+typedef char tick_out_size_check[sizeof(struct SoundTickOut) == 8 ? 1 : -1];
+typedef char tick_routing_offset_check[(u32)&((struct SoundDriverTick *)0)->routing == 0x198 ? 1 : -1];
+
+/* Per-VBlank sequencer: fades the master volume, advances the ten BGM tracks,
+ * merges the six SE tracks, then programs the PSG registers and PCM voices.
+ * a and b are generic int temporaries reused throughout (r4/r5 in the ROM). */
 
 void sub_0807DB58(struct SoundDriver *p)
 {
@@ -637,6 +641,7 @@ void sub_0807DB58(struct SoundDriver *p)
                 o++;
             }
             {
+                /* FAKEMATCH: int temporary keeps the AND in SImode (0xFFFFBF7E pool constant) */
                 s32 t = flags & ~0x4081;
                 p->flags = t;
             }
@@ -653,11 +658,13 @@ void sub_0807DB58(struct SoundDriver *p)
                 track[1].routing = 0x22;
                 track[2].routing = 0x44;
                 track[3].routing = 0x88;
+                /* the chained order reproduces the ROM's store order (9, 7, 5, 8, 6, 4) */
                 track[4].routing = track[6].routing = track[8].routing = track[5].routing = track[7].routing = track[9].routing = 0x33;
                 *(vu8 *)0x04000081 = 0xFF;
                 *(vu16 *)0x04000082 = 0x330E;
                 for (i = 0; i < 10; i++) {
-                    track->flags &= 0xFE;
+                    /* FAKEMATCH: a plain byte store here avoids the field-store zero that loop.c hoists */
+                    *(u8 *)&track->flags &= 0xFE;
                     if (track->flags & 0x40)
                         track->flags |= 0x80;
                     track->flags &= 0xC0;
@@ -667,9 +674,11 @@ void sub_0807DB58(struct SoundDriver *p)
                     *(u16 *)&track->vibratoPhase = 0;
                     track++;
                 }
+                /* FAKEMATCH: the SOUND3CNT_H zero comes from the r7 variable (o) in the ROM */
+                o = 0;
                 ((struct SoundBgmTrack *)p->bgmTracks)[1].instrument = 0x80;
                 ((struct SoundBgmTrack *)p->bgmTracks)[0].instrument = 0x80;
-                *(vu16 *)0x04000072 = 0;
+                *(vu16 *)0x04000072 = (u32)o;
                 sub_0807D518(p, 0, 0);
             }
             p->status++;
@@ -775,6 +784,7 @@ void sub_0807DB58(struct SoundDriver *p)
                                 track->returnPosition = pos + 3;
                                 b = p->currentBgm * 12 + i + 2;
                                 {
+                                    /* FAKEMATCH: pointer local loads the table base before scaling b */
                                     const u16 *tbl = (const u16 *)gUnk_080E09D0;
                                     track->songOffset = tbl[b];
                                 }
@@ -825,6 +835,7 @@ void sub_0807DB58(struct SoundDriver *p)
                         if (a <= 0) {
                             a = 0;
                             {
+                                /* FAKEMATCH: int temporary avoids a QImode AND with -5 */
                                 s32 t = b & 0xFB;
                                 track->flags = t;
                             }
@@ -895,6 +906,7 @@ void sub_0807DB58(struct SoundDriver *p)
         b = gUnk_081AA20C[o[0].pitch];
         if (o[0].dirty != 0) {
             {
+                /* FAKEMATCH: value computed before the MMIO address is loaded */
                 s32 t = (o[0].volume << 12) | o[0].envelope;
                 *(vu16 *)0x04000062 = t;
             }
@@ -967,8 +979,6 @@ void sub_0807DB58(struct SoundDriver *p)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807DB58); /* 0x0807DB58 size 0x7CC */
 
 void sub_0807E324(void)
 {

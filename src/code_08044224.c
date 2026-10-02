@@ -204,8 +204,8 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 2285): natural for loops with word = &G.arr[i] for 16 scan cases, natural 0x1AB;
-       * frame now 0x28; wf 2285 */
+#if 0 /* NONMATCHING (score 2017): 0xF exact (block-local grouped-offset word ptr, cardNo assignment); wf 2017
+       * */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -253,16 +253,12 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x2F:
     {
         CASE_LOCALS
-        u32 w;
         i = 0;
         asm volatile("" ::: "r4", "r5", "r6", "r7");
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        p = (struct TargetPlayer *)(b + off);
-        for (; i < p->deckCount; off += 4, i++) {
-            w = *(u32 *)((u8 *)gUnk_02019AA8 + off);
+        for (; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
+            u32 w = *(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(TARGET_ID(w)) <= 20 && TargetAttack(TARGET_ID(w)) <= 1500)
-                ADD_TARGET(*(u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + off), 2);
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -279,75 +275,43 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x13D:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->handCount) {
-            g = (u32 *)(b + 0x684);
-            do {
-                word = (u32 *)((u8 *)g + (off + i * 4));
-                cardNo = TARGET_NUMBER(TARGET_ID(*word));
-                switch (cardNo) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.handCount; i++) {
+                word = (u32 *)((u8 *)gUnk_020192E4 + 0x684 + (i * 4 + (player & 1) * 0xD64));
+                switch (TARGET_NUMBER(TARGET_ID(*word))) {
                 case 0x3D:
                 case 0x3E:
                 case 0x4E1:
                     ADD_TARGETB(*word, 1);
                     break;
                 }
-                i++;
-            } while (i < PPL->handCount);
         }
-        i = 0;
-        off = (player & 1) * 0xD64;
-        if (i < PPL->deckCount) {
-            do {
-                word = (u32 *)((u8 *)gUnk_02019AA8 + (off + i * 4));
-                cardNo = TARGET_NUMBER(TARGET_ID(*word));
-                switch (cardNo) {
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
+                word = (u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
+                switch (TARGET_NUMBER(TARGET_ID(*word))) {
                 case 0x3D:
                 case 0x3E:
                 case 0x4E1:
                     ADD_TARGETB(*word, 2);
                     break;
                 }
-                i++;
-            } while (i < PPL->deckCount);
         }
         break;
     }
     case 0xF:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        if (i < PP->handCount) {
-            g = (u32 *)(b + 0x684);
-            word = (u32 *)((u8 *)g + off);
-            do {
-            cardNo = TARGET_NUMBER(TARGET_ID(*word));
-            if (cardNo == 0x4B2)
-                ADD_TARGETB(*word, 1);
-        
-                word++; i++;
-            } while (i < PPL->handCount);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.handCount; i++) {
+            u32 *wp = (u32 *)((u8 *)gUnk_020192E4 + 0x684 + (i * 4 + (player & 1) * 0xD64));
+            if ((cardNo = TARGET_NUMBER(TARGET_ID(*wp))) == 0x4B2)
+                ADD_TARGETB(*wp, 1);
         }
-        i = 0;
-        off = (player & 1) * 0xD64;
-        if (i < PP->deckCount) {
-            g = (u32 *)(b + 0x7C4);
-            word = (u32 *)((u8 *)g + off);
-            do {
-            cardNo = TARGET_NUMBER(TARGET_ID(*word));
-            if (cardNo == 0x4B2)
-                ADD_TARGETB(*word, 2);
-        
-                word++; i++;
-            } while (i < PP->deckCount);
+        for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
+            u32 *wp = (u32 *)((u8 *)gUnk_020192E4 + 0x7C4 + (i * 4 + (player & 1) * 0xD64));
+            if ((cardNo = TARGET_NUMBER(TARGET_ID(*wp))) == 0x4B2)
+                ADD_TARGETB(*wp, 2);
         }
         break;
-    }
-    case 0x191:
+    }    case 0x191:
     {
         CASE_LOCALS
         i = 0;

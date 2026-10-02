@@ -528,65 +528,37 @@ void sub_0800407C(s32 bg, s32 x, s32 y, s32 value)
 }
 /* Draw the opponent-record panels: a 4- or 5-row block (a = page), each row's
  * portrait plus the win/loss/draw counters, or an empty placeholder. */
-#if 0 /* NONMATCHING: logic matches, but agbcc keeps `a` in sl and spills/rematerialises several loop variables, producing a 0x28-byte frame vs the ROM's 0x1C and a different register map (ROM: b r5, tileBase r7, y r8, row r9, sl/sl, col sp18) */
+/* The ROM passes `k + 1` to sub_08063DAC untruncated, so this caller saw an int parameter
+ * (the callee's real prototype takes u16). */
+typedef s32 (*WF40E4Fn)(s32);
 void sub_080040E4(s32 a, s32 b)
 {
     u16 tileBase = b * 0xC0;
-    s32 i;
-    s16 n;
-    u16 sp10;
-    s32 sp14;
-    u32 col;
-    s32 y;
-    s32 yRow;
-    s32 row;
-    u16 sl;
+    s32 i, n;
 
-    sub_08073500((u16)(b + 1), 0, 0x20, 0x20);
-    sub_08073500((u16)(b + 3), 0, 0x20, 0x20);
-    sub_0807332C((u16)(b + 3), 0x63, 0x30, tileBase + 0xA0,
-                 (a <= 3) ? gUnk_087E52A4 : gUnk_087E5CF4);
-    sp14 = a * 4;
-    sub_0807332C((u16)(b + 1), 0x63, 0x40, tileBase + 0xC0, gUnk_08198604[a]);
+    sub_08073500(b + 1, 0, 0x20, 0x20);
+    sub_08073500(b + 3, 0, 0x20, 0x20);
+    /* The ternary must already have the parameter's type: a conversion around it makes agbcc
+     * evaluate it into a pseudo instead of storing each arm straight into the stack slot. */
+    sub_0807332C(b + 3, 0x63, 0x30, tileBase + 0xA0, (a <= 3) ? (const void *)gUnk_087E52A4 : (const void *)gUnk_087E5CF4);
+    sub_0807332C(b + 1, 0x63, 0x40, tileBase + 0xC0, gUnk_08198604[a]);
     n = 4;
     if (a <= 3)
         n = 5;
-    i = 0;
-    if (n > 0) {
-        sp10 = (u16)(b + 1) << 16;
-        col = 0x630000;
-        y = tileBase + 0xE0;
-        sl = 0x40000;
-        row = 5;
-        yRow = (b * 5 + 5) * 0x10;
-        do {
-            u16 k = (u16)(sp14 + a + i);
-            u16 id = k + 1;
+    for (i = 0; i < n; i++) {
+        u16 k = a * 5 + i;
 
-            if (sub_08063DAC(id) != 0) {
-                struct Card2Rec *rec = (struct Card2Rec *)((u8 *)gUnk_02011C20 + id * 4);
-                struct Card2RecB *recb = (struct Card2RecB *)((u8 *)gUnk_02011C20 + id * 4);
-                struct Card2RecC *recc = (struct Card2RecC *)((u8 *)gUnk_02011C20 + id * 4);
-
-                sub_0807332C((u16)(b + 1), (sl >> 16) * 0x20 + 4, yRow, y, gUnk_081985A0[k]);
-                sub_0800407C(b + 1, 0xD, row, rec->a.a);
-                sub_0800407C(b + 1, 0x13, row, recc->c.c);
-                sub_0800407C(b + 1, 0x19, row, recb->b.b);
-            } else {
-                sub_0807332C((u16)(b + 1), (sl >> 16) * 0x20 + 4, yRow, y, gUnk_087E77B4);
-                sub_08073500((u16)(sp10 >> 16), col >> 16, 8, 1);
-            }
-            col += 0x600000;
-            y += 0xC;
-            sl += 0x30000;
-            row += 3;
-            yRow += 0x10;
-            i++;
-        } while (i < n);
+        if (((WF40E4Fn)sub_08063DAC)(k + 1)) {
+            sub_0807332C(b + 1, (u16)(i * 3 + 4) * 32 + 4, (i + 5 + b * 5) * 16, tileBase + 0xE0 + i * 12, gUnk_081985A0[k]);
+            sub_0800407C(b + 1, 0xD, i * 3 + 5, WF3F88Save.rec[k + 1].wins);
+            sub_0800407C(b + 1, 0x13, i * 3 + 5, WF3F88Save.rec[k + 1].draws);
+            sub_0800407C(b + 1, 0x19, i * 3 + 5, WF3F88Save.rec[k + 1].losses);
+        } else {
+            sub_0807332C(b + 1, (u16)(i * 3 + 4) * 32 + 4, (i + 5 + b * 5) * 16, tileBase + 0xE0 + i * 12, gUnk_087E77B4);
+            sub_08073500(b + 1, i * 0x60 + 0x63, 8, 1);
+        }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080034B8", sub_080040E4); /* 0x080040E4 size 0x19C */
 
 /* Leap year test (Gregorian). */
 u32 sub_08004280(u32 year)

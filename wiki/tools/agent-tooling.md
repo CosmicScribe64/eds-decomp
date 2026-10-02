@@ -8,11 +8,31 @@ updated: 2026-10-01
 ---
 # Agent tooling
 
-Scripts used to run AI agents on the decomp in parallel. On 2026-10-01 the user
-asked to conserve usage, so all six workers and the supporting coordinator
-finished their current tasks and stopped. The lead is now the only active
-decomp agent. **Do not restart workers or create replacements.** This policy
-supersedes the historical restart instructions in `staging/ORCHESTRATION.md`.
+Scripts used to run AI agents on the decomp in parallel.
+
+> [!note] Policy history
+> Earlier on 2026-10-01 the user asked to conserve usage and the lead worked solo. Later that night the user
+> turned on multi-agent workflows ("Don't stop until we have a full match"). Work now runs as Claude Code
+> Workflow waves: one agent per function (or twin family), each in a private working copy made by
+> `tools/wf.py`. The OpenCode/Codex launchers below are historical.
+
+## Private working copies (`tools/wf.py`, 2026-10-01)
+Several agents can now work on functions of the **same unit** at once. Each gets a whole-unit copy in
+`build/wf/<func>/unit.c` with its function enabled between `WF-BEGIN`/`WF-END` markers; only `apply` and
+`park` touch `src/`, under a per-unit `mkdir` lock, through a 3-way `git merge-file` against the copy's
+base, and they keep the result only if the whole unit still matches.
+
+| Command (host, from the repo root) | What it does |
+|---|---|
+| `python3 tools/wf.py prep F` | Make the working copy; print the starting score. |
+| `python3 tools/wf.py check F [--ctx N]` | Compile the copy (`check.py --src`), print the normalized diff and the score. |
+| `python3 tools/wf.py perm F --minutes M -j J` | [[decomp-permuter]] on a snapshot of the copy (`permute.py --src`). |
+| `python3 tools/wf.py apply F` | At score 0: merge into `src/<unit>.c`, verify `unit bytes MATCH`, else restore. Rejects asm() with instructions. |
+| `python3 tools/wf.py park F "note"` | Store the copy as the `#if 0 /* NONMATCHING (score N): note */` draft if it beats the starting score. |
+
+Score = differing normalized lines + 4 x |size delta| (the same metric as the scout in
+`build/solo-s49/scout2.py`). `check.py --src FILE` and `permute.py --src FILE` are the underlying options.
+Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave.
 
 ## Running agents
 | Tool | What it does |

@@ -340,20 +340,15 @@ int sub_08052018(s32 player, u16 id, u16 mode)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052018); /* 0x08052018 size 0x178 */
-#if 0 /* NONMATCHING: only the allocation of the (u->b21 - u->h) value differs.
-       * gcc's combine pass folds the first `y << 16` into `D << 19` (D = b21 -
-       * h), so D is kept in a register (r5) and the timer pointer is computed
-       * as r6+0x23 into r8. The ROM keeps D in r0, spills y and reloads it for
-       * both rows (base r5, x r7, &timer r6). All 6 sub_080761F0 calls and the
-       * palette/text block match. Tried: yh variable, inline y<<16, y*0x10000,
-       * y as int, ybuf[1], y as u32*(base+..). */
 void sub_08052190(void)
 {
     struct Ui *u = &gUnk_0201AE60;
     u32 x = (u->x + 1) << 3;
-    u16 y = (u->b21 - u->h) << 3;
-    u8 *t = &u->timer;
+    u32 y = (u->b21 - u->h) << 3;
+    u8 *t;
     u32 attr;
+    asm("" : "+r"(y)); /* FAKEMATCH: keep combine from folding y<<16 into D<<19 */
+    t = &u->timer;
     if (*t == 0) {
         sub_08075294(0x050003E0, gUnk_0822C300, 0x20);
         sub_08074B08(0xC, 2);
@@ -375,9 +370,6 @@ void sub_08052190(void)
     attr += 4;
     sub_080761F0((x + 0x40) | ((y + 8) << 16), 0x4040, attr | 0xF000);
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052190); /* 0x08052190 size 0x130 */
-#endif
 int sub_080522C0(void)
 {
     struct Ui *u = &gUnk_0201AE60;

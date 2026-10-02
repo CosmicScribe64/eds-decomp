@@ -691,33 +691,21 @@ void sub_0807B5A0(struct ObjAffine *a)
     *a->param[2] = MulFix(Reciprocal(a->scaleY), -gUnk_08087BA4[a->angle >> 8]);
     *a->param[3] = MulFix(Reciprocal(a->scaleY), gUnk_08087BA4[(a->angle >> 8) + 0x40]);
 }
-#if 0 /* NONMATCHING: register allocation differs. The target keeps bg in sl
-       * (pushing a third callee-saved reg) and sx in a fresh r7 (cx stays in
-       * r9: `mov r0,r9 ; adds r7,r4,r0`), storing `str r7,[r0] ; adds r0,#4`.
-       * The build keeps bg in low r7, lets cx die and reuses r9 for sx, so it
-       * stores through r1. Reordering cx into the expression, splitting
-       * `sx += cx`, `if/else` vs `switch` and `reg[0]/reg[1]` all leave the
-       * same split. */
 void sub_0807B628(u8 bg, s32 x, s32 y, s32 cx, s32 cy, struct ObjAffine *a)
 {
-    u16 sx;
+    s32 sx;
     s32 sy;
-    vu32 *reg;
 
     sx = sub_0807B4E0(*a->param[0], x -= cx) + sub_0807B4E0(*a->param[1], y -= cy) + cx;
     sy = sub_0807B4E0(*a->param[2], x) + sub_0807B4E0(*a->param[3], y) + cy;
     switch (bg) {
     case 2:
-        reg = (vu32 *)0x04000028;
+        *(vu32 *)0x04000028 = sx;
+        *(vu32 *)0x0400002C = sy;
         break;
     case 3:
-        reg = (vu32 *)0x04000038;
+        *(vu32 *)0x04000038 = sx;
+        *(vu32 *)0x0400003C = sy;
         break;
-    default:
-        return;
     }
-    *reg++ = sx;
-    *reg = sy;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807A6AC", sub_0807B628); /* 0x0807B628 size 0x90 */

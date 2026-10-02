@@ -132,42 +132,47 @@ void sub_08079834(u16 tile, u16 *dst, u16 x, u16 y, u16 w, u16 h)
             dst[((s16)x + j & 0x1F) + (((s16)y + i & 0x1F) << 5)] = tile;
     }
 }
-#if 0 /* NONMATCHING: register allocation only (target: bits in r7, mode in r3, half in r4 multiplied by a copy of stride in r0; build: bits in sl, mode r4); logic identical */
 /* Draws one 8-pixel row of a 1bpp glyph into a 4bpp (mode 4) or 8bpp (mode 8) tile buffer. */
 void sub_080798B8(u8 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
 {
-    int buf[0xC];
+    u8 buf[0xC];
     u8 i;
     u32 xo = x & 1;
     u32 xh = x >> 1;
-    u32 half = w >> 1;
-    u32 row;
+    u32 st;
+    u32 half;
+    u32 row2;
 
+    /* FAKEMATCH: a no-op shift pair that combine folds into a plain copy only after GCSE,
+       so the target's separate copy of stride (used by mode 4 only) survives copy propagation */
+    st = ((u32)stride << 16) >> 16;
+    half = w >> 1;
     switch (mode) {
-    case 4:
-        row = half * stride;
+    case 4: {
+        /* block-scoped row (one pseudo per case) and the row2 copy keep the target's r4 -> sl split */
+        u32 row = half * st;
         CpuSet(&dst[xh + row], buf, 5);
-        for (i = 0; i < 4; i++) {
-            if (bits & (0x80 >> i * 2))
+        for (i = 0, row2 = row; i < 4; i++) {
+            if (bits & (0x80 >> (i * 2)))
                 buf[i + xo] = (buf[i + xo] & 0xF0) + color;
-            if (bits & (0x80 >> i * 2 + 1))
+            if (bits & (0x80 >> (i * 2 + 1)))
                 buf[i + xo] = 0;
         }
-        CpuSet(buf, &dst[xh + row], 5);
+        CpuSet(buf, &dst[xh + row2], 5);
         break;
-    case 8:
-        row = half * stride;
+    }
+    case 8: {
+        u32 row = half * stride;
         CpuSet(&dst[xh + row], buf, 5);
-        for (i = 0; i < 8; i++) {
+        for (i = 0, row2 = row; i < 8; i++) {
             if (bits & (0x80 >> i))
                 buf[i + xo] = color;
         }
-        CpuSet(buf, &dst[xh + row], 5);
+        CpuSet(buf, &dst[xh + row2], 5);
         break;
     }
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807960C", sub_080798B8); /* 0x080798B8 size 0x104 */
 /* Draws one 16-pixel row of a 1bpp glyph into an 8bpp tile buffer (x may be odd). */
 void sub_080799BC(u16 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
 {

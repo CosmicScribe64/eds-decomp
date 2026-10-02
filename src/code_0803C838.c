@@ -528,60 +528,44 @@ int sub_0803D0B8(u16 a, u16 b, u16 c, u16 d)
         return 0;
     return 1;
 }
-#if 0 /* NONMATCHING: logic verified against the asm (material search for a 2-
-       * or 3-card fusion result, selecting positions with sub_0803CE90 and
-       * rejecting wildcard-only pairs). The structure is close, and player in
-       * r8 and out in r6 match. The ROM keeps the masked id in r2 and frees r3
-       * after the CARD_NUMBER load, so the first recipe loop's e[0] temp lands
-       * in r3 (this build: r4). It uses r5 for 0xFFFF in the 2-card path (this
-       * build: r4) and r3 for the table base, and emits two compares for the
-       * 0x776..0x778 range (this build folds it to `(u16)(num-0x776) <= 2`). */
+static inline int FusKind_D0E8(u16 id)
+{
+    switch (CARD_NUMBER(id)) {
+    case 0x776:
+        return 3;
+    case 0x777:
+    case 0x778:
+        return 1;
+    }
+    switch ((int)CARD_TYPE(id)) {
+    case 0x16:
+        return 7;
+    case 0x15:
+        return 8;
+    case 0x17:
+        return 9;
+    }
+    return (CARD_STATS(id) & 0xC0000) >> 18;
+}
 #define FUS_WILD(p) sub_0803CB28(CARD_NUMBER(sub_0803D048(player, (p))))
 int sub_0803D0E8(int player, u16 id, u16 *out)
 {
     const u16 *e;
     u16 num;
-    u16 a;
-    s8 b;
-    s8 c;
-    u16 i;
-    int cat;
+    u32 i;
 
-    if (((CARD_STATS(id) & 0x1F00000) >> 20) > 0x14)
+    if (CARD_TYPE(id) > 0x14)
         return 0;
-    num = CARD_NUMBER(id);
-    if (num == 0x776)
-        cat = 3;
-    else if (num >= 0x776 && num <= 0x778)
-        cat = 1;
-    else {
-        switch ((CARD_STATS(id) & 0x1F00000) >> 20) {
-        case 0x16:
-            cat = 7;
-            break;
-        case 0x15:
-            cat = 8;
-            break;
-        case 0x17:
-            cat = 9;
-            break;
-        default:
-            cat = (CARD_STATS(id) & 0xC0000) >> 18;
-            break;
-        }
-    }
-    if (cat != 2)
+    if (FusKind_D0E8(id) != 2)
         return 0;
     num = CARD_NUMBER(id);
     if (num > 0x7CF)
         num -= 0x7D0;
 
-    i = 0;
-    e = gUnk_0819A7C8;
-    while (i <= 0x34) {
-        if (e[0] == num) {
-            a = e[1];
-            b = e[2];
+    for (i = 0, e = gUnk_0819A7C8; i <= 0x34; e += 4, i++) {
+        if (num == e[0]) {
+            u16 a = e[1];
+            u16 b = e[2];
             out[1] = sub_0803CE90(player, a, 0xFFFF, 0xFFFF);
             out[0] = sub_0803CE90(player, b, out[1], 0xFFFF);
             if (out[0] == 0xFFFF)
@@ -590,22 +574,18 @@ int sub_0803D0E8(int player, u16 id, u16 *out)
                 return 0;
             if (FUS_WILD(out[0]) != 0 && FUS_WILD(out[1]) != 0)
                 return 0;
-            if (!(out[0] & 0x8000))
-                return 1;
-            if (!(out[1] & 0x8000))
-                return 1;
-            goto final_check;
+            if ((out[0] & 0x8000) && (out[1] & 0x8000)) {
+                if (sub_08008860(player) == 5)
+                    return 0;
+            }
+            return 1;
         }
-        e += 4;
-        i++;
     }
-    i = 0;
-    e = gUnk_0819A970;
-    while (i <= 3) {
-        if (e[0] == num) {
-            a = e[1];
-            b = e[2];
-            c = e[3];
+    for (i = 0, e = gUnk_0819A970; i <= 3; e += 4, i++) {
+        if (num == e[0]) {
+            u16 a = e[1];
+            u16 b = e[2];
+            u16 c = e[3];
             out[2] = sub_0803CE90(player, a, 0xFFFF, 0xFFFF);
             out[1] = sub_0803CE90(player, b, out[2], 0xFFFF);
             out[0] = sub_0803CE90(player, c, out[2], out[1]);
@@ -615,30 +595,22 @@ int sub_0803D0E8(int player, u16 id, u16 *out)
                 return 0;
             if (out[2] == 0xFFFF)
                 return 0;
-            if ((FUS_WILD(out[0]) != 0 && FUS_WILD(out[1]) != 0) ||
-                (FUS_WILD(out[0]) != 0 && FUS_WILD(out[2]) != 0) ||
-                (FUS_WILD(out[1]) != 0 && FUS_WILD(out[2]) != 0))
+            if (FUS_WILD(out[0]) != 0 && FUS_WILD(out[1]) != 0)
                 return 0;
-            if (!(out[0] & 0x8000))
-                return 1;
-            if (!(out[1] & 0x8000))
-                return 1;
-            if (!(out[2] & 0x8000))
-                return 1;
-            goto final_check;
+            if (FUS_WILD(out[0]) != 0 && FUS_WILD(out[2]) != 0)
+                return 0;
+            if (FUS_WILD(out[1]) != 0 && FUS_WILD(out[2]) != 0)
+                return 0;
+            if ((out[0] & 0x8000) && (out[1] & 0x8000) && (out[2] & 0x8000)) {
+                if (sub_08008860(player) == 5)
+                    return 0;
+            }
+            return 1;
         }
-        e += 4;
-        i++;
     }
     return 0;
-final_check:
-    if (sub_08008860(player) == 5)
-        return 0;
-    return 1;
 }
 #undef FUS_WILD
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D0E8); /* 0x0803D0E8 size 0x2E8 */
 struct FusList_3D3D0 {
     u8 pad[0x502];
     u32 cnt : 2;

@@ -630,9 +630,9 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 954): per-case return 0 tails; prologue and cases 0-3,5-8,11,21,100,121,122 match;
+#if 0 /* NONMATCHING (score 872): per-case return 0 tails; prologue and cases 0-3,5-8,11,21,100,121,122 match;
        * remaining: loop-invariant hoisting and regalloc in cases 4,9,20,101,102,110,111,120, case 10 tail register; size
-       * +18; see build/wf/sub_0804FC4C/NOTES.md */
+       * +14; see build/wf/sub_0804FC4C/NOTES.md */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[(u16)id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -773,8 +773,8 @@ int sub_0804FC4C(void)
         }
         return 0;
     case 20: {
-        u16 count=sub_08008524(player,0x600);
-        for (;count>0;count--) {
+        int count=sub_08008524(player,0x600);
+        if (count>0) do {
             int die=sub_08076F9C()%6+1;
             int p, i;
             u16 msg;
@@ -798,7 +798,7 @@ int sub_0804FC4C(void)
                     }
                 }
             }
-        }
+        } while (--count);
         FC_STEP=1;
         return 0;
     }
@@ -809,9 +809,9 @@ int sub_0804FC4C(void)
         /* fall through */
     case 101:
         for (;FC_ZONE<=9;FC_ZONE++) {
-            struct Zone *z=(struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64);
-            u32 id=FC_ID(z);
-            if (id && (z->f6&2)) {
+            struct Zone *z=(struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C);
+            if (FC_ID(z) && (z->f6&2)) {
+                u32 id=FC_ID(z);
                 int destroy=0;
                 switch (FC_NUMBER(id)) {
                 case 0x47A:
@@ -843,7 +843,7 @@ int sub_0804FC4C(void)
             struct Zone *z=ZB(player,i);
             u32 id=FC_ID(z);
             if (id && (z->f6&2)) {
-                u16 number=FC_NUMBER(id);
+                int number=FcNum(id);
                 if (number==0x416 || number==0x424) {
                     u16 msg=0xB4;
                     if (player) msg=0x80B4;
@@ -898,9 +898,9 @@ int sub_0804FC4C(void)
             if (player) msg=0x8043;
             sub_0801EC58(msg,sub_0804F654(FC_NUMBER(id)),1,0);
             if (FC_NUMBER(id)==0x3BA) {
-                msg=0xB3;
-                if (player) msg=0x80B3;
-                sub_0801EC58(msg,FC_ZONE,500,0);
+                u16 msg2=0xB3;
+                if (player) msg2=0x80B3;
+                sub_0801EC58(msg2,FC_ZONE,500,0);
             }
         } else sub_08018544(player,FC_ZONE,1);
         FC_ZONE++;

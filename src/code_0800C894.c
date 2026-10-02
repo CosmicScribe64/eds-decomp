@@ -512,34 +512,54 @@ void sub_0800D234(void)
         return;
     }
 }
-#if 0 /* NONMATCHING (48 diff lines): i=0 precedes the hoisted player offset (declaration order). The ROM keeps cmd in r9 and reloads the 0x08622AB4 table and 0x538 inside the loop, while the build hoists them. */
+/* Zone byte +0x8C flags. */
+struct ZoneFlags8C {
+    u8 b0 : 1;
+    u8 b1 : 1;        /* bit 1: cleared every call */
+    u8 b2 : 1;
+    u8 b3 : 1;        /* bit 3: moved to bit 4 */
+    u8 b4 : 1;
+    u8 rest : 3;
+};
+
 void sub_0800D398(void)
 {
-    struct DuelCmd *cmd = &gUnk_020185C0;
+    struct DuelCmd *t = &gUnk_020185C0;
     s32 i = 0;
-    u32 off = (cmd->hdr >> 15) * 0xD64;
-    u8 *gBase = gUnk_0201930C;
-    u8 *pb = gBase + off;
-    s32 m9 = -9;
-    s32 m3 = -3;
+    struct DuelCmd *cmd;
+    u32 off;
+    u8 *gBase;
+    u8 *pb;
+
+    /* FAKEMATCH: the ROM loads &gCmd before i = 0 and copies it into the long-lived cmd register
+     * afterwards; a memory clobber between the two stops combine from merging the load into the copy. */
+    asm volatile("" ::: "memory");
+    cmd = t;
+    off = (cmd->hdr >> 15) * 0xD64;
+    gBase = gUnk_0201930C;
+    pb = gBase + off;
 
     do {
         u32 zOff = i * 0x94;
-        u8 *f = pb + zOff + 0x8C;
+        struct ZoneFlags8C *f = (struct ZoneFlags8C *)(pb + zOff + 0x8C);
         u8 *z;
 
-        if (*f & 8)
-            *f = (*f & m9) | 0x10;
-        *f &= m3;
-        z = zOff + off + gBase;
-        if (*(u16 *)((u32)gUnk_08622AB4 + ((*(u32 *)z << 21) >> 20)) == 0x538)
+        if (f->b3) {
+            f->b3 = 0;
+            f->b4 = 1;
+        }
+        f->b1 = 0;
+        /* Integer sum keeps the ROM's (zOff + off) + base operand order. */
+        z = (u8 *)(zOff + off + (u32)gBase);
+        /* A one-case switch keeps the 0x538 constant inside the loop (an == compare gets hoisted). */
+        switch (((u16 *)0x08622AB4)[((struct ZoneWord *)z)->cardId & 0x7FF]) {
+        case 0x538:
             z[7] |= 0x20;
+        }
         i++;
     } while (i <= 4);
     cmd->running = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800D398); /* 0x0800D398 size 0xA4 */
 
 
 void sub_0800D43C(void)

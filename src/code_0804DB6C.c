@@ -78,9 +78,6 @@ int sub_0804DB6C(int player)
     sub_080197E0(player, gUnk_086249F8[0]);
     return 1;
 }
-#if 0 /* NONMATCHING: 0x574 bytes versus the ROM's 0x5B8. The source was
-       * audited against the assembly in full; the remaining differences are
-       * RAM views and register lifetimes. */
 void sub_08007558(void *, const void *);
 int sub_08008C6C(int);
 int sub_0800A9C8(int, int, u16);
@@ -89,133 +86,167 @@ void sub_08022678(int, int, u16, int);
 void sub_08046C6C(int, int, int);
 void sub_08056094(int, void *, int, int);
 extern u8 gUnk_02015EE8[];
-extern u32 gUnk_02019BE8[];
 extern const u16 gUnk_08624730[];
 extern const u16 gUnk_0862486C[];
-extern const u16 gUnk_08622AB4[];
-#define DC_STEP(e) (((struct StepHalf *)((e) + 0x1B16))->step)
-#define DC_PLAYER(e) (((e)[0x1B17] >> 1) | (((e)[0x1B18] & 1) << 7))
-#define DC_INDEX(e) (((struct StepHalf *)((e) + 0x1B18))->step)
-#define DC_NUMBER(id) (((const u16 *)gUnk_08622AB4)[(u16)(id) & 0x7FF])
-#define DC_CARD(e) ((u16 *)((e) + 0x908 + (DC_PLAYER(e) & 1) * 0xD64 + DC_INDEX(e) * 4))
+/* Views of the duel state at 0x020192E0 for sub_0804DC88: player records (0xD64 bytes) at +4 with the
+ * graveyard count at +4 and the graveyard list at +0x904, zones (0x94 bytes) at +0x2C, and u16 bitfields
+ * at +0x1B14 where the selected player (bits 9-16 from +0x1B16) straddles the halfword, as agbcc lays
+ * out straddling bitfields (byte-split access). */
+struct DCZone { u32 w0; u8 pad4[2]; u16 h6; u8 pad8[0x94 - 8]; };
+struct DCPlayer { u8 pad0[4]; u8 count; u8 pad5[3]; u32 lo : 6; u32 f6 : 1; u32 x : 5; u32 f12 : 1; u32 hi : 19; u8 padC[0xD64 - 0xC]; };
+struct DCCard { u32 lo : 28; u32 f28 : 1; u32 hi : 3; };
+struct DCState {
+    u8 pad0[0x1B14];
+    u16 lo : 9; u16 step1 : 8; u16 step : 8; u16 player : 8; u16 index : 8; u16 hi : 7;
+    u8 pad1B1A[2];
+    struct DCCard c1B1C;
+    u8 pad1B20[0x1B64 - 0x1B20];
+    u16 h1B64;
+};
+#define DC_ID(z) (((z)->w0 << 20) >> 20)
+#define DC_PL(p) ((struct DCPlayer *)(gUnk_020192E0 + 4) + ((p) & 1))
+#define DCS ((struct DCState *)gUnk_020192E0)
+#define DC_ZONES (gUnk_020192E0 + 0x2C)
+#define DC_GRAVE (gUnk_020192E0 + 0x908)
+/* Graveyard effect steps on the halfword step at +0x1B16: step 0 handles card 0x540 in the player's
+ * zones and card 0x49E for both players, 1 resolves graveyard entries with bit 24 (linked zone, card
+ * 0x52F), 2 selects an entry with bit 28 and jumps to 5-8 (messages 0xDA/0xD3, sub_08022678,
+ * sub_08007558, sub_08056094); other steps message 0x47 and reset or set the player's byte-9 bit 4.
+ * Matching notes: the duel state is read through the global (GCSE keeps one copy in r8); the outer
+ * loops use i and the inner ones j in every case. */
 int sub_0804DC88(int player)
 {
-    u8 *e = gUnk_020192E0;
-    s8 p, i;
-    switch (DC_STEP(e)) {
+    int i, j;
+    /* FAKEMATCH: card is first assigned in the zone check (through n, so the compare stays int-wide)
+     * and reassigned 0x49E in the inner loop; the earlier first use stops loop.c from folding the
+     * constant into the call and its priority puts it in r8 ahead of player. */
+    u16 card;
+    int n;
+    switch (DCS->step) {
     case 0:
         for (i = 0; i <= 4; i++) {
-            struct DuelZone *z = (struct DuelZone *)(i * 0x94 + (player & 1) * 0xD64 + 0x0201930C);
-            u32 id = ID(z);
-            if (id && DC_NUMBER(id) == 0x540 && (*(u16 *)((u8 *)z + 6) & 0x2003) == 2) {
+            struct DCZone *z = (struct DCZone *)(i * 0x94 + (player & 1) * 0xD64 + DC_ZONES);
+            u16 id = DC_ID(z);
+            if (id != 0 && (card = n = ((const u16 *)0x08622AB4)[(u16)id & 0x7FF], n == 0x540) && (z->h6 & 0x2003) == 2) {
                 sub_080197E0(player, id);
                 sub_08018ED8(player, i, 0, 0);
             }
-            for (p = 0; p <= 1; p++) {
-                if (sub_0800A9C8(p, i, 0x49E)) {
-                    sub_080197E0(p, gUnk_08624730[0]);
-                    sub_08018544(p, i, 1);
+            for (j = 0; j <= 1; j++) {
+                /* FAKEMATCH: the table pointer is set at the top of the body so loop.c hoists it. */
+                const u16 *t;
+                card = 0x49E;
+                t = gUnk_08624730;
+                if (sub_0800A9C8(j, i, card)) {
+                    sub_080197E0(j, t[0]);
+                    sub_08018544(j, i, 1);
                 }
             }
         }
-        DC_STEP(gUnk_020192E0)++;
+        DCS->step++;
         return 0;
     case 1:
-        for (p = 0; p <= 1; p++) {
-            for (i = 0; i < ((u8 *)gUnk_020192E4)[(p & 1) * 0xD64 + 4]; i++) {
-                u32 card = *(u32 *)((u8 *)gUnk_02019BE8 + (p & 1) * 0xD64 + i * 4);
+        for (i = 0; i <= 1; i++) {
+            for (j = 0; j < DC_PL(i)->count; j++) {
+                u32 *g = (u32 *)((i & 1) * 0xD64 + DC_GRAVE);
+                /* FAKEMATCH: the g local keeps (p & 1) * 0xD64 + list in the loop (no strength
+                 * reduction) and the int sum puts g first in the add. */
+                u32 card = *(u32 *)((int)g + (j << 2));
                 if ((s32)(card << 7) < 0) {
-                    int q = 1 - p;
-                    struct DuelZone *z = (struct DuelZone *)(((card << 4) >> 29) * 0x94 + (q & 1) * 0xD64 + 0x0201930C);
-                    u32 id = ID(z);
+                    int q = 1 - i;
+                    int qs = q & 1; /* computed before the slot field, as in the ROM */
+                    struct DCZone *z = (struct DCZone *)(((card << 4) >> 29) * 0x94 + qs * 0xD64 + DC_ZONES);
+                    u32 id = DC_ID(z);
                     int special = 0;
-                    if ((z->flags6 & 2) && id && sub_08008C6C(q) >= 0 && DC_NUMBER(id) == 0x52F)
+                    if ((((u8 *)z)[6] & 2) && id && sub_08008C6C(q) >= 0 && ((const u16 *)0x08622AB4)[(u16)id & 0x7FF] == 0x52F)
                         special = 1;
-                    sub_08046C6C(p, i, special);
+                    sub_08046C6C(i, j, special);
                     return 0;
                 }
             }
         }
-        DC_STEP(e)++;
+        DCS->step++;
         return 0;
     case 2:
-        for (p = 0; p <= 1; p++) {
-            for (i = 0; i < ((u8 *)gUnk_020192E4)[(p & 1) * 4 + 0xD64]; i++) {
-                u32 card = *(u32 *)((u8 *)gUnk_02019BE8 + (p & 1) * 0xD64 + i * 4);
+        for (i = 0; i <= 1; i++) {
+            /* FAKEMATCH: the comma expression loads the player base first in the loop test, so loop.c
+             * hoists it in pass 1 and the inner test keeps its own copy (G - 0x904). */
+            u8 *y;
+            for (j = 0; j < ((struct DCPlayer *)(y = gUnk_020192E0 + 4, y + (i & 1) * 0xD64))->count; j++) {
+                u32 *g = (u32 *)((i & 1) * 0xD64 + DC_GRAVE);
+                u32 card = g[j];
                 if ((s32)(card << 3) < 0) {
-                    e[0x1B17] = (e[0x1B17] & 1) | (((u16)p & 0x7F) << 1);
-                    e[0x1B18] = (e[0x1B18] & ~1) | (((u16)p >> 7) & 1);
-                    DC_INDEX(e) = i;
-                    DC_STEP(e) = 5;
+                    DCS->player = i;
+                    DCS->index = j;
+                    DCS->step = 5;
                     return 0;
                 }
             }
         }
-        DC_STEP(e)++;
+        DCS->step++;
         return 0;
     case 5:
-        if (sub_08008A44(1 - DC_PLAYER(e)) == -1) {
+        if (sub_08008A44(1 - DCS->player) == -1) {
+            int pl = DCS->player;
             u16 msg = 0xDA;
-            if (DC_PLAYER(e))
+            if (pl)
                 msg = 0x80DA;
-            sub_0801EC58(msg, DC_INDEX(e), 1, 0);
-            DC_STEP(e) = 2;
+            sub_0801EC58(msg, DCS->index, 1, 0);
+            DCS->step = 2;
             return 0;
         }
         sub_080197E0(player, gUnk_0862486C[0]);
-        DC_STEP(e)++;
+        DCS->step++;
         return 0;
     case 6:
-        if (DC_PLAYER(e) && !(gUnk_02015EE8[1] & 1)) {
-            *(u16 *)(e + 0x1B64) = 1;
-            DC_STEP(e) = 8;
+        if (DCS->player && !(gUnk_02015EE8[1] & 1)) {
+            DCS->h1B64 = 1;
+            DCS->step = 8;
             return 0;
         }
-        sub_08022678(1 - DC_PLAYER(e), 0x12, (*(u32 *)DC_CARD(e) << 20) >> 20, 0);
-        DC_STEP(e)++;
+        sub_08022678(1 - DCS->player, 0x12, ((struct DCZone *)((DCS->player & 1) * 0xD64 + (u8 *)DCS + 0x908 + DCS->index * 4))->w0 << 20 >> 20, 0);
+        DCS->step++;
         return 0;
     case 7:
-        if (*(u16 *)(e + 0x1B64)) {
-            u16 *card = DC_CARD(e);
+        if (DCS->h1B64) {
+            u16 *card = (u16 *)((DCS->player & 1) * 0xD64 + (u8 *)DCS + 0x908 + DCS->index * 4);
             int msg = 0xD3;
-            if (DC_PLAYER(e))
+            if (DCS->player)
                 msg = 0x80D3;
             sub_0801EC58(msg, card[0], card[1], 0);
-            sub_08007558(e + 0x1B1C, card);
-            return 0;
-            DC_STEP(e)++;
+            sub_08007558(&DCS->c1B1C, card);
+            DCS->step++;
         } else {
-            int msg = 0xDA;
-            if (DC_PLAYER(e))
+            int pl = DCS->player;
+            u16 msg = 0xDA;
+            if (pl)
                 msg = 0x80DA;
-            DC_STEP(e) = 2;
-            sub_0801EC58(msg, DC_INDEX(e), 1, 0);
-            return 0;
+            sub_0801EC58(msg, DCS->index, 1, 0);
+            DCS->step = 2;
         }
+        return 0;
     case 8:
-        e[0x1B1F] &= ~0x10;
-        sub_08056094(1 - DC_PLAYER(e), e + 0x1B1C, 1, 0x20);
-        DC_STEP(e) = 2;
+        DCS->c1B1C.f28 = 0;
+        sub_08056094(1 - DCS->player, &DCS->c1B1C, 1, 0x20);
+        DCS->step = 2;
         return 0;
     default:
         {
-            u8 *ps = (u8 *)gUnk_020192E4 + (player & 1) * 0xD64;
-            if (ps[8] & 0x40) {
-                u8 msg = 0x47;
+            u8 *y = gUnk_020192E0 + 4;
+            struct DCPlayer *ps = (struct DCPlayer *)(y + (player & 1) * 0xD64);
+            if (ps->f6) {
+                u16 msg = 0x47;
                 if (player)
                     msg = 0x8047;
                 sub_0801EC58(msg, 0, 0, 0);
-                ((struct StepWord *)((u8 *)gUnk_020192E4 + 0x1B10))->step = 0;
-                ((struct StepHalf *)((u8 *)gUnk_020192E4 + 0x1B12))->step = 0;
+                DCS->step1 = 0;
+                DCS->step = 0;
                 return 0;
             }
-            ps[9] |= 0x10;
+            ps->f12 = 1;
             return 1;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804DC88); /* 0x0804DC88 size 0x5B8 */
 struct E240Flags { u8 b0:1; u8 b1:1; u8 b2:1; u8 rest:5; };
 /* Find the first occupied zone with flag +0x8C bit 1 or 2. */
 int sub_0804E240(int player)

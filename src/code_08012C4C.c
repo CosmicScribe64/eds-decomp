@@ -175,13 +175,10 @@ void sub_08012C4C(void)
 
 
 /* Take a card off a field zone: arg2 = slot. Moves it into cmd.card and animates it to area 15. */
-#if 0 /* NONMATCHING: register allocation differs. The target keeps player, slot and step
-       * in r7, r6 and r5 and &step in sl. Ours keeps step in r9, has no &step pointer, and
-       * merges the case 0 and 1 tails. */
 void sub_08012D7C(void)
 {
     struct CardLoc from, to;
-    s8 player = CMD_PLAYER(&gUnk_020185C0);
+    u32 player = CMD_PLAYER(&gUnk_020185C0);
     u16 slot = gUnk_020185C0.arg2;
 
     switch (gUnk_020185C0.step) {
@@ -190,8 +187,12 @@ void sub_08012D7C(void)
         gUnk_020185C0.step++;
         break;
     case 1:
+        /* FAKEMATCH: the extra uses raise player's and slot's refs so global-alloc
+         * takes player first (r7), then slot evicts the local in r6 and step the
+         * local in r5, as in the ROM. */
+        asm("" :: "r"(player), "r"(slot));
         sub_08007558(CMD_CARD, &gUnk_020192E4[player & 1].zones[slot].card);
-        ZONE(player & 1, slot)->card.id = 0;
+        (gUnk_020192E4[player & 1].zones + slot)->card.id = 0;
         sub_08060FD0(player, slot);
         from.player = player;
         from.area = 0;
@@ -213,8 +214,6 @@ void sub_08012D7C(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08012C4C", sub_08012D7C); /* 0x08012D7C size 0x158 */
 
 void sub_08012ED4(void)
 {

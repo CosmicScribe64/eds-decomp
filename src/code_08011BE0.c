@@ -294,15 +294,23 @@ void sub_08011FA0(void)
     gUnk_020185C0.running = 0;
 }
 
-#if 0 /* NONMATCHING: the register choice for the player copy at entry differs,
-       * and the players base (sym+0x28-0x28) is hoisted above the 0x1B0E flag
-       * test. */
-/* Sets zone flags of zone arg2 from the bits of arg4; also clears the slot bit in unk26 in some state. */
+/* The players array addressed as gUnk_020192E0 + 4 (not via .players[]), so agbcc
+ * keeps the +4 base apart from the +0x26 field offset and derives it from the
+ * zones literal (sym+0x2C) by CSE's related-value reuse (r3 - 0x28). */
+#define PLAYERS_08011FFC ((struct DuelPlayer *)((u8 *)&gUnk_020192E0 + 4))
+
+/* Sets zone flags of zone arg2 from the bits of arg4; in phase 3, if the acting
+ * player equals linkSkip, also clears the slot bit in the player's zoneMask. */
 void sub_08011FFC(void)
 {
-    u32 player = CMD_PLAYER();
+    /* FAKEMATCH: the separate copy `player = p` gives the shift result its own
+     * short-lived pseudo (r0) that the `& 1` reuses, with the player kept in r6. */
+    u32 p = CMD_PLAYER();
+    u32 player = p;
     int slot = gUnk_020185C0.arg2;
-    struct DuelZone08011BE0 *zone = (struct DuelZone08011BE0 *)&gUnk_020192E4[player & 1].zones[slot];
+    /* All addresses go through the one symbol gUnk_020192E0, so the 0x1B12 flag
+     * byte and the players base are derived from the one zones literal. */
+    struct DuelZone08011BE0 *zone = (struct DuelZone08011BE0 *)&gUnk_020192E0.players[p & 1].zones[slot];
 
     if (gUnk_020185C0.arg4 & 1)
         zone->w.flag0_14 = 1;
@@ -317,11 +325,9 @@ void sub_08011FFC(void)
     if (gUnk_020185C0.arg4 & 0x20)
         zone->flag7_7 = 1;
     if (gUnk_020192E0.phase1B12 == 3 && player == gUnk_020192E0.linkSkip)
-        gUnk_020192E4[player & 1].zoneMask &= ~(1 << slot);
+        PLAYERS_08011FFC[player & 1].zoneMask &= ~(1 << slot);
     gUnk_020185C0.running = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08011BE0", sub_08011FFC); /* 0x08011FFC size 0xE4 */
 extern const u8 gUnk_0868DB94[];
 extern const u8 gUnk_0868EC38[];
 

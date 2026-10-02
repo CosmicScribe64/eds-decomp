@@ -111,43 +111,36 @@ u32 sub_08004358(u32 year, u32 month, u32 day);
 /* Opponent-select cursor: shift the 8-position trail back, aim it at the
  * selected slot (easing over 15 frames, else bobbing on idle), draw the trail
  * sprites and then the portrait frame. */
-#if 0 /* NONMATCHING: the logic and instruction sequence essentially match
-       * (size 0x1A8 vs 0x1B4), but agbcc's register map differs (ROM: slot r3,
-       * &gSel r6, &pos r5, flag r9, slot*4 sl; built: slot r3, &gSel r4, &pos
-       * r6, flag r8, slot*4 r9) and the interpolation temporaries are
-       * scheduled in a different order. */
 void sub_080034B8(s32 slot, u16 flag)
 {
-    struct OpponentSelect *sel = &gSel;
-    u16 *p;
-    s8 i;
+    s32 i;
 
-    p = &sel->cursorX[6];
-    i = 7;
-    do {
-        p[1] = p[0];
-        p[9] = p[8];
-        p--;
-    } while (--i);
-    sel->targetX = gUnk_081983AC[slot].x + 0x10;
-    sel->targetY = gUnk_081983AC[slot].y;
-    if (slot != sel->unk6) {
-        sel->unk6 = slot;
-        sel->unk9 = 0xF;
-        sel->unk13 = 0;
-        sel->unk24 = sel->cursorX[0];
-        sel->unk28 = sel->cursorY[0];
+    for (i = 7; i != 0; i--) {
+        gSel.cursorX[i] = gSel.cursorX[i - 1];
+        gSel.cursorY[i] = gSel.cursorY[i - 1];
     }
-    if (sel->unk9) {
-        s32 t = sel->unk9;
-        s16 dx = (sel->unk24 - sel->targetX) * t;
-        s16 dy = (sel->unk28 - sel->targetY) * t;
-        sel->cursorX[0] = sel->targetX + dx / 16;
-        sel->cursorY[0] = sel->targetY + dy / 16;
-        sel->unk9 = t - 1;
+    gSel.targetX = gUnk_081983AC[slot].x + 0x10;
+    gSel.targetY = gUnk_081983AC[slot].y;
+    if (slot != gSel.unk6) {
+        gSel.unk6 = slot;
+        gSel.unk9 = 0xF;
+        gSel.unk13 = 0;
+        gSel.unk24 = gSel.cursorX[0];
+        gSel.unk28 = gSel.cursorY[0];
+    }
+    if (gSel.unk9) {
+        s32 dx = gSel.unk24 - gSel.targetX;
+        s32 dy = gSel.unk28 - gSel.targetY;
+        dx *= gSel.unk9;
+        dy *= gSel.unk9;
+        dx /= 16;
+        dy /= 16;
+        gSel.cursorX[0] = gSel.targetX + dx;
+        gSel.cursorY[0] = gSel.targetY + dy;
+        gSel.unk9--;
     } else {
-        sel->cursorX[0] = sel->targetX + gUnk_081983C0[(gMain.frameCounter >> 1) & 0x1F].x;
-        sel->cursorY[0] = sel->targetY + gUnk_081983C0[(gMain.frameCounter >> 1) & 0x1F].y;
+        gSel.cursorX[0] = gSel.targetX + gUnk_081983C0[(gMain.frameCounter >> 1) & 0x1F].x;
+        gSel.cursorY[0] = gSel.targetY + gUnk_081983C0[(gMain.frameCounter >> 1) & 0x1F].y;
     }
     for (i = 0; i <= 7; i++) {
         if (i == 0) {
@@ -155,18 +148,16 @@ void sub_080034B8(s32 slot, u16 flag)
                 REG_BLDCNT = 0;
                 REG_BLDALPHA = 0;
             }
-            sub_080762D0((sel->cursorY[0] << 16) | sel->cursorX[0], 0x4080, 0x104);
+            sub_080762D0((gSel.cursorY[0] << 16) | gSel.cursorX[0], 0x4080, 0x104);
         } else if (flag == 0) {
             REG_BLDCNT = 0xF40;
             REG_BLDALPHA = 0x808;
-            sub_080763D0((sel->cursorY[i] << 16) | sel->cursorX[i], 0x4080, 0x104);
+            sub_080763D0(gSel.cursorX[i] | (gSel.cursorY[i] << 16), 0x4080, 0x104);
         }
     }
     sub_08003020(gUnk_081983AC[slot].x, gUnk_081983AC[slot].y);
     sub_080030FC();
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080034B8", sub_080034B8); /* 0x080034B8 size 0x1B4 */
 /* Draw a clamped 0..99 number as (up to) two decimal digit sprites at (x, y). */
 void sub_0800366C(s32 x, s32 y, s32 value)
 {

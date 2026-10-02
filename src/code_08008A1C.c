@@ -666,32 +666,26 @@ void sub_080097F0(struct DuelCard *card, int zone)
         gUnk_020192E4[owner].removedMask = (u16)(gUnk_020192E4[owner].removedMask | 1 << zone);
     }
 }
-#if 0 /* NONMATCHING: the semantics are right and the direct gUnk_020192E4[p] indexing is closest
-       * (96 vs the ROM's 99 instructions), but the ROM spills arg0 and two address bases
-       * to its 12-byte frame while GCC keeps them in registers, so register allocation and spills differ. */
 /* Return the temporarily banished monster of `zone` (a kind-1 banished entry whose high
  * byte is the zone) to its field zone, compact the banished card list, and clear the zone's
- * bit in the owner's removedMask. */
+ * bit in the owner's removedMask. The u32 `info` local (not u16) and the separate `j` for
+ * the compaction loop are both needed for the ROM's register allocation. */
 void sub_080098C0(int player, int zone)
 {
-    u16 p = player & 1;
-    int i;
+    int i, j;
 
-    for (i = 0; gUnk_020192E4[p].numBanished > i; i++) {
-        s8 info = gUnk_020192E4[p].banishedInfo[i];
-
-        if ((u8)info == 1 && (info >> 8) == zone) {
-            sub_08007558(&ZONE_CARD(p, zone), &CARD(gUnk_020192E4[p].banished[i]));
-            gUnk_020192E4[p].numBanished--;
-            for (; i < gUnk_020192E4[p].numBanished; i++)
-                sub_08007558(&CARD(gUnk_020192E4[p].banished[i]), &CARD(gUnk_020192E4[p].banished[i + 1]));
-            gUnk_020192E4[p].removedMask &= ~(1 << zone);
+    for (i = 0; i < PLAYER(player).numBanished; i++) {
+        u32 info = PLAYER(player).banishedInfo[i];
+        if ((u8)info == 1 && info >> 8 == zone) {
+            sub_08007558(&ZONE_CARD(player, zone), &CARD(PLAYER(player).banished[i]));
+            PLAYER(player).numBanished--;
+            for (j = i; j < PLAYER(player).numBanished; j++)
+                sub_08007558(&CARD(PLAYER(player).banished[j]), &CARD(PLAYER(player).banished[j + 1]));
+            PLAYER(player).removedMask &= ~(1 << zone);
             return;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08008A1C", sub_080098C0); /* 0x080098C0 size 0x128 */
 
 /* Put a (non-token) card into its owner's banished list (kind 2). */
 void sub_080099E8(struct DuelCard *card)

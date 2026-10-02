@@ -67,7 +67,7 @@ u32 sub_08052F38(u32 keys);
 int sub_08007834(u16 id);
 int sub_08008A44(int player);
 int sub_08008AF8(int player, int exclude);
-u16 sub_08008A6C(int player, int zone);
+int sub_08008A6C(int player, int zone);
 void sub_08077AEC(u16 id);
 void sub_08017FF4(int player, int zone);
 void sub_08055D3C(int player, int a, int b, int c);
@@ -516,12 +516,28 @@ int sub_08038EF0(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* WIP, NOT MATCHING: first full draft of every arm (0x62-0x80). The structure is verified by
-       * hand against the asm, but register allocation and the frame differ (the ROM has
-       * `sub sp,#0x80` and no spills, `ref` in r6, arg in r3, and the base of 0x02017A40 kept
-       * in r2). */
+struct EffBuf {
+    u8 pad[0x4E4];
+    struct CardRef ref;
+};
+#define ZB28(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + ((u32)gPlayerState + 0x28)))
+static inline u8 CardType_08038FB8(u16 id)
+{
+    return CARD_TYPE(id);
+}
+static inline u8 CardLevel_08038FB8(u16 id)
+{
+    u8 lvl;
+
+    CARD_LEVEL(id, lvl);
+    return lvl;
+}
+#define HANDW(p, i) (*(u32 *)((p) * 0xD64 + (i) * 4 + (u32)gUnk_02019968))
+
 int sub_08038FB8(struct CardRef *ref, int arg)
 {
+    char text[0x80]; /* unused: the ROM reserves 0x80 stack bytes and never touches them */
+
     if (!ref->skip4) {
         switch (EFF_PHASE) {
         case 0x80:
@@ -529,20 +545,17 @@ int sub_08038FB8(struct CardRef *ref, int arg)
                 return 0x7F;
             break;
         case 0x7F: {
-            s16 found = 0;
-            int has = 0;
+            int found = 0;
+            int has;
             int i;
 
-            if (!gPlayerState[ref->player].flag8_4) {
+            if (!gPlayerState[1 & ref->player].flag8_4) {
                 for (i = 0; i < gPlayerState[1 & ref->player].handCount; i++) {
-                    int id = CARD_ID(CARD_WORD(gUnk_02019968[ref->player].c[i]));
-                    u32 lvl;
+                    u16 id = CARD_ID(HANDW(ref->player, i));
 
-                    if (CARD_TYPE(id) <= 0x14 && sub_08007834(id) == 0) {
-                        CARD_LEVEL(id, lvl);
-                        if (lvl > 4) {
-                            CARD_LEVEL(id, lvl);
-                            if (lvl <= 6) {
+                    if (CardType_08038FB8(id) <= 0x14 && sub_08007834(id) == 0) {
+                        if (CardLevel_08038FB8(id) > 4) {
+                            if (CardLevel_08038FB8(id) <= 6) {
                                 if (sub_08008A44(ref->player) != -1)
                                     found = 1;
                             } else {
@@ -555,15 +568,17 @@ int sub_08038FB8(struct CardRef *ref, int arg)
             }
             if (gPlayerState[ref->player].flag8_4)
                 found = 0;
+            has = 0;
             for (i = 0; i <= 4; i++) {
-                struct DuelZone *z = ZB(1 & ref->player, i);
-                int id = CARD_ID(CARD_WORD(z->card));
+                int pp = 1 & ref->player;
+                struct DuelZone *z = ZB28(pp, i);
+                u16 id = CARD_ID(CARD_WORD(z->card));
 
                 if (id != 0) {
-                    struct DuelZone *z2 = ZB(1 & ref->player, i);
+                    struct DuelZone *z2 = ZB28(1 & ref->player, i);
 
                     if ((2 & ZFLAGS(z2)) != 0) {
-                        switch (gUnk_08622AB4[id & 0x7FF]) {
+                        switch (CARD_NUMBER(id)) {
                         case 0x58:
                         case 0x105:
                         case 0x1FF:
@@ -574,111 +589,103 @@ int sub_08038FB8(struct CardRef *ref, int arg)
                 }
             }
             if (found != 0) {
-                if (has == 0)
+                if (has == 0) {
+                ret78:
                     return 0x78;
-                sub_080602A4(0x204, 0x717, 0xB, gUnk_08083300);
-                sub_08060308(2, 0, 0);
-                return 0x7E;
+                }
+            } else {
+                if (has != 0)
+                    goto ret64;
+                break;
             }
-            if (has != 0)
-                return 0x64;
-            break;
+            sub_080602A4(0x204, 0x717, 0xB, gUnk_08083300);
+            sub_08060308(2, 0, 0);
+            return 0x7E;
         }
         case 0x7E:
             if (gUnk_0201AE60.flag14 == 0)
-                return 0x78;
+                goto ret78;
+        ret64:
             return 0x64;
         case 0x78:
             sub_080602A4(0x206, 0x712, 0xB, gUnk_08083350);
             gPlayerState[ref->player].flag8_4 = 1;
+        ret77:
             return 0x77;
         case 0x77: {
             int idx;
-            int id;
-            u32 lvl;
+            u16 id;
 
             if (sub_08052F38(1) == 0)
-                return 0x77;
+                goto ret77;
             idx = gUnk_0201CFB0.idx82C;
-            id = CARD_ID(CARD_WORD(gUnk_02019968[ref->player].c[idx]));
-            if (CARD_TYPE(id) <= 0x14 && sub_08007834(id) == 0) {
-                CARD_LEVEL(id, lvl);
-                if (lvl > 4) {
-                    CARD_LEVEL(id, lvl);
-                    if (lvl <= 6) {
-                        int p;
-
+            id = CARD_ID(HANDW(ref->player, idx));
+            if (CardType_08038FB8(id) <= 0x14 && sub_08007834(id) == 0) {
+                if (CardLevel_08038FB8(id) > 4) {
+                    if (CardLevel_08038FB8(id) <= 6) {
                         sub_08017FF4(ref->targets[0], 0);
-                        p = ref->player;
-                        sub_08055D3C(p, idx, sub_08008A44(p), 0);
+                        sub_08055D3C(ref->player, idx, sub_08008A44(ref->player), 0);
                         return 0x6E;
                     }
                     sub_080602A4(0x206, 0x712, 0xB, gUnk_0808339C);
                     ref->targets[1] = idx;
+                ret76:
                     return 0x76;
                 }
             }
             sub_08077AEC(3);
-            return 0x77;
+            goto ret77;
         }
         case 0x76:
             if (sub_08052F38(0xF0) == 0)
-                return 0x76;
-            if (sub_08008A6C(ref->player, gUnk_0201CFB0.idx82C) == 0) {
-                sub_08077AEC(3);
-                return 0x76;
+                goto ret76;
+            if (sub_08008A6C(ref->player, gUnk_0201CFB0.idx82C) != 0) {
+                sub_08017FF4(ref->targets[0], 0);
+                sub_08017FF4(ref->player, gUnk_0201CFB0.idx82C);
+                sub_08055D3C(ref->player, ref->targets[1], gUnk_0201CFB0.idx82C, 0);
+                return 0x6E;
             }
-            sub_08017FF4(ref->targets[0], 0);
-            sub_08017FF4(ref->player, gUnk_0201CFB0.idx82C);
-            sub_08055D3C(ref->player, ref->targets[1], gUnk_0201CFB0.idx82C, 0);
-            return 0x6E;
+            sub_08077AEC(3);
+            goto ret76;
         case 0x64:
             sub_080602A4(0x206, 0x411, 0xB, gUnk_080833EC);
+        ret63:
             return 0x63;
         case 0x63: {
             int p7;
             int pos;
-            struct DuelZone *z;
 
             if (sub_08052F38(0xE0) == 0)
-                return 0x63;
+                goto ret63;
             p7 = gUnk_0201CFB0.w824;
             pos = gUnk_0201CFB0.w828 + gUnk_0201CFB0.idx82C;
-            z = ZB(1 & p7, pos);
-            switch (gUnk_08622AB4[CARD_ID11(CARD_WORD(z->card))]) {
+            switch (((const u16 *)0x08622AB4)[CARD_ID11(CARD_WORD(ZBP(1 & p7, pos)->card))]) {
             case 0x58:
             case 0x105:
             case 0x1FF:
-                break;
-            default:
-                sub_08077AEC(3);
-                return 0x63;
+                sub_08077AEC(1);
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, (u16)gUnk_0201CFB0.w824,
+                             (u8)gUnk_0201CFB0.w828 | (u8)gUnk_0201CFB0.idx82C << 8, 0);
+                sub_08075294(&gUnk_02017F24, ref, 0x14);
+                gUnk_02017F24.id = CARD_ID(CARD_WORD(ZBP(1 & p7, pos)->card));
+                gUnk_02017F24.zone = pos;
+                return 0x62;
             }
-            sub_08077AEC(1);
-            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, *(u16 *)&gUnk_0201CFB0.w824,
-                         (*(u8 *)&gUnk_0201CFB0.idx82C << 8) | *(u8 *)&gUnk_0201CFB0.w828, 0);
-            sub_08075294(&gUnk_02017F24, ref, 0x14);
-            gUnk_02017F24.id = CARD_ID(CARD_WORD(ZB(1 & p7, pos)->card));
-            gUnk_02017F24.zone = pos;
-            return 0x62;
+            sub_08077AEC(3);
+            goto ret63;
         }
-        case 0x62: {
-            struct CardRef *r62 = (struct CardRef *)&gUnk_02017A40[0x4E4];
-
-            switch (gUnk_08622AB4[r62->id & 0x7FF]) {
-            case 0x105:
-                sub_080307D4(r62, 0);
-                return 0x61;
+        case 0x62:
+            switch (CARD_NUMBER(((struct EffBuf *)gUnk_02017A40)->ref.id)) {
             case 0x58:
             case 0x1FF:
                 sub_080304E4(&gUnk_02017F24, 0);
                 return 0x61;
+            case 0x105:
+                sub_080307D4(&((struct EffBuf *)gUnk_02017A40)->ref, 0);
+                return 0x61;
             }
             break;
-        }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080383F0", sub_08038FB8); /* 0x08038FB8 size 0x680 */

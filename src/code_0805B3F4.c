@@ -697,12 +697,13 @@ void sub_08057E3C(void);
 int sub_08008524(int, u16);
 int sub_08008860(int);
 
-#if 0 /* NONMATCHING (score 46): NONMATCHING: score 46 (from 351). Same structure; fixed: int i/int sum, union
-       * word read + bitfield stores (BcZone) for the case-8 zone loop (gives SR), zones/src locals after sub_08057E08,
-       * ((const u16 *)0x08623DF4)[k] int-cast table (lsl first), success store via u8 *w deref (address before value),
-       * gUnk_02015F00.pad byte. Left: zone-loop preheader order (ROM: base, src->ip, giv inits, -4096->sl, -9, end;
-       * build hoists -4096/-9 before the inits and swaps ip/sl), reload regs in case 4 (r0 vs r7), success ior operand
-       * tie, loop-increment reload regs. */
+#if 0 /* NONMATCHING (score 32): NONMATCHING: score 32 (from 351). Fixed so far: int i/int sum; case 8 zone loop
+       * as union word read + bitfield stores (BcZone) with zones/src locals after sub_08057E08 (gives SR); ((const u16
+       * *)0x08623DF4)[k] int-cast table (lsl first); success store through u8 *p = w + 0x1B24 with FAKEMATCH asm-opaque
+       * 1 (orr operand tie). Left: zone-loop preheader order (ROM: base, src->ip, giv inits, -4096->sl, -9, end; build
+       * hoists -4096/-9 pairs in loop pass 1 before the SR inits, and gives src sl / -4096 ip); case 4 cast-base reload
+       * r7 vs ROM r0; pool order. Tried: many bitfield/explicit-mask/loop forms in a mini harness
+       * (build/wf/sub_0805BC24/t), do-while(0) wrappers, struct-copy flags. */
 struct BcZone {
     u32 id : 12;
     u32 rest : 20;
@@ -867,7 +868,13 @@ int sub_0805BC24(void)
             u8 *w;
         success:
             w = (u8 *)&gUnk_02015F00;
-            *(w + 0x1B24) = 1 | i << 1;
+            {
+                u8 *p = w + 0x1B24;
+                int s = i << 1;
+                int one = 1;
+                asm("" : "+r"(one));
+                *p = one | s;
+            }
             return 1;
         }
     }

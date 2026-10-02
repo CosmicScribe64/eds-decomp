@@ -351,34 +351,36 @@ int sub_0801A09C(int player, u16 no, int arg)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: 6 operand bytes differ at the exact 0x68 length.
- * Staged players/offset/count/hand addresses resolve the prior spare instruction.
- * The player stride still multiplies into r0 instead of r1, swapping the first
- * count-load and hand-base scratch registers. See the unit wiki for failed variants. */
+#if 0 /* NONMATCHING (score 8): BYTE-IDENTICAL: whole unit reports 25/25 functions match, unit bytes MATCH with
+       * this C enabled. wf.py apply refuses only because check.py's size line compares the .size symbol (0x66, code
+       * only) with the table size 0x68, which includes the 2-byte trailing .align pad after bx r1 (matched sub_0801A09C
+       * shows the same -2 artifact). To enable: replace the INCLUDE_ASM with this C. Key: the hand pointer must be a
+       * fresh pseudo born as offset + (players + 0x684) (separate base temp), so offset dies there and shares r1 with
+       * hand; staging hand as two assignments to one variable made it conflict with offset and pushed the product into
+       * r0. */
+/* Return 1 (after sub_080193D4(player, i, 0, 1)) if the hand holds a card with number `no`. */
 int sub_0801A130(int player, u16 no)
 {
     int i = 0;
     u8 *players = (u8 *)gUnk_020192E4;
     u32 offset = (player & 1) * 0xD64;
-    u8 *counts = (u8 *)players + offset;
-    if (i < counts[2]) {
-        u32 *hand = (u32 *)((u8 *)players + 0x684);
-        hand = (u32 *)((u8 *)hand + offset);
+    struct DuelPlayer *p = (struct DuelPlayer *)(players + offset);
+    if (i < p->handCount) {
+        u8 *hands = players + 0x684;
+        u32 *hand = (u32 *)(offset + (u32)hands);
         do {
-            u16 id = (*(struct DuelCard *)hand).id;
-            if (((const u16 *)0x08622AB4)[id & 0x7FF] == no) {
+            if (CARD_NUMBER(CARD(*hand).id) == no) {
                 sub_080193D4(player, i, 0, 1);
                 return 1;
             }
             hand++;
             i++;
-        } while (i < counts[2]);
+        } while (i < p->handCount);
     }
     return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08019554", sub_0801A130); /* 0x0801A130 size 0x68 */
 #endif
+INCLUDE_ASM("asm/nonmatching/code_08019554", sub_0801A130); /* 0x0801A130 size 0x68 */
 void sub_0801A198(void)
 {
     int i;

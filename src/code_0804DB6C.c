@@ -218,22 +218,26 @@ int sub_0804DC88(int player)
 INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804DC88); /* 0x0804DC88 size 0x5B8 */
 struct E240Flags { u8 b0:1; u8 b1:1; u8 b2:1; u8 rest:5; };
 /* Find the first occupied zone with flag +0x8C bit 1 or 2. */
-#if 0 /* NONMATCHING: hoisted (u8)i is placed before (i & 1) and (u8)(1 - i); ROM order is i&1, 1-i, i */
+#if 0 /* NONMATCHING (score 8): BYTE-EXACT: enabling this C gives check.py 11/11, unit bytes MATCH (0x1484);
+       * wf.py apply refuses only because nm st_size is 0xDA vs table 0xDC (2 bytes trailing .align padding after bx r1),
+       * so flip to C once wf.py ignores padding-only size deltas. Keys: int side = i & 1 at the top of the inner body
+       * (longer life makes loop pass 1 hoist it before the (u8)(1-i) chain); (u8)i written inline as the first OR
+       * operand of pos (conditional, so PRE does not hoist i<<24 ahead; loop pass 2 hoists it last); int i = 0 with for
+       * (; ...) and the shared found: return label are required; no asm barrier needed. Earlier failures: u8 iu = i at
+       * loop top is PRE-hoisted first; iu inside the b2 block is never hoisted; for (i = 0; ...) or a literal 0x0201930C
+       * base break it. */
 int sub_0804E240(int player)
 {
     int i = 0, j;
     u8 *zb = (u8 *)0x0201930C;
     for (; i <= 1; i++) {
         for (j = 0; j <= 4; j++) {
-            u8 iu = i;
-            struct DuelZoneF *zn = (struct DuelZoneF *)(j * 0x94 + (i & 1) * 0xD64 + (int)zb);
+            int side = i & 1;
+            struct DuelZoneF *zn = (struct DuelZoneF *)(j * 0x94 + side * 0xD64 + (int)zb);
             u8 opp = 1 - i;
             if ((zn->w0 << 20) != 0) {
                 if (((struct E240Flags *)&zn->b8c)->b1) {
                     sub_08018544(i, j, 1);
-                    /* FAKEMATCH: keep the completed first destroy call
-                     * distinct; the following return remains shared. */
-                    __asm__ volatile("" ::: "memory");
                 found:
                     return 0;
                 }
@@ -243,8 +247,7 @@ int sub_0804E240(int player)
                     u32 pos;
                     if (player != 0)
                         msg = 0x80A2;
-                    pos = (u8)j << 8;
-                    pos |= iu;
+                    pos = (u8)i | (u8)j << 8;
                     sub_0801EC58(msg, pos, 0, 0);
                     if (r >= 0) {
                         sub_08019078(player, pos, (u8)r << 8 | opp);

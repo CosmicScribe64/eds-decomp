@@ -252,39 +252,31 @@ u32 sub_0800CAF0(s32 player, s32 slot)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800CAF0); /* 0x0800CAF0 size 0x128 */
-#if 0 /* NONMATCHING: cardType computation hoisted outside inner loop; register allocation differs */
 s32 sub_0800CC18(s32 player, s32 slot)
 {
-    u32 cardId;
-    u16 p, s;
-    s16 one;
-    u32 d64;
-    u32 masked;
-    cardId = (*(u32 *)&gUnk_0201930C[slot * 0x94 + (player & 1) * 0xD64] << 20) >> 20;
+    u16 *tab = gUnk_08622AB4;
+    u16 cardId;
+    s32 p, s;
+    cardId = *(u32 *)&gUnk_0201930C[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
     if (cardId == 0) {
         return 0;
     }
-    one = 1;
-    d64 = 0xD64;
-    masked = (cardId & 0x7FF) << 16;
     for (p = 0; p <= 1; p++) {
         for (s = 0; s <= 4; s++) {
-            u8 *zone = &gUnk_0201930C[s * 0x94 + (p & one) * d64];
+            u8 *zone = &gUnk_0201930C[s * 0x94 + (p & 1) * 0xD64];
             if ((*(u32 *)zone << 20) == 0) {
                 continue;
             }
             if (!(zone[6] & 2)) {
                 continue;
             }
-            if (sub_0800AA40(p, s, *(u16 *)((u32)gUnk_08622AB4 + (masked >> 15))) != -1) {
+            if (sub_0800AA40(p, s, tab[cardId & 0x7FF]) != -1) {
                 return 1;
             }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800CC18); /* 0x0800CC18 size 0xB4 */
 /* Evaluates the card in (player, slot) against zone pos (targetPlayer, targetSlot) via sub_0802B558. */
 u16 sub_0800CCCC(u32 player, u32 slot, u32 targetPlayer, u32 targetSlot)
 {

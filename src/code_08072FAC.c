@@ -87,36 +87,38 @@ u16 sub_08072FAC(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     return hdrT[0];
 }
 
-#if 0 /* NONMATCHING: 3 register allocation differences, about 25 shapes tried: (1) target computes the tile dst (call arg 1) before the hdrT[0] reload; a named dst local between `tiles` and `hdrC` fixes that order but spills palIdx<<16 to the stack (target keeps it in sl); (2) target keeps the arg's shifted narrowing copy palIdx<<16 in sl, this build puts it in r9 (so row0 lands in sl instead of r9); (3) target keeps the hoisted bank (palIdx>>4)<<12 in r4, this build reuses r9 for it and copies it to the per-iteration mask scratch. The integer-literal map base 0x0300245C is required: via the gUnk_0300045C symbol agbcc hoists the literal out of the loop, the target reloads it per iteration. */
 u16 sub_080730A8(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
+    u8 *dst = (u8 *)(0x06004000 + tileBase * 32);
     u16 *hdrC = (u16 *)((u8 *)tiles + hdrT[0] * 32);
     u16 *cells = hdrC + 4;
     u16 i;
-    s16 col0 = 0;
+    int col0 = 0;
     int row0 = 0;
-    sub_08075294((void *)(0x06004000 + tileBase * 32), tiles, hdrT[0] * 32);
+    sub_08075294(dst, tiles, hdrT[0] * 32);
     sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;
         int col = pos & 0x3F;
         int row = (pos & 0xFF00) >> 8;
-        int idx;
+        u16 idx;
         if (i == 0) {
             col0 = col;
             row0 = row;
         }
-        idx = (((col - col0) << 16) | ((row - row0) << 21)) >> 16;
+        {
+            u16 dc = col - col0;
+            u16 dr = row - row0;
+            idx = dc | (dr << 5);
+        }
         idx += mapBase;
         ((u16 *)0x0300245C)[idx] = (tile + tileBase) | (palIdx >> 4) << 12;
     }
     return hdrT[0];
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_080730A8); /* 0x080730A8 size 0xDC */
 /* Image pack: {u16 nColors, ...; u16 pal[n] @ +8; u16 nTiles @ +8+2n; tiles @ +0x10+2n ...}.
    Copies tiles to 0x06004000 + tileBase*32 and the palette to 0x05000000 + palIdx*2; returns the tile count. */
 u16 sub_08073184(u16 palIdx, u16 tileBase, u16 *img)

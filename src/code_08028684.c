@@ -346,14 +346,12 @@ u16 sub_08028AEC(void)
     return 1;
 }
 
-#if 0 /* NONMATCHING: r3 keeps a copy of the work pointer (used by the 0x20 branch) and r5 is a
-       * scratch. We get r7 and CSE the unkB0D address. */
 /* Choose a hand (Left/Right, A); the CPU (or the link partner) answers. */
 u16 sub_08028D9C(void)
 {
     struct Work20310 *w = &gWork;
 
-    if (w->unkB0D == 0) {
+    if (gWork.unkB0D == 0) {
         if ((gMain.newKeys & 1) && w->hands[0].offset == 0) {
             if (w->unkB0E == 1) {
                 w->unkB0D = 1;
@@ -368,12 +366,12 @@ u16 sub_08028D9C(void)
                 gWork.unkABD = 1;
                 gWork.unkABE = sub_08028930(gWork.hands[0].hand, gWork.unkABC);
                 gWork.unkAF5++;
-                gWork.unkB1E = 0;
                 gWork.hands[1].offset = 4;
+                gWork.unkB1E = 0;
             }
             sub_08077AEC(1);
-        } else if ((gMain.newKeys & 0x20) && w->hands[0].offset == 0) {
-            w->hands[0].offset = -4;
+        } else if ((gMain.newKeys & 0x20) && gWork.hands[0].offset == 0) {
+            gWork.hands[0].offset = -4;
             sub_08077AEC(0);
         } else if ((gMain.newKeys & 0x10) && gWork.hands[0].offset == 0) {
             gWork.hands[0].offset = 4;
@@ -399,9 +397,6 @@ u16 sub_08028D9C(void)
         sub_080280D0(0, gWork.unkAC0);
     return 0;
 }
-#endif
-
-INCLUDE_ASM("asm/nonmatching/code_08028684", sub_08028D9C); /* 0x08028D9C size 0x234 */
 
 /* Result phase (step 3, hypothesis). Handles the A press and the link partner's answer (0x53), with a saturating unkB1E timer. */
 u16 sub_08028FD0(void)

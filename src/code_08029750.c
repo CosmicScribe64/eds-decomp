@@ -517,7 +517,6 @@ void sub_08029FC8(s32 x, s32 y, const u16 *str, s32 w)
         }
     }
 }
-#if 0 /* NONMATCHING: the placement and registers of e (the Entry copy) differ, list++ is placed before the argument computation, and the tail loop's strength reduction differs */
 void sub_0802A09C(struct Entry *list, s32 count)
 {
     s32 i;
@@ -528,8 +527,12 @@ void sub_0802A09C(struct Entry *list, s32 count)
     u8 *base;
     int bound;
     u8 *selection;
+    const struct Name *names;
     sub_08074B08(0x20, 9);
     for (i = 0; i < 4 && i < count; i++) {
+        /* Loop-invariant table pointer: loop.c hoists it, global alloc leaves it
+           without a register, and reload rematerializes it at the use. */
+        names = gUnk_0822C720;
         raw = *(u32 *)list;
         bits = raw << 20;
         e = *(struct Entry *)&raw;
@@ -544,12 +547,16 @@ void sub_0802A09C(struct Entry *list, s32 count)
                     ok = 0;
             }
             if (ok) {
-                const u16 *name = gUnk_0822C720[e.id].s;
+                const u16 *name = (const u16 *)((e.id << 6) + (u32)names);
                 list++;
                 sub_08029FC8(8, i * 16 + 7, name, 10);
             } else {
                 sub_08029FC8(8, i * 16 + 7, gUnk_0808275C, 10);
                 list++;
+                /* FAKEMATCH: an empty insn in the else path lengthens the loop so the
+                   giv i*16+7 loses priority to e (r7 vs r8); names then gets no register
+                   and its reload in r0 rotates the 16 reload into r1. */
+                asm volatile("");
             }
         }
     }
@@ -557,13 +564,12 @@ void sub_0802A09C(struct Entry *list, s32 count)
     bound = 0x11F;
     selection = (u8 *)&gUnk_0201D810;
     base = (u8 *)&gUnk_03000040;
+    /* FAKEMATCH: keeps gMain + 0x49C unfused and orders the preheader as the ROM. */
     asm("" : "+r"(base) : "r"(i), "r"(bound), "r"(selection));
     for (; i <= bound; i++)
         *(u16 *)(base + 0x49C + i * 2) = i + 16;
     *selection |= 4;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08029750", sub_0802A09C); /* 0x0802A09C size 0xEC */
 extern const u32 gUnk_081989A8[];
 extern const u32 gUnk_081989D0[];
 extern const u32 gUnk_081989EC[];

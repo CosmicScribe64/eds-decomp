@@ -634,21 +634,22 @@ final_check:
 #undef FUS_WILD
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D0E8); /* 0x0803D0E8 size 0x2E8 */
-#if 0 /* NONMATCHING: logic verified. The ROM does i = 0 first, keeps base
-       * 0x02017A40 in r4 and derives the 0x504 walking pointer from it in the
-       * loop pre-header, and hoists the table entry for num into r8. This
-       * build orders the literals and registers differently. */
+struct FusList_3D3D0 {
+    u8 pad[0x502];
+    u32 cnt : 2;
+    u32 rest : 6;
+    u8 pad2;
+    u16 list[3];
+};
+#define FL_3D3D0 ((struct FusList_3D3D0 *)gUnk_02017A40)
+
 int sub_0803D3D0(u16 num)
 {
-    u16 i;
-    int n = (u32)gUnk_02017A40[0x502] << 30 >> 30;
-    u16 *p = (u16 *)&gUnk_02017A40[0x504];
+    int i;
 
-    for (i = 0; i < n; i++, p++) {
-        u16 w = *p;
-
-        if (w != 0) {
-            int y = CARD_NUMBER(w);
+    for (i = 0; i < FL_3D3D0->cnt; i++) {
+        if (FL_3D3D0->list[i] != 0) {
+            int y = CARD_NUMBER(FL_3D3D0->list[i]);
             int x = CARD_NUMBER(num);
 
             if (x > 0x7CF)
@@ -661,8 +662,6 @@ int sub_0803D3D0(u16 num)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803D3D0); /* 0x0803D3D0 size 0x90 */
 struct FusList_3D460 {
     u8 pad[0x502];
     u8 cnt : 2;

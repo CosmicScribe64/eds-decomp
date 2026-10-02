@@ -334,59 +334,58 @@ empty:
 }
 
 
-#if 0 /* NONMATCHING (score 4): NONMATCHING: score 4. Direct gUnk_030049D0 field accesses (u16 h[6] packet
-       * view), u32 j with (int)j<(int)n, offset computed before the n<=5 test, u8 total for the 0xB0 header. Only diff:
-       * the target computes lsr #24 of (u8)total after the hoisted sl/r7 copies (zero-extend split around the loop
-       * preheader). */
-typedef struct { u16 h[6]; } QPkt;
+/* 12-byte link packet viewed as halfwords: h[0] = type << 12 | count, h[1..5] = payload. */
+typedef struct { u16 h[6]; } LinkQPkt;
 struct LinkQ {
-    QPkt rx[64];
-    u16 rxCount;
+    LinkQPkt rx[64];
+    u16 rxCount;         /* 0x300 */
 };
-extern struct LinkQ gUnk_030049D0_q asm("gUnk_030049D0");
-#define Q gUnk_030049D0_q
+/* Halfword view of the link buffer's rx queue (struct LinkBuf at 0x030049D0). */
+#define LINKQ (*(struct LinkQ *)&gUnk_030049D0)
+/* Queue `len` bytes (rounded up to halfwords, n) as 12-byte packets: up to 5 halfwords in one
+   0x90 packet, otherwise 0xA0 chunks (sent from the tail, header = remaining count) and a final
+   0xB0 packet (header = total count). Returns 1 on success, 0 if the queue is full. */
 int sub_080723B4(u16 *src, u32 len)
 {
     u32 n = (len + 1) >> 1;
     u32 j;
-    u16 hdr;
-    u8 total;
+    u32 total;
     u32 off;
-    if (Q.rxCount < 0x40) {
-        off = Q.rxCount * 12;
+    if (LINKQ.rxCount < 0x40) {
+        off = LINKQ.rxCount * 12;
         if (n <= 5) {
-            *(u16 *)((u8 *)Q.rx + off) = (u8)n | 0x9000;
+            *(u16 *)((u8 *)LINKQ.rx + off) = (u8)n | 0x9000;
             for (j = 0; j < 5; j++) {
+                /* FAKEMATCH: signed j < n, unsigned j < 5 */
                 if ((int)j < (int)n)
-                    Q.rx[Q.rxCount].h[j + 1] = *src++;
+                    LINKQ.rx[LINKQ.rxCount].h[j + 1] = *src++;
                 else
-                    Q.rx[Q.rxCount].h[j + 1] = 0;
+                    LINKQ.rx[LINKQ.rxCount].h[j + 1] = 0;
             }
-            Q.rxCount++;
+            LINKQ.rxCount++;
             return 1;
         }
-        total = n;
-
+        /* FAKEMATCH: (u8)n kept as n << 24 before the loop; the loop's `>> 24` is hoisted after
+           the base/count copies (a u8 local puts both shifts before them). */
+        total = n << 24;
         while (1) {
             if (n <= 5) {
-                Q.rx[Q.rxCount].h[0] = total | 0xB000;
+                LINKQ.rx[LINKQ.rxCount].h[0] = (total >> 24) | 0xB000;
                 for (j = 0; j < 5; j++)
-                    Q.rx[Q.rxCount].h[j + 1] = src[j];
-                Q.rxCount++;
+                    LINKQ.rx[LINKQ.rxCount].h[j + 1] = src[j];
+                LINKQ.rxCount++;
                 return 1;
             }
             n -= 5;
-            Q.rx[Q.rxCount].h[0] = (u8)n | 0xA000;
+            LINKQ.rx[LINKQ.rxCount].h[0] = (u8)n | 0xA000;
             for (j = 0; j < 5; j++)
-                Q.rx[Q.rxCount].h[j + 1] = src[n + j];
-            Q.rxCount++;
-
+                LINKQ.rx[LINKQ.rxCount].h[j + 1] = src[n + j];
+            LINKQ.rxCount++;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08071F40", sub_080723B4); /* 0x080723B4 size 0x15C */
+#undef LINKQ
 
 
 /* Reset the link buffers, install the link driver and its per-frame hook. */

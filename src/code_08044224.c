@@ -205,8 +205,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 2597): dedupe as for loop (VTOP lets loop.c hoist the latch list copy): list sl,
-       * count ip; wf 2597 */
+#if 0 /* NONMATCHING (score 2489): 0x3F0 player loop uses j (same var as dedupe/tail j): j r6; wf 2489 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -505,16 +504,14 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x3F0:
     {
         CASE_LOCALS
-        pidx = 0;
-        do {
-            for (i = 0; i < gUnk_020192E4[pidx & 1].w.graveCount; i++) {
-                word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (pidx & 1) * 0xD64));
+        for (j = 0; j <= 1; j++) {
+            for (i = 0; i < gUnk_020192E4[j & 1].w.graveCount; i++) {
+                word = (u32 *)((u8 *)gUnk_02019BE8 + (i * 4 + (j & 1) * 0xD64));
                 if (TARGET_TYPE(TARGET_ID(*word)) <= 20
-                    && (u16)sub_0804412C(pidx, i) != 0)
+                    && (u16)sub_0804412C(j, i) != 0)
                     ADD_TARGETB(*word, 4);
             }
-            pidx++;
-        } while (pidx <= 1);
+        }
         break;
     }
     case 0x3F3:

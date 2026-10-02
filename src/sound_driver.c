@@ -262,9 +262,9 @@ typedef char se_channel_state_size_check[sizeof(union SoundSeChannelState) == 2 
 typedef char se_channel_offset_check[(u32)&((struct SoundSeTrack *)0)->channel == 0xA ? 1 : -1];
 typedef char se_delay_offset_check[(u32)&((struct SoundSeTrack *)0)->delay == 0xC ? 1 : -1];
 
-#if 0 /* NONMATCHING (score 2): SE decoder rewritten structurally (goto outer loop, inner for(;;) rotated by
-       * expand_end_loop, shared data/tmp stream vars). Score 2: only 60-6F vol copy differs (target ldrb r0;strb;adds
-       * r3,r0 vs built reloads p[2]); u8 temp for vol flips p/track priority (p r5 vs track r6 differ by ~1%). */
+/* Advances SE track `idx` by one tick and decodes its bytecode into `out`.
+ * The bytecode cursor `p` and the shared stream value `data` follow the
+ * original register use; commands 0x00-0x1F re-dispatch the same command. */
 void sub_0807D6B4(s32 idx, struct SoundChannelParams *out) {
     struct SoundDriver *driver = &gUnk_03005210;
     struct SoundSeTrack *track = (struct SoundSeTrack *)&driver->seTracks[idx];
@@ -364,7 +364,10 @@ top:
                     track->loopCounter = tmp;
                     track->flags |= 0x20;
                 }
-                goto jump;
+                /* A separate copy of the pointer read (cross-jumped into the
+                 * FA/FB copy) gives `p` the reference weight that puts it in r5. */
+                p = (const u8 *)(p[0] + (p[1] << 8) + (p[2] << 16) + (p[3] << 24));
+                goto top;
             } else if (data == 0xFB) {
                 goto jump;
             } else if (data > 0xF9) {
@@ -453,7 +456,11 @@ top:
             tmp = p[0] + (p[1] << 8);
             out->sampleId = tmp | 0x8000;
             out->volume = p[2];
-            tmp = track->channel.bytes.volume = p[2];
+            {
+                u8 v = p[2];
+                track->channel.bytes.volume = v;
+                tmp = v;
+            }
             p += 3;
             track->basePitch = 0;
             if (data & 4) {
@@ -466,7 +473,7 @@ top:
             tmp >>= 4;
             track->linkedTracks = tmp;
             for (; tmp != 0; tmp--) {
-                s32 t;
+                s32 t; /* FAKEMATCH: an int temporary keeps the OR; |= 0xFF folds to a store */
                 track[tmp].flags |= 0x88;
                 t = (u8)track[tmp].linkedTracks;
                 t |= 0xFF;
@@ -530,8 +537,6 @@ end:
 scale:
     out->volume = (out->volume * track->volume) >> 4;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/sound_driver", sub_0807D6B4); /* 0x0807D6B4 size 0x4A4 */
 
 #if 0 /* NONMATCHING: typed main sequencer. The candidate is 0x7DC bytes with a 0x70-byte stack
        * frame, and the target is 0x7CC bytes. */

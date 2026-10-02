@@ -117,9 +117,9 @@ int sub_08042078(struct CardRef *ref, int player, int kind, int idx)
     }
     return r;
 }
-#if 0 /* NONMATCHING: only the hand loop base differs. The ROM computes e+4
-       * into r3 for the first test and copies it to r8 for the loop; this
-       * build goes straight to r8. */
+/* The player array at gUnk_020192E0 + 4, wrapped so the hand-loop test loads
+ * the constant base first (an ARRAY_REF, not pointer arithmetic). */
+struct PL2_080420A4 { struct DuelPlayerB p[2]; };
 /* Is any spell/trap zone (5-9) or hand card of the player usable right now? */
 int sub_080420A4(int player)
 {
@@ -141,22 +141,17 @@ int sub_080420A4(int player)
 found:
     return 1;
 hand:
-    {
-        struct DuelPlayerB *pl = (struct DuelPlayerB *)(e + 4);
-        for (i = 0; i < pl[1 & player].handCount; i++) {
-            u32 id = (*(u32 *)((u8 *)gUnk_02019968 + i * 4 + (1 & player) * 0xD64) << 20) >> 20;
-            if (id != 0) {
-                int n = sub_0802CD28(id);
-                int ok = (u16)sub_08041F9C(&gUnk_02017EE8, player, i);
-                if (n > 1 && ok != 0)
-                    goto found;
-            }
+    for (i = 0; i < ((struct PL2_080420A4 *)(gUnk_020192E0 + 4))->p[1 & player].handCount; i++) {
+        u32 id = (*(u32 *)((u8 *)gUnk_02019968 + i * 4 + (1 & player) * 0xD64) << 20) >> 20;
+        if (id != 0) {
+            int n = sub_0802CD28(id);
+            int ok = (u16)sub_08041F9C(&gUnk_02017EE8, player, i);
+            if (n > 1 && ok != 0)
+                goto found;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08041F9C", sub_080420A4); /* 0x080420A4 size 0xE8 */
 /* Build the description text of a queued effect into buf, chosen by ref->kind (5-30) and its small arguments. */
 void sub_0804218C(struct CardRef *ref, u8 *buf)
 {

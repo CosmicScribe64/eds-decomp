@@ -135,7 +135,16 @@ int sub_08051A9C(int player, u16 x, int count)
 #else
 INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051A9C); /* 0x08051A9C size 0x120 */
 #endif
-#if 0 /* NONMATCHING: temp register numbering only (count ptr r4 vs r5, constants r3 vs r1) */
+struct Scr1BBC {
+    u8 pad[0x808];
+    u16 lo808:3;
+    u16 busy:1;
+    u16 hi808:12;
+    u8 pad80A[0x82C - 0x80A];
+    u32 cursor;
+};
+#define gScr1BBC (*(struct Scr1BBC *)&gUnk_0201CFB0)
+#define MSG1BBC ((void (*)(u16, u16, int, int))sub_0801EC58)
 int sub_08051BBC(int player, int unused, int count)
 {
     u8 *base = (u8 *)gUnk_020192E4;
@@ -153,20 +162,17 @@ int sub_08051BBC(int player, int unused, int count)
         if (gUnk_02017A40.count != 0) {
             u8 *bp = &gUnk_02017A40.b4FC;
             if (*bp <= 9) {
-                gUnk_0201CFB0.b808 |= 8;
+                gScr1BBC.busy = 1;
                 sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
                 (*bp)++;
                 return 0;
             } else {
-                u32 msg = 8;
+                u16 msg = 8;
                 if (player != 0)
                     msg = 0x8008;
-                sub_0801EC58(msg, (u16)player, (*(u8 *)&gUnk_0201CFB0.w82C << 8) | 0xB, 0);
-                msg = 0xC1;
-                if (player != 0)
-                    msg = 0x80C1;
+                MSG1BBC(msg, (u16)player, ((u8)gScr1BBC.cursor << 8) | 0xB, 0);
+                MSG1BBC(player != 0 ? 0x80C1 : 0xC1, (u16)gScr1BBC.cursor, 1, 0);
                 gUnk_02017A40.count--;
-                sub_0801EC58(msg, (u16)gUnk_0201CFB0.w82C, 1, 0);
                 *bp = 0;
                 return 0;
             }
@@ -174,10 +180,16 @@ int sub_08051BBC(int player, int unused, int count)
     }
     return 1;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051BBC); /* 0x08051BBC size 0x11C */
-#endif
-#if 0 /* NONMATCHING: register allocation (ps/count swap, see sub_08051A9C) */
+struct Scr1CD8 {
+    u8 pad[0x808];
+    u16 lo808:3;
+    u16 busy:1;
+    u16 hi808:12;
+    u8 pad80A[0x82C - 0x80A];
+    u32 cursor;
+};
+#define gScr1CD8 (*(struct Scr1CD8 *)&gUnk_0201CFB0)
+#define MSG1CD8 ((void (*)(u16, u16, int, int))sub_0801EC58)
 int sub_08051CD8(int player, int unused, int count)
 {
     u8 *base = (u8 *)gUnk_020192E4;
@@ -195,19 +207,16 @@ int sub_08051CD8(int player, int unused, int count)
         if (gUnk_02017A40.count != 0) {
             u8 *bp = &gUnk_02017A40.b4FC;
             if (*bp <= 9) {
-                gUnk_0201CFB0.b808 |= 8;
+                gScr1CD8.busy = 1;
                 sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
                 (*bp)++;
                 return 0;
             } else {
                 u16 msg = 8;
-                u32 msg2 = 0xCE;
-                if (player != 0) {
+                if (player != 0)
                     msg = 0x8008;
-                    msg2 = 0x80CE;
-                }
-                sub_0801EC58(msg, (u16)player, (*(u8 *)&gUnk_0201CFB0.w82C << 8) | 0xB, 0);
-                sub_0801EC58(msg2, (u16)gUnk_0201CFB0.w82C, 1, 0);
+                MSG1CD8(msg, (u16)player, ((u8)gScr1CD8.cursor << 8) | 0xB, 0);
+                MSG1CD8(player != 0 ? 0x80CE : 0xCE, (u16)gScr1CD8.cursor, 1, 0);
                 gUnk_02017A40.count--;
                 *bp = 0;
                 return 0;
@@ -216,9 +225,6 @@ int sub_08051CD8(int player, int unused, int count)
     }
     return 1;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051CD8); /* 0x08051CD8 size 0x11C */
-#endif
 int sub_08051DF4(int player)
 {
     struct Duel *d = &gUnk_020192E0;

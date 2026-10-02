@@ -295,57 +295,64 @@ void sub_0804E3C0(void)
     sub_08076714(v, 0x40C0, 0xF364, (t = gUnk_081A4424, m = (u8 *)&gUnk_03000040, t[(*(u16 *)(m + 0x485E) >> 1) & 0xF] << 16));
 }
 
-#if 0 /* NONMATCHING: the ROM keeps the constant 1 in a register and ANDs it with a re-extracted bit 1 (PS[1 & who]); gcc simplifies the AND away, and the who/flag registers differ */
-/* Multi-step routine keyed on the player bit 1 of the duel state byte at
- * 0x020192E0+0x1B12 and a step byte at 0x0201AF00. If that player's flag (byte
- * 9 bit 2) is set, it is cleared and the routine ends (returns 1). Otherwise
- * step 0 sends message 0x50 (0x8050), step 1 finishes with sub_080199E0(1, 1)
- * for the local side or runs sub_08024134, step 2 sets a bit at
- * 0x0201CFB0+0x808, and step 4 clears 0x0201CFB0+0x85C and finishes with
- * sub_080199E0(0, 1). Other steps advance on the A-ish key (0x100) when
- * sub_0804A1C8() is 0. */
+/* Duel screen fields at 0x0201CFB0 (same layout as struct DuelScreen in code_08012C4C). */
+struct E420Screen {
+    u8 filler0[0x808];
+    u8 unk808_0 : 3;
+    u8 busy : 1;
+    u8 unk808_4 : 4;
+    u8 filler809[0x85C - 0x809];
+    u32 unk85C;
+};
+/* Multi-step routine on the step byte at 0x020192E4+0x1B1C (0x0201AE00), keyed on
+ * the active player (bit 1 of the duel flags byte at 0x020192E4+0x1B0E). If that
+ * player's byte-9 bit 2 is set, it is cleared and the routine ends (returns 1).
+ * Otherwise step 0 sends message 0x50 (0x8050), step 1 finishes with
+ * sub_080199E0(1, 1) when bit 1 is set or runs sub_08024134(who, 0xD, 0), step 2
+ * sets the screen busy bit, step 4 clears the screen word at +0x85C and finishes
+ * with sub_080199E0(0, 1). Other steps advance on key 0x100 when sub_0804A1C8()
+ * is 0. Both player indexes are written `who & 1`: CSE shares the constant 1, and
+ * combine folds the AND only in the first block, as in the ROM. The early return
+ * in the default case keeps the per-case step increments from being cross-jumped. */
 int sub_0804E420(void)
 {
     u8 *e4 = (u8 *)gUnk_020192E4;
-#define WHO (((struct SB *)(e4 + 0x1B0E))->who)
-    int wh = WHO;
-    s8 b = *(e4 + 0x1B0E);
+    struct SB *sb = (struct SB *)(e4 + 0x1B0E);
     u8 *st;
-    int z = ((struct PS9 *)e4)[wh].f2;
+    int z = gUnk_020192E4[sb->who & 1].f2;
     if (z != 0) {
-        ((struct PS9 *)e4)[1 & wh].f2 = 0;
+        gUnk_020192E4[sb->who & 1].f2 = 0;
         return 1;
     }
     st = e4 + 0x1B1C;
     switch (*st) {
     case 0:
-        sub_0801EC58((b & 2) ? 0x8050 : 0x50, 0, 0, 0);
+        sub_0801EC58((*(u8 *)sb & 2) ? 0x8050 : 0x50, 0, 0, 0);
         (*st)++;
         return 0;
     case 1:
-        if ((b & 2) != 0) {
+        if ((*(u8 *)sb & 2) != 0) {
             sub_080199E0(1, 1);
             return 1;
         }
-        sub_08024134(WHO, 0xD, 0);
+        sub_08024134(sb->who, 0xD, 0);
         (*st)++;
         return 0;
     case 2:
-        gUnk_0201CFB0[0x808] |= 8;
+        ((struct E420Screen *)gUnk_0201CFB0)->busy = 1;
         (*st)++;
         return 0;
     case 4:
+        ((struct E420Screen *)gUnk_0201CFB0)->unk85C = 0;
         sub_080199E0(0, 1);
-        *(u32 *)(gUnk_0201CFB0 + 0x85C) = z;
         return 1;
     default:
-        if (sub_0804A1C8() == 0 && (gUnk_03000040.keys & 0x100) != 0)
-            gUnk_020192E0[0x1B20]++;
+        if (sub_0804A1C8() != 0 || (gUnk_03000040.keys & 0x100) == 0)
+            return 0;
+        gUnk_020192E0[0x1B20]++;
         return 0;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804E420); /* 0x0804E420 size 0x118 */
 /* For every monster zone (0-4) of `player` holding a face-down card (flags6 bit 1) whose card key is 0x16: send message 0x73 (0x8073 for player 1) and run sub_08018AE8 on it. */
 void sub_0804E538(int player)
 {

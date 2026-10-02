@@ -185,52 +185,69 @@ void sub_08061A1C(u16 id)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_080619E8", sub_08061A1C); /* 0x08061A1C size 0x308 */
 /* Load the picture `id` (6 bits per pixel, packed) into OBJ tile memory and its 64-colour palette (hypothesis). */
-#if 0 /* NONMATCHING: pixel repack and loop shapes agree, but gcc hoists (y+2)<<5 out of the x loop and
-       * 0xFC0 out of the pixel loop (the ROM recomputes both, keeping only 0x3F in r8, k in a stack
-       * slot, p in ip and next=src+0x30 in r9). Tried reading operands at each use (trick 1) and
-       * local src/dst/p splits. A 64-bit temp for 0xFC0 (trick 2) and a goto x loop (trick 3) both
-       * worsened the stack frame and register allocation. */
+/* Card picture loader: copies card id's 64-colour palette to OBJ palette 0x05000260, unpacks the
+ * 6-bit-per-pixel picture (8 pixels per 3 halfwords, as in sub_0805DF34) into the 9x10 8bpp OBJ
+ * tiles at columns 2-0xA, rows 4-0xD, then adds palette base 0x30 to every pixel byte. */
 void sub_08061D24(u16 id)
 {
     u16 y;
     u16 x;
     u16 j;
-    s16 k;
+    int k;
     const u16 *src;
     u16 *dst;
+    const u16 *s;
+    u16 *d;
     u16 *q;
+    u16 m6, m12, c30;
+
     src = (const u16 *)(0x08608360 + id * 0x80);
     dst = (u16 *)0x05000260;
     sub_08075294(dst, src, 0x80);
     src = (const u16 *)(0x082A6500 + id * 0x10E0);
-    for (y = 4; y <= 0xD; y++) {
-        for (x = 2; x <= 0xA; x++) {
-            u16 *p;
+    /* m12 and c30 lose the register contest and are rematerialized by reload (ROM: movs/lsls
+     * 0xFC0 into r7 in the pixel loop, 0x30 into r6 before the fix-up loop). */
+    m12 = 0xFC0;
+    c30 = 0x30;
+    y = 4;
+    m6 = 0x3F; /* after y = 4, as in the ROM */
+    for (; y <= 0xD; y++) {
+        x = 2;
+        /* FAKEMATCH: a goto x loop keeps loop.c from hoisting (u16)(y + 2) << 5 out of it, and the
+         * do-while(0) around the unpack restores the pixel loop's nesting depth (local-alloc refs:
+         * s0 in r2, s1 in r3). src += 24 outside it keeps next (r9) below m6 (r8) in global-alloc
+         * priority. */
+    xloop:
+        do {
             dst = (u16 *)(0x06010000 + (((u16)(x << 1)) + ((u16)(y + 2) << 5)) * 32);
-            p = dst;
-            for (k = 7; k >= 0; k--) {
-                u32 a = src[0];
-                u16 b = src[1];
-                u32 c = src[2];
-                u32 t;
-                dst[0] = (a & 0x3F) | ((a & 0xFC0) << 2);
-                dst[1] = (a >> 12) | ((b & 3) << 4) | ((b & 0xFC) << 6);
-                t = b >> 8;
-                dst[2] = (t & 0x3F) | (((t >> 6) | ((c & 0xF) << 2)) << 8);
-                dst[3] = ((c >> 4) & 0x3F) | (((c >> 4) & 0xFC0) << 2);
-                src += 3;
-                dst += 4;
+            s = src;
+            d = dst;
+            for (k = 0; k < 8; k++) {
+                u16 s0 = s[0];
+                u32 s1 = s[1];
+                u32 s2 = s[2];
+                u16 t, xx;
+                d[0] = (s0 & m6) | ((s0 & m12) << 2);
+                d[1] = (s0 >> 12) | ((s1 & 3) << 4) | ((s1 & 0xFC) * 64);
+                t = s1 >> 8;
+                d[2] = (t & m6) | (((t >> 6) | ((s2 & 0xF) << 2)) << 8);
+                xx = s2 >> 4;
+                d[3] = (xx & m6) | ((xx & m12) << 2);
+                s += 3;
+                d += 4;
             }
-            q = p;
-            for (j = 0; j <= 0x1F; j++) {
-                *q = (*q & 0x3F3F) + 0x3030;
-                q++;
-            }
+        } while (0);
+        src += 24;
+        q = dst;
+        for (j = 0; j <= 0x1F; j++) {
+            *q = (*q & 0x3F3F) + ((u8)c30 << 8 | (u8)c30);
+            q++;
         }
+        x++;
+        if (x <= 0xA)
+            goto xloop;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080619E8", sub_08061D24); /* 0x08061D24 size 0x130 */
 extern void sub_0806196C(u32 yx, u16 palBase, const u16 *src, const void *pal);
 extern void sub_080618C4(u32 yx, u16 palBase, const u16 *src, const void *pal);
 

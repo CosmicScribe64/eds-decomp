@@ -563,40 +563,42 @@ int sub_08035BBC(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: register allocation differs. The ROM keeps ref in r3 (caller-saved) and the
-       * EFF base in r5, and reaches side/phase with reg+reg addressing. */
 int sub_08035C0C(struct CardRef *ref)
 {
     if (!ref->skip4) {
-        u8 *e = gUnk_02017A40;
-
-        switch (e[0x3E0]) {
+        switch (EFF_PHASE) {
         case 0x80:
-            e[0x3E0]--;
-            e[0x3E1] = 1 - ref->player;
+            EFF_SIDE = 1 - ref->player;
+            EFF_PHASE--;
         case 0x7F: {
-            int side = e[0x3E1];
-            s16 p = side & 1;
             int j;
 
             for (j = 5; j <= 10; j++) {
-                struct DuelZone *z = ZB(p, j);
+                int side = EFF_SIDE;
+                struct DuelZone *z = &gUnk_0201930C[(u8)side & 1].zones[j];
 
                 if (CARD_ID(CARD_WORD(z->card))) {
                     sub_08018544(side, j, j);
                     return 0x7F;
                 }
             }
-            e[0x3E1] = 1 - e[0x3E1];
-            if (ref->player == e[0x3E1])
-                return 0x7F;
+            {
+                /* FAKEMATCH: the side pointer pinned to r0 */
+                register u8 *p asm("r0");
+                u8 *b = gUnk_02017A40;
+                int sd;
+
+                p = b + 0x3E1;
+                *p = 1 - *p;
+                sd = ref->player;
+                if (*(volatile u8 *)p == sd)
+                    return 0x7F;
+            }
         }
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08035198", sub_08035C0C); /* 0x08035C0C size 0xA4 */
 int sub_08035CB0(struct CardRef *ref)
 {
     if (!ref->skip4) {

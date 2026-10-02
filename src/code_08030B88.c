@@ -557,8 +557,6 @@ int sub_08031550(struct CardRef *ref)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08030B88", sub_08031550); /* 0x08031550 size 0x230 */
-#if 0 /* NONMATCHING: logic decoded (deck search for card 0x1A9). Register
-       * allocation (ref in r5, EFF base r4, r8/r9 hoists) differs. */
 int sub_08031780(struct CardRef *ref)
 {
     char buf[0x100];
@@ -573,11 +571,12 @@ int sub_08031780(struct CardRef *ref)
             int i;
 
             for (i = 0; i < gUnk_020192E4[1 & ref->player].deckCount; i++) {
-                int id = CARD_ID(gUnk_02019AA8[1 & ref->player].deck[i]);
-                u16 n = CARD_NUMBER(id);
+                u32 w = CARD_WORD(gUnk_020192E4[1 & ref->player].deck[i]);
+                u32 mask = 0x7FF; /* local mask (life 3): loop.c hoists it in its second pass, after the base copy */
+                u16 n = ((const u16 *)0x08622AB4)[CARD_ID(w) & mask];
 
-                if (n == 0x1A9) {
-                    sub_080753F4(buf, gUnk_08082AB4, gUnk_0822C720 + (gUnk_08623DF4[n] << 6));
+                if (n == 0x1A8) {
+                    sub_080753F4(buf, gUnk_08082AB4, gUnk_0822C720 + (((const u16 *)0x08623DF4)[n] << 6));
                     sub_080602A4(0x205, 0x914, 0xB, buf);
                     sub_08060308(1, 0, 0);
                     return 0x7E;
@@ -587,7 +586,7 @@ int sub_08031780(struct CardRef *ref)
             return 0x64;
         }
         case 0x7E:
-            if (gUnk_0201AE60.flag14 != 0 && sub_0801970C(ref->player, 0x1A9) != 0) {
+            if (gUnk_0201AE60.flag14 != 0 && sub_0801970C(ref->player, 0x1A8) != 0) {
                 if (--EFF_SIDE != 0)
                     return 0x7F;
             }
@@ -597,8 +596,6 @@ int sub_08031780(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08030B88", sub_08031780); /* 0x08031780 size 0x178 */
 int sub_080318F8(struct CardRef *ref)
 {
     if (!ref->skip4) {

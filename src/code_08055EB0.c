@@ -113,7 +113,8 @@ static inline int CardValue(u16 id)
     return r;
 }
 
-/* Same with the DEF-like field (bits 0-8) for ordinary monsters. */
+/* Same with the DEF-like field (bits 0-8) for ordinary monsters. The ROM masks the low halfword: the u16
+ * AND makes 0x1FF a halfword constant, which reload loads and copies (ldr r3, =0x1FF; adds r0, r3). */
 static inline int CardDefValue(u16 id)
 {
     int r;
@@ -128,7 +129,7 @@ static inline int CardDefValue(u16 id)
         r = 4000;
         break;
     default:
-        r = (CARD_STATS(id) & 0x1FF) * 10;
+        r = ((u16)CARD_STATS(id) & 0x1FF) * 10;
         break;
     }
     return r;
@@ -480,49 +481,23 @@ int sub_08056544(int skip)
 /* Pick the hand card of `player` with the lowest ATK+DEF value (in three passes of decreasing
  * strictness: first only cards whose "kind" key is 0, then any that passes sub_08056300, then
  * even empty slots); returns the hand index or -1. */
-static inline int WeakestValue(u16 id)
-{
-    register int r asm("r2");
-
-    switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        r = 0;
-        break;
-    case 0x18:
-        r = 4000;
-        break;
-    default:
-        r = ((CARD_STATS(id) << 14) >> 23) * 10;
-        break;
+/* ATK-like value as a statement, so every arm writes the result local itself (CardValue's return copy
+ * gives the ROM an extra move). */
+#define CARD_ATK_VALUE(id, r)                                \
+    switch ((int)CARD_TYPE(id)) {                            \
+    case 0x15:                                               \
+    case 0x16:                                               \
+    case 0x17:                                               \
+        r = 0;                                               \
+        break;                                               \
+    case 0x18:                                               \
+        r = 4000;                                            \
+        break;                                               \
+    default:                                                 \
+        r = ((CARD_STATS(id) << 14) >> 23) * 10;             \
+        break;                                               \
     }
-    return r;
-}
 
-static inline u8 WeakestKey(u16 id)
-{
-    int number = ({ u32 offset = (id & 0x7FF) * 2; register u32 base asm("r4") = 0x8622ab4; asm("" : : "r"(base)); *(const u16 *)(offset + base); });
-
-    switch (number) {
-    case 0x776:
-        return 3;
-    case 0x777:
-    case 0x778:
-        return 1;
-    }
-    switch ((int)((({ u32 offset = (id & 0x7FF) * 4; register u32 base asm("r1") = 0x8621de0; asm("" : : "r"(base)); *(const u32 *)(offset + base); }) & 0x1F00000) >> 20)) {
-    case 0x16:
-        return 7;
-    case 0x15:
-        return 8;
-    case 0x17:
-        return 9;
-    }
-    return (({ u32 offset = (id & 0x7FF) * 4; register u32 base asm("r3") = 0x8621de0; asm("" : : "r"(base)); *(const u32 *)(offset + base); }) & 0xC0000) >> 18;
-}
-
-#if 0 /* NONMATCHING: 13 bytes and 26 normalized lines differ. The ROM loads the hoisted table constants into r4 and then copies them (ldr r4; adds r6,r4), while the build uses r0. */
 int sub_0805664C(struct DuelPlayer *duel, int player)
 {
     int bestIdx = -1;
@@ -532,100 +507,12 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
     for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
         u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[player & 1].hand[i]));
         if (id != 0) {
-            if (((CARD_STATS(id) & 0x1F00000) >> 20) <= 0x14) {
-                if (WeakestKey(id) == 0 && (u16)sub_08056300(1, ({ u32 offset = (id & 0x7FF) * 2; u32 base = 0x8622ab4; asm("" : : "r"(base)); *(const u16 *)(offset + base); })) == 0) {
-                    int attack = ({
-    register int r asm("r2");
+            if (CARD_TYPE(id) <= 0x14 && CardKey(id) == 0 && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+                int atk;
+                int v;
 
-    switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        r = 0;
-        break;
-    case 0x18:
-        r = 4000;
-        break;
-    default:
-        { u32 offset = (id & 0x7FF) * 4; register u32 base asm("r4") = 0x08621DE0; register u32 bits asm("r1"); bits = (*(const u32 *)(offset + base) << 14) >> 23;
-            { register u32 scaled asm("r0") = bits * 5; asm("" : : "r"(scaled), "r"(base)); r = scaled * 2; } }
-        break;
-    }
-    r;
-});
-                    int v = ({ int defense;
-      switch ((int)CARD_TYPE(id)) {
-      case 0x15: case 0x16: case 0x17: defense = 0; break;
-      case 0x18: defense = 4000; break;
-      default: {
-        u32 offset = (id & 0x7FF) * 4;
-        register u32 base asm("r4") = 0x08621DE0;
-        u32 word;
-        register u32 seed asm("r3");
-        u32 mask;
-        asm("" : : "r"(base));
-        word = *(const u32 *)(offset + base);
-        seed = 0x1FF; mask = seed;
-        asm("" : : "r"(seed));
-        defense = (word & mask) * 10; break;
-      }} defense; }) + attack;
-                    if (best > v) {
-                        best = v;
-                        bestIdx = i;
-                    }
-                }
-            }
-        }
-    }
-    { register int result asm("r4") = bestIdx;
-      if (result >= 0) return result; }
-    best = 9999;
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u32 off;
-        u32 base = (u32)(duel + (player & 1));
-        u16 id;
-        
-        off = i * 4 + 0x684;
-        
-        id = CARD_ID(*(u32 *)(base + off));
-        if (id != 0) {
-            const u32 *st = &CARD_STATS(id);
-            if (((*st & 0x1F00000) >> 20) <= 0x14 && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
-                int attack = ({
-    register int r asm("r2");
-
-    switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        r = 0;
-        break;
-    case 0x18:
-        r = 4000;
-        break;
-    default:
-        { u32 offset = (id & 0x7FF) * 4; u32 base = 0x08621DE0; register u32 bits asm("r1");  bits = (*(const u32 *)(offset + base) << 14) >> 23;
-            { register u32 scaled asm("r0") = bits * 5; asm("" : : "r"(scaled), "r"(base)); r = scaled * 2; } }
-        break;
-    }
-    r;
-});
-                    int v = ({ int defense;
-      switch ((int)CARD_TYPE(id)) {
-      case 0x15: case 0x16: case 0x17: defense = 0; break;
-      case 0x18: defense = 4000; break;
-      default: {
-        u32 offset = (id & 0x7FF) * 4;
-        register u32 base asm("r4") = 0x08621DE0;
-        u32 word;
-        register u32 seed asm("r4");
-        u32 mask;
-        asm("" : : "r"(base));
-        word = *(const u32 *)(offset + base);
-        seed = 0x1FF; mask = seed;
-        asm("" : : "r"(seed));
-        defense = (word & mask) * 10; break;
-      }} defense; }) + attack;
+                CARD_ATK_VALUE(id, atk);
+                v = CardDefValue(id) + atk;
                 if (best > v) {
                     best = v;
                     bestIdx = i;
@@ -633,53 +520,41 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
             }
         }
     }
-    { register int result asm("r0") = bestIdx;
-      if (result >= 0) return result; }
-    { register int initial asm("r1") = 9999; asm("" : : "r"(initial)); best = initial; }
+    if (bestIdx >= 0)
+        return bestIdx;
+    best = 9999;
     for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u32 off;
-        u32 base = (player & 1) * 0xD64 + ({ register u32 p asm("r0") = (u32)duel;  p; });
-        u16 id;
-        
-        off = i * 4 + 0x684;
-        
-        id = CARD_ID(*(u32 *)(base + off));
-        if ((u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
-            int attack = ({
-    register int r asm("r2");
+        struct DuelPlayer *pd = duel + (player & 1);
+        u32 off = i * 4 + 0x684;
+        u16 id = CARD_ID(*(u32 *)((u32)pd + off));
+        if (id != 0) {
+            const u32 *st = &CARD_STATS(id);
+            if (((*st & 0x1F00000) >> 20) <= 0x14 && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+                int atk;
+                int v;
 
-    switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        r = 0;
-        break;
-    case 0x18:
-        r = 4000;
-        break;
-    default:
-        { u32 offset = (id & 0x7FF) * 4; register u32 base asm("r4") = 0x08621DE0; register u32 bits asm("r1"); bits = (*(const u32 *)(offset + base) << 14) >> 23;
-            { register u32 scaled asm("r0") = bits * 5; asm("" : : "r"(scaled), "r"(base)); r = scaled * 2; } }
-        break;
+                CARD_ATK_VALUE(id, atk);
+                v = CardDefValue(id) + atk;
+                if (best > v) {
+                    best = v;
+                    bestIdx = i;
+                }
+            }
+        }
     }
-    r;
-});
-                    int v = ({ int defense;
-      switch ((int)CARD_TYPE(id)) {
-      case 0x15: case 0x16: case 0x17: defense = 0; break;
-      case 0x18: defense = 4000; break;
-      default: {
-        u32 offset = (id & 0x7FF) * 4;
-        register u32 base asm("r4") = (u32)gUnk_08621DE0;
-        u32 word;
-        register u32 seed asm("r4");
-        u32 mask;
-        
-        word = *(const u32 *)(offset + base);
-        seed = 0x1FF; mask = seed;
-        asm("" : : "r"(seed));
-        defense = (word & mask) * 10; break;
-      }} defense; }) + attack;
+    if (bestIdx >= 0)
+        return bestIdx;
+    best = 9999;
+    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+        struct DuelPlayer *pd = duel + (player & 1);
+        u32 off = i * 4 + 0x684;
+        u16 id = CARD_ID(*(u32 *)((u32)pd + off));
+        if ((u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+            int atk;
+            int v;
+
+            CARD_ATK_VALUE(id, atk);
+            v = CardDefValue(id) + atk;
             if (best > v) {
                 best = v;
                 bestIdx = i;
@@ -688,8 +563,6 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
     }
     return bestIdx;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08055EB0", sub_0805664C); /* 0x0805664C size 0x448 */
 
 /* Picks the hand card index of `player` (duel is the base of the two DuelPlayers) to play: the
  * strongest (by CardValue) monster-like card that passes sub_08056300 and has a level above 4.

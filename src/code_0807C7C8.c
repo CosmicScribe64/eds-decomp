@@ -492,25 +492,22 @@ u32 sub_0807D1AC(void)
     }
     return 1;
 }
-#if 0 /* NONMATCHING: register allocation (table address load order, u16 value copied into a second register) */
 u32 sub_0807D1F4(void)
 {
     sub_0807CCAC(gUnk_0201F780.b, gUnk_0201F780.a, gUnk_0201F780.d);
-    if (sub_0807BCFC(gUnk_0201F780.unk22, *(const u16 *)((const u8 *)gUnk_08622AB4 + ((gUnk_0201F780.code & 0x7FF) << 1)), gUnk_0201F780.link)) {
-        s16 v;
-        u32 w;
-        int r;
+    if (sub_0807BCFC(gUnk_0201F780.unk22, ((const u16 *)0x08622AB4)[gUnk_0201F780.code & 0x7FF], gUnk_0201F780.link)) {
+        u16 id;
+        u32 n;
 
         sub_0807BE60(gUnk_0201F780.filler4, gUnk_0201F780.linkRx);
-        v = gUnk_0201F780.peerData;
-        w = v;
-        if (w == 0xFFFF)
-            r = 0;
-        else if (w <= 0x7CF)
-            r = gUnk_08623DF4[w & 0x7FF];
+        id = gUnk_0201F780.peerData;
+        if (id == 0xFFFF)
+            n = 0;
+        else if (id < 2000)
+            n = ((const u16 *)0x08623DF4)[id & 0x7FF];
         else
-            r = gUnk_08623DF4[(v - 0x7D0) & 0x7FF] + 1;
-        gUnk_0201F780.card = r;
+            n = ((const u16 *)0x08623DF4)[(id - 2000) & 0x7FF] + 1;
+        gUnk_0201F780.card = n;
         sub_08077498(gUnk_0201F780.card);
         sub_0807761C(gUnk_0201F780.code);
         sub_080754BC();
@@ -520,8 +517,6 @@ u32 sub_0807D1F4(void)
         gUnk_03000040.step = 0xE;
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0807C7C8", sub_0807D1F4); /* 0x0807D1F4 size 0xDC */
 u32 sub_0807D2D0(void)
 {
     switch (gUnk_03000040.sub) {

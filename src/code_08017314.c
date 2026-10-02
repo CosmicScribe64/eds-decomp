@@ -68,10 +68,9 @@ void sub_08046C20(int player, int arg);
 void sub_08019860(int player, int arg);
 void sub_08017D38(int player, int zone, int otherPlayer, int otherZone);
 
-#if 0 /* NONMATCHING: register allocation differs. The ROM keeps `player` in a stack slot and z in r8, GCC keeps player in r8 and z in ip, and schedules the loop differently. */
 void sub_08017314(int player, int zone, u16 link0)
 {
-    s8 i;
+    int i, j;
     int owner;
     int t = player & 1;
     struct DuelZone *z = ZONE_T(t, zone);
@@ -79,16 +78,19 @@ void sub_08017314(int player, int zone, u16 link0)
     if (CARD(z->card).id == 0)
         return;
     owner = player;
-    i = z->numLinks;
-    while (i > 0) {
-        i--;
-        {
-        u16 l = z->links[i];
-        u8 kind = z->linkInfo[i];
-        int lp = (u8)z->links[i];
-        int lz = l >> 8;
+    for (i = z->numLinks; i > 0; i--) {
+        u16 l;
+        u8 kind;
+        int lp, lz;
+        struct DuelZone *zp = ZONE_T(t, zone);
+        j = i - 1;
+        l = zp->links[j];
+        kind = zp->linkInfo[j];
+        lp = (u8)zp->links[j];
+        lz = l >> 8;
         if (kind == 1) {
-            struct DuelZone *lzp = ZONE_PTR(lp, lz);
+            int lt = lp & 1;
+            struct DuelZone *lzp = ZONE_T(lt, lz);
             u16 id = CARD(lzp->card).id;
             if (id != 0 && (lzp->flags6 & 2)) {
                 switch (CARD_NUMBER(id)) {
@@ -109,7 +111,6 @@ void sub_08017314(int player, int zone, u16 link0)
                 }
             }
         }
-        }
     }
     if (owner != player) {
         int r = sub_08008A44(owner);
@@ -121,9 +122,6 @@ void sub_08017314(int player, int zone, u16 link0)
         }
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017314); /* 0x08017314 size 0x14C */
-#endif
 
 INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017460); /* 0x08017460 size 0x654 */
 

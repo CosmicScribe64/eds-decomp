@@ -964,16 +964,13 @@ void sub_08064984(u32 a, u32 bArg, u32 cArg)
 /* helpers for the parked sub_080649D8 draft */
 struct PackMainMaps { u8 pad0[0xC1C]; u16 maps[4][0x400]; u8 pad2[0x442A - 0x2C1C]; u16 scroll; };
 extern struct PackMainMaps packMainMaps __asm__("gUnk_03000040");
-#if 0 /* NONMATCHING: logic verified by reading, but agbcc keeps the DMA buffer address in r2 and
-       * derives gMain (0x03000040) from it, with sel in r7, the slide state in r8 and the list
-       * pointer in sl. This allocation is not reproduced. */
+/* Clear the pack-list tile maps, then draw three pack covers (rows sel, sel+1, sel+2 mod count) at
+ * tile columns 0x62 + 10*i and highlight the current one; finally set the redraw flag. */
 void sub_080649D8(s32 arg) {
     vu16 zero;
     s32 sel;
-    register s32 i __asm__("r6");
-    register u32 tile __asm__("r9");
-    register struct Slide * s __asm__("r8");
-    register u16 * list __asm__("r10");
+    s32 i;
+    u16 *cnt;
     sel = arg;
     zero = 0;
     { vu32 *dma = (vu32 *)0x040000D4;
@@ -996,25 +993,20 @@ void sub_080649D8(s32 arg) {
       while (dma[2] & 0x80000000) ;
     }
     packMainMaps.scroll = 0;
-    i = 0;
-    s = &gUnk_02020310;
-    tile = 0x620000;
-    do {
-      u16 slot = i;
-      u16 x;
-      register s32 index __asm__("r1");
-      index = sel << 1;
-      list = s->list;
-      sub_08064928(slot, *(u16 *)((u8 *)gUnk_080865DC + *(u16 *)((u8 *)list + index) * 0x48));
-      x = tile >> 16;
-      sub_08064984(1, x, slot);
-      if (s->current == i) sub_08064984(4, x, slot);
-      sel = __modsi3(sel + 1, gUnk_0202037C);
-      tile += 0xA0000;
-      i++;
-    } while (i <= 2);
-    ((struct Slide *)((u8 *)list - 0x2C))->flags |= 1;
+    cnt = &gUnk_0202037C;   /* hoisted: the ROM rematerialises it in the loop */
+    for (i = 0; i <= 2; i++) {
+        sub_08064928(i, gUnk_080865DC[gUnk_02020310.list[sel]].id);
+        sub_08064984(1, (u16)(i * 10 + 0x62), (u16)i);
+        if (gUnk_02020310.current == i)
+            sub_08064984(4, (u16)(i * 10 + 0x62), (u16)i);
+        sel++;
+        sel %= *cnt;
+    }
+    {
+        /* A u32 temporary (not u8 or |=) gives the ROM's register choice for the flag update. */
+        u32 f = gUnk_02020310.flags;
+        f |= 1;
+        gUnk_02020310.flags = f;
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08063A28", sub_080649D8); /* 0x080649D8 size 0x118 */
 /* END sub_080649D8 */

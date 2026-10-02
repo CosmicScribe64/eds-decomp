@@ -373,7 +373,6 @@ int sub_08037A1C(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: same code, but scratch registers are r1 where the ROM uses r2, and the r5/r6 order of the hoisted 0x7FF mask and table also differs */
 int sub_08037AF4(struct CardRef *ref)
 {
     if (!ref->skip4) {
@@ -400,11 +399,11 @@ int sub_08037AF4(struct CardRef *ref)
             sub_08018DC8(tp, tz, 0, 0);
             sub_08019840(tp, ref->targets[1]);
             sub_080189FC(tp, tz, 0);
-            switch (CARD_NUMBER_SYM(ref->id)) {
+            switch (CARD_NUMBER(ref->id)) {
             case 0x485:
                 if (CARD_TYPE(ref->targets[1]) > 0x14)
                     goto ret0;
-                if (sub_08007590(CARD_NUMBER_SYM(ref->targets[1]), 1) != 0 || sub_08007590(CARD_NUMBER_SYM(ref->targets[1]), 0) != 0)
+                if (sub_08007590(CARD_NUMBER(ref->targets[1]), 1) != 0 || sub_08007590(CARD_NUMBER(ref->targets[1]), 0) != 0)
                     goto ok;
                 goto ret0;
             case 0x486:
@@ -417,10 +416,10 @@ ok:
             }
         }
         case 0x7F:
-            sub_0801A010(ref->player, CARD_NUMBER_SYM(ref->targets[1]));
+            sub_0801A010(ref->player, CARD_NUMBER(ref->targets[1]));
             return 0x7E;
         case 0x7E:
-            sub_0801A010(1 - ref->player, CARD_NUMBER_SYM(ref->targets[1]));
+            sub_0801A010(1 - ref->player, CARD_NUMBER(ref->targets[1]));
             return 0x7D;
         case 0x7D:
             sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 1, 0, 0);
@@ -433,8 +432,6 @@ ok:
 ret0:
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803732C", sub_08037AF4); /* 0x08037AF4 size 0x1E0 */
 int sub_08037CD4(struct CardRef *ref)
 {
     u8 skip = 4 & ((u8 *)ref)[4];

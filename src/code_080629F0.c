@@ -629,13 +629,9 @@ int sub_08006A98(void);
 int sub_08006AE8(void);
 int sub_08006ABC(void);
 
-#if 0 /* NONMATCHING: case 0 (card lookups) is exact except `ands r3,r0` vs `ands r0,r3`.
-       * Cross-jumping of the `sub1++` tails and the jump-table case order differ (the ROM
-       * merges only ldrb/add/strb of cases 0/1 and branches with beq to the shared return 0) */
 /* Pack card browser: state machine on gMain+0x485A (0 setup, 1-2 fade in, 3 input, 4 / 10 wait, 11 exit). */
 int sub_080636AC(void)
 {
-    u8 key;
     switch (gUnk_03000040.sub1) {
     case 0:
         REG_IME = 0;
@@ -647,17 +643,15 @@ int sub_080636AC(void)
         REG_IME = 1;
         sub_08006878();
         gUnk_02013D90.key = IdToKey(gUnk_02015160.ids[gUnk_02015160.scroll.a]);
-        key = IdToKey(gUnk_02015160.ids[gUnk_02015160.scroll.a]);
-        gUnk_02013D90.atk = CardAtkValue(key);
-        key = IdToKey(gUnk_02015160.ids[gUnk_02015160.scroll.a]);
-        gUnk_02013D90.def = CardDefValue(key);
+        gUnk_02013D90.atk = CardAtkValue(IdToKey(gUnk_02015160.ids[gUnk_02015160.scroll.a]));
+        gUnk_02013D90.def = CardDefValue(IdToKey(gUnk_02015160.ids[gUnk_02015160.scroll.a]));
         gUnk_03000040.sub1++;
         return 0;
     case 1:
-        if ((u16)sub_0800696C() == 0)
-            return 0;
-        sub_08006B80();
-        gUnk_03000040.sub1++;
+        if ((u16)sub_0800696C() != 0) {
+            sub_08006B80();
+            gUnk_03000040.sub1++;
+        }
         return 0;
     case 2:
         if ((sub_08006A98() << 16) != 0)
@@ -687,5 +681,3 @@ int sub_080636AC(void)
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080629F0", sub_080636AC); /* 0x080636AC size 0x37C */

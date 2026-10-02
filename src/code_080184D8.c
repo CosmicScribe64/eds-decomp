@@ -442,19 +442,17 @@ void sub_08019078(int player, u16 arg1, u16 arg2)
         break;
     }
 }
-#if 0 /* NONMATCHING: logic/instruction shapes match; agbcc permutes the high-register roles (target: arg2=sl, p1=r8, p2=r7, zone2=r9; ip holds const 1) */
 /* Two zones (arg1/arg2 = player|zone<<8): if both hold a card, announce 0x84;
  * then for card 0x1E3/0x222 in either zone with the 0x20 flag bit, hand its
  * flip effect to the other player. */
 void sub_0801919C(int player, u16 arg1, u16 arg2)
 {
-    u16 p1 = (u8)arg1;
-    u16 zone1 = arg1 >> 8;
-    u16 p2 = (u8)arg2;
-    u16 zone2 = arg2 >> 8;
-    struct DuelZone *z1 = ZONE_AT(p1, zone1);
-    s16 id1 = ZONE_CARD_ID(z1);
-    s8 id2 = ZONE_CARD_ID(ZONE_AT(p2, zone2));
+    int p1 = (u8)arg1;
+    int zone1 = arg1 >> 8;
+    int p2 = (u8)arg2;
+    int zone2 = arg2 >> 8;
+    u16 id1 = ZONE_CARD_ID(ZONE(p1, zone1));
+    u32 id2 = ZONE_CARD_ID(ZONE(p2, zone2));
 
     if (id1 == 0)
         return;
@@ -463,15 +461,15 @@ void sub_0801919C(int player, u16 arg1, u16 arg2)
     sub_0801EC58(EVT(player, 0x84), arg1, arg2, 0);
     switch (CARD_NUMBER(id1)) {
     case 0x1E3:
-        if (z1->unk7 & 0x20) {
-            sub_080197C0(p1, id1);
+        if (ZONE(p1, zone1)->unk7 & 0x20) {
+            sub_080197C0(p1, ZONE_CARD_ID(ZONE(p1, zone1)));
             sub_08019860(p2, 0x7D0);
             sub_0801EC58(EVT(p2, 0x92), zone2, 0, 0);
         }
         break;
     case 0x222:
-        if (z1->unk7 & 0x20) {
-            sub_080197C0(p1, id1);
+        if (ZONE(p1, zone1)->unk7 & 0x20) {
+            sub_080197C0(p1, ZONE_CARD_ID(ZONE(p1, zone1)));
             sub_08019980(p1, 0xBB8);
             sub_0801EC58(EVT(p2, 0x92), zone2, 0, 0);
         }
@@ -479,23 +477,21 @@ void sub_0801919C(int player, u16 arg1, u16 arg2)
     }
     switch (CARD_NUMBER(id2)) {
     case 0x1E3:
-        if (ZONE_AT(p2, zone2)->unk7 & 0x20) {
-            sub_080197C0(p2, id2);
+        if (ZONE(p2, zone2)->unk7 & 0x20) {
+            sub_080197C0(p2, ZONE_CARD_ID(ZONE(p2, zone2)));
             sub_08019860(p1, 0x7D0);
             sub_0801EC58(EVT(p1, 0x92), zone1, 0, 0);
         }
         break;
     case 0x222:
-        if (ZONE_AT(p2, zone2)->unk7 & 0x20) {
+        if (ZONE(p2, zone2)->unk7 & 0x20) {
+            sub_080197C0(p2, ZONE_CARD_ID(ZONE(p2, zone2)));
             sub_08019980(p2, 0xBB8);
-            sub_080197C0(p2, id2);
             sub_0801EC58(EVT(p1, 0x92), zone1, 0, 0);
         }
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080184D8", sub_0801919C); /* 0x0801919C size 0x214 */
 void sub_080193B0(int player, int arg1, u16 arg2)
 {
     sub_0801EC58(EVT(player, 0xC3), arg1, arg2, 0);

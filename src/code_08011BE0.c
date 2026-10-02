@@ -183,20 +183,35 @@ void sub_08011C98(void)
     gUnk_020185C0.running = 0;
 }
 
-#if 0 /* NONMATCHING: register allocation differs (step pointer and constant 1
-       * swapped), and the step-write and running-clear tails are not
-       * cross-jumped as in the ROM, making this build 0x30 bytes larger. */
-/* Link-skip test through the players symbol (0x020192E4 + 0x1B0E = 0x020192E0 + 0x1B12). */
-#define LINK_SKIP2() ((gUnk_02015EE8.flags1 & 1) && gUnk_020192E0.linkSkip)
-#define ZONES_BASE ((u8 *)gUnk_020192E4[0].zones)
+/* Link-skip test through the zones symbol (0x0201930C + 0x1AE6 = 0x020192E0 + 0x1B12). */
+#define LINK_SKIP3() ((gUnk_02015EE8.flags1 & 1) && (((u8 *)gUnk_0201930C)[0x1AE6] & 2))
 
-u16 sub_08009538(u32 player, u32 slot);
-void sub_08017314(u8, u8);
+u16 sub_08009538(int player, int zone);
+void sub_08017314(int player, int zone, u16 link0);
+
+/* Zone +0x90 as a u16 container (flag91_3 = bit 11). The u8 container of
+ * struct DuelZone08011BE0 lets CSE reuse the case's long-lived constant-1
+ * register for the store mask, which swaps r7/r8 for the whole function. */
+struct Zone90View08011CB4 {
+    u8 filler0[0x90];
+    u16 unk90_0:11;
+    u16 flag91_3:1;
+    u16 unk90_12:4;
+};
+
+/* Zone address helper: the inline evaluates `player & 1` before both products,
+ * the ROM's order. */
+static inline struct DuelZone08011BE0 *Zone08011CB4(u32 p, int s)
+{
+    return (struct DuelZone08011BE0 *)(s * 0x94 + p * 0xD64 + (u8 *)gUnk_0201930C);
+}
 
 /*
  * Sets zone arg2's flag91_3 from arg4. When set, plays the effect on the zone
- * and continues at step 3 (10 on the link-skip side); step 1/3 then check for
- * card number 1068 (0x42C) and call sub_08017314 on what sub_08009538 finds.
+ * (0x0868EC38 if its flag6_0 is set, else 0x0868DB94) and continues at step 3
+ * (10 on the link-skip side); otherwise step 1, or finishes on the link-skip
+ * side. Steps 1 and 3: if the zone holds card number 1068 (0x42C), pass the
+ * link found by sub_08009538 to sub_08017314 (link0 = 0xFFFF, none).
  */
 void sub_08011CB4(void)
 {
@@ -208,12 +223,12 @@ void sub_08011CB4(void)
 
     switch (gUnk_020185C0.step) {
     case 0:
-        zone = (struct DuelZone08011BE0 *)(slot * 0x94 + (player & 1) * 0xD64 + ZONES_BASE);
-        if (((struct ZoneCard08011BE0 *)zone)->cardId == 0) {
+        zone = Zone08011CB4(player & 1, slot);
+        if ((*(u32 *)zone << 20) == 0) {
             gUnk_020185C0.running = 0;
             break;
         }
-        zone->flag91_3 = gUnk_020185C0.arg4;
+        ((struct Zone90View08011CB4 *)zone)->flag91_3 = gUnk_020185C0.arg4;
         if (gUnk_020185C0.arg4 != 0) {
             sub_08077AEC(0x10);
             loc.player = player;
@@ -223,35 +238,33 @@ void sub_08011CB4(void)
                 loc.area = 10;
                 loc.index = 0;
             }
-            sub_08024380(&loc, loc.flag14 ? gUnk_0868EC38 : gUnk_0868DB94, 0, 0);
             loc.flag14 = zone->flag6_0;
             loc.flag15 = zone->flag6_1;
-            if (!LINK_SKIP2())
+            sub_08024380(&loc, loc.flag14 ? gUnk_0868EC38 : gUnk_0868DB94, 0, 0);
+            if (!LINK_SKIP3())
                 gUnk_020185C0.step = 3;
             else
                 gUnk_020185C0.step = 10;
         } else {
-            if (!LINK_SKIP2())
+            if (!LINK_SKIP3())
                 gUnk_020185C0.step++;
             else
                 gUnk_020185C0.running = 0;
         }
         break;
     case 1:
-        zone = (struct DuelZone08011BE0 *)(slot * 0x94 + (player & 1) * 0xD64 + ZONES_BASE);
-        if (gUnk_08622AB4[((struct ZoneCard08011BE0 *)zone)->cardId & 0x7FF] == 0x42C) {
+        if (*(const u16 *)(0x08622AB4 + ((*(u32 *)Zone08011CB4(player & 1, slot) << 21) >> 20)) == 0x42C) {
             r = sub_08009538(player, slot);
             if (r != 0xFFFF)
-                sub_08017314(r, r >> 8);
+                sub_08017314((u8)r, r >> 8, 0xFFFF);
         }
-        break;
         gUnk_020185C0.running = 0;
+        break;
     case 3:
-        zone = (struct DuelZone08011BE0 *)(slot * 0x94 + player * 0xD64 + ZONES_BASE);
-        if (gUnk_08622AB4[((struct ZoneCard08011BE0 *)zone)->cardId & 0x7FF] == 0x42C) {
+        if (*(const u16 *)(0x08622AB4 + ((*(u32 *)Zone08011CB4(player, slot) << 21) >> 20)) == 0x42C) {
             r = sub_08009538(player, slot);
             if (r != 0xFFFF)
-                sub_08017314(r, r >> 8);
+                sub_08017314((u8)r, r >> 8, 0xFFFF);
         }
         gUnk_020185C0.running = 0;
         break;
@@ -260,8 +273,6 @@ void sub_08011CB4(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08011BE0", sub_08011CB4); /* 0x08011CB4 size 0x284 */
 void sub_08011F38(void)
 {
     u32 player = CMD_PLAYER();

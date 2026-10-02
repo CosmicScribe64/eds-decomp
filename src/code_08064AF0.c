@@ -545,7 +545,8 @@ void sub_080656B4(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile)
 }
 
 #define ROW(pos) (((((pos) + 7) * 8 + gUnk_0201DB20.scroll) & 0xFF) >> 3)
-#if 0 /* NONMATCHING: cases 0x15/0x16/0x17/0x18 match exactly; in the default case the target keeps pos+7 in sl and re-materialises the 0xFF mask after each call (frame 0xC), while the build hoists 0xFF into sl and spills pos+7 (frame 0x10) */
+/* Row macro for the default case: masks with the local `mask` (0xFF) instead of a literal (see below). */
+#define ROW_M(pos) (((((pos) + 7) * 8 + gUnk_0201DB20.scroll) & mask) >> 3)
 /* Draw the three-part card header (attribute/type/level icons) for the list entry `pos` of the card view. */
 void sub_080657F8(u16 pos)
 {
@@ -584,40 +585,47 @@ void sub_080657F8(u16 pos)
     case 0x18:
         sub_080656B4(0, 10, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
         break;
-    default:
-        sub_080656B4(0, CARD_STATS(id) >> 29, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
-        sub_080656B4(1, CARD_KIND(id), (u16 *)0x0600C000, 6, ROW(pos), 7, 0x100);
+    default: {
+        /* FAKEMATCH: with a literal 0xFF, CSE shares one 0xFF pseudo across the first two calls and local-alloc
+           gives it sl, spilling pos+7; a block-scope mask variable starts its life earlier, so it loses sl to
+           pos+7 and is rematerialised as `movs r3, #0xFF` at each use, as in the ROM. */
+        int mask = 0xFF;
+        int w;
+        sub_080656B4(0, CARD_STATS(id) >> 29, (u16 *)0x0600C000, 4, ROW_M(pos), 6, 0x100);
+        sub_080656B4(1, CARD_KIND(id), (u16 *)0x0600C000, 6, ROW_M(pos), 7, 0x100);
         switch (CARD_NUM(id)) {
         case 0x776:
-            v = 3;
+            w = 3;
             break;
         case 0x777:
         case 0x778:
-            v = 1;
+            w = 1;
             break;
         default:
             switch (CARD_KIND(id)) {
             case 0x16:
-                v = 7;
+                w = 7;
                 break;
             case 0x15:
-                v = 8;
+                w = 8;
                 break;
             case 0x17:
-                v = 9;
+                w = 9;
                 break;
             default:
-                v = (CARD_STATS(id) & 0xC0000) >> 18;
+                w = (CARD_STATS(id) & 0xC0000) >> 18;
                 break;
             }
             break;
         }
-        sub_080656B4(3, v, (u16 *)0x0600C000, 8, ROW(pos), 1, 0x100);
+        /* FAKEMATCH: the r1 clobber makes `w` conflict with r1, so global-alloc puts it in r0 (copied to r1 for
+           the call) as in the ROM instead of taking the r1 copy preference. */
+        asm volatile("" ::: "r1");
+        sub_080656B4(3, w, (u16 *)0x0600C000, 8, ROW(pos), 1, 0x100);
         break;
     }
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08064AF0", sub_080657F8); /* 0x080657F8 size 0x2BC */
 extern void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2);
 extern void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
 extern void *memset(void *dst, int c, unsigned int n);

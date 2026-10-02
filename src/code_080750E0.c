@@ -844,34 +844,30 @@ extern const u16 gUnk_081A77A8[];
 
 /* Sets the affine parameters of OAM group `idx` from a rotation angle
  * (low 7 bits, 0x80 = full turn) and a scale in the top nibble. */
-#if 0 /* NONMATCHING: angle param: target extends angle in place in r1 and scale = r1>>12 (the build folds to >>28 from the unextended copy in r3); second/third table values swapped in r5/r6 */
 void sub_0807609C(u16 idx, u16 angle)
 {
     u8 *oam = (u8 *)gMain.oam;
     u16 a = gUnk_081A77A8[angle & 0x7F];
-    u16 c = gUnk_081A77A8[(angle + 0x40) & 0x7F];
     u16 b = gUnk_081A77A8[(angle + 0x20) & 0x7F];
+    u16 c = gUnk_081A77A8[(angle + 0x40) & 0x7F];
+    u32 t;
     s32 scale;
 
     oam += idx << 5;
-    scale = angle >> 12;
+    t = angle;
+    asm("" : "+r"(t)); /* FAKEMATCH: hides angle's zero-extension from cse so >>12 is not folded into >>28 */
+    scale = t >> 12;
     if (scale <= 7) {
-        s16 d = scale + 1;
-
-        a = (s16)a / d;
-        b = (s16)b / d;
-        c = (s16)c / d;
+        a = (s16)a / (scale + 1);
+        b = (s16)b / (scale + 1);
+        c = (s16)c / (scale + 1);
     } else {
-        u16 m = scale - 8;
-
-        a = (s16)a * m;
-        b = (s16)b * m;
-        c = (s16)c * m;
+        a = (s16)a * (scale - 8);
+        b = (s16)b * (scale - 8);
+        c = (s16)c * (scale - 8);
     }
     ((u16 *)oam)[3] = b;
     ((u16 *)oam)[7] = a;
     ((u16 *)oam)[11] = c;
     ((u16 *)oam)[15] = b;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080750E0", sub_0807609C); /* 0x0807609C size 0xA8 */

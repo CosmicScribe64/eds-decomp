@@ -103,7 +103,8 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING: fable pass: 662 norm diff lines, first diff +0x336 (link-loop head); see build/fable/sub_0800ABC8/NOTES.md */
+#if 0 /* NONMATCHING (score 638): link-loop head exact (link, u8 kind, value, u8 lp = link); first code diff in
+       * case 3 reload regs */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -176,14 +177,13 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
     }
     /* Low kind byte identifies the modifier; high byte carries its value. */
     for (i = 0; i < ZB(player & 1, slot)->numLinks; i++) {
-        /* FAKEMATCH: retain the target link-data pointer register. */
-        register u16 *linkp asm("r0") = &ZB(player & 1, slot)->links[i];
-        u16 *kindp = &ZB(player & 1, slot)->linkKinds[i];
-        int value = *kindp >> 8;
-        u16 link = *linkp;
-        int lp = *(u8 *)linkp, ls = link >> 8;
+        u16 link = ZB(player & 1, slot)->links[i];
+        u8 kind = ZB(player & 1, slot)->linkKinds[i];
+        int value = ZB(player & 1, slot)->linkKinds[i] >> 8;
+        u8 lp = link;
+        int ls = link >> 8;
         u16 linkedId = ZONE_WORD(lp & 1, ls);
-        switch (*(u8 *)kindp) {
+        switch (kind) {
         case 3:
             if (immune && CARD_TYPE(link) == 22) break;
             switch (CARD_NUMBER(link)) {
@@ -498,7 +498,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
     }
 }
 #endif
-INCLUDE_ASM("asm/nonmatching/code_0800AB08", sub_0800ABC8);
+INCLUDE_ASM("asm/nonmatching/code_0800AB08", sub_0800ABC8); /* 0x0800ABC8 size 0x1CCC */
 
 #endif
 

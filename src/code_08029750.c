@@ -338,44 +338,45 @@ u16 sub_08029A50(void)
     sub_0807B534(w->aff);
     return 1;
 }
-#if 0 /* NONMATCHING: first half matches; ROM derives the base for the 2nd half from the fade pointer (f - 0xAF8) and hoists loop constants into r8/r9/sl/ip */
 /* Choose Left/Right (step 2), then animate the fade object and the hands. */
 u16 sub_08029B0C(void)
 {
-    struct Work20310 *w = &gWork;
+    struct Work20310 *v = &gWork;
+    struct Work20310 *w;    /* second pointer: set after the affine loop (one pointer for both halves does not match) */
     u8 *f;
     u8 i;
 
-    if (w->unkAF5 == 2) {
+    if (v->unkAF5 == 2) {
         if (gMain.newKeys & 0x20)
-            w->unkABF = 0;
+            v->unkABF = 0;
         else if (gMain.newKeys & 0x10)
-            w->unkABF = 1;
+            v->unkABF = 1;
         if (gMain.newKeys & 1) {
             sub_0807B9D4(0, 0, 0x40, 0xF, 3, 1, gWork.unkADC, 0);
             if (gWork.unkB0E == 1) {
                 gWork.unkB0D = 1;
-                sub_0807BCF4(w->unkB10);
+                sub_0807BCF4(v->unkB10);
             } else {
-                w->unkAF5++;
+                gWork.unkAF5++;
             }
         }
         if (gWork.unkB0D != 0) {
-            if (sub_0807BCFC(0x51, w->unkABF, w->unkB10)) {
-                w->unkAF5++;
+            if (sub_0807BCFC(0x51, gWork.unkABF, v->unkB10)) {
+                gWork.unkAF5++;
                 gWork.unkB0D = 0;
             }
         }
     }
-    sub_0807883C(f);
     f = gWork.fade;
+    sub_0807883C(f);
     if (f[6] == 2)
         gMain.seqIndex1 += f[7];
     for (i = 0; i <= 3; i++) {
-        w->aff[i].angle = 0;
-        w->aff[i].scaleX = 0x80;
-        w->aff[i].scaleY = 0x80;
+        gWork.aff[i].angle = 0;
+        gWork.aff[i].scaleX = 0x80;
+        gWork.aff[i].scaleY = 0x80;
     }
+    w = &gWork;
     if ((u8)sub_0807EE9C(&w->unkAF5, gUnk_0819A6D0[w->unkAF5]))
         return 1;
     if (w->unkAF5 <= 3) {
@@ -385,14 +386,12 @@ u16 sub_08029B0C(void)
         }
     }
     for (i = 0; i <= 4; i++)
-        sub_0807B5A0(&w->aff[i]);
-    sub_0807A298(w);
-    sub_0807A2EC(w);
-    w->unkAF4++;
+        sub_0807B5A0(&gWork.aff[i]);
+    sub_0807A298(&gWork);
+    sub_0807A2EC(&gWork);
+    gWork.unkAF4++;
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08029750", sub_08029B0C); /* 0x08029B0C size 0x200 */
 u16 sub_08029D0C(void)
 {
     return 1;

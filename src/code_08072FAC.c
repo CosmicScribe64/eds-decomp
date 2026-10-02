@@ -361,6 +361,110 @@ u32 sub_08073784(void *src, int n)
     }
     return 1;
 }
+#if 0 /* NONMATCHING (score 50): score 50: only r9/sl swap left (hoisted cur-addr literal vs hoisted sp+32 tx
+       * pointer). Key facts: nblk=(busy+16)/16 signed division (its branch splits the 0x2000 block so P is not movable
+       * and cur-addr hoists first, no CSE2 relation); no hdr local (switch on rx[slot].hdr, struct Pkt rx[2]/tx); all
+       * gLink fields direct ARRAY_REFs (RMW struct stores give the dead zeros); if (len != 0) return len. Swap is
+       * global-alloc priority: tx refs13/live281 beats cur refs19/live564 (cur doubled as REG_EQUIV). */
+struct Link82C {
+    u8 pad0[0x20C];
+    u16 rxBuf[2][2][0x101];     /* +0x20C */
+    u8 padA14[0xA40 - 0xA14];
+    u16 unkA40;                 /* +0xA40 */
+    u8 padA42[0xAF0 - 0xA42];
+    u16 nblk[2];                /* +0xAF0 */
+    u16 cur[2];                 /* +0xAF4 */
+    u16 busy[2];                /* +0xAF8 */
+};
+extern struct Link82C gLink82C asm("gUnk_03005B60");
+extern u16 gUnk_03005B68[][8];
+struct Pkt82C {
+    u16 hdr;
+    u16 data[7];
+};
+
+u32 sub_0807382C(u32 id, void *dst)
+{
+    struct Pkt82C rx[2];
+    struct Pkt82C tx;
+    u16 flags;
+    u8 i;
+    u8 mask;
+    u32 len;
+    u8 slot;
+    mask = 1;
+    slot = 0;
+    len = 0;
+    flags = sub_080740BC((u8 *)rx);
+    if (flags & 0x30) {
+        tx.hdr = 0x5000;
+        sub_08074218(&tx);
+    } else if (flags & 0xF) {
+        for (i = 0; i < 2; i++) {
+            if (flags & 0xF & mask) {
+                switch (rx[slot].hdr & 0xF000) {
+                case 0x1000:
+                    break;
+                case 0x2000:
+                    gLink82C.busy[slot] = rx[slot].hdr & 0x1FF;
+                    gLink82C.nblk[slot] = (gLink82C.busy[slot] + 0x10) / 16;
+                    gLink82C.busy[slot] += gLink82C.nblk[slot];
+                    gLink82C.cur[slot] = 0;
+                case 0x4000:
+                    CpuSet(rx[slot].data, gLink82C.rxBuf[slot] + gLink82C.cur[slot] * 7, 7);
+                    gLink82C.cur[slot]++;
+                    if (slot == (REG_SIOCNT & 0x30) >> 4) {
+                        if (gLink82C.cur[slot] == 0)
+                            tx.hdr = 0x2000 | gLink82C.busy[slot];
+                        else if (gLink82C.cur[slot] == gLink82C.nblk[slot] - 1)
+                            tx.hdr = 0x3000;
+                        else
+                            tx.hdr = 0x4000;
+                        CpuSet(gUnk_03005B68[gLink82C.cur[slot]], tx.data, 7);
+                        sub_08074218(&tx);
+                    }
+                    gLink82C.cur[slot]++;
+                    break;
+                case 0x3000:
+                    if (gLink82C.nblk[slot] == 0)
+                        gLink82C.busy[slot] = rx[slot].hdr & 0x1FF;
+                    if (slot == (REG_SIOCNT & 0x30) >> 4)
+                        gLink82C.unkA40 = 0x1000;
+                    CpuSet(rx[slot].data, gLink82C.rxBuf[slot] + gLink82C.cur[slot] * 7, 7);
+                    gLink82C.cur[slot]++;
+                    break;
+                case 0x5000:
+                    gLink82C.cur[slot]--;
+                    if (slot == (REG_SIOCNT & 0x30) >> 4) {
+                        if (gLink82C.cur[slot] == 0)
+                            tx.hdr = 0x2000 | gLink82C.busy[slot];
+                        else if (gLink82C.cur[slot] == gLink82C.nblk[slot] - 1)
+                            tx.hdr = 0x3000;
+                        else
+                            tx.hdr = 0x4000;
+                        CpuSet(gUnk_03005B68[gLink82C.cur[slot]], tx.data, 7);
+                        sub_08074218(&tx);
+                    }
+                    break;
+                }
+                if (gLink82C.cur[slot] * 15 >= gLink82C.busy[slot]) {
+                    if (slot == id) {
+                        len = gLink82C.busy[slot];
+                        CpuSet(gLink82C.rxBuf[slot], dst, len >> 1);
+                    }
+                    gLink82C.busy[slot] = 0;
+                    gLink82C.cur[slot] = 0;
+                }
+            }
+            mask <<= 1;
+            slot++;
+        }
+    }
+    if (len != 0)
+        return len;
+    return 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_0807382C); /* 0x0807382C size 0x338 */
 /* Link receive: run the link step, and if slot `id` holds a complete packet (type 0x3000) copy it to dst; returns its length. */
 u16 sub_08073B64(u32 id, void *dst)

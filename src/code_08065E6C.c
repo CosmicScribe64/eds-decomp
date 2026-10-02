@@ -384,13 +384,13 @@ void sub_080665D4(u8 *p, int arg)
         }
     }
 }
-#if 0 /* NONMATCHING: arr (stack arg) is reloaded from [sp,#0] in the target and r7 is not used; the build keeps it in r7 */
-void sub_0806664C(u8 slot, int x, u8 kind, u8 *base, u8 *arr)
+void sub_0806664C(u8 slot, u16 x, u8 kind, u8 *base, u8 *arr)
 {
     u8 *e;
     u16 v;
     int n;
-    u8 r = sub_0806635C((u16)x, x, arr, base, arr);
+    u8 *o;
+    u8 r = sub_0806635C(x);
     e = base + slot * 16;
     e[5] = r;
     e[0xC] = 1;
@@ -400,11 +400,10 @@ void sub_0806664C(u8 slot, int x, u8 kind, u8 *base, u8 *arr)
     *(u16 *)(e + 0xE) = v;
     n = slot + 1;
     e[0x12] = n;
-    *(u16 *)(arr + n * 24 + 2) = v;
-    *(u16 *)(arr + n * 24) = v;
+    o = arr + n * 24;
+    *(u16 *)(o + 2) = v;
+    *(u16 *)o = v;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08065E6C", sub_0806664C); /* 0x0806664C size 0x60 */
 void sub_080666AC(u8 *p)
 {
     *p = 0;

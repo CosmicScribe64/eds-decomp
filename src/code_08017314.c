@@ -123,6 +123,174 @@ void sub_08017314(int player, int zone, u16 link0)
     }
 }
 
+#if 0 /* NONMATCHING (score 12): Written from scratch from the asm; only the player+0x0B |= 8 block differs
+       * (t*0xD64 product lands in r0 instead of r1). Keys: PLAYERS17460->p[player & 1] array view loads the 0x020192E4
+       * base first; ZONE_PTR(player, zone) under zone==10 (CSE folds zone to 10); ZONE_PZ (block-local t) for the
+       * 461/954/1095/1116 zone tests; u16 id2 in the loops; (owner<<31) | (cond ? A : B) | id; double read of
+       * unkE[zone]. */
+struct Unk02017A40_17460 { u8 pad[0x48A]; u16 w48A; };
+extern struct Unk02017A40_17460 gUnk_02017A40;
+struct DuelCard17460 {
+    u32 id : 12;
+    u32 owner : 1;
+    u32 unk13 : 1;
+    u32 unk14 : 3;
+    u32 unk17 : 15;
+};
+struct DuelPlayer17460 {
+    u8 unk0[0xB];
+    u8 unkB;
+    u8 unkC[2];
+    u16 unkE[11];
+    u8 unk24[0xD64 - 0x24];
+};
+struct DuelPlayers17460 { struct DuelPlayer17460 p[2]; };
+#define PLAYERS17460 ((struct DuelPlayers17460 *)gUnk_020192E4)
+void sub_080184D8(int player, u16 cardNo);
+u16 sub_08009538(int player, int zone);
+void sub_08017460(int player, int zone, u16 arg, u16 arg3);
+int sub_0800849C(int player, u16 number, int zone);
+int sub_0800756C(u16 number);
+void sub_08019980(int player, int lp);
+
+#define ZONE_PZ(p, z) ({ int _t = (p) & 1; ZONE_T(_t, z); })
+
+void sub_08017460(int player, int zone, u16 arg, u16 arg3)
+{
+    int t = player & 1;
+    struct DuelZone *z = ZONE_T(t, zone);
+    u32 id = CARD(z->card).id;
+    struct DuelCard17460 *card;
+    int i;
+    u16 r;
+    u16 number;
+
+    if (id == 0)
+        return;
+    card = (struct DuelCard17460 *)&ZONE(player, zone).card;
+    if (arg3 != 0) {
+        switch (CARD_NUMBER(id)) {
+        case 333:
+            if ((z->flags6 & 2) && zone == 10) {
+                sub_080184D8(player, 0x58F);
+                sub_080184D8(1 - player, 0x58F);
+            }
+            break;
+        case 1162:
+            sub_0801EC58(player ? 0x808F : 0x8F, zone, 0, 0);
+            break;
+        }
+        if (zone == 10 && (ZONE_PTR(player, zone)->flags6 & 2))
+            sub_0801EC58(player ? 0x8011 : 0x11, 0, 0, 0);
+    }
+    if (sub_080086CC(0, 1107) > 0 || sub_080086CC(1, 1107) > 0) {
+        sub_0801EC58(player ? 0x807A : 0x7A, zone, arg, 0);
+        sub_08017DE0(player, zone, 1);
+        return;
+    }
+    if (CARD_TYPE(id) <= 20)
+        PLAYERS17460->p[player & 1].unkB |= 8;
+    if (CARD_NUMBER(id) == 478 || CARD_NUMBER(id) == 1042) {
+        sub_0801EC58(player ? 0x8073 : 0x73, id, 1, 0);
+        sub_0801EC58(player ? 0x8081 : 0x81, zone, arg, 0);
+        if (CARD_TYPE(id) <= 20 && zone <= 4)
+            sub_08017DE0(player, zone, 1);
+        return;
+    }
+    sub_0801EC58(player ? 0x8079 : 0x79, zone, arg, 0);
+    switch (CARD_TYPE(id)) {
+    case 0x16:
+        sub_08042AB0(1 - player, 0x14, (u16)((u8)player | ((u8)zone << 8)));
+        break;
+    case 0x15:
+        sub_08042AB0(1 - player, 0x15, (u16)((u8)player | ((u8)zone << 8)));
+        break;
+    default:
+        sub_08042AB0(1 - player, 0x1E, (u16)((u8)player | ((u8)zone << 8)));
+        break;
+    }
+    switch (CARD_NUMBER(id)) {
+    case 1160:
+        r = sub_08009538(player, zone);
+        if (r != 0xFFFF && arg3 != 0) {
+            sub_08009424(r, (u8)player | ((u8)zone << 8), 1);
+            sub_08017460((u8)r, r >> 8, 1, 1);
+        }
+        break;
+    case 1095:
+        r = sub_08009538(player, zone);
+        if (r != 0xFFFF && arg3 != 0 && !ZONE_PZ(player, zone)->unk91_3) {
+            sub_08009424(r, (u8)player | ((u8)zone << 8), 2);
+            sub_08017460((u8)r, r >> 8, 1, 1);
+        }
+        break;
+    case 1068:
+    case 1514:
+        r = sub_08009538(player, zone);
+        if (r != 0xFFFF)
+            sub_08017314((u8)r, r >> 8, (u8)player | ((u8)zone << 8));
+        break;
+    }
+    sub_08046C20(player, 1);
+    if (arg3 == 0)
+        return;
+    number = CARD_NUMBER(id);
+    switch (number) {
+    case 47:
+    case 573:
+    case 1241:
+    case 1257:
+        if ((*(u32 *)card & 0x1C000) || zone > 4)
+            sub_0801FBCC((card->owner << 31) | 0x3C600000 | id, 0);
+        break;
+    case 1242:
+        sub_0801FBCC((card->owner << 31) | 0x3C600000 | id, 0);
+        break;
+    case 303:
+    case 310:
+    case 312:
+    case 313:
+    case 320:
+        sub_0801FBCC((card->owner << 31) | (gUnk_02017A40.w48A == 0x13 ? 0x26600000 : 0x28600000) | id, 0);
+        break;
+    case 461:
+        if (!(ZONE_PZ(player, zone)->flags7 & 0x20)) {
+            sub_0801EC58(player ? 0x8073 : 0x73, id, 1, 0);
+            sub_08019860(player, 5000);
+        }
+        break;
+    case 954:
+        if ((ZONE_PZ(player, zone)->flags6 & 2) && !ZONE_PZ(player, zone)->unk91_3) {
+            sub_0801EC58(player ? 0x8073 : 0x73, id, 1, 0);
+            if (sub_0800849C(player, number, zone) == 0) {
+                for (i = 0; i <= 4; i++) {
+                    u16 id2 = CARD(ZONE_PTR(player, i)->card).id;
+                    if (id2 != 0 && sub_0800756C(CARD_NUMBER(id2)))
+                        sub_08017460(player, i, 1, 1);
+                }
+                for (i = 0; i <= 4; i++) {
+                    u16 id2 = CARD(ZONE_PTR(1 - player, i)->card).id;
+                    if (id2 != 0 && sub_0800756C(CARD_NUMBER(id2)))
+                        sub_08017460(1 - player, i, 1, 1);
+                }
+            }
+            if (PLAYERS17460->p[player & 1].unkE[zone] != 0) {
+                sub_08019980(player, PLAYERS17460->p[player & 1].unkE[zone]);
+                sub_0801EC58(player ? 0x80B3 : 0xB3, zone, 0, 0);
+            }
+        }
+        break;
+    case 1116:
+        if (!(ZONE_PZ(player, zone)->flags7 & 0x20))
+            sub_0801FBCC(((card->owner & 1) << 31) | 0x3C600000 | id, 0);
+        break;
+    case 1162:
+        sub_0801EC58(player ? 0x808F : 0x8F, zone, 0, 0);
+        break;
+    }
+    sub_08017DE0(player, zone, 1);
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017460); /* 0x08017460 size 0x654 */
 
 void sub_08017AB4(int player, u16 a, u16 b, u16 c)

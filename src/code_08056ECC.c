@@ -222,12 +222,8 @@ struct Main {
 };
 extern struct Main gUnk_03000040;
 
-#if 0 /* NONMATCHING (score 14): same size/layout; only reload regs differ: ROM n-test uses r0 / -1 via r1 /
-       * 0x3FE00->ip via r0, ours r1/r0/r1 (spill-reg round-robin off by one somewhere before 0x08057054). maxAtk init
-       * 'mov sl,r7' needs the duplicated 'maxAtk = maxDef = 0' (cse then emits maxAtk = best with REG_EQUAL 0; r7 can
-       * never be reload-inherited, it is the frame pointer). Single loop counter k needs 7 empty asm volatile in the
-       * ABC8 loop (FAKEMATCH live-length padding) to drop below the 1AB mask priority. */
-/* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in gUnk_02015F00.handPick, -1 if none. */
+/* AI value helpers for sub_08056ECC: ATK-like field (bits 9-17) * 10 and DEF-like field (bits 0-8) * 10;
+ * 0 for types 0x15-0x17, 4000 for type 0x18. The u16 return of DefVal56 gives the ROM's add operand order. */
 static inline int AtkVal56(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
@@ -240,25 +236,6 @@ static inline int AtkVal56(u16 id)
     default:
         return ((CARD_STATS(id) & 0x3FE00) >> 9) * 10;
     }
-}
-static inline int AtkVal56b(int id)
-{
-    int r;
-
-    switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
-        r = 0;
-        break;
-    case 0x18:
-        r = 4000;
-        break;
-    default:
-        r = ((CARD_STATS(id) << 14) >> 23) * 10;
-        break;
-    }
-    return r;
 }
 static inline u16 DefVal56(u16 id)
 {
@@ -273,7 +250,11 @@ static inline u16 DefVal56(u16 id)
         return (CARD_STATS(id) & 0x1FF) * 10;
     }
 }
+/* Card number through the table symbol, index computed first (the ROM's add order). */
 #define CNS56(x) (*(const u16 *)(((x) & 0x7FF) * 2 + (u32)gUnk_08622AB4))
+
+/* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in
+ * gUnk_02015F00.handPick, -1 if none. */
 int sub_08056ECC(u16 id)
 {
     int n;
@@ -332,16 +313,23 @@ int sub_08056ECC(u16 id)
                     goto found2;
             }
         }
-        goto random;
+        /* A copy of the random pick (cross-jumped with the one below); its reloads keep the
+         * spill-register round-robin in step with the ROM. */
+        gUnk_02015F00.handPick = sub_08076F9C() % n;
+        return gUnk_02015F00.handPick;
     }
     if (n <= 0)
         goto fail;
     best = 0;
+    /* Initialised twice: cse then keeps the second one as a copy of best (mov sl, r7). */
     maxAtk = maxDef = 0;
     bestIdx = -1;
     maxAtk = maxDef = 0;
     for (k = 0; k <= 4; k++) {
         sub_0800ABC8(0, k, buf);
+        /* FAKEMATCH: empty asm statements lengthen k's live range so that global-alloc
+         * gives k (shared by all five loops) a priority below the 1AB loop's mask and
+         * table, which puts k in r6 as in the ROM. They emit no instructions. */
         asm volatile("");
         asm volatile("");
         asm volatile("");
@@ -349,7 +337,6 @@ int sub_08056ECC(u16 id)
         asm volatile("");
         asm volatile("");
         asm volatile("");
-
         if (maxAtk < buf[1])
             maxAtk = buf[1];
     }
@@ -383,13 +370,12 @@ random:
     gUnk_02015F00.handPick = sub_08076F9C() % n;
     return gUnk_02015F00.handPick;
 found2:
+    /* The ROM returns the (unchanged) handPick here, through a temporary. */
     j = gUnk_02015F00.handPick;
     return j;
 fail:
     return -1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08056ECC", sub_08056ECC); /* 0x08056ECC size 0x504 */
 /* Best (largest) score among the occupied zones of player `p` other than `skip`; -1 if none. */
 int sub_080573D0(int p, int skip, u16 useAtk, u16 useDef)
 {

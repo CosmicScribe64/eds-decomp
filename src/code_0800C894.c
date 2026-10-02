@@ -362,7 +362,6 @@ u16 sub_0800CD68(s32 player, s32 slot)
     }
     return 0xFFFF;
 }
-#if 0 /* NONMATCHING: ROM-reviewed animation states; allocation, scheduling and shared tails differ */
 s32 sub_080623AC(u32, s32, u16);
 s32 sub_080623EC(u32, s32, u16);
 extern u8 gUnk_08687FBC[];
@@ -370,7 +369,7 @@ extern u8 gUnk_08687FBC[];
 void sub_0800CE28(void)
 {
     u32 player = gCmd.hdr >> 15;
-    int slot = gCmd.arg1;
+    u16 slot = gCmd.arg1;
     u16 otherSlot = gCmd.arg2;
     s32 step = gCmd.step;
 
@@ -391,19 +390,12 @@ void sub_0800CE28(void)
         gCmd.step++;
         break;
     case 3: {
-        u16 x = sub_080623AC(player, 0, slot);
+        s32 x = sub_080623AC(player, 0, slot);
         s32 y = sub_080623EC(player, 0, slot);
         u32 packed = (u32)(x + 8) | ((u32)(y + 8) << 16);
-        u32 a = gCmd.timer * 4;
-        u32 b;
         s32 t;
 
-        if (player) {
-            b = a + 0x40;
-            a = 0x1000000;
-        } else
-            b = 0x1000000;
-        sub_08076714(packed, 0x40, 0x5200, a | b);
+        sub_08076714(packed, 0x40, 0x5200, (gCmd.timer * 4 + (player ? 0x40 : 0)) | 0x1000000);
         gCmd.timer++;
         t = gCmd.timer;
         if (t <= 31) {
@@ -420,24 +412,18 @@ void sub_0800CE28(void)
         u32 other = 1 - player;
         s32 dx = sub_080623AC(other, 0, otherSlot);
         s32 dy = sub_080623EC(other, 0, otherSlot);
-        s32 x, y, t;
-        u32 packed, flags;
+        s32 t;
 
-        dy -= sub_080623EC(player, 0, slot);
         dx -= sub_080623AC(player, 0, slot);
-        /* ROM wraps the products as 32-bit words, then divides signed. */
-        dx = (s32)((u32)dx * gCmd.timer);
-        dy = (s32)((u32)dy * gCmd.timer);
+        dy -= sub_080623EC(player, 0, slot);
+        dx *= gCmd.timer;
+        dy *= gCmd.timer;
         dx /= 32;
         dy /= 32;
-        /* Preserve the second source-coordinate reads after interpolation. */
-        x = dx + 8 + sub_080623AC(player, 0, slot);
-        y = dy + 8 + sub_080623EC(player, 0, slot);
-        packed = (u32)x | ((u32)y << 16);
-        flags = (u32)gUnk_081A43E4[gCmd.timer] << 16;
-        if (player)
-            flags |= 0x40;
-        sub_08076714(packed, 0x40, 0x5200, flags);
+        dx += sub_080623AC(player, 0, slot) + 8;
+        dy += sub_080623EC(player, 0, slot) + 8;
+        dy = (dy << 16) | dx;
+        sub_08076714(dy, 0x40, 0x5200, ((u32)gUnk_081A43E4[gCmd.timer] << 16) | (player ? 0x40 : 0));
         gCmd.timer++;
         t = gCmd.timer;
         if (t <= 31) {
@@ -463,7 +449,7 @@ void sub_0800CE28(void)
             gCmd.timer++;
             if ((gUnk_03000040[2] & 2) || gUnk_0201CFB0.fast)
                 if (gCmd.timer <= 87)
-                    gCmd.timer += 3; /* This handler uses +3; D234 uses +7. */
+                    gCmd.timer += 3;
             break;
         }
     }
@@ -472,8 +458,6 @@ void sub_0800CE28(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800CE28); /* 0x0800CE28 size 0x40C */
 void sub_0800D234(void)
 {
     u32 player = CMD_PLAYER();

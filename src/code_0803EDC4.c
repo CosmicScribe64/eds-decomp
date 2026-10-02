@@ -183,9 +183,6 @@ int sub_0803EE6C(struct CardRef *ref, int arg)
         return 0;
     }
 }
-#if 0 /* NONMATCHING: the AI arm differs. The ROM keeps ref in r6, i in r7, and the constants
-       * 1 / 0xFFFF / zone base in r8 / sl / ip, while ours has ref in r7 and i in r8. The human
-       * arm is untested (structure believed right). */
 /* (ref, arg): AI picks up to two player-1 zones (card numbers 0x10-0x14) or falls back to sub_0805748C; player 0: 6-step prompt machine. */
 int sub_0803F034(struct CardRef *ref, int arg)
 {
@@ -197,25 +194,26 @@ int sub_0803F034(struct CardRef *ref, int arg)
         if (sub_08008860(0) <= 0)
             return 1;
         for (i = 0; i <= 1; i++) {
-            int cand = 0xFFFF;
+            int none = 0xFFFF; /* compared against; loop.c hoists it to sl */
+            u16 cand = 0xFFFF;
             if (gUnk_02015EE8.w4 & 0x200) {
                 int j;
                 for (j = 0; j <= 4; j++) {
-                    if ((*(u32 *)ZB(1, i) << 20) != 0) {
-                        s16 no = ((const u16 *)0x08622AB4)[*(u32 *)ZB(1, j) << 21 >> 21];
-                        if (no > 0x14)
-                            continue;
-                        if (no < 0x10)
-                            continue;
-                        if (i > 0 && ref->targets[0] == ((u8)j << 8 | 1))
-                            continue;
-                        cand = (u8)j << 8 | 1;
-                        j = 5;
+                    if ((*(u32 *)ZB(1, i) << 20 >> 20) != 0) {
+                        switch (((const u16 *)0x08622AB4)[*(u32 *)ZB(1, j) << 21 >> 21]) {
+                        case 0x10 ... 0x14: /* range: `cmp #0x14; bgt` then `cmp #0x10; blt` */
+                            if (i != 0) {
+                                if (ref->targets[0] == (u16)((u8)j << 8 | 1))
+                                    continue;
+                            }
+                            cand = (u8)j << 8 | 1;
+                            j = 5;
+                        }
                     }
                 }
             }
-            if (cand == 0xFFFF) {
-                u8 m = -1;
+            if (cand == none) {
+                int m = -1;
                 int r;
                 if (i > 0)
                     m = 0;
@@ -225,15 +223,16 @@ int sub_0803F034(struct CardRef *ref, int arg)
             }
             if (i > 0 && cand == ref->targets[0])
                 cand = 0xFFFF;
-            if (cand == 0xFFFF)
+            if (cand == none)
                 return 1;
             sub_0803DDAC(ref, (u8)cand, (u8)(cand >> 8));
         }
-        return 1;
+        /* Shares case 5's `return 1` (the ROM keeps a single r0=1 block after case 5). */
+        goto ret1;
     } else {
         u8 *es = gUnk_02017A40;
-        u8 *e2 = es;
         int s = es[0x3E5];
+        u8 *e2 = es;
         switch (s) {
         case 0:
             ref->numTargets = 0;
@@ -258,7 +257,7 @@ int sub_0803F034(struct CardRef *ref, int arg)
             if (sub_08052F38(0xF000F0) == 0)
                 return 0;
             if (sub_0803DDAC(ref, gUnk_0201CFB0.w824, gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C) != 0) {
-                s16 n = sub_08008860(0);
+                int n = sub_08008860(0);
                 n += sub_08008860(1);
                 if (n == 1)
                     return 1;
@@ -289,20 +288,22 @@ int sub_0803F034(struct CardRef *ref, int arg)
                 int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
                 int p = *pa;
                 int pos = (u8)z << 8 | *(u8 *)pa;
-                if (ref->targets[0] != pos) {
-                    if (sub_0803DDAC(ref, p, z) != 0)
-                        return 1;
+                if (ref->targets[0] == pos || sub_0803DDAC(ref, p, z) == 0) {
+                    u32 se = 3;
+                    /* FAKEMATCH: keeps this sound call from being cross-jumped
+                     * into case 2's identical one (the ROM has both). Emits no code. */
+                    asm("" : "+r"(se));
+                    sub_08077AEC(se);
+                    return 0;
                 }
             }
-            sub_08077AEC(3);
-            return 0;
+        ret1:
+            return 1;
         default:
             return 0;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803EDC4", sub_0803F034); /* 0x0803F034 size 0x310 */
 /* AI: sub_0805748C(0, -1, 1, 1) result becomes target 0; player 0: per-card prompt (only if sub_080088A4 allows), then the pick is validated per card number (0x42C: not 0x547, 0x42C/0x4DC: face-down flag 2). */
 int sub_0803F344(struct CardRef *ref)
 {

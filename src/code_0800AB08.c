@@ -103,8 +103,7 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 638): link-loop head exact (link, u8 kind, value, u8 lp = link); first code diff in
-       * case 3 reload regs */
+#if 0 /* NONMATCHING (score 604): head + case 3 exact; first diff +0x76E (case 1 linked-zone address) */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -193,8 +192,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 asm("" : : "r"(otherAtk));
                 break;
             case 0x1AC:
-                /* FAKEMATCH: retain the shared link-doubling tail. */
-                if (ZB(player & 1, slot)->linkKinds[i] >> 8) goto double_link_attack;
+                if (ZB(player & 1, slot)->linkKinds[i] >> 8) atkDoubles++;
                 else atkHalves++;
                 break;
             case 0x3F7: otherAtk += (value + 1) * 500; break;
@@ -211,9 +209,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 otherDef -= (ZB(player & 1, slot)->linkKinds[i] >> 8) * 100;
                 break;
             case 0x4CF: otherAtk -= (value + 1) * 500; break;
-            case 0x522:
-            double_link_attack:
-                atkDoubles++; break;
+            case 0x522: atkDoubles++; break;
             case 0x587: otherAtk -= (value + 1) * 700; break;
             case 0x5FE:
                 /* The ROM reuses the link-loop index for this list scan. */

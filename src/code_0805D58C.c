@@ -573,10 +573,7 @@ void sub_0805E1D0(int bg, int x, int y, int tile)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E1D0); /* 0x0805E1D0 size 0x1E8 */
-#if 0 /* NONMATCHING: scene init (loads both players' portrait sprite + palette, sets BG/OBJ tiles, installs the HBlank handler); cleaned-up m2c draft compiles but the prologue of about 50 instructions already diverges (gcc folds the two clear-bit masks into one AND, reorders the arg-halfword masks, and sizes the function smaller) */
 extern u8 gUnk_020185A4[];
-extern const u32 gUnk_08621DE0[];
-extern const u16 gUnk_08622AB4[];
 extern const u16 gUnk_08631558[];
 extern const u16 gUnk_0862EEC0[];
 extern const u16 gUnk_08633BF0[];
@@ -593,24 +590,66 @@ void sub_08075278(void *dst, u32 size);
 void sub_080752B0(void *dst, const void *src, u32 size);
 void sub_08073498(void);
 void sub_080757AC(void);
-void sub_0805DF34(int a, u16 b, u16 c, u32 d);
-void sub_0805E054(int a, u16 *p, u16 y, u16 b);
-void sub_0805E100(int a, int x, int y, int v);
 void sub_0805E1D0(int a, int x, int y, int v);
 void sub_0805DC38(void);
-
-void sub_0805E3B8(u16 arg0, u16 arg1)
+struct E3B8Bits { u8 f0 : 1; u8 f1 : 1; u8 f2 : 1; u8 rest : 5; };
+struct E3B8Main { u8 pad[0x40E]; u16 f40E; };
+#define E3B8_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+#define E3B8_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define E3B8_TYPE(id) ((E3B8_STATS(id) & 0x1F00000) >> 20)
+static inline int E3B8_Subtype(u16 id)
 {
-    s8 p0 = arg0;
-    s8 p1 = arg1;
+    switch (E3B8_NUMBER(id)) {
+    case 1910:
+        return 3;
+    case 1911:
+    case 1912:
+        return 1;
+    }
+    switch ((u8)E3B8_TYPE(id)) {
+    case 22:
+        return 7;
+    case 21:
+        return 8;
+    case 23:
+        return 9;
+    default:
+        return (E3B8_STATS(id) & 0xC0000) >> 18;
+    }
+}
+static inline const u16 *E3B8_Portrait(u16 id)
+{
+    switch ((int)E3B8_TYPE(id)) {
+    case 21:
+        return gUnk_08631558;
+    case 22:
+        return gUnk_0862EEC0;
+    case 23:
+        return gUnk_08633BF0;
+    }
+    switch (E3B8_Subtype(id)) {
+    case 1:
+        return gUnk_08627AF8;
+    case 2:
+        return gUnk_0862A190;
+    case 3:
+        return gUnk_0862C828;
+    default:
+        return gUnk_08625460;
+    }
+}
 
-    sub_08075278(&gUnk_020185A4, 0xC);
-    gUnk_0201CFB0.pad[0] = (-3 & gUnk_0201CFB0.pad[0]) & -5;
-    *(u16 *)((u8 *)&gUnk_03000040 + 0x40E) = 1;
+void sub_0805E3B8(u16 a, u16 b)
+{
+    sub_08075278(gUnk_020185A4, 0xC);
+    ((struct E3B8Bits *)&gUnk_0201CFB0)->f1 = 0;
+    ((struct E3B8Bits *)&gUnk_0201CFB0)->f2 = 0;
+    *(vu16 *)0x04000000 = 0x42;
+    ((struct E3B8Main *)&gUnk_03000040)->f40E = 1;
     *(vu16 *)0x04000050 = 0;
     *(vu16 *)0x0400000C = 0x4084;
-    sub_08073498();
     *(vu16 *)0x0400000E = 0x4188;
+    sub_08073498();
     sub_080757AC();
     sub_080752B0((void *)0x05000240, gUnk_0863840C, 0x20);
     sub_080752B0((void *)0x06010400, gUnk_0863842C, 0x1C0);
@@ -618,94 +657,18 @@ void sub_0805E3B8(u16 arg0, u16 arg1)
     sub_080752B0((void *)0x060105C0, gUnk_0868267C, 0x1800);
     sub_08075278((void *)0x06004000, 0x4000);
     sub_08075278((void *)0x06000000, 0x800);
-    if (p0 != 0) {
-        const u16 *spr;
-        u16 st;
-        sub_0805DF34(0, p0, 0x14C, 0x40);
+    if (a != 0) {
+        sub_0805DF34(0, a, 0x14C, 0x40);
         sub_0805E100(0, 3, 5, 0x14C);
-        st = (gUnk_08621DE0[p0 & 0x7FF] & 0x1F00000) >> 20;
-        switch (st) {
-        case 21:
-            spr = gUnk_08631558;
-            break;
-        case 22:
-            spr = gUnk_0862EEC0;
-            break;
-        case 23:
-            spr = gUnk_08633BF0;
-            break;
-        default: {
-            s16 t = gUnk_08622AB4[p0 & 0x7FF];
-            int v;
-            if (t == 0x776) {
-                v = 3;
-            } else if (t >= 0x776 && t <= 0x778) {
-                v = 1;
-            } else {
-                int st2 = (gUnk_08621DE0[p0 & 0x7FF] & 0x1F00000) >> 20;
-                switch (st2) {
-                case 22: v = 7; break;
-                case 21: v = 8; break;
-                case 23: v = 9; break;
-                default: v = (gUnk_08621DE0[p0 & 0x7FF] & 0xC0000) >> 18; break;
-                }
-            }
-            switch (v) {
-            case 1: spr = gUnk_08627AF8; break;
-            case 2: spr = gUnk_0862A190; break;
-            case 3: spr = gUnk_0862C828; break;
-            default: spr = gUnk_08625460; break;
-            }
-            break;
-        }
-        }
-        sub_0805E054(0, (u16 *)spr, 0x2C, 0x80);
+        sub_0805E054(0, (u16 *)E3B8_Portrait(a), 0x2C, 0x80);
         sub_0805E1D0(0, 1, 1, 0x2C);
     }
     sub_08075278((void *)0x06008000, 0x4000);
     sub_08075278((void *)0x06000800, 0x800);
-    if (p1 != 0) {
-        const u16 *spr;
-        u16 st;
-        sub_0805DF34(1, p1, 0x14C, 0xA0);
+    if (b != 0) {
+        sub_0805DF34(1, b, 0x14C, 0xA0);
         sub_0805E100(1, 0x12, 5, 0x14C);
-        st = (gUnk_08621DE0[p1 & 0x7FF] & 0x1F00000) >> 20;
-        switch (st) {
-        case 21:
-            spr = gUnk_08631558;
-            break;
-        case 22:
-            spr = gUnk_0862EEC0;
-            break;
-        case 23:
-            spr = gUnk_08633BF0;
-            break;
-        default: {
-            s16 t = gUnk_08622AB4[p1 & 0x7FF];
-            int v;
-            if (t == 0x776) {
-                v = 3;
-            } else if (t >= 0x776 && t <= 0x778) {
-                v = 1;
-            } else {
-                int st2 = (gUnk_08621DE0[p1 & 0x7FF] & 0x1F00000) >> 20;
-                switch (st2) {
-                case 22: v = 7; break;
-                case 21: v = 8; break;
-                case 23: v = 9; break;
-                default: v = (gUnk_08621DE0[p1 & 0x7FF] & 0xC0000) >> 18; break;
-                }
-            }
-            switch (v) {
-            case 1: spr = gUnk_08627AF8; break;
-            case 2: spr = gUnk_0862A190; break;
-            case 3: spr = gUnk_0862C828; break;
-            default: spr = gUnk_08625460; break;
-            }
-            break;
-        }
-        }
-        sub_0805E054(1, (u16 *)spr, 0x2C, 0xE0);
+        sub_0805E054(1, (u16 *)E3B8_Portrait(b), 0x2C, 0xE0);
         sub_0805E1D0(1, 0x10, 1, 0x2C);
     }
     gUnk_02018450.k = 0;
@@ -717,6 +680,3 @@ void sub_0805E3B8(u16 arg0, u16 arg1)
     *(vu16 *)0x04000200 |= 2;
     *(vu16 *)0x04000208 = 1;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E3B8); /* 0x0805E3B8 size 0x3D0 */
-#endif

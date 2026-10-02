@@ -717,7 +717,8 @@ static inline u16 SummonCardIdSymbol(u16 number)
     return *(gUnk_08623DF4 + ((number - 0x7D0) & 0x7FF)) + 1;
 }
 
-#if 0 /* NONMATCHING: summon/tribute state machine; case 40 now matches; remaining: case 80 reload-register picks + one extra pool word, see build/fable/sub_080471E8/NOTES.md */
+#if 0 /* NONMATCHING (score 32): summon/tribute state machine; size matches; remaining: case 80 local/reload
+       * register picks (r0/r2 swap, reload regs r4/r5 vs r2/r3/r5/r0) */
 void sub_080471E8(u16 faceUp, u16 special)
 {
     char text[0x80];
@@ -1422,8 +1423,8 @@ void sub_080471E8(u16 faceUp, u16 special)
         u16 second = sub_08008794(player2, number2) != 0;
         if (first) {
             if (second) {
-                sub_080753F4(format, gUnk_0808581C, SUMMON_CARD_NAME(((const u16 *)0x08623DF4)[number1]));
-                sub_080753F4(text, format, SUMMON_CARD_NAME(*(gUnk_08623DF4 - -number2)));
+                sub_080753F4(format, gUnk_0808581C, SUMMON_CARD_NAME(({ u32 i = number1 * 2; const u16 *t = (const u16 *)0x08623DF4; asm("" : "+r"(t)); *(const u16 *)(i + (u32)t); })));
+                sub_080753F4(text, format, SUMMON_CARD_NAME(((const u16 *)0x08623DF4)[number2]));
                 sub_080602A4(0x206, 0x712, 0xB, text);
                 SD.step++;
             } else {
@@ -1499,7 +1500,6 @@ void sub_080471E8(u16 faceUp, u16 special)
         break;
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08046738", sub_080471E8); /* 0x080471E8 size 0x1DF8 */
 #endif
+INCLUDE_ASM("asm/nonmatching/code_08046738", sub_080471E8); /* 0x080471E8 size 0x1DF8 */
 

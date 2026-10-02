@@ -212,8 +212,6 @@ int sub_0802E6F8(struct CardRef *ref, int a, int b);
 int sub_0800C894(int player, int zone);
 void sub_08075434(char *dst, const void *fmt, ...);
 extern const u8 gUnk_08082DE8[];
-#if 0 /* NONMATCHING: the ROM hoists `mov r4,#1` (const for the later `1 & ref byte`) above the
-       * base loads and keeps the EFF base in r8, so register allocation differs. */
 int sub_08035198(struct CardRef *ref, int arg)
 {
     if (!ref->skip4) {
@@ -236,14 +234,13 @@ int sub_08035198(struct CardRef *ref, int arg)
             return 0x7D;
         case 0x7D:
             if (sub_08052F38(1) != 0) {
-                int p = ref->player;
+                int p = ref->player & 1;
                 struct DuelScreenView *ds = DSV;
-                s8 w = gUnk_02019968[p].w[ds->w82C];
-
-                if (CARD_TYPE(CARD_ID11(w)) <= 0x14) {
+                u32 *sel = &ds->w82C;
+                if (CARD_TYPE(CARD_ID11(*(u32 *)((u32)gUnk_02019968 + *sel * 4 + p * 0xD64))) <= 0x14) {
                     sub_08077AEC(1);
-                    sub_080193D4(ref->player, ds->w82C, 1, 1);
-                    sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ds->w824, (u8)ds->w82C << 8 | ds->b828, 0);
+                    sub_0801EC58(ref->player ? 0x8008 : 8, ds->w824, ds->b828 | (u8)*sel << 8, 0);
+                    sub_080193D4(ref->player, *sel, 1, 1);
                     EFF_SIDE--;
                     return 0x7F;
                 }
@@ -254,8 +251,6 @@ int sub_08035198(struct CardRef *ref, int arg)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08035198", sub_08035198); /* 0x08035198 size 0x17C */
 int sub_08035314(struct CardRef *ref)
 {
     if (!ref->skip4) {

@@ -233,12 +233,21 @@ void sub_0800EDCC(void)
     }
     gUnk_020185C0.running = 0;
 }
-#if 0 /* NONMATCHING: ROM hoists only the cmd load out of the loop (tests & 0x8000 inside); this hoists the masked value and is 4 bytes longer */
+/*
+ * Remove the marked-card queue entries whose zone word equals (arg2 << 8) | player.
+ * The (u16) cast on the key is what makes the else arm recompute arg2 << 8
+ * (combine splits the zero-extension off the shared shift).
+ */
 void sub_0800EE50(void)
 {
     s32 i, j;
     for (i = 0; i < gUnk_020192E0.queueCount; i++) {
-        if (gUnk_020192E0.queueZone[i] == (((u8)gUnk_020185C0.arg2 << 8) | ((gUnk_020185C0.cmd & 0x8000) ? 1 : 0))) {
+        /* FAKEMATCH: the ROM keeps the 0x8000 mask and the AND inside the loop (only the
+           cmd load is hoisted); the empty asm volatile stops loop.c from hoisting the
+           constant in its second pass. */
+        if (gUnk_020192E0.queueZone[i]
+            == (u16)(((u8)gUnk_020185C0.arg2 << 8)
+                     | ((gUnk_020185C0.cmd & ({ int mask = 0x8000; asm volatile("" : "+r"(mask)); mask; })) ? 1 : 0))) {
             gUnk_020192E0.queueCount = (u16)(gUnk_020192E0.queueCount - 1);
             for (j = i; j < gUnk_020192E0.queueCount; j++) {
                 gUnk_020192E0.queueZone[j] = gUnk_020192E0.queueZone[j + 1];
@@ -248,8 +257,6 @@ void sub_0800EE50(void)
     }
     gUnk_020185C0.running = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800EAA8", sub_0800EE50); /* 0x0800EE50 size 0xE8 */
 void sub_0800EF38(void)
 {
     int player = CMD_PLAYER;

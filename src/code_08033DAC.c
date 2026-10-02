@@ -472,9 +472,6 @@ int sub_08034708(struct EffCtx *ctx)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: control flow and all cases are right (jump table, shared 0x7F/0x76/0x74/0x6C
-       * returns via goto). Only register allocation differs: loop constants hoisted into
-       * r7/r9 versus r7/r8, the -128 constant copy, and r2/r3/r6/r7 in the cursor blocks. */
 int sub_08034768(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
@@ -483,22 +480,21 @@ int sub_08034768(struct EffCtx *ctx)
             int i;
 
             for (i = 0; i < gUnk_020192E4[1 & ctx->player].handCount; i++) {
-                u8 id = CARD_ID(*(u32 *)(i * 4 + (1 & ctx->player) * 0xD64 + 0x02019968));
+                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[i]));
 
-                if (sub_08054398(ctx->player, id) != 0 && sub_08007834(id) == 0)
-                    goto found;
+                if (sub_08054398(ctx->player, id) != 0 && sub_08007834(id) == 0) {
+                    sub_080602A4(0x206, 0x712, 0xB, gUnk_08082D24);
+                    return 0x7F;
+                }
             }
-            return 0;
+            break;
         }
-        case 0x7F: {
-            if (sub_08052F38(1) == 0)
-                goto ret7f;
-            {
+        case 0x7F:
+            if (sub_08052F38(1) != 0) {
                 u32 cursor = gUnk_0201CFB0.cursor;
-                int p = ctx->player;
-                u16 id = CARD_ID(*(u32 *)(p * 0xD64 + cursor * 4 + 0x02019968));
+                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[ctx->player].hand[cursor]));
 
-                if (sub_08054398(p, id) != 0 && sub_08007834(id) == 0) {
+                if (sub_08054398(ctx->player, id) != 0 && sub_08007834(id) == 0) {
                     int v;
 
                     ctx->pos = cursor;
@@ -532,12 +528,11 @@ int sub_08034768(struct EffCtx *ctx)
                 }
                 sub_08077AEC(3);
             }
-            goto ret7f;
-        }
+            return 0x7F;
         case 0x78:
             sub_080602A4(0x206, 0x712, 0xB, gUnk_0819D1C4[1]);
-            return 0x77;
             sub_08060308(1, 0, 0);
+            return 0x77;
         case 0x77:
             if (gUnk_0201AE60.unk14 == 0)
                 return 0x80;
@@ -547,9 +542,9 @@ int sub_08034768(struct EffCtx *ctx)
             if (sub_08052F38(0xF0) != 0) {
                 if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0) {
                     sub_08077AEC(1);
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, (*(u8 *)&gUnk_0201CFB0.cursor << 8) | gUnk_0201CFB0.zone, 0);
+                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
                     ctx->unkE = gUnk_0201CFB0.cursor;
-                    ctx->unk10 = (gUnk_0201CFB0.cursor | -128) << 8;
+                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80) << 8;
                     return 0x75;
                 }
                 sub_08077AEC(3);
@@ -561,9 +556,9 @@ int sub_08034768(struct EffCtx *ctx)
         case 0x74:
             if (sub_08052F38(0xF0) != 0) {
                 if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0 && gUnk_0201CFB0.cursor != ctx->unkE) {
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, (*(u8 *)&gUnk_0201CFB0.cursor << 8) | gUnk_0201CFB0.zone, 0);
                     sub_08077AEC(1);
-                    ctx->unk10 = (u8)(gUnk_0201CFB0.cursor | -128) | ctx->unk10;
+                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
+                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80) | ctx->unk10;
                     return 0x64;
                 }
                 sub_08077AEC(3);
@@ -582,9 +577,9 @@ int sub_08034768(struct EffCtx *ctx)
             if (sub_08052F38(0xF0) != 0) {
                 if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0) {
                     sub_08077AEC(1);
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, (*(u8 *)&gUnk_0201CFB0.cursor << 8) | gUnk_0201CFB0.zone, 0);
+                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
                     ctx->unkE = gUnk_0201CFB0.cursor;
-                    ctx->unk10 = (u8)(gUnk_0201CFB0.cursor | -128);
+                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80);
                     return 0x64;
                 }
                 sub_08077AEC(3);
@@ -593,16 +588,10 @@ int sub_08034768(struct EffCtx *ctx)
         case 0x64:
             sub_08055D3C(ctx->player, ctx->pos, ctx->unkE, ctx->unk10);
             return 0xA;
-        found:
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_08082D24);
-        ret7f:
-            return 0x7F;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08033DAC", sub_08034768); /* 0x08034768 size 0x440 */
 int sub_08034BA8(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {

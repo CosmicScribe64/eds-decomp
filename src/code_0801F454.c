@@ -510,7 +510,208 @@ u32 sub_0801FE54(void)
     return 0;
 }
 
-INCLUDE_ASM("asm/nonmatching/code_0801F454", sub_0801FEA0); /* 0x0801FEA0 size 0x490 */
+/* Selection widget at 0x020192E0+0x1B2C (layout from code_0801CE68). */
+struct SelFEA0 {
+    u16 flag0:1;
+    u16 active:1;
+    u16 cursor:4;
+    u16 rows:4;
+    u32 mask:16;        /* bits 10-25 */
+    u32 state:8;        /* bits 26-33 */
+    u32 unk34:8;
+    u32 unk42:8;
+    u16 timer:7;
+    u16 player:1;       /* bit 57: copy of 0x0201CFB0+0x824 */
+    u32 zone:7;         /* bits 58-64: copy of 0x0201CFB0+0x828 */
+    u16 unk65:8;        /* bits 65-72: copy of 0x0201CFB0+0x82C */
+    u16 unk73:7;
+};
+struct DuelFEA0 {
+    u32 unk0;
+    struct DuelPlayer players[2];
+    u8 pad1ACC[0x1B12 - 0x1ACC];
+    u8 f1B12_0:1;
+    u8 linkSkip:1;
+    u8 f1B12_2:6;
+    u8 pad1B13[0x1B28 - 0x1B13];
+    u16 selCard;        /* +0x1B28 */
+    u16 unk1B2A;
+    struct SelFEA0 sel; /* +0x1B2C */
+};
+/* Address-suffixed alias names (autosyms resolves them to the address). */
+extern struct DuelFEA0 gAliasFEA0_020192E0;
+#define gDuelFEA0 gAliasFEA0_020192E0
+struct ZFEA0 { u32 card; u8 unk4, unk5, flags6; u8 unk7[0x94 - 7]; };
+#define ZN_FEA0(p, z) ((struct ZFEA0 *)((p) * 0xD64 + (z) * 0x94 + (u32)((u8 *)&gDuelFEA0 + 0x2C)))
+struct ALFEA0 {
+    u8 pad[0x488];
+    u8 flag488_0:1;
+    u8 f488_1:7;
+    u8 pad489[0x490 - 0x489];
+    u8 step;            /* +0x490 */
+    u8 f491_lo:6;
+    u8 f491_6:1;
+    u8 f491_7:1;
+};
+extern struct ALFEA0 gAliasFEA0_02017A40;
+#define gALFEA0 gAliasFEA0_02017A40
+struct AE60FEA0 { u8 pad[0x14]; u16 unk14; };
+extern struct AE60FEA0 gAliasFEA0_0201AE60;
+#define gAE60FEA0 gAliasFEA0_0201AE60
+extern u8 gUnk_08081CB8[];
+extern u8 gUnk_08081CFC[];
+/* Card names, 64 bytes each; through a constant address so the table base is reloaded per use. */
+#define NAME_FEA0(id) (((const u8 (*)[0x40])0x0822C720)[id])
+void sub_0801DC04(void);
+void sub_0802AF34(int player, int area, int a2, int a3);
+void sub_08049048(u16 a, u16 b, struct ActEntry *e);
+u32 sub_08052F38(u32 keys);
+u32 sub_080589C8(struct ActEntry *e);
+u16 sub_0805ECFC(void);
+void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
+void sub_08060308(u32 a, u32 b, u32 c);
+void sub_080753F4(void *dst, const void *a, const void *b);
+void sub_08077AEC(u16 id);
+void sub_0801FBE0(u32 b, u32 c);
+
+/*
+ * Card-target request step machine on 0x02017A40+0x490 (same shape as sub_0804244C): show the card's
+ * prompt (1), wait (2), let the player pick with the selection widget at 0x020192E0+0x1B2C (10/11) and add
+ * the chosen zone to list B; when player != 0 hand off to the link (100/101) or to sub_080589C8 (200).
+ * The switch on (u8)st keeps the loaded step in its own register so the step++ in case 10 stays unfolded.
+ */
+s32 sub_0801FEA0(struct ActEntry *e, u32 player)
+{
+    u8 buf[0x200];
+    u16 card;
+    int st = gALFEA0.step;
+
+    switch ((u8)st) {
+    case 0:
+        if (!gALFEA0.flag488_0) {
+            gALFEA0.flag488_0 = 1;
+            sub_0801EC58(0x12, 0, 0, 0);
+            gALFEA0.step++;
+            return 0;
+        }
+        gALFEA0.step++;
+    case 1:
+        if (player) {
+            u8 s;
+            if (gUnk_02015EE8.link)
+                s = 100;
+            else
+                s = 200;
+            gALFEA0.step = s;
+            return 0;
+        }
+        card = e->card;
+        if (CARD_TYPE_C(card) <= 20)
+            sub_080753F4(buf, gUnk_08081CB8, NAME_FEA0(card));
+        else
+            sub_080753F4(buf, gUnk_08081CFC, NAME_FEA0(card));
+        sub_080602A4(0x206, 0x712, 11, buf);
+        sub_08060308(1, 0, 0);
+        gALFEA0.step++;
+        return 0;
+    case 2:
+        if (gAE60FEA0.unk14 == 0)
+            return 1;
+        gALFEA0.step = 10;
+        gDuelFEA0.sel.flag0 = 0;
+        gDuelFEA0.sel.active = 0;
+        return 0;
+    case 10:
+        if (gDuelFEA0.sel.flag0) {
+            sub_0801DC04();
+            return 0;
+        }
+        if (gDuelFEA0.sel.active) {
+            gALFEA0.step++;
+            return 0;
+        }
+        if (gMain.newKeys & 2) {
+            gALFEA0.step = 1;
+            return 0;
+        }
+        if (sub_08052F38(!gDuelFEA0.linkSkip ? 0xF : 0xEE) == 0)
+            return 0;
+        {
+            u32 p = gUnk_0201CFB0.player;
+            u32 kind = gUnk_0201CFB0.zone;
+            u32 cur = gUnk_0201CFB0.cursor;
+            u16 id = sub_0805ECFC();
+            switch (kind) {
+            case 0:
+            case 5:
+            case 10:
+            case 11:
+                if (id != 0) {
+                    gDuelFEA0.sel.flag0 = 1;
+                    gDuelFEA0.sel.state = 0;
+                    gDuelFEA0.sel.mask = (u16)sub_0801FD68(e, p, kind, cur);
+                    return 0;
+                }
+                sub_08077AEC(3);
+                return 0;
+            case 13:
+                sub_08077AEC(3);
+                return 0;
+            case 12:
+            case 14:
+            case 15:
+                sub_0802AF34(p, kind, 0, 0);
+                sub_08077AEC(1);
+                return 0;
+            }
+        }
+        return 0;
+    case 11:
+        switch (gDuelFEA0.sel.zone) {
+        case 11:
+            sub_08049048(1, 1, e);
+            if (gDuelFEA0.sel.active)
+                return 0;
+            break;
+        case 0:
+        case 5:
+            gDuelFEA0.sel.active = 0;
+            {
+                u32 p = 1 & gDuelFEA0.sel.player;
+                if (!(ZN_FEA0(p, gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone)->flags6 & 2)) {
+                    u16 msg;
+                    if (gDuelFEA0.sel.player)
+                        msg = 0x807F;
+                    else
+                        msg = 0x7F;
+                    sub_0801EC58(msg, gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone, 0, 0);
+                }
+            }
+            {
+                u32 hi = ((1 & gDuelFEA0.sel.player) << 31) | (e->val2_10 << 25);
+                u32 z = (((gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone) & 0x1F) << 16) | 0x200000;
+                sub_0801FBE0(hi | z | gDuelFEA0.selCard, (e->w8 << 16) | e->w6);
+            }
+            break;
+        }
+        gALFEA0.f491_6 = 0;
+        gALFEA0.f491_7 = 1;
+        return 1;
+    case 100:
+        sub_080229BC(0xF054, e, 0x14);
+        gALFEA0.f491_7 = 0;
+        gUnk_02017FB0.unk307_3 = 0;
+        gALFEA0.step++;
+        return 0;
+    case 101:
+        return gUnk_02017FB0.unk307_3;
+    case 200:
+        if (sub_080589C8(e))
+            gALFEA0.f491_7 = 1;
+        break;
+    }
+    return 1;
+}
 /*
  * Unit-local views for sub_08020330. The ROM tests the entry flags at +4 and the link flags at
  * 0x02017FB0+0x308 as u32-container bitfields (lsl/sign tests, as in code_08020AF4), so these

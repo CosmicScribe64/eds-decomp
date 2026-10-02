@@ -256,6 +256,279 @@ void sub_08013CDC(void)
     }
     gUnk_020185C0.running = 0;
 }
+#if 0 /* NONMATCHING (score 463): WIP: structure mostly right (reused player/i/j vars, ZONE byte-offset macro,
+       * players view at gUnk_020192E4 incl. +0x1AC9 flags, inline helper with modified card param for 0x403/0x4E7).
+       * Remaining: list array literal form, 5..9 and 0x8C loop address association, reg alloc. */
+struct Card0801401C {
+    u32 id:12;
+    u32 unk12:9;
+    u32 flag21:1;
+    u32 flag22:1;
+    u32 unk23:9;
+};
+
+struct Zone0801401C {
+    struct Card0801401C card;   /* +0x00 */
+    u16 serial;                 /* +0x04 */
+    u16 unk6_0:1;
+    u16 flag6_1:1;              /* +0x06 bit 1 */
+    u16 unk6_2:4;
+    u16 cnt6_6:4;               /* +0x06 bits 6..9 */
+    u16 unk6_10:3;
+    u16 flag6_13:1;             /* +0x07 bit 5 */
+    u16 unk6_14:2;
+    u8 unk8[2];
+    u16 links[32];              /* +0x0A */
+    u16 linkKinds[32];          /* +0x4A */
+    u16 numLinks;               /* +0x8A */
+    u8 unk8C_0:5;
+    u8 flag8C_5:1;              /* +0x8C bit 5 */
+    u8 unk8C_6:2;
+    u8 unk8D[4];
+    u8 unk91_0:2;
+    u8 flag91_2:1;              /* +0x91 bit 2 */
+    u8 unk91_3:5;
+    u8 unk92[2];
+};
+
+struct Player0801401C {
+    u16 lifePoints;
+    u8 handCount;               /* +0x02 */
+    u8 deckCount;               /* +0x03 */
+    u8 graveCount;              /* +0x04 */
+    u8 fusionCount;             /* +0x05 */
+    u8 countB84;                /* +0x06 */
+    u8 unk7_0:3;
+    u8 flag7_3:1;
+    u8 flag7_4:1;
+    u8 flag7_5:1;
+    u8 unk7_6:2;
+    u8 flag8_0:1;
+    u8 flag8_1:1;
+    u8 flag8_2:1;
+    u8 flag8_3:1;
+    u8 unk8_4:4;
+    u8 unk9[0x28 - 9];
+    struct Zone0801401C zones[11];      /* +0x028 */
+    struct Card0801401C hand[80];       /* +0x684 */
+    struct Card0801401C deck[80];       /* +0x7C4 */
+    struct Card0801401C graveyard[80];  /* +0x904 */
+    struct Card0801401C fusionDeck[80]; /* +0xA44 */
+    struct Card0801401C listB84[80];    /* +0xB84 */
+    u16 arrCC4[80];                     /* +0xCC4 */
+};
+
+struct State0801401C {
+    u32 unk0;
+    struct Player0801401C players[2];   /* +0x0004 */
+    u8 unk1ACC;
+    u8 unk1ACD_0:1;
+    u8 flag1ACD_1:1;
+    u8 flag1ACD_2:1;
+    u8 flag1ACD_3:1;
+    u8 flag1ACD_4:1;
+    u8 flag1ACD_5:1;
+    u8 flag1ACD_6:1;
+    u8 unk1ACD_7:1;
+    u8 unk1ACE[0x1B12 - 0x1ACE];
+    u8 flag1B12_0:1;
+    u8 linkSkip:1;              /* +0x1B12 bit 1 */
+    u8 unk1B12_2:6;
+};
+extern struct State0801401C gUnk_020192E0_0801401C asm("gUnk_020192E0");
+/* the players array plus the flag bytes after it (0x020192E4 + 0x1AC9 = state +0x1ACD) */
+struct Players0801401C {
+    struct Player0801401C p[2];
+    u8 unk1AC8;
+    u8 unk1AC9_0:1;
+    u8 flag1AC9_1:1;
+    u8 flag1AC9_2:1;
+    u8 flag1AC9_3:1;
+    u8 flag1AC9_4:1;
+    u8 flag1AC9_5:1;
+    u8 flag1AC9_6:1;
+    u8 unk1AC9_7:1;
+};
+extern struct Players0801401C gUnk_020192E4_0801401C asm("gUnk_020192E4");
+#define PS0801401C gUnk_020192E4_0801401C
+
+struct Link0801401C {
+    u8 unk0;
+    u8 link:1;
+    u8 unk1_1:7;
+};
+extern struct Link0801401C gUnk_02015EE8_0801401C asm("gUnk_02015EE8");
+
+extern const u16 gUnk_08198DCC[];
+extern const u16 gUnk_08623DF4[];
+extern const u16 gUnk_08624CF4[];
+
+int sub_0800A78C(u32 player, u32 slot, u16 number);
+void sub_08018544(int player, int zone, u16 arg);
+int sub_08008A44(int player);
+int sub_08008A1C(int player);
+void sub_080197E0(int player, u16 id);
+void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
+
+#define ST0801401C gUnk_020192E0_0801401C
+struct ZP0801401C {
+    struct Zone0801401C zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+/* zones of both players as an array object at &players[0].zones (keeps the gUnk_020192E0 symbol) */
+#define ZONE0801401C(p, s) ((struct Zone0801401C *)((u8 *)ST0801401C.players[0].zones + ((s) * 0x94 + (p) * 0xD64)))
+#define PL0801401C (*(struct Player0801401C (*)[2])ST0801401C.players)
+extern struct ZP0801401C gUnk_0201930C_0801401C[2] asm("gUnk_0201930C");
+#define ZPA0801401C (*(struct ZP0801401C (*)[2])ST0801401C.players[0].zones)
+
+static inline void Effect0801401C(int player, int i, u16 card)
+{
+    if (sub_0800A78C(player, i, card)) {
+        int t = sub_08008A44(1 - player);
+        if (t < 0) {
+            sub_08018544(player, i, 1);
+        } else {
+            u16 msg = player ? 0x8082 : 0x82;
+            u16 a = ((u8)i << 8) | (u8)player;
+            u16 b = ((u8)t << 8) | (u8)(1 - player);
+            sub_0801EC58(msg, a, b, 0);
+            sub_08017ADC(player, ((u16 *)0x08623DF4)[card], a, 3);
+            sub_08017ADC(player, ((u16 *)0x08623DF4)[card], b, 3);
+        }
+    }
+}
+
+void sub_0801401C(void)
+{
+    int player = gUnk_020185C0.cmd >> 15;
+    int i;
+    int j;
+
+    if ((s8)gUnk_020185C0.step == 0) {
+        sub_080240A8(player, 0);
+        gUnk_020185C0.step++;
+        return;
+    }
+
+    for (i = 0; i <= 4; i++) {
+        struct Zone0801401C *z = ZONE0801401C(player & 1, i);
+        if (z->cnt6_6) {
+            z->cnt6_6--;
+            if ((!gUnk_02015EE8_0801401C.link || !ST0801401C.linkSkip) && z->cnt6_6 == 0)
+                sub_08018544(player, i, 1);
+        }
+    }
+
+    PS0801401C.p[player & 1].flag7_5 = 0;
+    PS0801401C.p[player & 1].flag7_3 = 0;
+    PS0801401C.p[player & 1].flag7_4 = 0;
+    PS0801401C.p[player & 1].flag8_0 = 0;
+    PS0801401C.p[player & 1].flag8_1 = 0;
+    PS0801401C.p[player & 1].flag8_2 = 0;
+    PS0801401C.flag1AC9_1 = 0;
+    PS0801401C.flag1AC9_2 = 0;
+    PS0801401C.flag1AC9_3 = 0;
+    PS0801401C.flag1AC9_4 = 0;
+    PS0801401C.flag1AC9_5 = 0;
+    PS0801401C.flag1AC9_6 = 0;
+
+    for (i = 0; i <= 1; i++) {
+        for (j = 0; j < PS0801401C.p[i & 1].handCount; j++) {
+            PL0801401C[i & 1].hand[j].flag21 = 0;
+            PL0801401C[i & 1].hand[j].flag22 = 0;
+        }
+        for (j = 0; j < PS0801401C.p[i & 1].deckCount; j++) {
+            PS0801401C.p[i & 1].deck[j].flag21 = 0;
+            PS0801401C.p[i & 1].deck[j].flag22 = 0;
+        }
+        for (j = 0; j < PS0801401C.p[i & 1].fusionCount; j++) {
+            PS0801401C.p[i & 1].fusionDeck[j].flag21 = 0;
+            PS0801401C.p[i & 1].fusionDeck[j].flag22 = 0;
+        }
+        for (j = 0; j < PS0801401C.p[i & 1].graveCount; j++) {
+            PS0801401C.p[i & 1].graveyard[j].flag21 = 0;
+            PS0801401C.p[i & 1].graveyard[j].flag22 = 0;
+        }
+        for (j = 0; j < ST0801401C.players[i].countB84; j++) {
+            PS0801401C.p[i & 1].listB84[j].flag21 = 0;
+            PS0801401C.p[i & 1].listB84[j].flag22 = 0;
+        }
+    }
+
+    for (j = 0; j <= 1; j++) {
+        for (i = 5; i <= 9; i++) {
+            struct Zone0801401C *z = ZPA0801401C[j & 1].zones + i;
+            u32 id = (*(u32 *)z << 20) >> 20;
+            if (id && CARD_TYPE(id) > 20 && !z->flag6_1)
+                z->flag91_2 = 1;
+        }
+    }
+
+    for (player = 0; player <= 1; player++) {
+        struct ZP0801401C *pl = &gUnk_0201930C_0801401C[player & 1];
+        for (i = 0; i <= 4; i++)
+            pl->zones[i].flag8C_5 = 0;
+    }
+
+    if (gUnk_02015EE8_0801401C.link && ST0801401C.linkSkip)
+        goto end;
+
+    for (player = 0; player <= 1; player++) {
+        for (i = 0; i <= 4; i++) {
+            int flag = 0;
+            u32 id = (*(u32 *)ZONE0801401C(player & 1, i) << 20) >> 20;
+            int found;
+
+            if (id == 0)
+                continue;
+            if (((const u16 *)0x08622AB4)[id & 0x7FF] == 0x458 && ZONE0801401C(player & 1, i)->flag6_1 && !ZONE0801401C(player & 1, i)->flag6_13)
+                flag = 1;
+            if (sub_0800A78C(player, i, 0x522))
+                flag = 1;
+            if (sub_0800A78C(player, i, 0x5E8))
+                flag = 1;
+            if (flag) {
+                sub_08018544(player, i, 1);
+                continue;
+            }
+            found = 0;
+            for (j = 0; j < ZONE0801401C(player & 1, i)->numLinks; j++) {
+                if ((u8)ZONE0801401C(player & 1, i)->linkKinds[j] == 4)
+                    found = 1;
+            }
+            if (found)
+                sub_08017ADC(player, 0, ((u8)i << 8) | (u8)player, 4);
+            for (j = 0; j < 12u; j++) {
+                const u16 *p = &gUnk_08198DCC[j];
+                if (sub_0800A78C(player, i, *p)) {
+                    u16 c = *p;
+                    u16 r;
+                    if (c == 0xFFFF)
+                        r = 0;
+                    else if (c <= 0x7CF)
+                        r = ((const u16 *)0x08623DF4)[c & 0x7FF];
+                    else
+                        r = ((const u16 *)0x08623DF4)[(c - 0x7D0) & 0x7FF] + 1;
+                    sub_08017ADC(player, r, (i << 8) | (u8)player, 3);
+                }
+            }
+            { u16 card = 0x403; Effect0801401C(player, i, card); }
+            if (player == gUnk_020185C0.cmd >> 15) {
+                u16 card = 0x4E7;
+                Effect0801401C(player, i, card);
+            }
+            if (((const u16 *)0x08622AB4)[id & 0x7FF] == 0x2F9 && PS0801401C.p[player & 1].flag8_3 && sub_08008A1C(player) > 0) {
+                int t = sub_08008A44(player);
+                sub_080197E0(player, id);
+                sub_0801EC58(player ? 0x8071 : 0x71, gUnk_08624CF4[0], 1, 0);
+                sub_0801EC58(player ? 0x80A3 : 0xA3, (u8)t | (i << 8), 0, 0);
+            }
+        }
+    }
+end:
+    gUnk_020185C0.running = 0;
+}
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08013CDC", sub_0801401C); /* 0x0801401C size 0x6F4 */
 void sub_08014710(void)
 {

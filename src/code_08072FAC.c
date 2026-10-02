@@ -397,8 +397,6 @@ u16 sub_08073B64(u32 id, void *dst)
     }
     return 0;
 }
-#if 0 /* NONMATCHING (score 54): first C draft: structure and size right; remaining: spill-slot swap (ret/k),
-       * case-3 reg alloc, some reload regs */
 /* LinkSio as seen by sub_08073C10 (0x03005B60). */
 struct LinkSioC10 {
     u8 pad0[0x20C];
@@ -420,20 +418,25 @@ extern u8 gUnk_080876F8[];
 extern void sub_0801A7DC(const u8 *fmt, ...);
 extern void sub_0801A7E8(void);
 
+/* Debug link receive: pump sub_080740BC, then for each slot with a complete
+   type-0x3000 packet print it (sub_0801A7DC), store it in the slot's double
+   buffer, and copy the local player's finished packet to dst; returns its length. */
 u32 sub_08073C10(int slot, void *dst)
 {
     u16 rx[3][8];
-    u8 one = 1;
+    u8 k; /* declared before ret: k gets the lower spill slot (sp+0x38) */
+    u8 one = 1; /* FAKEMATCH: the case 1/2 `&= 1` uses r8 holding this 1 */
     u8 i = 0;
     u32 ret = 0;
-    u8 k;
     u16 t;
     u32 v;
     int f;
     u16 *q;
     u8 *d;
+    u16 *s;
 
     v = sub_080740BC((u8 *)rx) << 16;
+    /* same three-step split as sub_08073B64: in-place AND, lsrs, signed switch */
     f = 0xF0000;
     f = f & v;
     f = (u32)f >> 16;
@@ -442,8 +445,11 @@ u32 sub_08073C10(int slot, void *dst)
         for (k = 0; k < 2; k++) {
             u16 *p = rx[i];
             t = *p & 0xF000;
-            if (t == 0x1000) {
-            } else if (t == 0x3000) {
+            /* a switch (not if/else) so i*2 is computed before the 0x1000 load */
+            switch (t) {
+            case 0x1000:
+                break;
+            case 0x3000:
                 if (i == (REG_SIOCNT & 0x30) >> 4)
                     gLinkC10.unkA40 = 0x1000;
                 sub_0801A7DC(gUnk_080876B4, i, gLinkC10.unkA1A[i]);
@@ -451,16 +457,17 @@ u32 sub_08073C10(int slot, void *dst)
                        (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[i]++][i] + gLinkC10.unkAF4[i] * 14,
                        7);
                 gLinkC10.unkAF4[i]++;
-                gLinkC10.unkA14[gLinkC10.unkA1A[i] * 2 + i] = *p;
+                gLinkC10.unkA14[i + gLinkC10.unkA1A[i] * 2] = *p;
                 if (i == slot) {
                     if (--gLinkC10.unkA1C != 0xFFFF) {
-                        ret = gLinkC10.unkA14[gLinkC10.unkA18[i] * 2 + i];
+                        ret = gLinkC10.unkA14[i + gLinkC10.unkA18[i] * 2];
                         sub_0801A7DC(gUnk_080876D4, i, gLinkC10.unkA18[i], ret);
                         CpuSet(gLinkC10.rxBuf[gLinkC10.unkA18[i]++][i], dst, ret >> 1);
                         gLinkC10.unkA18[i] &= 1;
                     }
                 }
                 gLinkC10.unkA1A[i] &= 1;
+                break;
             }
             gLinkC10.unkAF8[i] = 0;
             gLinkC10.unkAF4[i] = 0;
@@ -475,15 +482,18 @@ u32 sub_08073C10(int slot, void *dst)
             sub_0801A7DC(gUnk_080876F8, 0, gLinkC10.unkA1A[0], rx[0][0] & 0x1FF);
             sub_0801A7E8();
             gLinkC10.unkA14[gLinkC10.unkA1A[0] * 2] = rx[0][0];
+            /* FAKEMATCH: temporaries keep the target's order (src arg first,
+               then rxBuf base + AF4*14) so the tail cross-jumps with case 2 */
+            s = &rx[0][1];
             d = (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[0]++];
-            CpuSet(&rx[0][1], d + gLinkC10.unkAF4[0] * 14, 7);
+            CpuSet(s, d + gLinkC10.unkAF4[0] * 14, 7);
             gLinkC10.unkA1A[0] &= one;
             gLinkC10.unkAF4[0]++;
             gLinkC10.unkA1C++;
         }
         break;
     case 2:
-        q = rx[1];
+        q = rx[1]; /* pointer kept in r7 (case 1 reads rx[0][0] directly) */
         t = *q & 0xF000;
         if (t == 0x1000) {
         } else if (t == 0x3000) {
@@ -501,8 +511,6 @@ u32 sub_08073C10(int slot, void *dst)
     return 0;
 }
 #undef gLinkC10
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_08073C10); /* 0x08073C10 size 0x2F4 */
 /* LinkSio as seen by sub_08073F04 (0x03005B60). */
 struct LinkSioF04 {
     u8 pad0[0x20C];

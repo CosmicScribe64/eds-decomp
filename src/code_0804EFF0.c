@@ -630,11 +630,11 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 836): per-case return 0 tails; prologue and cases 0-3,5-8,11,21,100,120,121,122
-       * match; remaining: loop-invariant hoisting and regalloc/reload rotation in cases 4,9,20,101,102,110,111, case 10
-       * tail register; size +14; see build/wf/sub_0804FC4C/NOTES.md */
+#if 0 /* NONMATCHING (score 698): per-case return 0 tails; prologue and cases 0-3,5-11,21,100,102,120-122 match;
+       * remaining: case 4 loop mult CSE, case 20 level/destroy regs, 101/110/111 regalloc (player&1 kept in ROM), size
+       * -10; see build/wf/sub_0804FC4C/NOTES.md */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
-static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[(u16)id&0x7FF]; }
+static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
 int sub_0804FC4C(void)
 {
@@ -741,7 +741,9 @@ int sub_0804FC4C(void)
         return 0;
     case 9:
         for (;FC_ZONE<=9;FC_ZONE++) {
-            struct Zone *z=(struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C);
+            u32 zone=FC_ZONE;
+            u8 *zp=FC_E+0x2C;
+            struct Zone *z=(struct Zone *)(zone*0x94+player*0xD64+zp);
             u32 id=FC_ID(z);
             if (id && (z->f6&2) && !(((u8 *)z)[0x91]&8) && FcNum(id)==0x592 && sub_08008A1C(player)>0) {
                 u16 msg;

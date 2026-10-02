@@ -173,7 +173,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 5239): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
+#if 0 /* NONMATCHING (score 5053): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
        * deck/grave loops with ROM address forms; shared type for attack checks; GCSE/loop/regalloc still differ; see
        * build/wf/sub_08044224/NOTES.md */
 struct TargetCard {
@@ -818,8 +818,9 @@ u16 sub_08044224(int player, u16 number, int arg)
         off = (player & 1) * 0xD64;
         if (i < PP->deckCount) {
             g = (u32 *)(b + 0x7C4);
-            word = (u32 *)((u8 *)g + off);
             do {
+                u32 *t = (u32 *)((u8 *)g + off);
+                word = t + i;
             switch (TARGET_NUMBER(TARGET_ID(*word))) {
             case 0x22:
             case 0x4BA:
@@ -827,8 +828,7 @@ u16 sub_08044224(int player, u16 number, int arg)
                 ADD_TARGET(*word, 2);
                 break;
             }
-        
-                word++; i++;
+                i++;
             } while (i < PPL->deckCount);
         }
         break;

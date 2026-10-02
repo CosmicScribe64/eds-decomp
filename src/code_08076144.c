@@ -512,70 +512,92 @@ void sub_080769DC(struct SprAnim *a) {
     }
 }
 
-#if 0 /* NONMATCHING: same structure as sub_08076BEC; register allocation and constant hoisting differ */
-/* Emit the OAM entries of the current animation frame at (x, y) plus per-piece offsets (hypothesis). */
+#if 0 /* NONMATCHING (score 28): inline A20_SetSize(int i, u16 sz) for the size switch stops the 0x4433 literal
+       * hoisting (score 218->28); left: switch index copy (ROM ldrh r0; adds r1,r0,#0; compares on r1) */
+struct OamBitsA20 {
+    u32 y:8;
+    u32 affineMode:2;
+    u32 objMode:2;
+    u32 mosaic:1;
+    u32 bpp:1;
+    u32 shape:2;
+    u32 x:9;
+    u32 matrixNum:5;
+    u32 size:2;
+    u16 tileNum:10;
+    u16 priority:2;
+    u16 paletteNum:4;
+    u16 affineParam;
+};
+struct MainA20 {
+    u32 rngState;
+    u8 pad0[0x4430 - 4];
+    struct OamBitsA20 oam[128];
+};
+#define gMainA20 (*(struct MainA20 *)&gUnk_03000040)
+static inline u16 A20_Read16(u8 **pp) {
+    u16 v = *(u16 *)*pp;
+    *pp += 2;
+    return v;
+}
+/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
+static inline void A20_SetSize(int i, u16 sz) {
+    switch (sz) {
+    case 0:
+        gMainA20.oam[i].size = 0;
+        break;
+    case 0x4000:
+        gMainA20.oam[i].size = 1;
+        break;
+    case 0x8000:
+        gMainA20.oam[i].size = 2;
+        break;
+    case 0xC000:
+        gMainA20.oam[i].size = 3;
+        break;
+    }
+}
+/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
 void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
-    struct Main *m;
     u8 *cur = a->cur;
-    s16 i;
-    u16 n;
+    int i, next;
     if (a->unkA >= a->unk8) {
         sub_080769DC(a);
         return;
     }
     REG_DISPCNT |= 0x40;
-    n = *(u16 *)cur;
-    cur += 2;
-    i = 0;
-    a->pieces = n;
-    if (i < n) {
-        m = &gUnk_03000040;
+    {
+        u16 n = A20_Read16(&cur);
+        a->pieces = n;
+    }
+    for (i = 0; i < a->pieces; i = next) {
+        u16 fmt = A20_Read16(&cur);
+        u16 dx = A20_Read16(&cur);
+        u16 dy = A20_Read16(&cur);
+        u8 *p;
+        u16 len;
+        u16 cnt;
+        int k;
+        gMainA20.oam[i].bpp = 0;
+        gMainA20.oam[i].x = (s16)dx + (s16)x;
+        gMainA20.oam[i].y = dy + y;
+        k = fmt;
+        p = a->base;
+        p += 0x20;
+        cnt = A20_Read16(&p);
+        p += cnt * 4;
+        next = i + 1;
         do {
-            u8 fmt = *(u16 *)cur;
-            s16 dx;
-            u16 dy;
-            u8 *o;
-            u8 *p;
-            u16 len;
-            s32 k;
-            s8 off;
-            cur += 2;
-            dx = *(u16 *)cur;
-            cur += 2;
-            dy = *(u16 *)cur;
-            cur += 2;
-            off = i << 3;
-            o[0x4431] &= ~0x20;
-            o = (u8 *)m + off;
-            *(u16 *)(o + 0x4432) = (*(u16 *)(o + 0x4432) & ~0x1FF) | ((dx + (s16)x) & 0x1FF);
-            o[0x4430] = dy + y;
-            k = fmt;
-            p = a->base + 0x20;
-            p += 2 + *(u16 *)p * 4;
-            i++;
-            do {
-                len = *(u16 *)p;
-                p += 2;
-                p += len << 5;
-            } while (--k != -1);
-            o = (u8 *)m + off;
-            *(u16 *)(o + 0x4434) = (*(u16 *)(o + 0x4434) & ~0x3FF) | ((fmt * len + 1) & 0x3FF);
-            o[0x4435] = (o[0x4435] | 0xF0) & ~0xC;
-            switch (*(u16 *)(a->base + 0x22 + fmt * 4)) {
-            case 0:
-                o[0x4433] &= 0x3F;
-                break;
-            case 0x4000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x40;
-                break;
-            case 0x8000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x80;
-                break;
-            case 0xC000:
-                o[0x4433] |= 0xC0;
-                break;
-            }
-        } while (i < a->pieces);
+            len = A20_Read16(&p);
+            p += len << 5;
+        } while (--k != -1);
+        gMainA20.oam[i].tileNum = fmt * len + 1;
+        gMainA20.oam[i].paletteNum = 15;
+        gMainA20.oam[i].priority = 0;
+        p = a->base;
+        p += 0x22;
+        p += fmt * 4;
+        A20_SetSize(i, *(u16 *)p);
     }
     if (flag != 0) {
         a->cur = cur;
@@ -585,67 +607,93 @@ void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076A20); /* 0x08076A20 size 0x1CC */
 
-#if 0 /* NONMATCHING: same structure; register allocation and constant hoisting differ (agbcc hoists the 0x4433 literal into r9 where the ROM hoists -1) */
+#if 0 /* NONMATCHING (score 50): oam.x = (s16)x gives the ROM's lsl#23/lsr#23 x mask; inline BEC_SetSize(int i,
+       * u16 sz) for the size switch stops the 0x4433 literal hoisting (score 201->50); left: switch index copy (ROM ldrh
+       * r0; adds r1,r0,#0; compares on r1) and the shared 0x3F reg (r2 vs r4) */
+struct OamBitsBEC {
+    u32 y:8;
+    u32 affineMode:2;
+    u32 objMode:2;
+    u32 mosaic:1;
+    u32 bpp:1;
+    u32 shape:2;
+    u32 x:9;
+    u32 matrixNum:5;
+    u32 size:2;
+    u16 tileNum:10;
+    u16 priority:2;
+    u16 paletteNum:4;
+    u16 affineParam;
+};
+struct MainBEC {
+    u32 rngState;
+    u8 pad0[0x4430 - 4];
+    struct OamBitsBEC oam[128];
+};
+#define gMainBEC (*(struct MainBEC *)&gUnk_03000040)
+static inline u16 BEC_Read16(u8 **pp) {
+    u16 v = *(u16 *)*pp;
+    *pp += 2;
+    return v;
+}
+/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
+static inline void BEC_SetSize(int i, u16 sz) {
+    switch (sz) {
+    case 0:
+        gMainBEC.oam[i].size = 0;
+        break;
+    case 0x4000:
+        gMainBEC.oam[i].size = 1;
+        break;
+    case 0x8000:
+        gMainBEC.oam[i].size = 2;
+        break;
+    case 0xC000:
+        gMainBEC.oam[i].size = 3;
+        break;
+    }
+}
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
 void sub_08076BEC(u16 x, u16 y, struct SprAnim *a, u16 flag) {
-    struct Main *m;
     u8 *cur = a->cur;
-    u32 xm;
-    s16 i;
-    u16 n;
+    int i, next;
     if (a->unkA >= a->unk8) {
         sub_080769DC(a);
         return;
     }
     REG_DISPCNT |= 0x40;
-    cur += 2;
-    n = *(u16 *)cur;
-    a->pieces = n;
-    i = 0;
-    if (i < n) {
-        m = &gUnk_03000040;
-        xm = ((u32)x << 23) >> 23;
+    {
+        u16 n = BEC_Read16(&cur);
+        a->pieces = n;
+    }
+    for (i = 0; i < a->pieces; i = next) {
+        u16 fmt = BEC_Read16(&cur);
+        u8 *p;
+        u16 len;
+        u16 cnt;
+        int k;
+        cur += 4;
+        gMainBEC.oam[i].bpp = 0;
+        gMainBEC.oam[i].x = (s16)x;
+        gMainBEC.oam[i].y = y;
+        k = fmt;
+        p = a->base;
+        p += 0x20;
+        cnt = BEC_Read16(&p);
+        p += cnt * 4;
+        next = i + 1;
         do {
-            u16 fmt = *(u16 *)cur;
-            u8 *o;
-            u8 *p;
-            s16 len;
-            s32 k;
-            u8 off;
-            cur += 6;
-            off = i << 3;
-            o = (u8 *)m + off;
-            *(u16 *)(o + 0x4432) = (*(u16 *)(o + 0x4432) & ~0x1FF) | xm;
-            o[0x4431] &= ~0x20;
-            o[0x4430] = y;
-            k = fmt;
-            p = a->base + 0x20;
-            p += 2 + *(u16 *)p * 4;
-            i++;
-            do {
-                len = *(u16 *)p;
-                p += 2;
-                p += len << 5;
-            } while (--k != -1);
-            *(u16 *)(o + 0x4434) = (*(u16 *)(o + 0x4434) & ~0x3FF) | ((fmt * len + 1) & 0x3FF);
-            o = (u8 *)m + off;
-            o[0x4435] = (o[0x4435] | 0xF0) & ~0xC;
-            o[0x4431] &= 0x3F;
-            switch (*(u16 *)(a->base + 0x22 + fmt * 4)) {
-            case 0:
-                o[0x4433] &= 0x3F;
-                break;
-            case 0x4000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x40;
-                break;
-            case 0x8000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x80;
-                break;
-            case 0xC000:
-                o[0x4433] |= 0xC0;
-                break;
-            }
-        } while (i < a->pieces);
+            len = BEC_Read16(&p);
+            p += len << 5;
+        } while (--k != -1);
+        gMainBEC.oam[i].tileNum = fmt * len + 1;
+        gMainBEC.oam[i].paletteNum = 15;
+        gMainBEC.oam[i].priority = 0;
+        gMainBEC.oam[i].shape = 0;
+        p = a->base;
+        p += 0x22;
+        p += fmt * 4;
+        BEC_SetSize(i, *(u16 *)p);
     }
     if (flag != 0) {
         a->cur = cur;
@@ -655,72 +703,97 @@ void sub_08076BEC(u16 x, u16 y, struct SprAnim *a, u16 flag) {
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08076144", sub_08076BEC); /* 0x08076BEC size 0x1C0 */
 
-#if 0 /* NONMATCHING: 289 lines; structure follows sub_08076BEC. Target keeps i+1 in a stack slot (frame 0x10 vs 0x0C) and x in r3 */
-/* Emit the OAM entries of the current animation frame at the packed position yx, optionally flipped
- * horizontally (hypothesis; a variant of sub_08076BEC). */
-void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip)
-{
-    struct Main *m;
+#if 0 /* NONMATCHING (score 28): BEC-style loop (next = i + 1 before the inner do/while, bitfield struct, x via
+       * u16 bitfield store) + inline DAC_SetSize(int i, u16 sz) for the size switch (stops 0x4433 hoisting/CSE with the
+       * hflip address); score 593->28; left: switch index copy (ROM ldrh r0; adds r1,r0,#0; compares on r1) */
+struct OamBitsDAC {
+    u32 y:8;
+    u32 affineMode:2;
+    u32 objMode:2;
+    u32 mosaic:1;
+    u32 bpp:1;
+    u32 shape:2;
+    u32 x:9;
+    u32 matrixNum:3;
+    u32 hflip:1;
+    u32 vflip:1;
+    u32 size:2;
+    u16 tileNum:10;
+    u16 priority:2;
+    u16 paletteNum:4;
+    u16 affineParam;
+};
+struct MainDAC {
+    u32 rngState;
+    u8 pad0[0x4430 - 4];
+    struct OamBitsDAC oam[128];
+};
+#define gMainDAC (*(struct MainDAC *)&gUnk_03000040)
+static inline u16 DAC_Read16(u8 **pp) {
+    u16 v = *(u16 *)*pp;
+    *pp += 2;
+    return v;
+}
+static inline void DAC_SetSize(int i, u16 sz) {
+    switch (sz) {
+    case 0:
+        gMainDAC.oam[i].size = 0;
+        break;
+    case 0x4000:
+        gMainDAC.oam[i].size = 1;
+        break;
+    case 0x8000:
+        gMainDAC.oam[i].size = 2;
+        break;
+    case 0xC000:
+        gMainDAC.oam[i].size = 3;
+        break;
+    }
+}
+/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
+void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
     u16 x = yx;
-    u32 y = yx >> 16;
+    u16 y = yx >> 16;
     u8 *cur = a->cur;
-    int i;
-    u16 n;
-    u32 xm;
+    int i, next;
     if (a->unkA >= a->unk8) {
         sub_080769DC(a);
         return;
     }
     REG_DISPCNT |= 0x40;
-    n = *(u16 *)cur;
-    cur += 2;
-    a->pieces = n;
-    i = 0;
-    if (i < n) {
-        m = &gUnk_03000040;
-        xm = x & 0x1FF;
+    {
+        u16 n = DAC_Read16(&cur);
+        a->pieces = n;
+    }
+    for (i = 0; i < a->pieces; i = next) {
+        u16 fmt = DAC_Read16(&cur);
+        u8 *p;
+        u16 len;
+        u16 cnt;
+        int k;
+        cur += 4;
+        gMainDAC.oam[i].bpp = 0;
+        gMainDAC.oam[i].x = x;
+        gMainDAC.oam[i].y = y;
+        k = fmt;
+        p = a->base;
+        p += 0x20;
+        cnt = DAC_Read16(&p);
+        p += cnt * 4;
+        next = i + 1;
         do {
-            u16 fmt = *(u16 *)cur;
-            u8 *o;
-            u8 *p;
-            u16 len;
-            int k;
-            int off;
-            cur += 6;
-            off = i << 3;
-            o = (u8 *)m + off;
-            o[0x4431] &= ~0x20;
-            *(u16 *)(o + 0x4432) = (*(u16 *)(o + 0x4432) & ~0x1FF) | xm;
-            o[0x4430] = y;
-            k = fmt;
-            p = a->base + 0x20;
-            p += 2 + *(u16 *)p * 4;
-            i++;
-            do {
-                len = *(u16 *)p;
-                p += 2;
-                p += len << 5;
-            } while (--k != -1);
-            o = (u8 *)m + off;
-            *(u16 *)(o + 0x4434) = (*(u16 *)(o + 0x4434) & ~0x3FF) | ((fmt * len + 1) & 0x3FF);
-            o[0x4435] = (o[0x4435] | 0xF0) & ~0xC;
-            o[0x4431] &= 0x3F;
-            o[0x4433] = (o[0x4433] & ~0x10) | ((hflip & 1) << 4);
-            switch (*(u16 *)(a->base + 0x22 + fmt * 4)) {
-            case 0:
-                o[0x4433] &= 0x3F;
-                break;
-            case 0x4000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x40;
-                break;
-            case 0x8000:
-                o[0x4433] = (o[0x4433] & 0x3F) | 0x80;
-                break;
-            case 0xC000:
-                o[0x4433] |= 0xC0;
-                break;
-            }
-        } while (i < a->pieces);
+            len = DAC_Read16(&p);
+            p += len << 5;
+        } while (--k != -1);
+        gMainDAC.oam[i].tileNum = fmt * len + 1;
+        gMainDAC.oam[i].paletteNum = 15;
+        gMainDAC.oam[i].priority = 0;
+        gMainDAC.oam[i].shape = 0;
+        gMainDAC.oam[i].hflip = hflip;
+        p = a->base;
+        p += 0x22;
+        p += fmt * 4;
+        DAC_SetSize(i, *(u16 *)p);
     }
     if (flag != 0) {
         a->cur = cur;

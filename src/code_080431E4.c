@@ -65,102 +65,126 @@ int sub_08043230(void)
         return 0;
     return 1;
 }
-#if 0 /* NONMATCHING: structure and all callee behaviour decoded, but the
-       * hoisting differs. The ROM hoists 0x7FF (r8), the zone base (r9) and
-       * p*0xD64 (sl) out of both loops and spills p+1 to the stack; this build
-       * hoists p*0xD64 and p+1 only (about 60 diff lines). Tricks tried, none
-       * matched: a ull zone-base temp (v_zb_ull, more diff); caching the zone
-       * base in a `struct ZonesE *zb` local, caching p*0xD64 in a local, and m
-       * as ull. */
+/* 0x0201ADAD = 0x020192E0 + 0x1ACD: bit 0 card 0x601 present, bits 1-4 tested per Magic/Trap subtype. */
+extern u8 gUnk_0201ADAD[];
+/* FAKEMATCH: flag tests go through int-typed helpers. A plain u8 & const test is shortened to a
+ * QImode and plus a zero-extension, which pushes the zone loop past loop.c's hoist threshold
+ * (0x7FF and (p & 1) * 0xD64 then stay in the loop). Pointer-first keeps the hoisted 0x0201ADAD
+ * address live across the mask load; mask-first gives the ROM's order for 0x0201ADF2. */
+static inline int Flag325C(u8 *f, int mask)
+{
+    return mask & *f;
+}
+static inline int Flag325D(int mask, u8 *f)
+{
+    return mask & *f;
+}
+static inline int Sub325C(u32 id)
+{
+    u32 stats = ((const u32 *)0x08621DE0)[id & 0x7FF];
+    switch ((int)((stats & 0x1F00000) >> 20)) {
+    case 0x15:
+    case 0x16:
+        return (stats & 0xE0000) >> 17;
+    default:
+        return 0;
+    }
+}
+static inline struct ZoneE *Zone325C(int player, int zone, u32 base)
+{
+    int pp = player & 1;
+    return (struct ZoneE *)(zone * 0x94 + pp * 0xD64 + base);
+}
 void sub_0804325C(void)
 {
     u8 *e;
     int p;
     int z;
-    int one;
-    s8 m = 0x7FF;
-    int r7 = sub_080431E4();
+    /* FAKEMATCH: zone base pinned to r9; as a hoisted constant its doubled REG_EQUIV live length
+     * ranks it below (p & 1) * 0xD64. zb2 is a second, spilled copy used only for the r == 0 test
+     * so that its load is a round-robin reload. */
+    register u32 zb asm("r9");
+    u32 zb2 = (u32)gUnk_0201930C;
+    int has2EF = sub_080431E4();
     e = gUnk_020192E0;
-    ((struct F1ACC *)(e + 0x1ACC))->b7 = r7;
-    one = 1;
-    ((struct F1ACC *)(e + 0x1ACC))->b6 = one & sub_08043230();
+    ((struct F1ACC *)(e + 0x1ACC))->b7 = has2EF;
+    /* FAKEMATCH: the ROM masks a u16 result (callee probably returns u16) */
+    ((struct F1ACC *)(e + 0x1ACC))->b6 = ((u16 (*)(void))sub_08043230)();
     ((struct F1ACD *)(e + 0x1ACD))->b0 = 0;
     if (sub_08008524(0, 0x601) != 0 || sub_08008524(1, 0x601) != 0)
-        ((struct F1ACD *)(e + 0x1ACD))->b0 = one;
-    for (p = 0; p <= 1; p++) {
+        ((struct F1ACD *)(e + 0x1ACD))->b0 = 1;
+    for (p = 0, zb = (u32)gUnk_0201930C; p <= 1; p++) {
         for (z = 5; z <= 10; z++) {
-            struct ZoneE *zn = (struct ZoneE *)((z * 0x94) + ((1 & p) * 0xD64) + (u32)gUnk_0201930C);
-            u32 id = (zn->w0 << 20) >> 20;
-            u32 idc;
-            s16 r;
-            s16 v;
-            if (id == 0)
+            struct ZoneE *zn = (struct ZoneE *)((z * 0x94) + ((p & 1) * 0xD64) + zb);
+            u32 id;
+            int r;
+            int f; /* FAKEMATCH: int temporaries keep the byte tests in SImode (see Flag325C) */
+            if (((zn->w0 << 20) >> 20) == 0)
                 continue;
-            if (!(zn->flags6 & 2))
+            if (!((f = zn->flags6) & 2))
                 continue;
             r = 0;
-            idc = id;
-            switch (((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20)) {
+            id = (zn->w0 << 20) >> 20;
+            switch (((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
             case 0x15:
-                if (0x80 & *((u8 *)gUnk_0201930C + 0x1AA0))
+                if ((f = *(u8 *)(zb + 0x1AA0)) & 0x80)
                     r = 1;
                 break;
             case 0x16:
-                if (0x40 & *((u8 *)gUnk_0201930C + 0x1AA0))
+                if ((f = *(u8 *)(zb + 0x1AA0)) & 0x40)
                     r = 1;
                 break;
             }
-            {
-                int t = ((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20);
-                if (t <= 0x16 && t >= 0x15)
-                    v = (((const u32 *)0x08621DE0)[idc & m] & 0xE0000) >> 17;
-                else
-                    v = 0;
-            }
-            switch (v) {
+            switch (Sub325C(id)) {
             case 3:
-                if (v & gUnk_0201ADAC[1])
+                if (Flag325C(gUnk_0201ADAD, 3))
                     r = 1;
                 break;
             case 2:
-                if (4 & gUnk_0201ADAC[1])
+                if (Flag325C(gUnk_0201ADAD, 4))
                     r = 1;
                 break;
             case 4:
-                switch (((((const u32 *)0x08621DE0)[idc & m] & 0x1F00000) >> 20)) {
+                switch (((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
                 case 0x15:
-                    if (0x10 & gUnk_0201ADAC[1])
+                    if (Flag325C(gUnk_0201ADAD, 0x10))
                         r = 1;
                     break;
                 case 0x16:
-                    if (8 & gUnk_0201ADAC[1])
+                    if (Flag325C(gUnk_0201ADAD, 8))
                         r = 1;
                     break;
                 }
                 break;
             }
-            if (((const u16 *)0x08622AB4)[idc & m] == 0x603)
+            switch (((const u16 *)0x08622AB4)[id & 0x7FF]) {
+            case 0x603:
                 r = 0;
-            if (1 & gUnk_02015EE8.b1) {
-                if (2 & gUnk_0201ADF2[0])
-                    continue;
+                break;
             }
+            if (((f = gUnk_02015EE8.b1) & 1) && Flag325D(2, gUnk_0201ADF2))
+                continue;
             if (r == 0) {
-                if (gUnk_0201930C[1 & p].z[z].b91 & 8) {
+                if ((f = Zone325C(p, z, zb2)->b91) & 8) {
                     sub_0801EC58(p ? 0x80B1 : 0xB1, z, 0, 0);
                     sub_0801A7DC(gUnk_08085434, p, z);
                     sub_0801A7E8();
                 }
             }
             if (r != 0) {
-                if (gUnk_0201930C[1 & p].z[z].b91 & 8)
+                if ((f = ((struct ZoneE *)((z * 0x94) + ((p & 1) * 0xD64) + zb))->b91) & 8)
                     continue;
                 r = 1;
                 sub_0801A7DC(gUnk_08085448, p, z);
                 sub_0801A7E8();
-                if (((const u16 *)0x08622AB4)[idc & m] == 0x409) {
-                    if (sub_08008524(0, 0x2EF) == 0)
-                        r = sub_08008524(1, 0x2EF) != 0;
+                switch (((const u16 *)0x08622AB4)[id & 0x7FF]) {
+                case 0x409:
+                    if (sub_08008524(0, 0x2EF) == 0) {
+                        r = 0;
+                        if (sub_08008524(1, 0x2EF) != 0)
+                            r = 1;
+                    }
+                    break;
                 }
                 if (r != 0)
                     sub_0801EC58(p ? 0x80B1 : 0xB1, z, 1, 0);
@@ -168,8 +192,6 @@ void sub_0804325C(void)
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080431E4", sub_0804325C); /* 0x0804325C size 0x2E0 */
 /* Index of the entry whose num equals the card number of id, or -1. */
 int sub_0804353C(u16 id)
 {

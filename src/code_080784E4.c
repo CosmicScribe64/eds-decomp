@@ -462,27 +462,24 @@ void sub_08078FD4(u16 ch, u16 *dst, u16 a, u16 b)
         src++;
     }
 }
-#if 0 /* NONMATCHING (score 81): NONMATCHING: u32 w[2] array (DImode pseudo r5:r6, regmove can't tie subregs) +
-       * u16 b1 / short b2 temps for the two bit tests (extensions later removed) + u8 n declared after i,row,blk (GCSE
-       * reaching-reg order -> stack slots). Only diff left: loop.c hoists 4 terms of the colour fill (ROM 3): row loop
-       * has 122/117 RTL insns in loop passes 1/2, needs >=121 in pass 2 (threshold 26-3/move, savings 2 * life 3). */
-extern u8 gUnk_081D0200[];
+/* Render one 10-row glyph (0x14 bytes per glyph at 0x081D0200, index from sub_08072584) as two 4bpp tile
+ * columns: bit i of each row goes to nibble (a + 7 - i) of the word at dst, and bit (a + 8 - i) of the
+ * byte-swapped row to nibble i of the word at dst + 0x10. Set bits take colour c, clear bits colour
+ * `color`; with 0x02011C20[4] bit 7 the words start as solid `color`, otherwise they keep the existing
+ * tile data. Rows run 8 per block, two blocks 0x150 halfwords apart, stopping after 10 rows. */
 void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 {
-    u16 *src = (u16 *)(gUnk_081D0200 + sub_08072584(ch) * 20);
+    u16 *src = (u16 *)(0x081D0200 + sub_08072584(ch) * 20);
     u16 *dst2 = dst + 0x10;
     u8 i, row, blk;
     u8 n = 10;
-    u32 w[2];
+    u32 w[2]; /* an array, so the pair lives in one DImode pseudo (r5:r6) */
     u32 col;
     u16 b1;
     short b2;
 
-    
     for (blk = 0; blk < 2; blk++) {
-        
         for (row = 0; row < 8; row++) {
-            
             if (gUnk_02011C20[4] & 0x80) {
                 w[0] = w[1] = color | (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24) | (color << 28);
             } else {
@@ -502,8 +499,10 @@ void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
                 else
                     col = color;
                 w[1] = (w[1] & ~(0xF << (i * 4))) | (col << (i * 4));
-                
             }
+            /* FAKEMATCH: dead store; it only enlarges the row loop for loop.c so that just
+             * (color | color << 4 | color << 8) is hoisted out of the loops, as in the ROM. */
+            b2 = ((((u8)src[0]) << 8) | (src[0] >> 8)) >> (8 - i + a);
             *dst++ = w[0];
             *dst++ = w[0] >> 16;
             *dst2++ = w[1];
@@ -516,8 +515,6 @@ void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
         dst2 += 0x150;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080784E4", sub_08079068); /* 0x08079068 size 0x18C */
 /* Render a string as glyph tiles into `dst` (0x20 bytes per tile); ASCII glyphs are half width so two share a tile. */
 void sub_080791F4(u8 *str, u8 *dst, u8 a, u8 b)
 {

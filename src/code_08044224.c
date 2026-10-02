@@ -87,6 +87,34 @@ static inline u16 TargetAttack(u32 id)
     return ((TARGET_STATS(id) << 14) >> 23) * 10;
 }
 
+#define TARGET_STATS_NV(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+static inline u16 TargetAttackNV(u32 id)
+{
+    u32 type = ((TARGET_STATS_NV(id) & 0x1F00000) >> 20);
+    switch ((s32)type) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    }
+    return ((TARGET_STATS_NV(id) << 14) >> 23) * 10;
+}
+
+static inline u16 TargetAttackT(u32 id, u32 type)
+{
+    switch ((s32)type) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    }
+    return ((TARGET_STATS_NV(id) << 14) >> 23) * 10;
+}
+
 static inline u32 TargetDefense(u16 id)
 {
     u32 type = ((TARGET_STATS(id) & 0x1F00000) >> 20);
@@ -115,7 +143,7 @@ static inline s8 TargetLevel(u16 id)
     return (TARGET_STATS(id) & 0x1E000000) >> 25;
 }
 
-static inline s8 TargetKind(u16 id)
+static inline s8 TargetKind(u32 id)
 {
     u16 number = TARGET_NUMBER(id);
     switch (number) {
@@ -123,7 +151,7 @@ static inline s8 TargetKind(u16 id)
     case 0x777:
     case 0x778: return 1;
     }
-    switch (((TARGET_STATS(id) & 0x1F00000) >> 20)) {
+    switch ((s32)((TARGET_STATS(id) & 0x1F00000) >> 20)) {
     case 22:
         return 7;
     case 21:
@@ -145,8 +173,8 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 5928): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; bitfield
-       * TargetCard view; natural loops in 0x47B/0x5EB/0x454; GCSE/loop/regalloc still differ; see
+#if 0 /* NONMATCHING (score 5239): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
+       * deck/grave loops with ROM address forms; shared type for attack checks; GCSE/loop/regalloc still differ; see
        * build/wf/sub_08044224/NOTES.md */
 struct TargetCard {
     u32 id:12;
@@ -393,13 +421,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x23D:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++) {
-            id = TARGET_ID(ReadTargetDeckWord(player, i));
+        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(id) <= 20 && TargetDefense(id) <= 1500)
-                ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
         }
         break;
     }
@@ -554,14 +579,12 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x41E:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++) {
-            id = TARGET_ID(ReadTargetDeckWord(player, i));
-            if (TARGET_TYPE(id) <= 20 && TargetAttack(id) <= 1500
+        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
+            type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
+            if (type <= 20 && TargetAttackT(id, type) <= 1500
                 && sub_08007834(id) == 0)
-                ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
         }
         forceFilter = 1;
         break;
@@ -603,33 +626,41 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x463:
     {
         CASE_LOCALS
+        u8 ok;
         for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
             id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(id) > 20 || TargetAttack(id) > 1500)
+            type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
+            if (type > 20 || TargetAttackT(id, type) > 1500)
                 continue;
-            allowed = 0;
+            ok = 0;
             switch (number) {
             case 0x454:
-                allowed = (TARGET_STATS(id) >> 29) == 5;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 5;
                 break;
             case 0x456:
-                allowed = (TARGET_STATS(id) >> 29) == 4;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 4;
                 break;
             case 0x45D:
-                allowed = (TARGET_STATS(id) >> 29) == 1;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 1;
                 break;
             case 0x45F:
-                allowed = (TARGET_STATS(id) >> 29) == 3;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 3;
                 break;
             case 0x460:
-                allowed = (TARGET_STATS(id) >> 29) == 6;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 6;
                 break;
             case 0x463:
-                allowed = (TARGET_STATS(id) >> 29) == 2;
+                attribute = TARGET_STATS(id) >> 29;
+                ok = attribute == 2;
                 break;
             }
             if (TargetKind(id) == 3 || TargetKind(id) == 2)
-                allowed = 0;
+                ok = 0;
             switch (TARGET_NUMBER(id)) {
             case 0x37:
             case 0x38:
@@ -640,24 +671,21 @@ u16 sub_08044224(int player, u16 number, int arg)
             case 0x187:
             case 0x2E5:
             case 0x34D:
-                allowed = 0;
+                ok = 0;
                 break;
             }
-            if (allowed != 0)
-                ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+            if (ok != 0)
+                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
         }
         break;
     }
     case 0x455:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++) {
-            id = TARGET_ID(ReadTargetDeckWord(player, i));
+        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
             if (TARGET_TYPE(id) <= 20 && TargetKind(id) == 3)
-                ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
         }
         break;
     }
@@ -755,12 +783,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x47B:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
         for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
             id = TARGET_ID(gUnk_02019BE8[player & 1].cards[i]);
-            if (TARGET_TYPE(id) <= 20 && TargetAttack(id) <= 1500
+            type = (TARGET_STATS_NV(id) & 0x1F00000) >> 20;
+            if (type <= 20 && TargetAttackT(id, type) <= 1500
                 && sub_08007730(id) == 0)
                 ADD_TARGET(gUnk_020192E4[player & 1].graveyard[i], 4);
         }
@@ -847,14 +873,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x526:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->deckCount; i++) {
-            id = TARGET_ID(ReadTargetDeckWord(player, i));
-            if (TARGET_TYPE(id) == 10 && TargetLevel(id) == arg
-                && sub_08007834(id) == 0)
-                ADD_TARGET(CopyTargetDeckWord(player, i), 2);
+        for (i = 0; i < gUnk_020192E4[player & 1].deckCount; i++) {
+            if (TARGET_TYPE(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 10 && TargetLevel(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == arg
+                && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 0)
+                ADD_TARGET(gUnk_020192E4[player & 1].deck[i], 2);
         }
         break;
     }

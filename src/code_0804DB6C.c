@@ -366,8 +366,8 @@ void sub_0804E538(int player)
         }
     }
 }
-#if 0 /* NONMATCHING: same structure; register allocation differs (ROM keeps e in r7, base in r6, hoists the constant 1 into r8 and 0x7FF into ip) */
-/* Three-step routine on the step byte 0x020192E0+0x1B22 with a zone counter at +0x1B23. Step 0: needs the player's counter (0x020192E4 halfword) > 0x1F3 and sub_08008A1C(1-p) != 0, then scans zones counter..4 for a face-down card with key 0x228 (advancing the step, twice for player 1 which also sets 0x0201AE60+0x14); step 1 prints a card-name prompt; step 2 sends message 0x43 (0x8043) and sub_08019078 for the found zone, then advances the counter and finally the step. */
+/* Three-step routine on the step byte 0x020192E0+0x1B22 with a zone counter at +0x1B23. Step 0: needs the player's counter (0x020192E4 halfword) > 0x1F3 and sub_08008A1C(1-p) != 0, then scans zones counter..4 for a face-down card with key 0x228 (advancing the step, twice for player 1 which also sets 0x0201AE60+0x14); step 1 prints a card-name prompt; step 2 sends message 0x43 (0x8043) and sub_08019078 for the found zone, then advances the counter and finally the step.
+ * The loop reads the duel state through the global (not the local e) and recomputes player & 1 at the top of its body: loop.c then hoists the constant 1 first (it later serves the h14 store) and CSE keeps the step value across the h14 store. */
 int sub_0804E5B4(int player)
 {
     char buf[0x80];
@@ -381,17 +381,16 @@ int sub_0804E5B4(int player)
             return 1;
         if (sub_08008A1C(1 - player) == 0)
             return 1;
-        st = e + 0x1B23;
-        for (; *st <= 4; (*st)++) {
-            u8 *zb = e + 0x2C;
-            int s1 = *st * 0x94 + base;
-            struct DuelZone *zn = (struct DuelZone *)(s1 + (int)zb);
+        for (; gUnk_020192E0[0x1B23] <= 4; gUnk_020192E0[0x1B23]++) {
+            int side = player & 1;
+            int s1 = gUnk_020192E0[0x1B23] * 0x94 + side * 0xD64;
+            struct DuelZone *zn = (struct DuelZone *)(s1 + (int)(gUnk_020192E0 + 0x2C));
             u16 id = ID(zn);
             if (id != 0 && (zn->flags6 & 2) != 0 && ((const u16 *)0x08622AB4)[id & 0x7FF] == 0x228) {
-                (*(e + 0x1B22))++;
+                gUnk_020192E0[0x1B22]++;
                 if (player != 0) {
                     gUnk_0201AE60.h14 = 1;
-                    (*(e + 0x1B22))++;
+                    gUnk_020192E0[0x1B22]++;
                 }
                 return 0;
             }
@@ -425,8 +424,6 @@ int sub_0804E5B4(int player)
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804E5B4); /* 0x0804E5B4 size 0x1CC */
 #if 0 /* NONMATCHING: same structure; the ROM keeps zone base in sl, the
        * constant 1 in r7 and 0x7FF in r6, steps the zone pointer (add
        * r3,#0x94) while still counting i up in loop 1; this build gets either

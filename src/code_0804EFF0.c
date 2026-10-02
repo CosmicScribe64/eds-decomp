@@ -630,9 +630,9 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 588): NONMATCHING: state machine audited against the ROM; cases
-       * 0-11,21,100,102,120-122 match; remaining diffs in cases 20,101,110 (+3 insns),111 (-1 insn): register
-       * allocation/CSE */
+#if 0 /* NONMATCHING (score 580): NONMATCHING: state machine audited against the ROM; cases
+       * 0-11,21,100,102,120-122 match; remaining diffs in cases 20 (level/destroy regs),101,110 (+3 insns),111 (-1
+       * insn): register allocation/reload rotation */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -776,12 +776,13 @@ int sub_0804FC4C(void)
         }
         return 0;
     case 20: {
+        const u16 *tbl=gUnk_086249F4;
         int count=sub_08008524(player,0x600);
         if (count>0) do {
             int die=sub_08076F9C()%6+1;
             int p, i;
             u16 msg;
-            sub_080197E0(player,gUnk_086249F4[0]);
+            sub_080197E0(player,tbl[0]);
             msg=0xE4;
             if (player) msg=0x80E4;
             sub_0801EC58(msg,die,0,0);

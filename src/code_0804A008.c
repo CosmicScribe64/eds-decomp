@@ -476,56 +476,66 @@ int sub_0804A998(void)
 {
     return 0;
 }
-#if 0 /* NONMATCHING: the logic is decoded. The ROM keeps player in r7, done in r6 and ok in r8,
-       * and recomputes (lsr 29) from one cached (lsl 23) for every zone access (no CSE of the
-       * zone address). Ours CSEs and needs r9. */
+struct A99CZone {
+    u32 card;
+    u16 w4;
+    u8 b6;
+    u8 f7_0 : 5;
+    u8 f7_5 : 1;
+    u8 f7_6 : 2;
+    u8 pad[0x94 - 8];
+};
+struct A99CPlayerZones {
+    struct A99CZone zones[11];
+    u8 filler[0xD64 - 11 * 0x94];
+};
+extern struct A99CPlayerZones gUnk_0201930C[2];
+#define A99CZ(p, z) (*(struct A99CZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+/* Battle-step check for `player`'s attack. Returns 1 and resets the step (gBattle bit 1, cnt, stage 1) when the
+ * attacker can no longer attack (card 0x538 then consumes its zone flag bit 5) or the defender's state changed;
+ * otherwise returns 0. The cast-constant card table is a reload, which the ROM's later reload registers need. */
 int sub_0804A99C(int player)
 {
     int ok = 0;
     if (sub_0804A528(player, BTH.atkSlot, 0) == 0) {
         int done = 0;
-        u16 pl = player & 1;
-        u32 sh = (u32)*(u16 *)&gUnk_02018450 << 23;
-        if (*(u16 *)((u8 *)gUnk_08622AB4 + ((ZB(pl, sh >> 29)->card << 21) >> 20)) == 0x538
-            && (ZB(pl, sh >> 29)->flags7 & 0x20)) {
-            ((struct Z7 *)ZB(pl, sh >> 29))->f5 = 0;
-            done = 1;
+        int pl = player & 1;
+        if (((const u16 *)0x08622AB4)[(A99CZ(pl, BTH.atkSlot).card << 21) >> 21] == 0x538) {
+            if (A99CZ(pl, BTH.atkSlot).f7_5) {
+                A99CZ(pl, BTH.atkSlot).f7_5 = 0;
+                done = 1;
+            }
         }
         if (done == 0)
             sub_0804A39C(player, BTH.atkSlot);
         BTB.direct = 0;
         gUnk_020192E0.cnt1B16 = 0;
         DGW.stage = 1;
-        return 1;
-    }
-    {
+    } else {
         int opp = 1 - player;
         if (sub_08008860(opp) != BT_U16(0x148 + opp * 2))
             ok = 1;
-        if (!(*(u8 *)&gUnk_02018450 & 2)) {
-            struct DuelZone *zn = ZB(opp & 1, BTB.defSlot);
-            if ((zn->card << 20) == 0)
+        if (!BTB.direct) {
+            if ((A99CZ(opp & 1, BTB.defSlot).card << 20) == 0)
                 ok = 1;
-            zn = ZB(opp & 1, BTB.defSlot);
-            if ((zn->card << 20) != 0 && BT_U16(0x14C + opp * 2) != *(u16 *)((u8 *)zn + 4))
+            if ((A99CZ(opp & 1, BTB.defSlot).card << 20) != 0 && BT_U16(0x14C + opp * 2) != A99CZ(opp & 1, BTB.defSlot).w4)
                 ok = 1;
         }
-        if (*(u8 *)&gUnk_02018450 & 2) {
-            if (sub_08008860(1 - player) > 0 && sub_0804A3D8(player, BTH.atkSlot) == 0)
+        if (BTB.direct) {
+            /* sub_0804A3D8 is defined above returning int; the caller narrows its result as u16. */
+            if (sub_08008860(1 - player) > 0 && ((u16 (*)(int, int))sub_0804A3D8)(player, BTH.atkSlot) == 0)
                 ok = 1;
         }
+        if (ok == 0)
+            return 0;
+        BTB.direct = 0;
+        gUnk_020192E0.cnt1B16 = 0;
+        DGW.stage = 1;
+        BTB.f3 = 1;
+        BTB.f4 = 1;
     }
-    if (ok == 0)
-        return 0;
-    BTB.direct = 0;
-    gUnk_020192E0.cnt1B16 = 0;
-    DGW.stage = 1;
-    BTB.f3 = 1;
-    BTB.f4 = 1;
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804A99C); /* 0x0804A99C size 0x1F4 */
 
 int sub_0804AB90(int player)
 {

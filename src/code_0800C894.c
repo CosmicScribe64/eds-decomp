@@ -154,44 +154,54 @@ u32 sub_0800C8A8(u32 player, u32 slot)
     return info.unk8;
 }
 
-#if 0 /* NONMATCHING (score 24): Rewritten from asm. Keys: u16 best (re-read ldrh, bls); loop1 zone via
-       * ZONE(player,i) so CSE path-following turns (p&1)*0xD64 into a copy of the entry off; loop3 zone written
-       * (p&1)*0xD64 + s*0x94 (fold swaps, so 0x94/slot chain hoists before 0xD64 and the threshold runs out); u8
-       * *flags=&gUnk_0201ADAD before loop3; staged zones/so locals in entry; separate z locals per loop. Remaining:
-       * loop3 guard/body reload regs (slot*0x94 r1 vs r4, base r4 vs r1). */
+/* Field zone (0x94 bytes) as read by sub_0800C8BC. */
 struct C8BCZone {
     u32 card;               /* +0x00: bits 0-11 card id, bit 17 tested */
-    u16 unk4;               /* +0x04 */
+    u16 unk4;               /* +0x04: compared value (hypothesis: current ATK-like stat) */
     u8 flags6;              /* +0x06: bit 1 face up */
     u8 filler7[3];
-    u16 links[32];          /* +0x0A */
-    u16 linkKinds[32];      /* +0x4A */
+    u16 links[32];          /* +0x0A: (zone << 8) | player of a linked card */
+    u16 linkKinds[32];      /* +0x4A: low byte = link kind */
     u16 numLinks;           /* +0x8A */
     u8 filler8C[4];
-    u32 unk90;              /* +0x90 */
+    u32 unk90;              /* +0x90: bits 13-17 replacement value; byte +0x91 bit 3 tested */
 };
+/* Byte view of links[], so the player byte is a separate ldrb from the same address as the ldrh. */
 struct C8BCZoneB {
     u8 filler0[0xA];
     u8 linkBytes[64];       /* +0x0A */
 };
+/* Loop 1 order: slot term first (fold keeps it). */
 #define C8BC_ZONE(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+/*
+ * Loop 3 order: player term written first, which fold swaps, so the 0x94/slot chain is loop.c's
+ * first movable and the threshold runs out before the 0xD64 multiply (ROM keeps it in the loop).
+ */
 #define C8BC_ZONE2(p, s) ((struct C8BCZone *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
 #define C8BC_ZONEB2(p, s) ((struct C8BCZoneB *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
-#define C8BC_ZONEB(p, s) ((struct C8BCZoneB *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+/* Linked zone; the caller passes the already-masked player bit. */
 #define C8BC_LINKED(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + (p) * 0xD64)))
 #define C8BC_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define C8BC_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+/*
+ * Card stats bits 20-24 of the card in (player, slot), or 0 for an empty zone. For a face-up
+ * monster (slot 0-4) the best (highest +4 value) of: a face-up card number 0x2FA with word bit 17
+ * in the player's monster zones (gives 10), a face-up unflagged card number 0x479 in either
+ * player's spell/trap zones (gives its +0x90 bits 13-17), and a kind-1 link to card number 0x60E
+ * (no 0x601 on either side, gUnk_0201ADAD bits 0-1 clear; gives 1) replaces it.
+ */
 u32 sub_0800C8BC(s32 player, s32 slot)
 {
     u32 off;
     u32 id;
-    u16 best;
+    u16 best;   /* u16: the compare is ldrh/bls and the assignment re-reads the field */
     u32 result;
     int i, j;
     struct C8BCZone *z;
     u8 *zones;
     u32 so;
 
+    /* Player offset, zone base and slot offset staged in ROM order before best = 0. */
     off = (player & 1) * 0xD64;
     zones = gUnk_0201930C;
     so = slot * 0x94;
@@ -206,7 +216,10 @@ u32 sub_0800C8BC(s32 player, s32 slot)
     for (i = 0; i <= 4; i++) {
         u32 w;
         u32 cid;
+        /* Separate pointer from the entry's z (different pseudo, r2 here vs r3 there). */
         struct C8BCZone *z;
+
+        /* Re-forming (player & 1) * 0xD64 lets CSE reuse the entry's off (spilled to [sp+4]). */
         z = C8BC_ZONE(player, i);
         w = z->card;
         cid = (w << 20) >> 20;
@@ -216,6 +229,7 @@ u32 sub_0800C8BC(s32 player, s32 slot)
             result = 10;
         }
         for (j = 0; j <= 1; j++) {
+            /* gUnk_020195F0 = gUnk_0201930C + 5 * 0x94: zone (j, 5 + i). */
             z = (struct C8BCZone *)(gUnk_020195F0 + ((j & 1) * 0xD64 + i * 0x94));
             cid = (z->card << 20) >> 20;
             if (cid != 0 && C8BC_NUMBER(cid) == 0x479 && (z->flags6 & 2)
@@ -226,34 +240,38 @@ u32 sub_0800C8BC(s32 player, s32 slot)
         }
     }
     {
-    u8 *flags = &gUnk_0201ADAD;
-    for (i = 0; i < C8BC_ZONE2(player, slot)->numLinks; i++) {
-        u16 link;
-        u8 kind;
-        int lz, lp;
-        struct C8BCZone *t;
-        u16 tid;
+        /* Pointer set outside the loop: reloaded before its ldrb, after the #3 mask. */
+        u8 *flags = &gUnk_0201ADAD;
 
-        link = C8BC_ZONE2(player, slot)->links[i];
-        kind = C8BC_ZONE2(player, slot)->linkKinds[i];
-        lz = link >> 8;
-        lp = C8BC_ZONEB2(player, slot)->linkBytes[i * 2] & 1;
-        t = C8BC_LINKED(lp, lz);
-        tid = (t->card << 20) >> 20;
-        if (kind == 1 && tid != 0
-            && !(((u8 *)t)[0x91] & 8)
-            && sub_08008524(0, 0x601) == 0
-            && sub_08008524(1, 0x601) == 0
-            && !(*flags & 3)
-            && C8BC_NUMBER(tid) == 0x60E
-            && t->unk4 > best)
-            result = 1;
-    }
+        for (i = 0; i < C8BC_ZONE2(player, slot)->numLinks; i++) {
+            u16 link;
+            u8 kind;
+            int lz, lp;
+            struct C8BCZone *t;
+            u16 tid;
+            u8 *zb;
+
+            /* FAKEMATCH: the links[] read goes through a local copy of the zone base, which
+             * changes the guard's allocation priorities (slot * 0x94 in r1, base in r4). */
+            zb = gUnk_0201930C;
+            link = ((struct C8BCZone *)(zb + ((player & 1) * 0xD64 + slot * 0x94)))->links[i];
+            kind = C8BC_ZONE2(player, slot)->linkKinds[i];
+            lz = link >> 8;
+            lp = C8BC_ZONEB2(player, slot)->linkBytes[i * 2] & 1;
+            t = C8BC_LINKED(lp, lz);
+            tid = (t->card << 20) >> 20;
+            if (kind == 1 && tid != 0
+                && !(((u8 *)t)[0x91] & 8)
+                && sub_08008524(0, 0x601) == 0
+                && sub_08008524(1, 0x601) == 0
+                && !(*flags & 3)
+                && C8BC_NUMBER(tid) == 0x60E
+                && t->unk4 > best)
+                result = 1;
+        }
     }
     return result;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800C894", sub_0800C8BC); /* 0x0800C8BC size 0x234 */
 /* Field zone (0x94 bytes) as read by sub_0800CAF0. */
 struct CAF0Zone {
     u32 card;               /* +0x00: bits 0-11 card id */

@@ -389,37 +389,51 @@ int sub_08049514(u16 id, int player)
     }
     return flags;
 }
-#if 0 /* NONMATCHING: register allocation only. The ROM keeps id in r7 and zone in r4 and saves only r8; the build keeps id in r8/r9, spills the 0x7FF mask and hoists the constant 1 into r4. The switch decision tree and every body are identical. */
+#if 0 /* NONMATCHING (score 20): Control flow, blocks and size match (score 20). Key facts: zone flag via
+       * EXPAND_SUM pointer expr ((p&1)*0xD64 + zone*0x94 + (int)((u8*)gPl+0x28))->bit5; count via struct array
+       * gUnk_020192E4[p&1].count (base loaded first); deck/list words via (u32*)((u8*)gPl + 0x7C4/0x904 +
+       * (p&1)*0xD64)[i] so CSE relates the bases; sub_0802CFD0 returns u16, sub_0800A430/sub_0802B1B8 called as int.
+       * Remaining: head mask r3 (ROM r2) and table reload r1 (ROM r3); 0x1A0 case 0x1B12 in r3 (ROM r6); 0x5E9 loop
+       * hoists the 0x08621DE0 table (ROM reloads it in the loop while still hoisting 0x1F00000). */
 /*
  * Usability lookup for the spell/trap command menu: given a card id, a player and a spell/trap
  * zone, return a flag (or a sub_0802CFD0 / sub_08008AF8 result) depending on the card's number.
  * Only the listed card numbers reach a special case; everything else returns 0.
  */
+struct Z880 { u8 pad[7]; u8 lo7 : 5; u8 flag : 1; u8 hi7 : 2; u8 rest[0x94 - 8]; };
+struct P880 {
+    u8 pad0[3];
+    u8 deckCount;           /* +0x003 */
+    u8 listCount;           /* +0x004 */
+    u8 pad5[0x7C4 - 5];
+    u32 deck[80];           /* +0x7C4 */
+    u32 list[80];           /* +0x904 */
+    u8 padA44[0xD64 - 0xA44];
+};
+extern const u16 gUnk_08622AB4[];
+#define CTYPE880(id) CARD_TYPE(id)
+extern struct P880 gPl880[] asm("gUnk_020192E4");
+u16 sub_0802CFD0_u(int player, int zone, u16 kind) asm("sub_0802CFD0");
+int sub_0800A430_i(int player, int zone) asm("sub_0800A430");
+int sub_0802B1B8_i(u16 id, int player, int zone) asm("sub_0802B1B8");
+
 int sub_08049880(u16 id, int player, int zone)
 {
-    u32 zoneFlag = ZONE7(player, zone);
-    struct CardRef sp;
+    struct CardRef ref;
+    u32 flag;
     int i;
+    int target;
 
-    sp.player = player & 1;
-    sp.id = id;
+    flag = ((struct Z880 *)((player & 1) * 0xD64 + zone * 0x94 + (int)((u8 *)gPl880 + 0x28)))->flag;
+    ref.player = player;
+    ref.id = id;
 
     switch (CARD_NUM(id)) {
     case 0x58:
-    case 0x1FF: {
-        int r = 0;
-
-        if (sub_08008AF8(player, -1) > 0)
-            r = 1;
-        return r;
-    }
-    case 0x105: {
-        int r = 0;
-
-        if (sub_08008AF8(player, zone) > 0)
-            r = 1;
-        return r;
-    }
+    case 0x1FF:
+        return sub_08008AF8(player, -1) > 0;
+    case 0x105:
+        return sub_08008AF8(player, zone) > 0;
 
     case 0xF:
     case 0x191:
@@ -436,69 +450,68 @@ int sub_08049880(u16 id, int player, int zone)
     case 0x5A2:
     case 0x5A4:
     case 0x5E6:
-        return sub_0802CFD0(player, zone, 0);
+        return sub_0802CFD0_u(player, zone, 0);
 
     case 0x1A0:
     case 0x243:
     case 0x2DB:
         if ((gUnk_020192E0[0x1B12] & 0x1C) != 4)
             return 0;
-        return sub_0802CFD0(player, zone, 2);
+        return sub_0802CFD0_u(player, zone, 2);
 
     case 0x51:
-    case 0x186: {
-        u8 target;
-        int n;
-
+    case 0x186:
         if (sub_0800A78C(player, zone, 0x291) == 0)
             return 0;
         target = 0;
-        if (CARD_NUM(id) == 0x51)
+        switch (CARD_NUM(id)) {
+        case 0x51:
             target = 0x2E5;
-        if (CARD_NUM(id) == 0x186)
+            break;
+        case 0x186:
             target = 0x187;
-        if ((int)target <= 0)
+            break;
+        }
+        if (target <= 0)
             return 0;
-        n = DECK_COUNT(player);
-        for (i = 0; i < n; i++) {
-            if (CARD_NUM(DECK_WORD(player, i)) == target) {
-                if (sub_08008524(0, 0x58A) <= 0 && sub_08008524(1, 0x58A) <= 0)
-                    return 1;
-                return 0;
+        for (i = 0; i < gPl880[player & 1].deckCount; i++) {
+            if (CARD_NUM((((u32 *)((u8 *)gPl880 + 0x7C4 + (player & 1) * 0xD64))[i] << 20) >> 20) == target) {
+                if (sub_08008524(0, 0x58A) > 0)
+                    return 0;
+                if (sub_08008524(1, 0x58A) > 0)
+                    return 0;
+                return 1;
             }
         }
         return 0;
-    }
 
     case 0x2DA:
     case 0x536:
-        if (sub_0800A430(player, zone) == 0xFFFF && sub_08008C6C(player) != -1) {
-            for (i = 0; i <= 4; i++) {
-                if (sub_0802B1B8(id, 1 - player, i) != 0)
-                    return zoneFlag;
-            }
+        if (sub_0800A430_i(player, zone) != 0xFFFF)
+            return 0;
+        if (sub_08008C6C(player) == -1)
+            return 0;
+        for (i = 0; i <= 4; i++) {
+            if (sub_0802B1B8_i(id, 1 - player, i) != 0)
+                return flag;
         }
         return 0;
 
-    case 0x5E9: {
-        int n;
-
-        if (zoneFlag == 0)
+    case 0x5E9:
+        if (flag == 0)
             return 0;
-        n = LIST_COUNT(player);
-        for (i = 0; i < n; i++) {
-            if (CARD_TYPE(LIST_WORD(player, i)) <= 0x14)
+        for (i = 0; i < gPl880[player & 1].listCount; i++) {
+            if (CTYPE880((((u32 *)((u8 *)gPl880 + 0x904 + (player & 1) * 0xD64))[i] << 20) >> 20) <= 0x14)
                 return 1;
         }
         return 0;
-    }
 
     default:
         return 0;
     }
 }
 #endif
-INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049880); /* size 0x2F4 */
+INCLUDE_ASM("asm/nonmatching/code_08048FE0", sub_08049880); /* 0x08049880 size 0x2F4 */
 /* Usability flag builder for a card in spell/trap zone `arg2` of `arg1` (only player 0 is handled). */
 int sub_08008524(int player, u16 number);
 int sub_0800C8BC(int player, int zone);

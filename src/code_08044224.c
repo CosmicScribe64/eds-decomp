@@ -147,7 +147,7 @@ static inline u32 TargetAttackT(u32 id, u32 type)
     return ((TARGET_STATS_NV(id) << 14) >> 23) * 10;
 }
 
-static inline u32 TargetDefense(u16 id)
+static inline u16 TargetDefense(u16 id)
 {
     u32 type = ((TARGET_STATS(id) & 0x1F00000) >> 20);
     switch ((s32)type) {
@@ -204,7 +204,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 1072): bitfield card struct in 0x2F/0x23D; wf ~1070 */
+#if 0 /* NONMATCHING (score 1036): TargetDefense u16; 0x23D exact; wf 1036 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {

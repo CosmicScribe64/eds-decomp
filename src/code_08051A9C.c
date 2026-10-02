@@ -95,15 +95,20 @@ void sub_08052190(void);
 int sub_0805243C(void);
 
 extern struct { u8 pad[0x82C]; u8 b82C; } gScr1A9C asm("gUnk_0201CFB0");
-#if 0 /* NONMATCHING: register allocation only. The ROM keeps ps in r7 and
-       * count/&b4FC in r8; the build swaps them (ps r8, count r7). */
+struct Scr1A9C {
+    u8 pad[0x808];
+    u16 lo808:3;
+    u16 busy:1;
+    u16 hi808:12;
+    u8 pad80A[0x82C - 0x80A];
+    u32 cursor;
+};
+#define gScr1A9Cb (*(struct Scr1A9C *)&gUnk_0201CFB0)
 int sub_08051A9C(int player, u16 x, int count)
 {
-    u8 *base = (u8 *)gUnk_020192E4;
-    struct Player *ps = (struct Player *)(base + (player & 1) * 0xD64);
     u8 *step;
-    if (ps->handCount != 0) {
-        step = base + 0x1B5E;
+    if (gUnk_020192E4[player & 1].handCount != 0) {
+        step = (u8 *)gUnk_020192E4 + 0x1B5E;
         if (*step == 0) {
             sub_080240A8(player, 0xB);
             gUnk_02017A40.b4FC = 0;
@@ -114,16 +119,16 @@ int sub_08051A9C(int player, u16 x, int count)
         if (gUnk_02017A40.count != 0) {
             u8 *bp = &gUnk_02017A40.b4FC;
             if (*bp <= 9) {
-                gUnk_0201CFB0.b808 |= 8;
-                sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
+                gScr1A9Cb.busy = 1;
+                sub_08024134(player, 0xB, sub_08076F9C() % gUnk_020192E4[player & 1].handCount);
                 (*bp)++;
                 return 0;
             } else {
                 u16 msg = 8;
                 if (player != 0)
                     msg = 0x8008;
-                sub_0801EC58(msg, (u16)player, (gScr1A9C.b82C << 8) | 0xB, 0);
-                sub_080193D4(player, gUnk_0201CFB0.w82C, x, 1);
+                sub_0801EC58(msg, (u16)player, ((u8)gScr1A9Cb.cursor << 8) | 0xB, 0);
+                sub_080193D4(player, gScr1A9Cb.cursor, x, 1);
                 gUnk_02017A40.count--;
                 *bp = 0;
                 return 0;
@@ -132,9 +137,6 @@ int sub_08051A9C(int player, u16 x, int count)
     }
     return 1;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051A9C); /* 0x08051A9C size 0x120 */
-#endif
 struct Scr1BBC {
     u8 pad[0x808];
     u16 lo808:3;

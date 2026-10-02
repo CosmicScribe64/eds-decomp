@@ -73,6 +73,7 @@ s32 sub_0807548C(s32 value); /* round(value / 2), including signed division */
 static inline int GetCardType(u16 id) { return (CARD_STATS(id) & 0x1F00000) >> 20; }
 #define CARD_TYPE(id) GetCardType(id)
 static inline u16 GetCardNumber(int id) { return ((const u16 *)0x08622AB4)[id & 0x7FF]; }
+static inline u16 GetCardNumberS(int id) { return *(gUnk_08622AB4 + (id & 0x7FF)); }
 #define CARD_NUMBER(id) GetCardNumber(id)
 #define ZONE_DISABLED(p, s) (((struct ZoneDisabled *)ZB(p, s))->flags & 8)
 #define ZONE_VALUE(p, s) (((struct ZoneAuxBits *)((u8 *)ZB(p, s) + 0x90))->value)
@@ -104,8 +105,7 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 574): head, case 3, case 1 head exact; first diff +0x7FC (card-number table pseudo
-       * in case 1) */
+#if 0 /* NONMATCHING (score 482): pointer-plus symbol lookup in equip case; first rd diff +0xAB2 */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -236,9 +236,9 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             if (!ZONE_DISABLED(lp & 1, ls) && !sub_08008524(0, 0x601) &&
                 !sub_08008524(1, 0x601) && !(*((u8 *)gUnk_0201930C + 0x1AA1) & 3) &&
                 (!immune || CARD_TYPE(linkedId) != 22)) {
-                switch (CARD_NUMBER(linkedId)) {
+                switch (GetCardNumberS(linkedId)) {
                 case 0x47:
-                    if (CARD_NUMBER(out->id) == 0x115) { out->atk = 0; out->def = 2000; }
+                    if (GetCardNumberS(out->id) == 0x115) { out->atk = 0; out->def = 2000; }
                     break;
                 case 300: if (out->type == 15) { equipAtk += 300; equipDef += 300; } break;
                 case 301: if (out->attr == 2) { equipAtk += 400; equipDef -= 200; } break;
@@ -257,7 +257,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 314: if (out->type == 1) { equipAtk += 300; equipDef += 300; } break;
                 case 315: if (out->type == 19) { equipAtk += 300; equipDef += 300; } break;
                 case 316:
-                    if ((u16)(CARD_NUMBER(out->id) - 61) <= 1 || CARD_NUMBER(out->id) == 0x4E1) equipAtk += 500;
+                    if ((u16)(GetCardNumberS(out->id) - 61) <= 1 || GetCardNumberS(out->id) == 0x4E1) equipAtk += 500;
                     break;
                 case 318: if (out->type == 12) goto equip_300_type16; break;
                 case 320: equipAtk += 700; break;
@@ -311,7 +311,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                     equipAtk += sub_08008B70(lp, 0, 0, 0) * 500;
                     equipDef += sub_08008B70(lp, 0, 0, 0) * 500;
                     break;
-                case 1540: if (CARD_NUMBER(out->id) == 0x53B) equipAtk += 300; break;
+                case 1540: if (GetCardNumberS(out->id) == 0x53B) equipAtk += 300; break;
                 case 1550:
                     if (out->type == 15) { out->type = 1; equipAtk += 500; equipDef += 500; }
                     if (ZB(lp & 1, ls)->serial > (u32)newest) out->type = 1;

@@ -167,42 +167,38 @@ extern u16 sub_080600D8(void);
 extern u16 sub_0806007C_u(void) asm("sub_0806007C");
 extern u16 sub_080600AC_u(void) asm("sub_080600AC");
 
-#if 0 /* NONMATCHING: same structure and literals, but registers differ (target: flag r5, a r4, b r6,
-       * c r7, plus r8 = copy of a used only for the sub_0805F728 call in case 0, r9 = b + c) */
-/* Duel screen step: dispatches on the screen mode (0x0201CFB0+0x828) to start a card/zone info
-   popup (modes 0, 5, 10, 11) or a text prompt (12-15). */
 void sub_0805F96C(void)
 {
+    u16 flag;
     u32 a;
     u32 b;
-    s16 c;
-    u16 flag;
+    u32 c;
+    u32 a2;
     u32 sum;
     int v;
-    const u8 *txt;
-    u8 p;
     flag = sub_0805ECFC();
     a = gUnk_0201CFB0_d.w824;
     b = gUnk_0201CFB0_d.w828;
     c = gUnk_0201CFB0_d.w82C;
+    a2 = a;
     sum = b + c;
     sub_0805ED9C();
     switch (b) {
     case 0:
         if (a != 0)
-            v = ZB(a & 1, c)->faceDown;
+            v = ZB2(a & 1, c)->faceDown;
         else
             v = 1;
         if (flag && v)
-            sub_0805F728(a, sum);
+            sub_0805F728(a2, sum);
         break;
     case 5:
         if (a != 0)
-            v = ((struct DuelZone *)(((a & 1) * 0xD64 + c * 0x94) + (u32)gUnk_020195F0))->faceDown;
+            v = ((struct DuelZone *)((c * 0x94 + (a & 1) * 0xD64) + (u32)gUnk_020195F0))->faceDown;
         else
             v = 1;
         if (flag && v)
-            sub_0805F270(flag, 1, a, sum);
+            sub_0805F270(flag, 1, a, b + c);
         break;
     case 10:
         if (a != 0)
@@ -210,7 +206,7 @@ void sub_0805F96C(void)
         else
             v = 1;
         if (flag && v)
-            sub_0805F270(flag, 1, a, sum);
+            sub_0805F270(flag, 1, a, b + c);
         break;
     case 11:
         if (a != 0)
@@ -221,49 +217,65 @@ void sub_0805F96C(void)
             sub_0805F074(flag, 1);
         break;
     case 12:
-        if (a == 0) {
-            txt = gUnk_080864BC;
-            p = gUnk_020192E4[0].b5;
+        switch (a) {
+        case 0: {
+            const u8 *txt = gUnk_080864BC;
+            u8 p = gUnk_020192E4[a].b5;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
-        } else if (a == 1) {
+            break;
+        }
+        case 1:
             sub_0805F64C(10, gUnk_080864CC, 0, 0);
+            break;
         }
         break;
     case 13:
-        if (a == 0) {
-            txt = gUnk_080864E4;
-            p = gUnk_020192E4[0].b3;
+        switch (a) {
+        case 0: {
+            const u8 *txt = gUnk_080864E4;
+            u8 p = gUnk_020192E4[a].b3;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
-        } else if (a == 1) {
+            break;
+        }
+        case 1:
             sub_0805F64C(10, gUnk_080864F0, 0, 0);
+            break;
         }
         break;
     case 14:
-        if (a == 0) {
-            txt = gUnk_08086500;
-            p = gUnk_020192E4[0].b4;
+        switch (a) {
+        case 0: {
+            const u8 *txt = gUnk_08086500;
+            u8 p = gUnk_020192E4[a].b4;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
-        } else if (a == 1) {
-            txt = gUnk_08086510;
-            p = gUnk_020192E4[1].b4;
+            break;
+        }
+        case 1: {
+            const u8 *txt = gUnk_08086510;
+            u8 p = gUnk_020192E4[a].b4;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
+            break;
+        }
         }
         break;
     case 15:
-        if (a == 0) {
-            txt = gUnk_08086524;
-            p = gUnk_020192E4[0].b6;
+        switch (a) {
+        case 0: {
+            const u8 *txt = gUnk_08086524;
+            u8 p = gUnk_020192E4[a].b6;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
-        } else if (a == 1) {
-            txt = gUnk_08086538;
-            p = gUnk_020192E4[1].b6;
+            break;
+        }
+        case 1: {
+            const u8 *txt = gUnk_08086538;
+            u8 p = gUnk_020192E4[a].b6;
             sub_0805F64C(10, txt, p, sub_080753CC(txt));
+            break;
+        }
         }
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805F96C", sub_0805F96C); /* 0x0805F96C size 0x238 */
 /* Draws the 3-choice menu cursor sprite (blinks while confirming). */
 void sub_0805FBA4(void)
 {

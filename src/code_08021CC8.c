@@ -236,24 +236,25 @@ u32 sub_08021DA8(int player, u16 number)
         return 1;
     }
 }
-#if 0 /* NONMATCHING: agbcc hoists the card-table address and the 0x7FF mask out of the outer loop (needs r8-sl);
-         the ROM reloads the table each iteration and folds the mask into lsl #21; lsr #19. */
+#if 0 /* NONMATCHING (score 128): NONMATCHING: structure right (for loops, rotated tests, inner-loop strength
+       * reduction); differs in regalloc: ROM keeps player in r2, constant 1 hoisted in r7, base in r8 only (we need
+       * r8+r9), and recomputes player&1 each pass (we CSE it into r3); inner loop count reloaded via hand ptr - 0x682 */
+#define EC_ID(w) (((w) << 20) >> 20)
 u32 sub_08021EC8(int player)
 {
     int i;
+    int j;
 
     switch (gUnk_020192E0.step) {
     case 0:
         gUnk_020192E0.result = 0;
-        for (i = 0; i < gUnk_020192E0.players[player & 1].handCount; i++) {
-            union DuelCardWord *c = &gUnk_020192E0.players[player & 1].hand[i];
-            if (((gUnk_08621DE0[c->w & 0x7FF] & 0x1F00000) >> 20) == 22 && !c->c.flag18) {
+        for (i = 0; i < (gUnk_020192E0.players + (player & 1))->handCount; i++) {
+            union DuelCardWord *c = &(gUnk_020192E0.players + (player & 1))->hand[i];
+            if (((CSTATS[c->w << 21 >> 21] & 0x1F00000) >> 20) == 22 && !c->c.flag18) {
                 if (player) {
-                    u16 j;
                     gUnk_020192E0.result = 1;
-                    for (j = 0; j < gUnk_020192E0.players[1].handCount; j++) {
-                        u8 id = gUnk_020192E0.players[1].hand[j].w << 20 >> 20;
-                        if (((gUnk_08621DE0[id & 0x7FF] & 0x1F00000) >> 20) == 22) {
+                    for (j = 0; j < (gUnk_020192E0.players + 1)->handCount; j++) {
+                        if (((CSTATS[EC_ID((gUnk_020192E0.players + 1)->hand[j].w) & 0x7FF] & 0x1F00000) >> 20) == 22) {
                             sub_080193D4(1, j, 1, 1);
                             return 1;
                         }
@@ -270,8 +271,8 @@ u32 sub_08021EC8(int player)
         return 1;
     case 1:
         if (gUnk_0201AE60.unk14 == 0) {
-            return 1;
             gUnk_020192E0.result = 0;
+            return 1;
         }
         sub_080602A4(0x206, 0x712, 11, gUnk_08081DF0);
         gUnk_020192E0.step++;
@@ -284,7 +285,7 @@ u32 sub_08021EC8(int player)
         if (sub_08052F38(1)) {
             u32 idx = gUnk_0201CFB0.unk82C;
             union DuelCardWord *c = &gUnk_020192E0.players[0].hand[idx];
-            if (((gUnk_08621DE0[c->w & 0x7FF] & 0x1F00000) >> 20) == 22) {
+            if (((CSTATS[c->w << 21 >> 21] & 0x1F00000) >> 20) == 22) {
                 int ok = 1;
                 if (c->c.flag17)
                     ok = 0;

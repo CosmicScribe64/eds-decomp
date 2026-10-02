@@ -256,9 +256,6 @@ void sub_08013CDC(void)
     }
     gUnk_020185C0.running = 0;
 }
-#if 0 /* NONMATCHING (score 24): WIP 24: only the list pre-test base/0xD64 copies (ip/sl) are swapped. Main loop
-       * matched by writing every (u8)player pos as (u8)player | ((u8)i << 8) (me evaluated first, so loop.c hoists it to
-       * sp4 and the 12-loop keeps its own copy in r6). */
 struct Card0801401C {
     u32 id:12;
     u32 unk12:9;
@@ -335,7 +332,6 @@ struct State0801401C {
     u8 linkSkip:1;              /* +0x1B12 bit 1 */
     u8 unk1B12_2:6;
 };
-extern struct State0801401C gUnk_020192E0_0801401C asm("gUnk_020192E0");
 /* the players array plus the flag bytes after it (0x020192E4 + 0x1AC9 = state +0x1ACD) */
 struct Players0801401C {
     struct Player0801401C p[2];
@@ -349,15 +345,14 @@ struct Players0801401C {
     u8 flag1AC9_6:1;
     u8 unk1AC9_7:1;
 };
-extern struct Players0801401C gUnk_020192E4_0801401C asm("gUnk_020192E4");
-#define PS0801401C gUnk_020192E4_0801401C
+#define PS0801401C (*(struct Players0801401C *)gUnk_020192E4)
 
 struct Link0801401C {
     u8 unk0;
     u8 link:1;
     u8 unk1_1:7;
 };
-extern struct Link0801401C gUnk_02015EE8_0801401C asm("gUnk_02015EE8");
+extern struct Link0801401C gUnk_02015EE8;
 
 extern u16 gUnk_08198DCC[];
 extern const u16 gUnk_08623DF4[];
@@ -370,7 +365,7 @@ int sub_08008A1C(int player);
 void sub_080197E0(int player, int id);
 void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
 
-#define ST0801401C gUnk_020192E0_0801401C
+#define ST0801401C (*(struct State0801401C *)&gUnk_020192E0)
 struct ZP0801401C {
     struct Zone0801401C zones[11];
     u8 rest[0xD64 - 11 * 0x94];
@@ -379,7 +374,6 @@ struct ZP0801401C {
 #define ZONE0801401C(p, s) ((struct Zone0801401C *)((u8 *)ST0801401C.players[0].zones + ((s) * 0x94 + (p) * 0xD64)))
 #define ZONER0801401C(p, s) ((struct Zone0801401C *)((u8 *)ST0801401C.players[0].zones + ((p) * 0xD64 + (s) * 0x94)))
 #define PL0801401C (*(struct Player0801401C (*)[2])ST0801401C.players)
-extern struct ZP0801401C gUnk_0201930C_0801401C[2] asm("gUnk_0201930C");
 #define ZPA0801401C (*(struct ZP0801401C (*)[2])ST0801401C.players[0].zones)
 
 static inline u16 CardId0801401C(u16 c)
@@ -424,7 +418,7 @@ void sub_0801401C(void)
         struct Zone0801401C *z = ZONE0801401C(player & 1, i);
         if (z->cnt6_6) {
             z->cnt6_6--;
-            if ((!gUnk_02015EE8_0801401C.link || !ST0801401C.linkSkip) && z->cnt6_6 == 0)
+            if ((!gUnk_02015EE8.link || !ST0801401C.linkSkip) && z->cnt6_6 == 0)
                 sub_08018544(player, i, 1);
         }
     }
@@ -447,7 +441,9 @@ void sub_0801401C(void)
     ST0801401C.flag1ACD_6 = 0;
 
     for (i = 0; i <= 1; i++) {
-        for (j = 0; j < PL0801401C[i & 1].handCount; j++) {
+        /* FAKEMATCH: the statement expression loads the players base before the 0xD64 stride in the
+         * first count test, so loop.c hoists the base copy first and the copies land in ip/sl as in the ROM. */
+        for (j = 0; j < ((struct Player0801401C *)({ u32 b_ = (u32)ST0801401C.players; b_; }))[i & 1].handCount; j++) {
             int o = (i & 1) * 0xD64;
             u32 h = (u32)ST0801401C.players[0].hand;
             ((struct Card0801401C *)(o + h))[j].flag21 = 0;
@@ -492,7 +488,7 @@ void sub_0801401C(void)
             ((struct Zone0801401C *)((u8 *)ST0801401C.players[0].zones + ((player & 1) * 0xD64 + i * 0x94)))->flag8C_5 = 0;
     }
 
-    if (gUnk_02015EE8_0801401C.link && ST0801401C.linkSkip)
+    if (gUnk_02015EE8.link && ST0801401C.linkSkip)
         goto end;
 
     for (player = 0; player <= 1; player++) {
@@ -539,8 +535,6 @@ void sub_0801401C(void)
 end:
     gUnk_020185C0.running = 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08013CDC", sub_0801401C); /* 0x0801401C size 0x6F4 */
 void sub_08014710(void)
 {
     u32 player = gUnk_020185C0.cmd >> 15;

@@ -649,8 +649,6 @@ int sub_08035D78(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: temp registers differ (the ROM loads numTargets into r0, and the rest is
-       * scheduling). The logic is identical. */
 int sub_08035E0C(struct CardRef *ref)
 {
     int p = ref->player;
@@ -674,9 +672,9 @@ int sub_08035E0C(struct CardRef *ref)
                     struct DuelZone *z2 = ZB(p2, tz);
 
                     if (CARD_ID(CARD_WORD(z2->card)) && (ZFLAGS(z2) & 2)) {
-                        sub_08017B04(ref->player, ref->zone << 8 | ref->player, tp | tz << 8);
+                        sub_08017B04(ref->player, ref->player | ref->zone << 8, tp | tz << 8);
                         if (!ref->skip4 && r != -1)
-                            sub_08019078(ref->player, ref->targets[0], (u8)r << 8 | ref->player);
+                            sub_08019078(ref->player, ref->targets[0], ref->player | (u8)r << 8);
                     }
                 }
             }
@@ -684,8 +682,6 @@ int sub_08035E0C(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08035198", sub_08035E0C); /* 0x08035E0C size 0x10C */
 int sub_08035F18(struct CardRef *ref)
 {
     if (!ref->skip4) {

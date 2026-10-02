@@ -610,7 +610,8 @@ int sub_08039EDC(struct CardRef *ref, int arg)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: same zone-scan loop hoisting as sub_080398B0 (ROM: 1 in r8, 0xD64 in r9, base in r5, 2 in r4), plus ref in r6 and the EFF base in r8 */
+struct EffStateW542 { u8 unk0[0x542]; u16 w542; };
+#define ESW ((struct EffStateW542 *)gUnk_02017A40)
 int sub_08039F68(struct CardRef *ref)
 {
     char buf[0x80];
@@ -622,13 +623,14 @@ int sub_08039F68(struct CardRef *ref)
 
         if (sub_08056D98(ref->player, num = 0x4EA, 0x3E7) == -1)
             return 0;
-        if (!sub_08008C94(ref->player, num[gUnk_08623DF4]))
+        if (!sub_08008C94(ref->player, ((const u16 *)0x08623DF4)[num]))
             return 0;
         for (i = 0; i <= 1; i++) {
-            s16 j;
-            struct DuelZone *z = ZB2(i & 1, 0);
+            int j;
 
-            for (j = 0; j <= 4; j++, z++) {
+            for (j = 0; j <= 4; j++) {
+                struct DuelZone *z = ZB2(i & 1, j);
+
                 if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2))
                     goto found;
             }
@@ -642,7 +644,7 @@ int sub_08039F68(struct CardRef *ref)
         return 0x7E;
     case 0x7E: {
         int p;
-        u16 r;
+        int r;
         u32 a;
         u32 b;
         int pos;
@@ -656,15 +658,15 @@ int sub_08039F68(struct CardRef *ref)
         b = DSV->w82C;
         sub_0801EC58(p ? 0x8077 : 0x77, (u8)r | 0x100, (w = &ESH->lo)[0], w[1]);
         sub_08017B04(ref->player, p | (u8)r << 8, pos = (u8)a | (u8)b << 8);
-        ES->w542 = pos;
+        ESW->w542 = pos;
         return 0x7D;
     }
     case 0x7D: {
-        int p2 = 1 - (u8)ES->w542;
+        int p2 = 1 - (u8)ESW->w542;
         int t = sub_08008A44(p2);
 
         if (t >= 0)
-            sub_08019078(ref->player, ES->w542, (u8)p2 | (u8)t << 8);
+            sub_08019078(ref->player, ESW->w542, (u8)p2 | (u8)t << 8);
         sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 1, 0, 0);
         return 0x7C;
     }
@@ -676,8 +678,6 @@ found:
 ret0:
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08039638", sub_08039F68); /* 0x08039F68 size 0x214 */
 int sub_0803A17C(struct CardRef *ref)
 {
     if (!ref->skip4) {

@@ -617,32 +617,50 @@ int sub_080088A4(int player, u16 needFaceUp, u16 needBit0Clear)
     }
     return (u16)count;
 }
-#if 0 /* NONMATCHING: the ROM indexes links[i] by i but walks linkKinds with a pointer that it
-       * advances by 2; GCC strength-reduces both links and linkKinds to pointer walks and the
-       * register allocation differs throughout. */
-/* Whether a zone is free for use (hypothesis): empty, its bit in the player's 5-bit mask at
- * +0x0B/+0x0C clear, and no kind-2 link to a zone holding card number 1320. */
+/* sub_08008940's view of a player's header (it is addressed from gUnk_0201930C - 0x28): a
+ * 5-bit zone mask that straddles +0x0B bits 4-7 and +0x0C bit 0. The packed bitfield gives the
+ * ROM's split read (ldrb +0x0B >> 4, then (ldrb +0x0C & 1) << 4 ORed in that operand order). */
+struct PlayerMask8940 {
+    u8 filler[0xB];
+    u16 lo:4;
+    u16 zoneMask:5;
+} __attribute__((packed));
+/* Zone address with the offsets summed first (the ROM's add order). */
+static inline struct DuelZone *ZoneAt8940(int p, int z)
+{
+    return (struct DuelZone *)((u8 *)gUnk_0201930C + (z * 0x94 + p * 0xD64));
+}
+/* The same address with the base loaded into a local first. FAKEMATCH: the early base load
+ * lets loop.c hoist the whole linkKinds address in its first pass, so strength reduction
+ * walks linkKinds with a pointer started at ((p * 0xD64 + 0x4A) + z * 0x94) + base. */
+static inline struct DuelZone *ZoneAtB8940(int p, int z)
+{
+    u8 *base = (u8 *)gUnk_0201930C;
+    return (struct DuelZone *)(base + (z * 0x94 + p * 0xD64));
+}
+/* Whether a zone is free for use (hypothesis): empty, its bit in the player's 5-bit zone mask
+ * clear, and no kind-2 link to a zone holding card number 1320. */
 u32 sub_08008940(int player, int zone)
 {
-    struct DuelZone *z = ZONE_PTR(player, zone);
-    u8 *pl;
+    struct DuelZone *z = ZoneAt8940(player & 1, zone);
+    struct PlayerMask8940 *pl;
     int i;
 
     if (CARD_ID(z))
         return 0;
-    pl = (u8 *)gUnk_0201930C - 0x28 + (player & 1) * 0xD64;
-    if ((((pl[0xB] >> 4) | ((pl[0xC] & 1) << 4)) >> zone) & 1)
+    pl = (struct PlayerMask8940 *)((u8 *)gUnk_0201930C - 0x28 + (player & 1) * 0xD64);
+    if ((pl->zoneMask >> zone) & 1)
         return 0;
-    for (i = 0; i < z->numLinks; i++) {
+    /* FAKEMATCH: the loop test recomputes the zone address instead of using z; its movables
+     * match the linkKinds ones, so loop.c hoists numLinks out of the loop. */
+    for (i = 0; i < ZoneAt8940(player & 1, zone)->numLinks; i++) {
+        u8 lp = z->links[i];
         u16 lz = z->links[i] >> 8;
-        u8 lp = *(u8 *)&z->links[i];
-        if (*(u8 *)&z->linkKinds[i] == 2) {
-            u16 id = CARD_ID(ZONE_PTR(lp, lz));
+        if ((u8)ZoneAtB8940(player & 1, zone)->linkKinds[i] == 2) {
+            u16 id = CARD_ID(ZoneAtB8940(lp & 1, lz));
             if (id != 0 && CARD_NUMBER_C(id) == 1320)
                 return 0;
         }
     }
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08007994", sub_08008940);

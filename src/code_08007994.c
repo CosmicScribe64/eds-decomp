@@ -221,34 +221,40 @@ void sub_08007D18(int player, struct DuelCard *card)
     sub_08007558(&PLAYER(player).fusionDeck[n], card);
     PLAYER(player).fusionCount++;
 }
-#if 0 /* NONMATCHING: the logic and block layout are right, and the second loop's word mask folds like
-       * the ROM's, but register allocation differs throughout (target: player in r8, cardNo in r7;
-       * GCC: player in r9, cardNo in r6). */
+/* sub_08007558 called without a prototype so a struct DuelCard can be passed by value. */
+typedef void (*CopyByValFn_D50)();
 /* Move a card with number cardNo to the top of the deck: skip the run of such cards already on
- * top, then bring the next one up. Two original bugs are reproduced: the loop bounds use
- * PLAYER(i) (the loop index) instead of PLAYER(player), and the final copy passes the top card
- * word itself, not its address, as the destination. */
+ * top, then bring the next one up. Original bugs reproduced: the loop bounds use PLAYER(i) (the
+ * loop index) instead of PLAYER(player), and both sub_08007558 calls pass a card word by value
+ * where a pointer is expected (the source card, and the top card as the destination). */
 void sub_08007D50(int player, u16 cardNo)
 {
     struct DuelCard tmp;
     int i, j;
+    register int r9 asm("r9"); /* FAKEMATCH: see the asm below */
 
+    /* FAKEMATCH: an empty asm that "sets" r9 marks it as used, so global alloc puts the
+     * loop-2 base pointer in r9 (pass 0) instead of ip, leaving ip for the deck base. */
+    asm volatile("" : "=r"(r9));
     for (i = 0; i < PLAYER(i).deckCount; i++) {
-        if (CARD_NUMBER(CARD_ID(&PLAYER(player).deck[i])) != cardNo)
+        /* The u16 id and the mask local keep 0x7FF in a register (r9) and the table load
+         * short-lived, so loop.c hoists the deck-base loads in the ROM's order. */
+        u16 id = CARD_ID(&PLAYER(player).deck[i]);
+        u32 mask = 0x7FF;
+        if (gUnk_08622AB4[id & mask] != cardNo)
             break;
     }
     for (; i < PLAYER(i).deckCount; i++) {
-        if (CARD_NUMBER(*(u32 *)&PLAYER(player).deck[i]) == cardNo) {
-            sub_08007558(&tmp, &PLAYER(player).deck[i]);
+        struct DuelCard c = *&PLAYER(player).deck[i];
+        if (CARD_NUMBER(c.id) == cardNo) {
+            ((CopyByValFn_D50)sub_08007558)(&tmp, c);
             for (j = i; j > 0; j--)
                 sub_08007560(&PLAYER(player).deck[j], &PLAYER(player).deck[j - 1]);
+            ((CopyByValFn_D50)sub_08007558)(PLAYER(player).deck[0], &tmp);
             return;
-            sub_08007558((struct DuelCard *)*(u32 *)&PLAYER(player).deck[0], &tmp);
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08007994", sub_08007D50);
 /* Shuffle the deck: n * deckCount random swaps. */
 void sub_08007E68(int player, int n)
 {

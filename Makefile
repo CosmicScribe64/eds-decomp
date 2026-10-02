@@ -78,7 +78,7 @@ $(ELF): build/ld_script.ld build/autosyms.o $(OBJS)
 # ROM into assets/, listed in config/assets.tsv; this step builds those files back into binary form.
 ASSET_FILES  := $(shell find assets -type f 2>/dev/null)
 ASSETS_BUILT := build/assets/.built
-$(ASSETS_BUILT): config/assets.tsv tools/assets.py $(ASSET_FILES)
+$(ASSETS_BUILT): config/assets.tsv config/functions.tsv tools/assets.py $(wildcard tools/assetfmt/*.py) $(ASSET_FILES)
 	@test -d assets || { echo "error: assets/ not found. Put your copy of the game in roms/ and run 'tools/dr make setup' (see README.md)."; exit 1; }
 	$(PYTHON) tools/assets.py build
 
@@ -88,6 +88,10 @@ build/asm/crt0.o: $(ASSETS_BUILT)   # cartridge header
 build/asm/%.o: asm/%.s asm/macros.inc
 	@mkdir -p $(@D)
 	$(AS) $(ASFLAGS) --MD build/asm/$*.d -o $@ $<
+
+# Dependency files from an older build can name asset outputs that a manifest change has since renamed.
+# They are all made by $(ASSETS_BUILT), so treat a missing one as up to date instead of failing.
+build/assets/%.bin: ;
 
 build/data/%.o: data/%.s $(ASSETS_BUILT)
 	@mkdir -p $(@D)

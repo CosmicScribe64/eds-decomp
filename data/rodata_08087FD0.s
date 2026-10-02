@@ -3,42 +3,42 @@
 
 	.section .rodata
 
-@ sound/se_table (bin)
+@ sound/se_table.json (sound_seq_se_table)
 	.global gUnk_08087FD0
 gUnk_08087FD0: @ 0x08087FD0
-	.incbin "build/assets/sound__se_table.bin", 0x0, 0x540
-@ sound/se_tracks (bin)
+	.incbin "build/assets/sound__se_table.json.bin", 0x0, 0x540
+@ sound/se_tracks (sound_seq_se_tracks)
 	.incbin "build/assets/sound__se_tracks.bin", 0x0, 0x510
-@ sound/pcm_bank1_table (bin)
+@ sound/pcm_bank1_table.json (sound_samples_table)
 	.global gUnk_08088A20
 gUnk_08088A20: @ 0x08088A20
-	.incbin "build/assets/sound__pcm_bank1_table.bin", 0x0, 0x70
-@ sound/pcm_bank1_samples (bin)
+	.incbin "build/assets/sound__pcm_bank1_table.json.bin", 0x0, 0x70
+@ sound/pcm_bank1_samples (sound_samples_pcm)
 	.incbin "build/assets/sound__pcm_bank1_samples.bin", 0x0, 0x57F40
-@ sound/song_table (bin)
+@ sound/song_table.json (sound_seq_song_table)
 	.global gUnk_080E09D0
 gUnk_080E09D0: @ 0x080E09D0
-	.incbin "build/assets/sound__song_table.bin", 0x0, 0x570
-@ sound/song_tracks (bin)
+	.incbin "build/assets/sound__song_table.json.bin", 0x0, 0x570
+@ sound/song_tracks (sound_seq_song_tracks)
 	.incbin "build/assets/sound__song_tracks.bin", 0x0, 0x3A4E0
-@ sound/pcm_bank0_table (bin)
+@ sound/pcm_bank0_table.json (sound_samples_table)
 	.global gUnk_0811B420
 gUnk_0811B420: @ 0x0811B420
-	.incbin "build/assets/sound__pcm_bank0_table.bin", 0x0, 0x90
-@ sound/pcm_bank0_samples (bin)
+	.incbin "build/assets/sound__pcm_bank0_table.json.bin", 0x0, 0x90
+@ sound/pcm_bank0_samples (sound_samples_pcm)
 	.incbin "build/assets/sound__pcm_bank0_samples.bin", 0x0, 0x1E0A0
-@ sound/wave_ram_patterns (bin)
+@ sound/wave_ram_patterns.json (sound_samples_waveram)
 	.global gUnk_08139550
 gUnk_08139550: @ 0x08139550
-	.incbin "build/assets/sound__wave_ram_patterns.bin", 0x0, 0xA00
-@ sound/unk_08139F50 (bin)
+	.incbin "build/assets/sound__wave_ram_patterns.json.bin", 0x0, 0xA00
+@ sound/noise_table.json (sound_samples_noise)
 	.global gUnk_08139F50
 gUnk_08139F50: @ 0x08139F50
-	.incbin "build/assets/sound__unk_08139F50.bin", 0x0, 0xC
-@ tables/dialogue_box_pointers (bin)
+	.incbin "build/assets/sound__noise_table.json.bin", 0x0, 0xC
+@ tables/dialogue_box_pointers.json (gfx_scenes_ptrs)
 	.global gUnk_08139F5C
 gUnk_08139F5C: @ 0x08139F5C
-	.incbin "build/assets/tables__dialogue_box_pointers.bin", 0x0, 0x8
+	.incbin "build/assets/tables__dialogue_box_pointers.json.bin", 0x0, 0x8
 @ text/duelists.json (duelists)
 	.global gUnk_08139F64
 gUnk_08139F64: @ 0x08139F64
@@ -46,10 +46,10 @@ gUnk_08139F64: @ 0x08139F64
 	.global gUnk_08139F68
 gUnk_08139F68: @ 0x08139F68
 	.incbin "build/assets/text__duelists.json.bin", 0x4, 0xE6C
-@ tables/dialogue_box_steps (bin)
+@ tables/dialogue_box_steps.json (gfx_scenes_ptrs)
 	.global gUnk_0813ADD4
 gUnk_0813ADD4: @ 0x0813ADD4
-	.incbin "build/assets/tables__dialogue_box_steps.bin", 0x0, 0x20
+	.incbin "build/assets/tables__dialogue_box_steps.json.bin", 0x0, 0x20
 @ text/dialogue.json (dialogue)
 	.global gUnk_0813ADF4
 gUnk_0813ADF4: @ 0x0813ADF4
@@ -57,103 +57,103 @@ gUnk_0813ADF4: @ 0x0813ADF4
 	.global gUnk_0813ADF8
 gUnk_0813ADF8: @ 0x0813ADF8
 	.incbin "build/assets/text__dialogue.json.bin", 0x4, 0x5C5A4
-@ text/dialogue_end (bin)
-	.incbin "build/assets/text__dialogue_end.bin", 0x0, 0x304
-@ gfx/scene_sets (bin)
+@ text/dialogue_end.json (tables_game_dialogue_end)
+	.incbin "build/assets/text__dialogue_end.json.bin", 0x0, 0x304
+@ gfx/scene_sets.json (gfx_scenes_table)
 	.global gUnk_081976A0
 gUnk_081976A0: @ 0x081976A0
-	.incbin "build/assets/gfx__scene_sets.bin", 0x0, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x0, 0x14
 	.global gUnk_081976B4
 gUnk_081976B4: @ 0x081976B4
-	.incbin "build/assets/gfx__scene_sets.bin", 0x14, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x14, 0x14
 	.global gUnk_081976C8
 gUnk_081976C8: @ 0x081976C8
-	.incbin "build/assets/gfx__scene_sets.bin", 0x28, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x28, 0x14
 	.global gUnk_081976DC
 gUnk_081976DC: @ 0x081976DC
-	.incbin "build/assets/gfx__scene_sets.bin", 0x3C, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x3C, 0x14
 	.global gUnk_081976F0
 gUnk_081976F0: @ 0x081976F0
-	.incbin "build/assets/gfx__scene_sets.bin", 0x50, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x50, 0x14
 	.global gUnk_08197704
 gUnk_08197704: @ 0x08197704
-	.incbin "build/assets/gfx__scene_sets.bin", 0x64, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x64, 0x14
 	.global gUnk_08197718
 gUnk_08197718: @ 0x08197718
-	.incbin "build/assets/gfx__scene_sets.bin", 0x78, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x78, 0x14
 	.global gUnk_0819772C
 gUnk_0819772C: @ 0x0819772C
-	.incbin "build/assets/gfx__scene_sets.bin", 0x8C, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x8C, 0x14
 	.global gUnk_08197740
 gUnk_08197740: @ 0x08197740
-	.incbin "build/assets/gfx__scene_sets.bin", 0xA0, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0xA0, 0x14
 	.global gUnk_08197754
 gUnk_08197754: @ 0x08197754
-	.incbin "build/assets/gfx__scene_sets.bin", 0xB4, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0xB4, 0x14
 	.global gUnk_08197768
 gUnk_08197768: @ 0x08197768
-	.incbin "build/assets/gfx__scene_sets.bin", 0xC8, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0xC8, 0x14
 	.global gUnk_0819777C
 gUnk_0819777C: @ 0x0819777C
-	.incbin "build/assets/gfx__scene_sets.bin", 0xDC, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0xDC, 0x14
 	.global gUnk_08197790
 gUnk_08197790: @ 0x08197790
-	.incbin "build/assets/gfx__scene_sets.bin", 0xF0, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0xF0, 0x14
 	.global gUnk_081977A4
 gUnk_081977A4: @ 0x081977A4
-	.incbin "build/assets/gfx__scene_sets.bin", 0x104, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x104, 0x14
 	.global gUnk_081977B8
 gUnk_081977B8: @ 0x081977B8
-	.incbin "build/assets/gfx__scene_sets.bin", 0x118, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x118, 0x14
 	.global gUnk_081977CC
 gUnk_081977CC: @ 0x081977CC
-	.incbin "build/assets/gfx__scene_sets.bin", 0x12C, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x12C, 0x14
 	.global gUnk_081977E0
 gUnk_081977E0: @ 0x081977E0
-	.incbin "build/assets/gfx__scene_sets.bin", 0x140, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x140, 0x14
 	.global gUnk_081977F4
 gUnk_081977F4: @ 0x081977F4
-	.incbin "build/assets/gfx__scene_sets.bin", 0x154, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x154, 0x14
 	.global gUnk_08197808
 gUnk_08197808: @ 0x08197808
-	.incbin "build/assets/gfx__scene_sets.bin", 0x168, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x168, 0x14
 	.global gUnk_0819781C
 gUnk_0819781C: @ 0x0819781C
-	.incbin "build/assets/gfx__scene_sets.bin", 0x17C, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x17C, 0x14
 	.global gUnk_08197830
 gUnk_08197830: @ 0x08197830
-	.incbin "build/assets/gfx__scene_sets.bin", 0x190, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x190, 0x14
 	.global gUnk_08197844
 gUnk_08197844: @ 0x08197844
-	.incbin "build/assets/gfx__scene_sets.bin", 0x1A4, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x1A4, 0x14
 	.global gUnk_08197858
 gUnk_08197858: @ 0x08197858
-	.incbin "build/assets/gfx__scene_sets.bin", 0x1B8, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x1B8, 0x14
 	.global gUnk_0819786C
 gUnk_0819786C: @ 0x0819786C
-	.incbin "build/assets/gfx__scene_sets.bin", 0x1CC, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x1CC, 0x14
 	.global gUnk_08197880
 gUnk_08197880: @ 0x08197880
-	.incbin "build/assets/gfx__scene_sets.bin", 0x1E0, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x1E0, 0x14
 	.global gUnk_08197894
 gUnk_08197894: @ 0x08197894
-	.incbin "build/assets/gfx__scene_sets.bin", 0x1F4, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x1F4, 0x14
 	.global gUnk_081978A8
 gUnk_081978A8: @ 0x081978A8
-	.incbin "build/assets/gfx__scene_sets.bin", 0x208, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x208, 0x14
 	.global gUnk_081978BC
 gUnk_081978BC: @ 0x081978BC
-	.incbin "build/assets/gfx__scene_sets.bin", 0x21C, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x21C, 0x14
 	.global gUnk_081978D0
 gUnk_081978D0: @ 0x081978D0
-	.incbin "build/assets/gfx__scene_sets.bin", 0x230, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x230, 0x14
 	.global gUnk_081978E4
 gUnk_081978E4: @ 0x081978E4
-	.incbin "build/assets/gfx__scene_sets.bin", 0x244, 0x14
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x244, 0x14
 	.global gUnk_081978F8
 gUnk_081978F8: @ 0x081978F8
-	.incbin "build/assets/gfx__scene_sets.bin", 0x258, 0x14
-@ tables/scene_scripts_and_lists (bin)
+	.incbin "build/assets/gfx__scene_sets.json.bin", 0x258, 0x14
+@ tables/scene_scripts_and_lists (tables_code_layout)
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x0, 0x7C8
 	.global gUnk_081980D4
 gUnk_081980D4: @ 0x081980D4
@@ -362,11 +362,11 @@ gUnk_0819A970: @ 0x0819A970
 	.global gUnk_0819A990
 gUnk_0819A990: @ 0x0819A990
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x3084, 0x44
-@ tables/card_effect_handlers (bin)
+@ tables/card_effect_handlers (tables_code_effects)
 	.global gUnk_0819A9D4
 gUnk_0819A9D4: @ 0x0819A9D4
 	.incbin "build/assets/tables__card_effect_handlers.bin", 0x0, 0x27F0
-@ tables/pointer_tables (bin)
+@ tables/pointer_tables (tables_game_layout)
 	.global gUnk_0819D1C4
 gUnk_0819D1C4: @ 0x0819D1C4
 	.incbin "build/assets/tables__pointer_tables.bin", 0x0, 0x14
@@ -391,15 +391,15 @@ gUnk_0819D2FC: @ 0x0819D2FC
 	.global gUnk_0819D316
 gUnk_0819D316: @ 0x0819D316
 	.incbin "build/assets/tables__pointer_tables.bin", 0x152, 0x36
-@ tables/deck_lists (bin)
-	.incbin "build/assets/tables__deck_lists.bin", 0x0, 0x920
+@ tables/deck_lists.json (tables_game_decks)
+	.incbin "build/assets/tables__deck_lists.json.bin", 0x0, 0x920
 	.global gUnk_0819DC6C
 gUnk_0819DC6C: @ 0x0819DC6C
-	.incbin "build/assets/tables__deck_lists.bin", 0x920, 0xC8
+	.incbin "build/assets/tables__deck_lists.json.bin", 0x920, 0xC8
 	.global gUnk_0819DD34
 gUnk_0819DD34: @ 0x0819DD34
-	.incbin "build/assets/tables__deck_lists.bin", 0x9E8, 0x30
-@ tables/rodata2 (bin)
+	.incbin "build/assets/tables__deck_lists.json.bin", 0x9E8, 0x30
+@ tables/rodata2 (tables_game_layout)
 	.global gUnk_0819DD64
 gUnk_0819DD64: @ 0x0819DD64
 	.incbin "build/assets/tables__rodata2.bin", 0x0, 0x8
@@ -580,18 +580,18 @@ gUnk_081A79E8: @ 0x081A79E8
 	.global gUnk_081A79F9
 gUnk_081A79F9: @ 0x081A79F9
 	.incbin "build/assets/tables__rodata2.bin", 0x9C95, 0x13
-@ sound/lookup_tables (bin)
-	.incbin "build/assets/sound__lookup_tables.bin", 0x0, 0x1C00
+@ sound/lookup_tables.json (sound_seq_lookup)
+	.incbin "build/assets/sound__lookup_tables.json.bin", 0x0, 0x1C00
 	.global gUnk_081A960C
 gUnk_081A960C: @ 0x081A960C
-	.incbin "build/assets/sound__lookup_tables.bin", 0x1C00, 0xC00
+	.incbin "build/assets/sound__lookup_tables.json.bin", 0x1C00, 0xC00
 	.global gUnk_081AA20C
 gUnk_081AA20C: @ 0x081AA20C
-	.incbin "build/assets/sound__lookup_tables.bin", 0x2800, 0x1A40
-@ tables/sine (bin)
+	.incbin "build/assets/sound__lookup_tables.json.bin", 0x2800, 0x1A40
+@ tables/sine.json (tables_game_sine)
 	.global gUnk_081ABC4C
 gUnk_081ABC4C: @ 0x081ABC4C
-	.incbin "build/assets/tables__sine.bin", 0x0, 0x200
+	.incbin "build/assets/tables__sine.json.bin", 0x0, 0x200
 @ padding_081ABE4C (zero)
 	.space 0x141B4
 @ fonts/kanji_8x8.png (font1bpp)
@@ -665,13 +665,13 @@ gUnk_08622AB4: @ 0x08622AB4
 	.global gUnk_0862311E
 gUnk_0862311E: @ 0x0862311E
 	.incbin "build/assets/cards__id_to_number.json.bin", 0x66A, 0x2
-@ cards/passwords (bin)
+@ cards/passwords.csv (tables_game_passwords)
 	.global gUnk_08623120
 gUnk_08623120: @ 0x08623120
-	.incbin "build/assets/cards__passwords.bin", 0x0, 0x206
+	.incbin "build/assets/cards__passwords.csv.bin", 0x0, 0x206
 	.global gUnk_08623326
 gUnk_08623326: @ 0x08623326
-	.incbin "build/assets/cards__passwords.bin", 0x206, 0xACE
+	.incbin "build/assets/cards__passwords.csv.bin", 0x206, 0xACE
 @ cards/number_to_id.json (u16)
 	.global gUnk_08623DF4
 gUnk_08623DF4: @ 0x08623DF4
@@ -828,7 +828,7 @@ gUnk_08624CF4: @ 0x08624CF4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xF00, 0x100
 @ cards/sort_keys.json (u16)
 	.incbin "build/assets/cards__sort_keys.json.bin", 0x0, 0x66C
-@ gfx/card_frames (bin)
+@ gfx/card_frames (gfx_banks_bank)
 	.global gUnk_08625460
 gUnk_08625460: @ 0x08625460
 	.incbin "build/assets/gfx__card_frames.bin", 0x0, 0x2698
@@ -850,7 +850,7 @@ gUnk_08631558: @ 0x08631558
 	.global gUnk_08633BF0
 gUnk_08633BF0: @ 0x08633BF0
 	.incbin "build/assets/gfx__card_frames.bin", 0xE790, 0x2698
-@ gfx/bank_a (bin)
+@ gfx/bank_a (gfx_banks_bank)
 	.incbin "build/assets/gfx__bank_a.bin", 0x0, 0xC0
 	.global gUnk_08636348
 gUnk_08636348: @ 0x08636348
@@ -1716,9 +1716,17 @@ gUnk_0870B620: @ 0x0870B620
 	.global gUnk_0870C620
 gUnk_0870C620: @ 0x0870C620
 	.incbin "build/assets/gfx__bank_a.bin", 0xD6398, 0x20
-@ gfx/scene_sets_0_4 (bin)
-	.incbin "build/assets/gfx__scene_sets_0_4.bin", 0x0, 0xF010
-@ gfx/small_graphics (bin)
+@ gfx/scenes/set02 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set02.bin", 0x0, 0x3880
+@ gfx/scenes/set00 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set00.bin", 0x0, 0x30D8
+@ gfx/scenes/set03 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set03.bin", 0x0, 0x3118
+@ gfx/scenes/set04 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set04.bin", 0x0, 0x2810
+@ gfx/scenes/set01 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set01.bin", 0x0, 0x2D90
+@ gfx/small_graphics (gfx_banks_bank)
 	.global gUnk_0871B650
 gUnk_0871B650: @ 0x0871B650
 	.incbin "build/assets/gfx__small_graphics.bin", 0x0, 0x200
@@ -1734,9 +1742,9 @@ gUnk_0871CA50: @ 0x0871CA50
 	.global gUnk_0871CB90
 gUnk_0871CB90: @ 0x0871CB90
 	.incbin "build/assets/gfx__small_graphics.bin", 0x1540, 0x2C0
-@ gfx/mode4_bitmaps (bin)
+@ gfx/mode4_bitmaps (gfx_banks_bank)
 	.incbin "build/assets/gfx__mode4_bitmaps.bin", 0x0, 0x2F800
-@ gfx/dialogue_box (bin)
+@ gfx/dialogue_box (gfx_scenes_box)
 	.incbin "build/assets/gfx__dialogue_box.bin", 0x0, 0xF60
 	.global gUnk_0874D5B0
 gUnk_0874D5B0: @ 0x0874D5B0
@@ -1753,9 +1761,59 @@ gUnk_0874E104: @ 0x0874E104
 	.global gUnk_0874E304
 gUnk_0874E304: @ 0x0874E304
 	.incbin "build/assets/gfx__dialogue_box.bin", 0x1CB4, 0x20
-@ gfx/scene_sets_5_30 (bin)
-	.incbin "build/assets/gfx__scene_sets_5_30.bin", 0x0, 0x6F784
-@ gfx/bank_b (bin)
+@ gfx/scenes/set05 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set05.bin", 0x0, 0x4A24
+@ gfx/scenes/set06 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set06.bin", 0x0, 0x41F0
+@ gfx/scenes/set07 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set07.bin", 0x0, 0x44C4
+@ gfx/scenes/set08 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set08.bin", 0x0, 0x4180
+@ gfx/scenes/set09 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set09.bin", 0x0, 0x439C
+@ gfx/scenes/set14 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set14.bin", 0x0, 0x45AC
+@ gfx/scenes/set15 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set15.bin", 0x0, 0x495C
+@ gfx/scenes/set16 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set16.bin", 0x0, 0x4B84
+@ gfx/scenes/set17 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set17.bin", 0x0, 0x45E0
+@ gfx/scenes/set18 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set18.bin", 0x0, 0x4398
+@ gfx/scenes/set10 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set10.bin", 0x0, 0x48C4
+@ gfx/scenes/set19 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set19.bin", 0x0, 0x4888
+@ gfx/scenes/set20 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set20.bin", 0x0, 0x44AC
+@ gfx/scenes/set11 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set11.bin", 0x0, 0x4A70
+@ gfx/scenes/set21 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set21.bin", 0x0, 0x454C
+@ gfx/scenes/set23 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set23.bin", 0x0, 0x46C8
+@ gfx/scenes/set22 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set22.bin", 0x0, 0x4188
+@ gfx/scenes/set24 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set24.bin", 0x0, 0x4730
+@ gfx/scenes/set25 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set25.bin", 0x0, 0x3F34
+@ gfx/scenes/set13 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set13.bin", 0x0, 0x3C68
+@ gfx/scenes/set26 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set26.bin", 0x0, 0x4804
+@ gfx/scenes/set12 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set12.bin", 0x0, 0x4620
+@ gfx/scenes/set27 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set27.bin", 0x0, 0x4338
+@ gfx/scenes/set28 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set28.bin", 0x0, 0x3A60
+@ gfx/scenes/set29 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set29.bin", 0x0, 0x3FF8
+@ gfx/scenes/set30 (gfx_scenes_set)
+	.incbin "build/assets/gfx__scenes__set30.bin", 0x0, 0x4108
+@ gfx/bank_b (gfx_banks_bank)
 	.global gUnk_087BDAA8
 gUnk_087BDAA8: @ 0x087BDAA8
 	.incbin "build/assets/gfx__bank_b.bin", 0x0, 0x2AC4

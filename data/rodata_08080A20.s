@@ -3,7 +3,7 @@
 
 	.section .rodata
 
-@ rodata/strings_and_tables (bin)
+@ rodata/strings_and_tables (tables_code_layout)
 	.global gUnk_08080A20
 gUnk_08080A20: @ 0x08080A20
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x0, 0x10

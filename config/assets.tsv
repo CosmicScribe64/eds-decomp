@@ -4,41 +4,32 @@
 # Changing a range or type: run `tools/dr python3 tools/assets.py check`, then `gen-data`, then `make setup`.
 
 # Cartridge header after the entry branch (Nintendo logo, title, codes); used by asm/crt0.s.
-08000004 080000C0 bin         header
-
-# .rodata 1: string literals and small tables (see wiki/game/text-system.md).
-08080A20 08087FB4 bin         rodata/strings_and_tables
-
-# Sound data (wiki/game/sound-engine.md).
-08087FD0 08088510 bin         sound/se_table
-08088510 08088A20 bin         sound/se_tracks
-08088A20 08088A90 bin         sound/pcm_bank1_table
-08088A90 080E09D0 bin         sound/pcm_bank1_samples
-080E09D0 080E0F40 bin         sound/song_table
-080E0F40 0811B420 bin         sound/song_tracks
-0811B420 0811B4B0 bin         sound/pcm_bank0_table
-0811B4B0 08139550 bin         sound/pcm_bank0_samples
-08139550 08139F50 bin         sound/wave_ram_patterns
-08139F50 08139F5C bin         sound/unk_08139F50
-
-# Game tables and dialogue.
-08139F5C 08139F64 bin         tables/dialogue_box_pointers
+08000004 080000C0 tables_code_header   header
+08080A20 08087FB4 tables_code_layout   rodata/strings_and_tables
+08087FD0 08088510 sound_seq_se_table    sound/se_table.json     tracks=sound/se_tracks
+08088510 08088A20 sound_seq_se_tracks   sound/se_tracks         table=08087FD0 count=48
+08088A20 08088A90 sound_samples_table    sound/pcm_bank1_table.json     bank=1 samples=sound/pcm_bank1_samples
+08088A90 080E09D0 sound_samples_pcm      sound/pcm_bank1_samples        bank=1 table=08088A20 entries=28
+080E09D0 080E0F40 sound_seq_song_table  sound/song_table.json   tracks=sound/song_tracks
+080E0F40 0811B420 sound_seq_song_tracks sound/song_tracks       table=080E09D0 count=58
+0811B420 0811B4B0 sound_samples_table    sound/pcm_bank0_table.json     bank=0 samples=sound/pcm_bank0_samples
+0811B4B0 08139550 sound_samples_pcm      sound/pcm_bank0_samples        bank=0 table=0811B420 entries=36
+08139550 08139F50 sound_samples_waveram  sound/wave_ram_patterns.json
+08139F50 08139F5C sound_samples_noise    sound/noise_table.json
+08139F5C 08139F64 gfx_scenes_ptrs   tables/dialogue_box_pointers.json
 08139F64 0813ADD4 duelists    text/duelists.json
-0813ADD4 0813ADF4 bin         tables/dialogue_box_steps
+0813ADD4 0813ADF4 gfx_scenes_ptrs   tables/dialogue_box_steps.json  kind=func
 0813ADF4 0819739C dialogue    text/dialogue.json
-0819739C 081976A0 bin         text/dialogue_end
-081976A0 0819790C bin         gfx/scene_sets
-0819790C 0819A9D4 bin         tables/scene_scripts_and_lists
-0819A9D4 0819D1C4 bin         tables/card_effect_handlers
-0819D1C4 0819D34C bin         tables/pointer_tables
-0819D34C 0819DD64 bin         tables/deck_lists
-0819DD64 081A7A0C bin         tables/rodata2
-081A7A0C 081ABC4C bin         sound/lookup_tables
-081ABC4C 081ABE4C bin         tables/sine
+0819739C 081976A0 tables_game_dialogue_end text/dialogue_end.json
+081976A0 0819790C gfx_scenes_table  gfx/scene_sets.json
+0819790C 0819A9D4 tables_code_layout   tables/scene_scripts_and_lists
+0819A9D4 0819D1C4 tables_code_effects  tables/card_effect_handlers
+0819D1C4 0819D34C tables_game_layout tables/pointer_tables layout=pointer_tables
+0819D34C 0819DD64 tables_game_decks tables/deck_lists.json
+0819DD64 081A7A0C tables_game_layout tables/rodata2 layout=rodata2
+081A7A0C 081ABC4C sound_seq_lookup      sound/lookup_tables.json
+081ABC4C 081ABE4C tables_game_sine tables/sine.json
 081ABE4C 081C0000 zero        padding_081ABE4C
-
-# Fonts (wiki/data/font.md).
-# Kanji sheets have one Shift-JIS lead byte per row (192 glyphs); Latin sheets are in Windows-1252 order.
 081C0000 081D0200 font1bpp    fonts/kanji_8x8.png        h=8 bits=8 cols=192
 081D0200 081F8700 font1bpp    fonts/kanji_10x10.png      h=10 bits=16 cols=192
 081F8700 08228D00 font1bpp    fonts/kanji_12x12.png      h=12 bits=16 cols=192
@@ -49,25 +40,50 @@
 0822BB00 0822C300 font1bpp    fonts/latin_8x8_bold.png   h=8 bits=8 cols=16
 0822C300 0822C320 palette     gfx/system.pal
 0822C320 0822C720 tiles4bpp   gfx/system_tiles.png       cols=16 pal=0822C300
-
-# Per-card block, indexed by card ID 0-820 (wiki/data/card-table.md).
 0822C720 08239460 strings     cards/names.json           size=0x40
 08239460 082461A0 zero        cards/unused_name_bank
 082461A0 082A6500 strings     cards/descriptions.json    size=0x1E0
 082A6500 08621DE0 card_art    cards/art
 08621DE0 08622AB4 card_stats  cards/stats.csv
 08622AB4 08623120 u16         cards/id_to_number.json
-08623120 08623DF4 bin         cards/passwords
+08623120 08623DF4 tables_game_passwords cards/passwords.csv
 08623DF4 08624DF4 u16         cards/number_to_id.json
 08624DF4 08625460 u16         cards/sort_keys.json
-
-# Graphics (wiki/data/graphics-formats.md).
-08625460 08636288 bin         gfx/card_frames
-08636288 0870C640 bin         gfx/bank_a
-0870C640 0871B650 bin         gfx/scene_sets_0_4
-0871B650 0871CE50 bin         gfx/small_graphics
-0871CE50 0874C650 bin         gfx/mode4_bitmaps
-0874C650 0874E324 bin         gfx/dialogue_box
-0874E324 087BDAA8 bin         gfx/scene_sets_5_30
-087BDAA8 087F8568 bin         gfx/bank_b
+08625460 08636288 gfx_banks_bank gfx/card_frames layout=card_frames
+08636288 0870C640 gfx_banks_bank gfx/bank_a layout=bank_a
+0870C640 0870FEC0 gfx_scenes_set    gfx/scenes/set02  set=2
+0870FEC0 08712F98 gfx_scenes_set    gfx/scenes/set00  set=0
+08712F98 087160B0 gfx_scenes_set    gfx/scenes/set03  set=3
+087160B0 087188C0 gfx_scenes_set    gfx/scenes/set04  set=4
+087188C0 0871B650 gfx_scenes_set    gfx/scenes/set01  set=1
+0871B650 0871CE50 gfx_banks_bank gfx/small_graphics layout=small_graphics
+0871CE50 0874C650 gfx_banks_bank gfx/mode4_bitmaps layout=mode4_bitmaps
+0874C650 0874E324 gfx_scenes_box    gfx/dialogue_box
+0874E324 08752D48 gfx_scenes_set    gfx/scenes/set05  set=5
+08752D48 08756F38 gfx_scenes_set    gfx/scenes/set06  set=6
+08756F38 0875B3FC gfx_scenes_set    gfx/scenes/set07  set=7
+0875B3FC 0875F57C gfx_scenes_set    gfx/scenes/set08  set=8
+0875F57C 08763918 gfx_scenes_set    gfx/scenes/set09  set=9
+08763918 08767EC4 gfx_scenes_set    gfx/scenes/set14  set=14
+08767EC4 0876C820 gfx_scenes_set    gfx/scenes/set15  set=15
+0876C820 087713A4 gfx_scenes_set    gfx/scenes/set16  set=16
+087713A4 08775984 gfx_scenes_set    gfx/scenes/set17  set=17
+08775984 08779D1C gfx_scenes_set    gfx/scenes/set18  set=18
+08779D1C 0877E5E0 gfx_scenes_set    gfx/scenes/set10  set=10
+0877E5E0 08782E68 gfx_scenes_set    gfx/scenes/set19  set=19
+08782E68 08787314 gfx_scenes_set    gfx/scenes/set20  set=20
+08787314 0878BD84 gfx_scenes_set    gfx/scenes/set11  set=11
+0878BD84 087902D0 gfx_scenes_set    gfx/scenes/set21  set=21
+087902D0 08794998 gfx_scenes_set    gfx/scenes/set23  set=23
+08794998 08798B20 gfx_scenes_set    gfx/scenes/set22  set=22
+08798B20 0879D250 gfx_scenes_set    gfx/scenes/set24  set=24
+0879D250 087A1184 gfx_scenes_set    gfx/scenes/set25  set=25
+087A1184 087A4DEC gfx_scenes_set    gfx/scenes/set13  set=13
+087A4DEC 087A95F0 gfx_scenes_set    gfx/scenes/set26  set=26
+087A95F0 087ADC10 gfx_scenes_set    gfx/scenes/set12  set=12
+087ADC10 087B1F48 gfx_scenes_set    gfx/scenes/set27  set=27
+087B1F48 087B59A8 gfx_scenes_set    gfx/scenes/set28  set=28
+087B59A8 087B99A0 gfx_scenes_set    gfx/scenes/set29  set=29
+087B99A0 087BDAA8 gfx_scenes_set    gfx/scenes/set30  set=30
+087BDAA8 087F8568 gfx_banks_bank gfx/bank_b layout=bank_b
 087F8568 08800000 zero        padding_end

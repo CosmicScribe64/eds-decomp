@@ -218,40 +218,51 @@ extern char gUnk_08083A14[];
 
 
 
-#if 0 /* NONMATCHING: logic verified against the asm. The ROM keeps tz in r8,
-       * tp in r7, numTargets (==1) in r6 as the constant 1, and base
-       * 0x02017A40 in r4. This build picks r4/r7/r3 and lays out the n >= m
-       * test the other way round. */
+struct EffState838 {
+    u8 unk0[0x3E0];
+    u8 phase;       /* +0x3E0 */
+    u8 side;        /* +0x3E1 */
+    u8 unk3E2[0x542 - 0x3E2];
+    u16 w542;       /* +0x542 */
+};
+#define ES838 ((struct EffState838 *)gUnk_02017A40)
+union ViewCard838 {
+    struct {
+        u32 lo : 20;
+        u32 flag20 : 1;
+        u32 hi : 11;
+    } b;
+    u16 h[2];
+};
+struct ListView838 {
+    u8 unk0[0xC];
+    union ViewCard838 cards[0x80];    /* +0x0C: card words */
+};
+#define LV838 ((struct ListView838 *)&gUnk_0201D810)
 int sub_0803C838(struct CardRef *ref)
 {
-    int tz = ref->targets[0] >> 8;
     int tp = (u8)ref->targets[0];
+    int tz = ref->targets[0] >> 8;
 
     if (!ref->skip4) {
         switch (EFF_PHASE) {
         case 0x80: {
-            int pa;
-            struct DuelZone *z;
-            s16 n;
-            u16 m;
-            u16 *w;
+            int n = 7 & ((u8 *)ref)[0xA];
+            int a, m;
 
-            if (ref->numTargets != 1)
+            if (n != 1)
                 return 0;
             if (sub_0802C674(ref, ref->targets[0]) == 0)
                 return 0;
             sub_08018C3C(tp, tz);
-            z = ZB(pa, tz);
-            pa = tp & 1;
-            w = &EFF_W542;
-            *w = CARD_ID(CARD_WORD(z->card));
-            n = sub_08008A1C(ref->player);
-            m = sub_08044224(ref->player, 0x60A, *w);
+            ES838->w542 = CARD_ID(CARD_WORD(ZBP(tp & n, tz)->card));
+            a = sub_08008A1C(ref->player);
+            m = sub_08044224(ref->player, 0x60A, ES838->w542);
             if (m == 0)
                 return 0;
-            if (n < m)
+            if (a < m)
                 return 0;
-            if (1 & ((u8 *)ref)[2])
+            if (n & ((u8 *)ref)[2])
                 return 0;
             return 0x7F;
         }
@@ -262,28 +273,22 @@ int sub_0803C838(struct CardRef *ref)
         case 0x7E:
             if (gUnk_0201AE60.flag14 == 0)
                 return 0;
-            EFF_SIDE = sub_08044224(ref->player, 0x60A, EFF_W542);
+            EFF_SIDE = sub_08044224(ref->player, 0x60A, ES838->w542);
             return 0x7D;
         case 0x7D:
             if (EFF_SIDE == 0)
                 return 0;
             EFF_SIDE--;
-            {
-                u16 *cw = (u16 *)&gUnk_0201D810.cards[EFF_SIDE];
-
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, cw[0], cw[1], 0);
-            }
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, ((union ViewCard838 *)gUnk_0201D81C)[EFF_SIDE].h[0], ((union ViewCard838 *)gUnk_0201D81C)[EFF_SIDE].h[1], 0);
             return 0x7C;
         case 0x7C:
-            ((u8 *)&gUnk_0201D810.cards[EFF_SIDE])[2] &= ~0x10;
-            sub_08056094(ref->player, &gUnk_0201D810.cards[EFF_SIDE], 1, 0x20);
+            LV838->cards[EFF_SIDE].b.flag20 = 0;
+            sub_08056094(ref->player, (u32 *)&LV838->cards[EFF_SIDE], 1, 0x20);
             return 0x7D;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803C838", sub_0803C838); /* 0x0803C838 size 0x1C4 */
 int sub_0803C9FC(struct CardRef *ref, int arg)
 {
     if (!ref->skip4) {

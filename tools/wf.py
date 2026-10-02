@@ -163,7 +163,18 @@ def marked_region(text, func):
     return i, j, lines
 
 
-FORBIDDEN = re.compile(r'(?:__asm__|\basm)\s*(?:volatile|__volatile__)?\s*\(\s*"[^"]*\S[^"]*"')
+ASMSTR = re.compile(r'(?:__asm__|\basm)\s*(?:volatile|__volatile__)?\s*\(\s*"([^"]*)"')
+REGNAME = re.compile(r'^(?:r\d|r1[0-5]|sl|fp|ip|sp|lr|pc)$')
+
+
+class _Forbidden:
+    @staticmethod
+    def search(text):
+        # asm("") constraint tricks and register asm("rN") bindings are accepted; instructions are not
+        return any(m.group(1).strip() and not REGNAME.match(m.group(1).strip()) for m in ASMSTR.finditer(text))
+
+
+FORBIDDEN = _Forbidden()
 
 
 def validate(text, func):

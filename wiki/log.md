@@ -654,3 +654,12 @@ updated: 2026-09-29
 
 ## [2026-10-01] progress | sub_08043B98 draft near-match (still nonmatching)
 - Same size as target; remaining diffs are a few register choices (0x80 call temps, an extra base copy in the 0x64 hoist, a 0x78 word-loop reg swap). Key finds: `p` local before struct hand access, `nv`/`m` locals, u8-returning single-exit level helper, if/else cost clamp, address-sum zone access, `*(arr + n)` index. Permuter best 364 from base 519.
+
+## [2026-10-01] progress | sub_080471E8 case 40 matches; case 80 remains
+- Updated [[code-08046738]]: case 40 of the parked draft now byte-identical (pinned-register/barrier forms, spill-register liveness trick); only case 80 still differs (table-pointer spill and reload-pick rotation). Recorded the reload/cse/local-alloc mechanics found in the agbcc sources. Still nonmatching, unit `MATCH` with `INCLUDE_ASM`.
+
+
+## [2026-10-01] progress | sub_08044224 region-diff pass (still nonmatching)
+- `src/code_08044224.c`: parked draft replaced by the improved candidate (volatile stats table, `u16` type inline, `b/off` pointer forms, `off += 4` loops, `cardNo`/`switch` compares, tail `word++` filters); unit still `MATCH`.
+- Masked region-diff metric 4667 -> about 1300; size 0x24A0-0x24EC vs 0x2514. Remaining gap is mostly register allocation (list base sl vs r9, count pointer ip) and the tail loop shapes.
+- Updated [[code-08044224]] with the confirmed idioms and allocation notes.

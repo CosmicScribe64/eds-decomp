@@ -298,10 +298,6 @@ int sub_08051ED0(int player)
         return 1;
     }
 }
-#if 0 /* NONMATCHING: the selector/card fields and switch branches agree, but
-       * the duel-base lifetime adds r8, cursor/card pointer allocation
-       * differs, and the local flag-store pointer absorbs +0xC into its byte
-       * offset. */
 struct PickCard { u32 id : 12; u32 flag12 : 1; u32 rest : 19; };
 struct PickCursor { u8 pad0[5]; u8 sub : 2; u8 flags : 6; u16 index; u8 pad8[4]; struct PickCard cards[80]; };
 extern struct PickCursor gUnk_0201D810;
@@ -311,10 +307,13 @@ int sub_08056ECC(u16 id);
 void sub_0802AF34(s32 player, s32 skip, u16 number, u16 mode);
 int sub_08052018(s32 player, u16 id, u16 mode)
 {
-    struct Duel *d = &gUnk_020192E0;
-    u8 *step = &d->step;
+    struct Duel *d;
     struct PickCard *chosen;
-    switch (*step) {
+    u8 st;
+    /* Reading the step before taking d gives the ROM's `ldr r0; ...; ldrb; adds r7,r0,#0` copy. */
+    st = gUnk_020192E0.step;
+    d = &gUnk_020192E0;
+    switch (st) {
     case 0:
         if (player != 0) {
             chosen = &gUnk_0201D81C[sub_08056ECC(id)];
@@ -326,16 +325,18 @@ int sub_08052018(s32 player, u16 id, u16 mode)
         case 0x5F0: sub_080602A4(0x206, 0x712, 0xB, gUnk_080860FC); break;
         default: return 1;
         }
-        d->step++;
+        gUnk_020192E0.step++;
         return 0;
     case 1:
-        (*step)++;
         sub_0802AF34(player, -1, ((const u16 *)0x08622AB4)[id & 0x7FF], mode);
+        gUnk_020192E0.step++;
         return 0;
     default:
         chosen = &gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index];
         if (d->u0[0x1B12] & 2)
-            gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index].flag12 =
+            /* FAKEMATCH: `(&...)[0]` keeps the byte store relative to the cards base ([r2,#1])
+               instead of folding +0xC+1 into one offset off the cursor ([r2,#13]). */
+            (&gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index])[0].flag12 =
                 1 - ((*(u32 *)&gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index] << 19) >> 31);
         break;
     }
@@ -343,8 +344,6 @@ int sub_08052018(s32 player, u16 id, u16 mode)
     d->sel2 = ((u16 *)chosen)[1];
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052018); /* 0x08052018 size 0x178 */
 void sub_08052190(void)
 {
     struct Ui *u = &gUnk_0201AE60;

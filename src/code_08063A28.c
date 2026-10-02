@@ -833,61 +833,71 @@ void sub_08064768(u32 id) {
 }
 /* END sub_08064768 */
 /* BEGIN sub_080647A4 */
-#if 0 /* NONMATCHING: logic verified, but register allocation differs (the ROM keeps 0x0202037E in r2 hoisted before the first wait loop and spills to the stack) */
+extern u8 gUnk_0202037E[];
 /* Load the pack-list palette and 3 label graphics via DMA3, then fill the 32x20 tile map: rows a..b-1 use tile c, others c + 1. */
 void sub_080647A4(s32 a, s32 b, u16 c) {
     s32 i;
-    s16 j;
-    u16 k;
+    s32 j;
+    s32 next;
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = (u32)gUnk_0863CC7C;
+        dma[0] = 0x0863CC7C;
         dma[1] = 0x05000000;
         dma[2] = 0x80000100;
         dma[2];
+    }
+    {
+        vu32 *dma = (vu32 *)0x040000D4;
         while (dma[2] & 0x80000000)
             ;
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[1] = 0x0202037E + (c << 6);
-        dma[0] = (u32)gUnk_0863CE7C;
+        dma[0] = 0x0863CE7C;
+        dma[1] = (u32)&gUnk_0202037E[c << 6];
         dma[2] = 0x80000020;
         dma[2];
+    }
+    {
+        vu32 *dma = (vu32 *)0x040000D4;
         while (dma[2] & 0x80000000)
             ;
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = (u32)gUnk_0863CEBC;
-        dma[1] = 0x0202037E + ((c + 1) << 6);
+        dma[0] = 0x0863CEBC;
+        dma[1] = (u32)&gUnk_0202037E[(c + 1) << 6];
         dma[2] = 0x80000020;
         dma[2];
+    }
+    {
+        vu32 *dma = (vu32 *)0x040000D4;
         while (dma[2] & 0x80000000)
             ;
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = (u32)gUnk_0863CEFC;
-        dma[1] = 0x0202037E + ((c + 2) << 6);
+        dma[0] = 0x0863CEFC;
+        dma[1] = (u32)&gUnk_0202037E[(c + 2) << 6];
         dma[2] = 0x80000020;
         dma[2];
+    }
+    {
+        vu32 *dma = (vu32 *)0x040000D4;
         while (dma[2] & 0x80000000)
             ;
     }
-    for (i = 0; i <= 0x13; i++) {
-        u32 row = (u16)i << 5;
-        k = 0;
-        for (j = 0x1F; j >= 0; j--, k++) {
-            if (a > i || i >= b)
-                gUnk_03001C5C[k + row] = c + 1;
+    for (i = 0; i <= 0x13; i = next) {
+        u16 x = i;
+        next = i + 1;
+        for (j = 0; j <= 0x1F; j++) {
+            if (a <= i && i < b)
+                gUnk_03001C5C[(u16)j + (x << 5)] = c;
             else
-                gUnk_03001C5C[k + row] = c;
+                gUnk_03001C5C[(u16)j + (x << 5)] = c + 1;
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08063A28", sub_080647A4); /* 0x080647A4 size 0x130 */
 /* END sub_080647A4 */
 /* BEGIN sub_080648D4 */
 /* Cover image of pack `id` from the pack info table, or 0. */

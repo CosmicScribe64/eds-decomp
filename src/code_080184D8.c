@@ -128,16 +128,27 @@ void sub_08018664(int player, int zone, u16 *args)
     sub_0801EC58(EVT(player, 0x7D), args[0], args[1], 0);
     sub_08017DE0(player, zone, 1);
 }
-#if 0 /* NONMATCHING: the card-word reloads and the byte +1 target packing
-       * match the ROM, but register allocation and scheduling still differ. */
-/* A card entered zone `zone` from the hand (args = its two word list entry):
- * if play is locked, just report it; card 0x1DE summons directly; otherwise
- * announce 0x7C, set the entry's 0x20 bit and dispatch per card key. */
+/* Battle state at 0x02018450 seen as u16 bitfields (padded past 4 bytes so agbcc
+ * reads atkSlot with ldrh and defSlot with ldrb [+1], as the ROM does). */
+struct Unk02018450b {
+    u16 unk0_0:6;
+    u16 atkSlot:3;      /* bits 6-8 */
+    u16 defSlot:3;      /* bits 9-11 */
+    u16 unk0_12:4;
+    u16 cardId;
+    u8 pad4[4];
+};
+#define gBattle18450 (*(struct Unk02018450b *)&gUnk_02018450)
+/* A card entered zone `zone` from the hand (args = its card word). Locked play
+ * (card 0x453 on either side): just report it. Card 0x1DE summons directly.
+ * Otherwise set the word's 0x20 byte bit, announce 0x7C, flag monsters, then
+ * dispatch per card number. */
 void sub_08018690(int arg0, int player, int zone, u16 *args)
 {
-    u32 id;
-    u32 dispatchWord;
+    u16 id;
+    u32 id2;
     u32 owner;
+    u32 w;
 
     if (zone > 4)
         return;
@@ -156,57 +167,69 @@ void sub_08018690(int arg0, int player, int zone, u16 *args)
     }
     ((u8 *)args)[2] |= 0x20;
     sub_0801EC58(EVT(player, 0x7C), args[0], args[1], 0);
-    id = ((struct DuelCard *)args)->id;
-    if (((gUnk_08621DE0[id & 0x7FF] & 0x1F00000) >> 20) <= 0x14)
+    if (((((const u32 *)0x08621DE0)[((struct DuelCard *)args)->id & 0x7FF] & 0x1F00000) >> 20) <= 0x14)
         gUnk_020192E4[player & 1].flagB_3 = 1;
-    dispatchWord = *(u32 *)args;
-    id = (dispatchWord << 20) >> 20;
-    switch (CARD_NUMBER(id)) {
+    w = *(u32 *)args;
+    id2 = (w << 20) >> 20;
+    switch (CARD_NUMBER(id2)) {
     case 0x2F: case 0x12F: case 0x136: case 0x138: case 0x139: case 0x140:
     case 0x23D: case 0x414: case 0x454: case 0x456:
     case 0x45A: case 0x45B: case 0x45D: case 0x45F: case 0x460: case 0x463:
     case 0x4D9: case 0x4DA: case 0x4E9: case 0x57D:
         {
-            u32 lo = 0xFFFF;
             u32 ev = owner << 31;
-            u32 hi;
+            u32 t, hi;
             ev |= (0x3F & gUnk_02017A40.w48A) << 25;
-            ev |= ((dispatchWord << 20) >> 20) | 0x600000;
+            /* FAKEMATCH: the ROM loads 0xFFFF between the two shifts of the
+             * re-read card ID, so the extraction is split around it. Reusing
+             * `w` (the dispatch word) for the attacker position makes its first
+             * set non-constant, so local-alloc does not double its live length
+             * and it takes r3 before ev. */
+            t = *(u32 *)args << 20;
+            w = 0xFFFF;
+            t = (t >> 20) | 0x600000;
+            ev |= t;
             if (player == gUnk_020192E0.linkSkip)
-                lo = gUnk_020192E0.linkSkip | ((((u32)gUnk_02018450.w0 << 0x17) >> 0x1D) << 8);
+                w = gUnk_020192E0.linkSkip | gBattle18450.atkSlot << 8;
+            else
+                hi = 0; /* FAKEMATCH: dead store; flow deletes it only after cse2, so
+                         * CSE does not carry the turn bit past the join and the
+                         * ROM's re-read of +0x1B12 is kept. */
             if (player == 1 - gUnk_020192E0.linkSkip)
-                hi = ((u8)(1 - gUnk_020192E0.linkSkip) | ((((u32)((u8 *)&gUnk_02018450)[1] << 0x1C) >> 0x1D) << 8)) << 16;
+                hi = ((u8)(1 - gUnk_020192E0.linkSkip) | gBattle18450.defSlot << 8) << 16;
             else
                 hi = 0xFFFF0000;
-            sub_0801FBCC(ev, hi | lo);
+            sub_0801FBCC(ev, hi | w);
         }
         break;
     case 0x1CD:
         if (!(ZONE(player, zone)->unk7 & 0x20)) {
-            sub_0801EC58(EVT(owner, 0x73), id, 1, 0);
+            sub_0801EC58(EVT(owner, 0x73), id2, 1, 0);
             sub_08019860(owner, 0x1388);
         }
         break;
     case 0x45C:
-        if (!(ZONE(player, zone)->unk7 & 0x20))
-            sub_0801FBCC((((dispatchWord << 19) >> 31) << 31) | ((0x3F & gUnk_02017ECA) << 25) | (id | 0x600000), 0);
+        if (!(ZONE(player, zone)->unk7 & 0x20)) {
+            u32 ev = ((((struct DuelCard *)args)->owner & 1) << 31) | ((0x3F & gUnk_02017ECA) << 25);
+            u32 t = id2 | 0x600000;
+            sub_0801FBCC(ev | t, 0);
+        }
+        break;
+    case 0x5EA:
+        if (arg0 == player) {
+            /* other units declare the ID parameter as int */
+            ((void (*)(int, int))sub_080197C0)(player, id2);
+            sub_0801EC58(EVT(player, 0x4C), 1, 0, 0);
+        }
         break;
     case 0x2D9:
     case 0x534:
         sub_08017C48(player, zone);
         break;
-    case 0x5EA:
-        if (arg0 == player) {
-            sub_080197C0(player, id);
-            sub_0801EC58(EVT(player, 0x4C), 1, 0, 0);
-        }
-        break;
     }
     sub_08046C20(player, 1);
     sub_08017DE0(player, zone, 1);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080184D8", sub_08018690); /* 0x08018690 size 0x36C */
 void sub_080189FC(int player, int zone, u16 arg)
 {
     u32 id = ZONE_CARD_ID(ZONE(player, zone));

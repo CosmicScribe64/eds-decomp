@@ -495,66 +495,82 @@ void sub_0800E438(void)
 }
 
 
-#if 0 /* NONMATCHING: structure matches; register allocation/stack frame differ (ROM: base r9, a r7, b sl, c/d on stack, step r6) */
+/* Byte view for zone byte 7 bit 2, so the clear emits mov #5; neg. */
+struct ZoneFlags7 {
+    u8 pad[7];
+    u8 lo:2;
+    u8 flag:1;
+    u8 hi:5;
+};
+
 /* Command 0x84 (hypothesis): place the card saved in gCmd+0x814 into zone
  * (arg2) and clear zone (arg1). */
 void sub_0800E630(void)
 {
-    s8 a = (u8)gCmd.arg1;      /* source zone: player */
-    s8 b = gCmd.arg1 >> 8;     /* source zone: slot */
-    u16 c = (u8)gCmd.arg2;      /* destination zone: player */
-    s8 d = gCmd.arg2 >> 8;     /* destination zone: slot */
-    u32 step = gCmd.step;
+    struct CardLoc from, to;
+    struct DuelCmd *cmd = &gCmd;
+    u32 a = (u8)cmd->arg1;
+    u32 b = cmd->arg1 >> 8;
+    u32 c = (u8)cmd->arg2;
+    int d = cmd->arg2 >> 8;
 
-    if (step != 0) {
-        if (step != 1) {
-            struct DuelZone *zoneA = ZONE(a & 1, b);
-            struct DuelZone *zoneC = ZONE(c & 1, d);
-
-            sub_08075294(zoneC, zoneA, 0x94);
-            sub_08007558(&zoneC->card, &gCmd.saved814);
-            sub_08075278(zoneA, 0x94);
-            zoneC->unk7 &= ~4;
-            sub_08024134(c, 0, d);
-            sub_080611AC();
-            gCmd.running = 0;
-            return;
-        }
-        {
-            struct CardLoc from;
-            struct CardLoc to;
-            struct DuelZone *zone = ZONE(a & 1, b);
-            u8 word;
-
-            sub_08007558(&gCmd.saved814, &zone->card);
-            sub_08060FD0(a, b);
-            from.player = a & 1;
-            from.area = 0;
-            from.slot = b;
-            from.flag14 = zone->flag6_0;
-            from.flag15 = zone->flag6_1;
-            to.player = c & 1;
-            to.area = 0;
-            to.slot = d;
-            to.flag14 = from.flag14;
-            to.flag15 = from.flag15;
-            if (d > 4)
-                from.flag14 = 0;
-            word = *(u32 *)&gCmd.saved814;
-            sub_080242C4(word & 0xFFF, &from, &to);
+    switch (gCmd.step) {
+    case 0:
+        if (((struct DuelCard *)((a & 1) * 0xD64 + b * 0x94 + (u32)gUnk_0201930C))->id == 0) {
+            cmd->running = 0;
+        } else {
+            sub_080240A8(a, sub_08062354(b));
             gCmd.step++;
-            return;
         }
+        break;
+    case 1: {
+        struct DuelCard *saved = &cmd->saved814;
+        u32 poff = (a & 1) * 0xD64;
+        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *zonebase = base + poff;
+        u32 zoff = b * 0x94;
+        struct DuelZone *zone;
+
+        sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
+        sub_08060FD0(a, b);
+        from.player = a;
+        from.area = 0;
+        from.slot = b;
+        zone = (struct DuelZone *)(zoff + poff + (u32)base);
+        from.flag14 = zone->flag6_0;
+        from.flag15 = zone->flag6_1;
+        to.player = c;
+        to.area = 0;
+        to.slot = d;
+        to.flag14 = from.flag14;
+        to.flag15 = from.flag15;
+        if (d > 4)
+            from.flag14 = 0;
+        sub_080242C4(saved->id, &from, &to);
+        gCmd.step++;
+        break;
     }
-    if (ZONE_CARD_ID(ZB(a & 1, b)) == 0) {
-        gCmd.running = 0;
-        return;
+    default: {
+        u8 *base = (u8 *)gUnk_0201930C;
+        u32 poffC = (c & 1) * 0xD64;
+        u8 *zbaseC = base + poffC;
+        u32 zoffD = d * 0x94;
+        struct DuelZone *zoneC = (struct DuelZone *)(zbaseC + zoffD);
+        u32 poffA = (a & 1) * 0xD64;
+        u8 *zbaseA = base + poffA;
+        struct DuelZone *zoneA = (struct DuelZone *)(zbaseA + b * 0x94);
+
+        sub_08075294(zoneC, zoneA, 0x94);
+        sub_08007558(&zoneC->card, &cmd->saved814);
+        sub_08075278(zoneA, 0x94);
+        ((struct ZoneFlags7 *)(poffC + zoffD + (u32)base))->flag = 0;
+        sub_08024134(c, 0, d);
+        sub_080611AC();
+        cmd->running = 0;
+        break;
     }
-    sub_080240A8(a, sub_08062354(b));
-    gCmd.step++;
+    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800D8A4", sub_0800E630); /* 0x0800E630 size 0x244 */
 /* Command 0x84 (hypothesis): swap the contents of two zones. arg1/arg2 each
  * encode (player | slot << 8); step 0 checks both zones hold cards, step 1
  * animates the held card (sub_0802432C), step 2 performs the swap. */

@@ -630,8 +630,8 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 50): NONMATCHING: same size; cases 0-102,120-122 match; remaining register/reload
-       * differences in cases 110 and 111 */
+#if 0 /* NONMATCHING (score 2): NONMATCHING: one insn-order difference left in case 101's loop preheader (mov
+       * r8,r0 before the E0 load) */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -815,8 +815,9 @@ int sub_0804FC4C(void)
         for (;FC_ZONE<=9;FC_ZONE++) {
             struct Zone *z=(struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C);
             if (FC_ID(z) && (z->f6&2)) {
-                int destroy=0;
+                int destroy;
                 id=FC_ID(z);
+                destroy=0;
                 switch (FC_NUMBER(id)) {
                 case 0x47A:
                     if (sub_08008AF8(player,-1)>0) { FC_STEP=120; return 0; }
@@ -886,7 +887,7 @@ int sub_0804FC4C(void)
                 break;
             }
         } else {
-            sub_080753F4(format,gUnk_08085CB4,gUnk_0822C720+(id<<6));
+            sub_080753F4(format,gUnk_08085CB4,(const char *)0x0822C720+(id<<6));
             sub_08075434(text,format,sub_0804F654(FcNum(id)));
             sub_080602A4(0x206,0x613,11,text);
             sub_08060308(1,0,0);

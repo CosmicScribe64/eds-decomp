@@ -54,20 +54,14 @@ extern struct BState gUnk_02018450;
 struct BSideV { u8 pad[8]; u8 raw; u8 f1; u16 cardId; u8 pad4[6]; u16 damage; };
 #define BSV(i) ((struct BSideV *)((u8 *)&gUnk_02018450 + (i) * 12))
 
-#if 0 /* NONMATCHING (score 12): score 12: same code and size as the ROM; only the case 10 reload registers
-       * differ (ROM: gUnk_0822C720 in r5, then 0x1B16 in r0 and r1; ours: gUnk_0822C720 local-allocated to r0, so the
-       * round-robin for 0x1B16 gives r5, r0). Fixes so far: int k = key local before the 0x2DA/0x536 test (BS/q
-       * global-alloc swap); one goto ret0 label after case 10's STEP++; STEP through ((struct CbDuel
-       * *)gUnk_020192E0)->step bitfield so the base is a pseudo split from 0x1B16; flags as gUnk_020192E4[] (an
-       * ARRAY_REF stops fold merging f0/f1); case 1 STEP=10 relative to gUnk_020192E4 (CSE related value); (u8)p & 15
-       * and (u8)(1-p) & 15 nibbles; case 2 ev=(p&1)<<31; link bit b1 as s8 bitfield; side=(1-p)&1 local; loop i=0 with
-       * bs/k locals and BSV(i)->raw. asm-label externs give '*name' symbols that CSE does not relate. Tried with no
-       * effect: other sub_08019894 prototypes, 4 forms of the card-name pointer expression. */
-/* Battle resolution step machine (hypothesis: applies per-card effects after damage; steps 0-2 damage, 10-12 special). */
+/* Battle resolution step machine (hypothesis: applies per-card effects after damage; steps 0-2 damage,
+ * 10-12 a card-name prompt / link handshake, default clears flags and sends per-side messages). */
 #define CB_BS gUnk_02018450
 #define CB_SIDE(i) gUnk_02018450.side[i]
 #define CB_KEY(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CB_PF(i) (gUnk_020192E4[(i) & 1])
+/* Duel state views. The step bitfield is read through a struct pointer so the base symbol is loaded into a
+ * pseudo and 0x1B16 is added separately (ROM: ldr sym; ldr 0x1B16; add), not as one sym+0x1B16 literal. */
 struct CbDuel { u32 unk0; struct PlF pl[2]; u8 pad[0x1B16 - 4 - 2 * 0xD64]; u16 lo : 1; u16 step : 8; u16 hi : 7; };
 struct CbDuel4 { u8 pad[0x1B12]; u16 lo : 1; u16 step : 8; u16 hi : 7; };
 #define CB_DUEL ((struct CbDuel *)gUnk_020192E0)
@@ -119,6 +113,8 @@ int sub_0804CB58(int p)
     case 1:
         if (CB_SIDE(1 - p).damage != 0 && !CB_PF(1 - p).f0 && !CB_PF(1 - p).f1
             && sub_0800A2A8(1 - p, 0x39) != 0) {
+            /* Same field as CB_STEP, addressed from the player-flag base so CSE reuses that register
+             * (ROM: r4 + 0x1B12). */
             ((struct CbDuel4 *)gUnk_020192E4)->step = 10;
             goto ret0;
         }
@@ -163,7 +159,8 @@ int sub_0804CB58(int p)
         goto ret0;
     case 10:
         if (p != 0) {
-            sub_080753F4(buf, gUnk_08085B7C, gUnk_0822C720 + (gUnk_08623E66[0] << 6));
+            /* Cast-constant name table: reloaded into the next rotation register (r5), as in the ROM. */
+            sub_080753F4(buf, gUnk_08085B7C, (const char *)0x0822C720 + (gUnk_08623E66[0] << 6));
             sub_080602A4(0x204, 0x915, 0xB, buf);
             sub_08060308(1, 0, 0);
             CB_STEP++;
@@ -175,6 +172,8 @@ int sub_0804CB58(int p)
             CB_LINK->b1 = 0;
         }
         CB_STEP++;
+    /* FAKEMATCH: every `return 0` jumps to this one label after case 10's STEP++, which places the shared
+     * return-0 block between case 10 and case 11 as in the ROM. */
     ret0:
         return 0;
     case 11:
@@ -206,10 +205,9 @@ int sub_0804CB58(int p)
             int i;
             struct BState *bs;
             const u16 *k;
-            i = 0;
-            bs = &gUnk_02018450;
-            k = gUnk_08624730;
-            for (; i < 2; i++) {
+            /* bs/k are loop-hoisted bases after i = 0 (ROM order); the side byte is read through BSV() so its
+             * base is not merged with bs. */
+            for (i = 0, bs = &gUnk_02018450, k = gUnk_08624730; i < 2; i++) {
                 u8 f = BSV(i)->raw;
                 if ((int)(f << 25) < 0 && (int)(f << 28) >= 0)
                     sub_08017AB4(p, k[0], (u8)i | (i == p ? bs->atkSlot : bs->defSlot) << 8, 3);
@@ -218,8 +216,6 @@ int sub_0804CB58(int p)
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804CB58", sub_0804CB58); /* 0x0804CB58 size 0x740 */
 
 /* Battle hook: when bit 2 is set and the card at +2 is usable for (1-player), queue event 0x91 with the defender slot. Always returns 1. */
 int sub_0804D298(int player)

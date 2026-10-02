@@ -191,32 +191,23 @@ void sub_08074218(void *src) {
     gUnk_03005B60.txBuf[1] = ~sum;
 }
 
-#if 0 /* NONMATCHING: same structure; register allocation differs (IME pointer/zero constants/&B08 hoisting, base reg r6 vs r5) */
-/* Link receive step: rotates the two RX buffers, validates each received packet by its 0xFFFF checksum, copies good ones out to rx + slot*16, and returns the per-slot status bits. */
+/* Link receive step: rotates the RX double buffer (+0xA34/+0xA38, via +0xB08), validates each of the 2 received packets in the last buffer by its 0xFFFF checksum, copies good ones out to rx + slot*16, clears them, and returns the per-slot status bits. */
 u16 sub_08074260(u8 *rx) {
-    u32 flag;
+    u32 zero;
     REG_IME = 0;
-    gUnk_03005B60.unkA34 = gUnk_03005B60.unkB08;
     gUnk_03005B60.unkB08 = gUnk_03005B60.unkA38;
     gUnk_03005B60.unkA38 = gUnk_03005B60.unkA34;
-    flag = gUnk_03005B60.unkA21;
-    gUnk_03005B60.unkB10 = flag;
+    gUnk_03005B60.unkA34 = gUnk_03005B60.unkB08;
+    gUnk_03005B60.unkB10 = gUnk_03005B60.unkA21;
     gUnk_03005B60.unkA21 = 0;
     REG_IME = 1;
     gUnk_03005B60.unkA22 = 0;
-    if (flag != 0) {
-        gUnk_03005B60.unkAFC = 0;
-        do {
-            u16 *p;
-            u32 zero;
-            gUnk_03005B60.unkB08 = (u16 *)(gUnk_03006598 + gUnk_03005B60.unkAFC * 24);
+    if (gUnk_03005B60.unkB10 != 0) {
+        for (gUnk_03005B60.unkAFC = 0; gUnk_03005B60.unkAFC < 2; gUnk_03005B60.unkAFC++) {
+            gUnk_03005B60.unkB08 = (u16 *)((u8 *)gUnk_03005B60.unkA38 + gUnk_03005B60.unkAFC * 24);
             gUnk_03005B60.unkB12 = 0;
-            gUnk_03005B60.unkB00 = 0;
-            p = gUnk_03005B60.unkB08;
-            do {
-                gUnk_03005B60.unkB12 += p[gUnk_03005B60.unkB00];
-                gUnk_03005B60.unkB00++;
-            } while ((u32)gUnk_03005B60.unkB00 <= 9);
+            for (gUnk_03005B60.unkB00 = 0; (u32)gUnk_03005B60.unkB00 < 10; gUnk_03005B60.unkB00++)
+                gUnk_03005B60.unkB12 += gUnk_03005B60.unkB08[gUnk_03005B60.unkB00];
             if (gUnk_03005B60.unkB12 == 0xFFFF) {
                 CpuSet(gUnk_03005B60.unkB08 + 2, rx + gUnk_03005B60.unkAFC * 16, 8);
                 gUnk_03005B60.unkA22 |= 1 << gUnk_03005B60.unkAFC;
@@ -225,14 +216,11 @@ u16 sub_08074260(u8 *rx) {
             }
             zero = 0;
             CpuSet(&zero, gUnk_03005B60.unkB08 + 2, 0x05000004);
-            gUnk_03005B60.unkAFC++;
-        } while (gUnk_03005B60.unkAFC <= 1);
+        }
     }
     gUnk_03005B60.unkA20 |= gUnk_03005B60.unkA22;
     return gUnk_03005B60.unkA22;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080740BC", sub_08074260); /* 0x08074260 size 0x144 */
 
 u32 sub_080743A4(void) {
     struct Main *m = &gUnk_03000040;

@@ -493,26 +493,26 @@ int sub_080314BC(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic decoded (ListView open/select for cards
-       * 0x1A3/0x1F9). Register allocation (byte2 in r6, const 1 in r4) and
-       * tail sharing differ. */
+struct S15F00_31550 { u8 unk0[0x1B22]; u16 listPos; };
+#define S15F00_31550 ((struct S15F00_31550 *)gUnk_02015F00)
+
 int sub_08031550(struct CardRef *ref)
 {
-    s16 skip = ((u8 *)ref)[4] & 4;
+    u8 skip = ((u8 *)ref)[4] & 4;
 
     if (!skip) {
         switch (EFF_PHASE) {
         case 0x80:
-            if (gUnk_020192E4[ref->player].fusionCount == 0)
+            if (gUnk_020192E4[1 & ref->player].fusionCount == 0)
                 return 0;
             switch (CARD_NUMBER(ref->id)) {
             case 0x1A3:
                 if (sub_08008A1C(ref->player) == 0)
                     return 0;
                 if (1 & ((u8 *)ref)[2]) {
-                    gUnk_0201D810.row = 0;
                     sub_08056ECC(ref->id);
-                    gUnk_0201D810.top = *(u16 *)&gUnk_02015F00[0x1B22];
+                    gUnk_0201D810.row = 0;
+                    gUnk_0201D810.top = S15F00_31550->listPos;
                     return 0x7E;
                 }
                 sub_080602A4(0x205, 0x914, 0xB, gUnk_080829F0);
@@ -521,7 +521,7 @@ int sub_08031550(struct CardRef *ref)
                 if (1 & ((u8 *)ref)[2]) {
                     sub_08056ECC(ref->id);
                     gUnk_0201D810.row = 0;
-                    gUnk_0201D810.top = *(u16 *)&gUnk_02015F00[0x1B22];
+                    gUnk_0201D810.top = S15F00_31550->listPos;
                     return 0x7E;
                 }
                 sub_080602A4(0x205, 0x914, 0xB, gUnk_08082A4C);
@@ -555,8 +555,6 @@ int sub_08031550(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08030B88", sub_08031550); /* 0x08031550 size 0x230 */
 int sub_08031780(struct CardRef *ref)
 {
     char buf[0x100];

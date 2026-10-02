@@ -361,28 +361,29 @@ u32 sub_08073784(void *src, int n)
     }
     return 1;
 }
-#if 0 /* NONMATCHING (score 50): score 50: only r9/sl swap left (hoisted cur-addr literal vs hoisted sp+32 tx
-       * pointer). Key facts: nblk=(busy+16)/16 signed division (its branch splits the 0x2000 block so P is not movable
-       * and cur-addr hoists first, no CSE2 relation); no hdr local (switch on rx[slot].hdr, struct Pkt rx[2]/tx); all
-       * gLink fields direct ARRAY_REFs (RMW struct stores give the dead zeros); if (len != 0) return len. Swap is
-       * global-alloc priority: tx refs13/live281 beats cur refs19/live564 (cur doubled as REG_EQUIV). */
+/* LinkSio (0x03005B60) as seen by the multi-block receive in sub_0807382C. */
 struct Link82C {
-    u8 pad0[0x20C];
-    u16 rxBuf[2][2][0x101];     /* +0x20C */
+    u8 pad0[8];
+    u16 txPkt[32][8];           /* +0x008 outgoing 16-byte packets (header + 7 halfwords) */
+    u8 pad208[0x20C - 0x208];
+    u16 rxBuf[2][2][0x101];     /* +0x20C reassembly buffer; the ROM steps rxBuf[slot] + cur * 7 rows */
     u8 padA14[0xA40 - 0xA14];
     u16 unkA40;                 /* +0xA40 */
     u8 padA42[0xAF0 - 0xA42];
-    u16 nblk[2];                /* +0xAF0 */
-    u16 cur[2];                 /* +0xAF4 */
-    u16 busy[2];                /* +0xAF8 */
+    u16 nblk[2];                /* +0xAF0 blocks in the current message */
+    u16 cur[2];                 /* +0xAF4 current block index */
+    u16 busy[2];                /* +0xAF8 message length + block count while receiving */
 };
-extern struct Link82C gLink82C asm("gUnk_03005B60");
-extern u16 gUnk_03005B68[][8];
+#define gLink82C (*(struct Link82C *)&gUnk_03005B60_s)
 struct Pkt82C {
     u16 hdr;
     u16 data[7];
 };
 
+/* Multi-block link receive: pump sub_080740BC, then for each player slot with data
+   reassemble 0x2000 (first) / 0x4000 (middle) / 0x3000 (last) blocks into rxBuf,
+   acknowledging our own slot's blocks with the next tx packet (0x5000 = resend).
+   When slot `id`'s message is complete, copy it to dst and return its length. */
 u32 sub_0807382C(u32 id, void *dst)
 {
     struct Pkt82C rx[2];
@@ -407,9 +408,12 @@ u32 sub_0807382C(u32 id, void *dst)
                     break;
                 case 0x2000:
                     gLink82C.busy[slot] = rx[slot].hdr & 0x1FF;
+                    /* signed division: its sign-fixup branch (removed later by
+                       combine) keeps the gLink base from being hoisted first */
                     gLink82C.nblk[slot] = (gLink82C.busy[slot] + 0x10) / 16;
                     gLink82C.busy[slot] += gLink82C.nblk[slot];
                     gLink82C.cur[slot] = 0;
+                    /* fall through */
                 case 0x4000:
                     CpuSet(rx[slot].data, gLink82C.rxBuf[slot] + gLink82C.cur[slot] * 7, 7);
                     gLink82C.cur[slot]++;
@@ -420,7 +424,7 @@ u32 sub_0807382C(u32 id, void *dst)
                             tx.hdr = 0x3000;
                         else
                             tx.hdr = 0x4000;
-                        CpuSet(gUnk_03005B68[gLink82C.cur[slot]], tx.data, 7);
+                        CpuSet(gLink82C.txPkt[gLink82C.cur[slot]], tx.data, 7);
                         sub_08074218(&tx);
                     }
                     gLink82C.cur[slot]++;
@@ -442,7 +446,7 @@ u32 sub_0807382C(u32 id, void *dst)
                             tx.hdr = 0x3000;
                         else
                             tx.hdr = 0x4000;
-                        CpuSet(gUnk_03005B68[gLink82C.cur[slot]], tx.data, 7);
+                        CpuSet(gLink82C.txPkt[gLink82C.cur[slot]], tx.data, 7);
                         sub_08074218(&tx);
                     }
                     break;
@@ -464,8 +468,7 @@ u32 sub_0807382C(u32 id, void *dst)
         return len;
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_0807382C); /* 0x0807382C size 0x338 */
+#undef gLink82C
 /* Link receive: run the link step, and if slot `id` holds a complete packet (type 0x3000) copy it to dst; returns its length. */
 u16 sub_08073B64(u32 id, void *dst)
 {

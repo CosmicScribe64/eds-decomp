@@ -229,7 +229,6 @@ int sub_08040110(struct CardRef *ref, struct CardRef *other)
     return 0;
 }
 
-#if 0 /* NONMATCHING: decoded (a 4-step machine) but far from matching. The ROM keeps the step pointer in r9 and the three cursor addresses in r8/r7/sl, and shares the inc block placed after case 0. */
 int sub_08040294(struct CardRef *ref)
 {
     char buf[0x80];
@@ -262,36 +261,49 @@ int sub_08040294(struct CardRef *ref)
         }
         return 0;
     case 2: {
-        struct DuelZone *zp = ZB(1 & ref->targets[0], ref->targets[0] >> 8);
-        sub_080753F4(buf, gUnk_080846CC, gUnk_0822C720[(*(u32 *)zp << 20) >> 20]);
+        const char *fmt = gUnk_080846CC;
+        int pl = 1 & ref->targets[0];
+        struct DuelZone *zp = ZB(pl, ref->targets[0] >> 8);
+        u32 off = (*(u32 *)zp << 20) >> 14;
+        /* FAKEMATCH: the ROM loads the name-table address into r3 for the add. */
+        register const char *names asm("r3") = (const char *)gUnk_0822C720;
+        sub_080753F4(buf, fmt, (const char *)(off + (u32)names));
         sub_080602A4(0x206, 0x712, 0xB, buf);
-        (*st)++;
+        {
+            /* FAKEMATCH: keep r2/r3 busy across the increment so reload picks r4
+             * for the step pointer, as in the ROM; this also sets the reload
+             * order that case 3 depends on. Emits no code. */
+            register int k2 asm("r2");
+            register int k3 asm("r3");
+            (*st)++;
+            asm("" : : "r"(k2), "r"(k3));
+        }
         return 0;
     }
     case 3:
-        if (sub_08052F38(0xE000E0) == 0)
-            return 0;
-        {
-            s16 p = gUnk_0201CFB0.w824;
-            int tp = (u8)ref->targets[0];
-            s16 zn = gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C;
+        if (sub_08052F38(0xE000E0) != 0) {
+            u32 p = gUnk_0201CFB0.w824;
+            int zn = gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C;
+            u8 tp = ref->targets[0];
             int tz = ref->targets[0] >> 8;
             if (sub_0800CCCC(tp, tz, p, zn) != 0) {
-                if (sub_0800CD68(tp, tz) != (u16)(((p << 24) >> 8 | ((u32)zn << 24)) >> 16)) {
-                    (*st)++;
+                int r = sub_0800CD68(tp, tz);
+                u32 a = p << 24;
+                u32 b = (u32)zn << 24;
+                if (r != (u16)((a >> 8 | b) >> 16)) {
                     sub_0803DDAC(ref, p, zn);
-                    return 0;
+                    (*st)++;
+                    goto out3; /* skip the failure sound; case 3's tail then merges into case 0's */
                 }
             }
             sub_08077AEC(3);
         }
+    out3:
         return 0;
     default:
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803FE70", sub_08040294); /* 0x08040294 size 0x1E4 */
 /* AI side: per player, zones 5-10, first a card with flags6 bit 1 and type 0x16, then any card without that flag; human side: prompt + cursor. */
 int sub_08040478(struct CardRef *ref)
 {

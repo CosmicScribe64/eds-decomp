@@ -581,29 +581,19 @@ u16 sub_0805163C(u16 a, u16 b)
     return 0;
 }
 
-#if 0 /* NONMATCHING: all registers and both loop tests match. The only difference is that agbcc
-       * loop.c/PRE folds the invariant ((b21-h+2)<<3)<<16 into `lsls r7,r0,#19; adds r0,r7,#0`
-       * in the preheader, where the ROM keeps y in r7 and does `lsls r0,r7,#16` inside the loop. */
 /* Draws the cursor sprites for the pending list entries. */
 void sub_080516D8(void)
 {
-    s16 i = 0;
+    int i;
     int x = (gUnk_0201AE60.x + 1) << 3;
     int y = (gUnk_0201AE60.b21 - gUnk_0201AE60.h + 2) << 3;
-    int xx;
-    u8 *count = &gUnk_02017A40.count;
-    if (i >= *count)
-        return;
-    xx = x;
-    do {
-        sub_080761F0((y << 16) | xx, 0, 0x431C);
-        xx += 10;
-        i++;
-    } while (i < *count);
+    for (i = 0; i < gUnk_02017A40.count; i++) {
+        /* FAKEMATCH: no-op self-store (found by the permuter). It enlarges the loop body enough that loop.c
+         * keeps y << 16 inside the loop, and the extra uses of the count address give that pointer r6 ahead of y. */
+        gUnk_02017A40.count += 0;
+        sub_080761F0((x + i * 10) | (y << 16), 0, 0x431C);
+    }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08050A70", sub_080516D8); /* 0x080516D8 size 0x58 */
-#endif
 int sub_08051730(void)
 {
     struct Ui *u = &gUnk_0201AE60;

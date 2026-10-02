@@ -388,16 +388,18 @@ int sub_0802B28C(int player, int zone)
 }
 /* Card-specific target check: ref (card 0x37/0x38/0x42/0x170) on its own monster (player, zone) that has
  * card number `needNo`; true when a kind-1 link of that zone holds card `wantNo` with counter > limit. */
-#if 0 /* NONMATCHING: loop register allocation differs (zone ends up in r8, p kept live on the stack;
-          the ROM recomputes player & 1 before the loop and keeps zone in r6) */
+/* Zone pointer with the player term written first: agbcc then emits the zone multiply first (the ROM's order). */
+#define ZR(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+
+/* The u16 cid temporary adds pre-combine insns after the last use of the 0xD64 constant, which lengthens
+ * the zone*0x94 invariant's life so the constant gets r7 and zone*0x94 gets ip, as in the ROM. */
 int sub_0802B2FC(struct CardRef *ref, u16 pos)
 {
-    u16 player = (u8)pos;
+    int player = (u8)pos;
     int zone = pos >> 8;
-    int p = player & 1;
-    u32 id = CARD_ID(CARD_WORD(ZB(p, zone)->card));
+    u32 id = CARD_ID(CARD_WORD(ZR(player & 1, zone)->card));
     u16 wantNo = 0x47;
-    u8 needNo = 0x115;
+    u16 needNo = 0x115;
     int limit;
     int i;
 
@@ -425,23 +427,22 @@ int sub_0802B2FC(struct CardRef *ref, u16 pos)
         return 0;
     if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0)
         return 0;
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        s8 link = ZB(player & 1, zone)->links[i];
+    for (i = 0; i < ZR(player & 1, zone)->numLinks; i++) {
+        u16 link = ZR(player & 1, zone)->links[i];
 
-        if ((u8)ZB(player & 1, zone)->linkKinds[i] == 1) {
-            u8 lp = (u8)link;
+        if ((u8)ZR(player & 1, zone)->linkKinds[i] == 1) {
+            int lp = (u8)link;
             int lz = link >> 8;
-            struct DuelZone *l = ZB(lp & 1, lz);
+            int pp = lp & 1;
+            struct DuelZone *l = ZB(pp, lz);
+            u16 cid = CARD_ID(CARD_WORD(l->card));
 
-            if (CARD_NUMBER(CARD_ID(CARD_WORD(l->card))) == wantNo && l->counter6 > limit)
+            if (CARD_NUMBER(cid) == wantNo && l->counter6 > limit)
                 return 1;
         }
     }
     return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0802AAC0", sub_0802B2FC); /* 0x0802B2FC size 0x190 */
-#endif
 
 int sub_0802B48C(struct CardRef *ref, u16 pos)
 {

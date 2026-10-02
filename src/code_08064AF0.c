@@ -113,11 +113,9 @@ u16 sub_08064AF4(void)
         return 1;
     }
 }
-#if 0 /* NONMATCHING: instruction-for-instruction the same shape and size (0x258); only register assignment differs (target keeps frame in r3 with a copy in r8, sel cached in r4/r5, gMain in r9/sl; the build uses r5/r4). The source uses direct gUnk_02020310.field accesses, a cached local sel per branch and bgMap[2] as the DMA target. */
 /* Pack-list input: slide animation (frame counter, eased with gUnk_080865CC) or LEFT/RIGHT to move the list, A to confirm. */
 u16 sub_08064BA0(void)
 {
-    u16 frame;
     vu16 zero;
     sub_08064AF0(gUnk_02020310.frame);
     if ((1 & gUnk_02020310.flags) != 0) {
@@ -127,17 +125,17 @@ u16 sub_08064BA0(void)
     }
     if (gUnk_02020310.unk1A != gUnk_02020310.unk1C) {
         if (gUnk_02020310.unk1A > gUnk_02020310.unk1C)
-            gUnk_02020310.unk1A = gUnk_02020310.unk1A - 1;
+            gUnk_02020310.unk1A--;
         else
-            gUnk_02020310.unk1A = gUnk_02020310.unk1A + 1;
+            gUnk_02020310.unk1A++;
         sub_08064908(gUnk_02020310.unk1A);
     }
-    frame = gUnk_02020310.frame;
-    if (frame != 0) {
+    if (gUnk_02020310.frame != 0) {
         s32 t = gUnk_02020310.pos - gUnk_02020310.posBase;
-        t *= gUnk_080865CC[gUnk_02020310.frame];
-        gUnk_02020310.frame = frame - 1;
-        gUnk_03000040.unk442A = t / 4096 + gUnk_02020310.posBase;
+        t *= gUnk_080865CC[--gUnk_02020310.frame];
+        t /= 4096;
+        t += gUnk_02020310.posBase;
+        gUnk_03000040.unk442A = t;
         REG_DISPCNT &= 0xFEFF;
         REG_DISPCNT &= 0xF7FF;
         if (gUnk_02020310.frame == 0) {
@@ -153,16 +151,18 @@ u16 sub_08064BA0(void)
     }
     if (gUnk_03000040.keysNew & 0x20) {
         vu32 *dma;
-        s8 sel;
+        s32 sel;
+        s32 count;
         sub_08077AEC(0);
+        count = gUnk_02020310.count;
         sel = gUnk_02020310.sel;
-        gUnk_02020310.sel2 = __modsi3(sel + gUnk_02020310.count - 1, gUnk_02020310.count);
+        gUnk_02020310.sel2 = (sel + count - 1) % count;
         gUnk_02020310.unk1C = 0x10;
         gUnk_02020310.frame = 8;
         gUnk_02020310.dir = 1;
         gUnk_02020310.pos = gUnk_02020310.posBase - 0x50;
-        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[__modsi3(sel + gUnk_02020310.count - 1, gUnk_02020310.count)]].id);
-        zero = frame;
+        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[(sel + gUnk_02020310.count - 1) % gUnk_02020310.count]].id);
+        zero = 0;
         dma = (vu32 *)0x040000D4;
         dma[0] = (u32)&zero;
         dma[1] = (u32)gUnk_03000040.bgMap[2];
@@ -171,19 +171,24 @@ u16 sub_08064BA0(void)
         while (dma[2] & 0x80000000)
             ;
         sub_08064984(2, 0x78, 3);
-        gUnk_02020310.flags |= 1;
+        {
+            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in sub_080649D8. */
+            u32 f = gUnk_02020310.flags;
+            f |= 1;
+            gUnk_02020310.flags = f;
+        }
     }
     if (gUnk_03000040.keysNew & 0x10) {
         vu32 *dma;
         s32 sel;
         sub_08077AEC(0);
         sel = gUnk_02020310.sel;
-        gUnk_02020310.sel2 = __modsi3(sel + 1, gUnk_02020310.count);
+        gUnk_02020310.sel2 = (sel + 1) % gUnk_02020310.count;
         gUnk_02020310.unk1C = 0x10;
         gUnk_02020310.frame = 8;
         gUnk_02020310.dir = 2;
         gUnk_02020310.pos = gUnk_02020310.posBase + 0x50;
-        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[__modsi3(sel + 3, gUnk_02020310.count)]].id);
+        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[(sel + 3) % gUnk_02020310.count]].id);
         zero = 0;
         dma = (vu32 *)0x040000D4;
         dma[0] = (u32)&zero;
@@ -193,7 +198,12 @@ u16 sub_08064BA0(void)
         while (dma[2] & 0x80000000)
             ;
         sub_08064984(2, 0x60, 3);
-        gUnk_02020310.flags |= 1;
+        {
+            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in sub_080649D8. */
+            u32 f = gUnk_02020310.flags;
+            f |= 1;
+            gUnk_02020310.flags = f;
+        }
     }
     if (gUnk_03000040.keysNew & 1) {
         sub_08077AEC(1);
@@ -201,8 +211,6 @@ u16 sub_08064BA0(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08064AF0", sub_08064BA0); /* 0x08064BA0 size 0x258 */
 u16 sub_08064DF8(void)
 {
     if (sub_08075A6C(4) != 0) {

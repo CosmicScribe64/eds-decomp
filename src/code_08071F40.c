@@ -584,19 +584,14 @@ void sub_08072A14(u16 col, u16 pk, u16 tile, u8 *s)
     }
 }
 
-#if 0 /* NONMATCHING: register allocation differs. The base+offset shape matches (a u64 temp
-       * prevents folding), but agbcc keeps `hi` in sl and map/base in r7/r8, while the target
-       * spends r6 reloading 0x03000040 and spills lo/hi to the stack, leaving the 0x1F mask in
-       * sl and base in r9. */
 /* Draw a string of 1-byte chars (converted with sub_08074A90) into the BG map at cell `col`,
    glyph tiles from `tile`; wraps to the next 32-cell line near the right edge (width @ +0x441E). */
 void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
 {
+    u16 *map = (u16 *)gUnk_0300045C;
     u8 lo = pk;
     u8 hi = pk >> 8;
-    u16 *map = (u16 *)gUnk_0300045C;
-    s16 base = col;
-    unsigned long long mb = 0x03000040; /* FAKEMATCH: 64-bit temp stops agbcc folding the map base */
+    u16 base = col;
     map += col;
     while (1) {
         u16 ch;
@@ -604,10 +599,10 @@ void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
             return;
         ch = sub_08074A90(*s);
         if (ch != 0) {
-            if ((col & 0x1F) >= (((struct MainMap *)(u32)mb)->w & 0x1F) - 2) {
+            if ((col & 0x1F) >= (gUnk_03000040_m.w & 0x1F) - 2) {
                 base += 0x20;
                 col = base;
-                map = &((struct MainMap *)(u32)mb)->map[base];
+                map = &gUnk_03000040_m.map[base];
             }
             sub_08072808(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
             *map++ = tile;
@@ -617,8 +612,6 @@ void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
         s++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08071F40", sub_08072AF8); /* 0x08072AF8 size 0xBC */
 
 /* Draw a NUL-terminated ASCII string: glyph tiles to 0x06004000 + tile*32, map entries at (col). */
 void sub_08072BB4(u16 col, u16 pk, u16 tile, char *s)

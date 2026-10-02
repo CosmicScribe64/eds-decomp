@@ -337,12 +337,11 @@ void sub_080536D4(int hidden)
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_080536D4);
 
-#if 0 /* NONMATCHING: high-register allocation and frame address folding differ. */
 void sub_08053770(int hidden, int from, int to)
 {
     int i = 0;
-    u32 *cards = gUnk_02017F84;
-    const int *offsets = gUnk_0819D27C;
+    /* FAKEMATCH: pin cards to r8; otherwise hidden takes r8 and cards r9 */
+    register u32 *cards asm("r8") = gUnk_02017F84;
     for (; i < 5; i++) {
         u16 id = (cards[i] << 20) >> 20;
         int x = (i << 5) + 0x24;
@@ -352,14 +351,24 @@ void sub_08053770(int hidden, int from, int to)
         if (hidden != 0)
             tile = 0x40;
         if (i == from) {
-            int phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
-            x += *(const int *)((phase << 3) + (u32)offsets);
-            y -= *(const int *)((u32)gUnk_0819D280 + (phase << 3));
+            /* FAKEMATCH: table pointers set at block start (y before x) give
+             * long lifetimes so loop.c hoists both; x then wins sl and y is
+             * spilled and rematerialized by reload, which shifts reload's
+             * register rotation so the `to` compare loads into r2. u8 phase
+             * adds combinable insns that keep 0x03000040 from being hoisted
+             * in the second loop pass. */
+            const int *oy = gUnk_0819D280;
+            const int *ox = gUnk_0819D27C;
+            u8 phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
+            x += *(const int *)((phase << 3) + (u32)ox);
+            y -= *(const int *)((u32)oy + (phase << 3));
         }
         if (i == to) {
-            int phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
-            x -= *(const int *)((phase << 3) + (u32)offsets);
-            y += *(const int *)((u32)gUnk_0819D280 + (phase << 3));
+            const int *oy = gUnk_0819D280;
+            const int *ox = gUnk_0819D27C;
+            u8 phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
+            x -= *(const int *)((phase << 3) + (u32)ox);
+            y += *(const int *)((u32)oy + (phase << 3));
         }
         position = (y << 16) | x;
         if (i == gUnk_02017F7C)
@@ -369,8 +378,6 @@ void sub_08053770(int hidden, int from, int to)
         sub_08076714(position, 0x80, tile, flags);
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08052B78", sub_08053770);
 
 void sub_08053864(void)
 {

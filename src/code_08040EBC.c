@@ -209,9 +209,6 @@ int sub_08040FB0(struct CardRef *ref)
         return 0;
     }
 }
-#if 0 /* NONMATCHING: the ROM merges the two text calls of cases 0/2 into one
-       * (b into case 2) and keeps ref in r7 and st in r6. This build does not
-       * merge them and swaps the registers. */
 int sub_0804112C(struct CardRef *ref)
 {
     u8 *es = gUnk_02017A40;
@@ -219,8 +216,8 @@ int sub_0804112C(struct CardRef *ref)
     switch (*st) {
     case 0:
         ref->numTargets = 0;
-        (*st)++;
         sub_080602A4(0x206, 0x712, 0xB, gUnk_08084A30);
+        (*st)++;
         return 0;
     case 1:
         if (gUnk_03000040.h6 & 2) {
@@ -228,9 +225,7 @@ int sub_0804112C(struct CardRef *ref)
             *st = z;
             return z;
         }
-        if (sub_0805304C() == 0)
-            return 0;
-        {
+        if (sub_0805304C() != 0) {
             u32 p = gUnk_0201CFB0.w824;
             int zn = gUnk_0201CFB0.w82C;
             if (gUnk_0201CFB0.w828 == 0 && sub_08008940(p, zn) != 0) {
@@ -251,26 +246,21 @@ int sub_0804112C(struct CardRef *ref)
             *st = z;
             return z;
         }
-        if (sub_0805304C() == 0)
-            return 0;
-        {
+        if (sub_0805304C() != 0) {
             u32 p = gUnk_0201CFB0.w824;
             int zn = gUnk_0201CFB0.w82C;
             if (gUnk_0201CFB0.w828 == 0 && (*(u32 *)ZB2(1 & p, zn) << 20) == 0
-                && (u16)(((p << 24) >> 8 | ((u32)zn << 24)) >> 16) != ref->targets[0]) {
+                && (u16)((u8)p | (u8)zn << 8) != ref->targets[0]) {
                 sub_0803DE40(ref, p, zn);
                 (*st)++;
-                return 0;
-            }
-            sub_08077AEC(3);
+            } else
+                sub_08077AEC(3);
         }
         return 0;
     default:
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08040EBC", sub_0804112C); /* 0x0804112C size 0x160 */
 int sub_0804128C(struct CardRef *ref)
 {
     u8 *es = gUnk_02017A40;

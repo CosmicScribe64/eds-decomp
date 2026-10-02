@@ -516,17 +516,6 @@ void sub_0804E780(int player)
         }
     }
 }
-#if 0 /* NONMATCHING (score 190): NONMATCHING: score 190 (from 715). Rewritten in the style of the matched
-       * sibling sub_0804FC4C (code_0804EFF0): typed externs gE9PS_020192E4[] (array of 0xD64 player structs, so the base
-       * loads first), links read as values (u16 link = Z->links[idx]; who = (u8)link as u32 in case 10; slot = link >>
-       * 8) which gives the ROM's (pz + 10) + idx*2, linked zone via a separate row pointer in case 3 (row = side*0xD64 +
-       * base; lz = &row[slot]), link zone written side-first in case 3, case 4 side = other & 1 as its own statement and
-       * flags loaded inside the condition (f = z->f6), signed 1-bit field for flagsC bit 4, (s32)(card << 8) < 0, local
-       * table pointer t + (kind = 0x26600000 | t[0]) for the event word, player != 1 message tests. Cases 0-6 match
-       * except case 4's 0x4CE and (ROM ties the result to the 0x3C register; f as u16 fixes it but adds a copy).
-       * Remaining: case 10 hoists the step address (base+0x1B20) into r8 and the const 1 into sl, where the ROM hoists
-       * 0x94/0xD64 and forms the in-loop step++ as (base+0x2C)+0x1AF4; case 20 and default allocation; case 21/22 tails
-       * cross-jump. */
 int sub_0800842C(int, u16);
 int sub_080086CC(int, u16);
 int sub_080088A4(int, int, int);
@@ -556,6 +545,7 @@ struct E9Player {
     u8 c0 : 4; s8 c4 : 1; u8 c5 : 3; u8 padD[0x904 - 0xD]; u32 grave[(0xD64 - 0x904) / 4];
 };
 extern struct E9Player gE9PS_020192E4[];
+extern u32 gUnk_02019BE8[];
 struct E9State {
     u32 header; struct E9Player players[2]; u8 pad1ACC[0x1B12 - 0x1ACC]; u8 flags; u8 pad13[0x1B20 - 0x1B13];
     u8 step, zone, cursor, subcursor; u8 pad24[0x1B64 - 0x1B24]; u16 choice;
@@ -573,6 +563,15 @@ static inline u16 E9CardId(u16 number)
     if (number <= 0x7CF) return ((const u16 *)0x08623DF4)[number & 0x7FF];
     return ((const u16 *)0x08623DF4)[(number - 0x7D0) & 0x7FF] + 1;
 }
+/* Effect dispatcher on the duel step byte (0x020192E0+0x1B20) for the player in flags bit 1:
+ * announces and resolves end-of-phase card effects (linked-zone destruction for card 0x60C,
+ * the opponent's 0x15B/0x4CE/0x5F8 zones, the 0x5EF prompt, graveyard bit-23 notices, the
+ * flagsC bit-4 events for both players), then trims the hand to six (returns 1 when done).
+ * Case 10 uses three FAKEMATCH forms, explained at each site: an opaque zone base `zb` from
+ * which step++ is formed, a dead product that sets loop.c's insn count (so it hoists
+ * player & 1 in its first pass and 0x94, 0xD64 and the side product in its second, as in
+ * the ROM), and the table pointer at the top of the loop body (hoisted, left without a hard
+ * register and reloaded, which keeps the ROM's reload-register rotation). */
 int sub_0804E948(void)
 {
     u32 player = ((u32)gUnk_020192E0[0x1B12] << 30) >> 31;
@@ -643,6 +642,9 @@ int sub_0804E948(void)
                 case 0x4CE:
                     if (!(f & 0x3C)) {
                         u16 msg = 0x8A;
+                        /* FAKEMATCH: f outlives the AND, so regmove gives its result the
+                         * 0x3C register (`ands r0, r3`) instead of f's. */
+                        asm("" :: "r"(f));
                         if (player != 1) msg = 0x808A;
                         sub_0801EC58(msg, E9_ZONE, 1, 0);
                     } else
@@ -686,21 +688,38 @@ int sub_0804E948(void)
     case 10:
         E9_ZONE = 0;
         do {
+            /* Declared at the top of the body: loop.c hoists the table address, it gets no
+             * hard register and is reloaded at the call (keeps the reload rotation). */
+            const u16 *t = gUnk_08624A0C;
             if (sub_0800A78C(player, E9_ZONE, 0x60C)) {
                 u16 idx = sub_0800AA40(player, E9_ZONE, 0x60C);
-                u16 link = ((struct E9Zone *)(E9_ZONE * 0x94 + (player & 1) * 0xD64 + E9_E + 0x2C))->links[idx];
-                u32 who = (u8)link;
-                u32 slot = link >> 8;
-                struct E9Zone *lz = (struct E9Zone *)(slot * 0x94 + (who & 1) * 0xD64 + E9_E + 0x2C);
+                int side = player & 1;
+                u32 off = E9_ZONE * 0x94 + side * 0xD64;
+                u8 *zb = E9_E + 0x2C;
+                u16 link;
+                u32 who, slot, wb;
+                struct E9Zone *lz;
+                /* FAKEMATCH: zb is opaque, so step++ below is formed as (base+0x2C)+0x1AF4
+                 * and stays in the loop; otherwise CSE relates it to the loop-top symbol
+                 * and loop.c hoists it. */
+                asm("" : "+r"(zb));
+                link = ((struct E9Zone *)(off + (u32)zb))->links[idx];
+                who = (u8)link;
+                slot = link >> 8;
+                wb = who & 1;
+                lz = (struct E9Zone *)(slot * 0x94 + wb * 0xD64 + (u32)zb);
                 if (!(lz->b91 & 8)) {
                     if (!(lz->f6 & 0x3C)) {
-                        u16 msg = 0x8A;
+                        /* FAKEMATCH: dead product, deleted by flow before register allocation;
+                         * it only raises loop.c's insn count to the ROM's (127 insns). */
+                        u16 msg = who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who;
+                        msg = 0x8A;
                         if (who) msg = 0x808A;
                         sub_0801EC58(msg, slot, 1, 0);
                     } else {
-                        sub_080197E0(player, gUnk_08624A0C[0]);
+                        sub_080197E0(player, t[0]);
                         sub_08018AE8(who, slot, 0);
-                        E9_STEP++;
+                        ((struct E9State *)(zb - 0x2C))->step++;
                         return 0;
                     }
                 }
@@ -717,7 +736,9 @@ int sub_0804E948(void)
     case 20: {
         int i;
         for (i = 0; i < E9_PS[player & 1].graveCount; i++) {
-            u32 card = E9_PS[player & 1].grave[i];
+            u32 *row = (u32 *)((player & 1) * 0xD64 + (u32)gUnk_02019BE8);
+            u32 *p = row + i;
+            u32 card = *p;
             if ((s32)(card << 8) < 0) {
                 u16 msg = 0xD2;
                 if (player) msg = 0x80D2;
@@ -753,12 +774,9 @@ int sub_0804E948(void)
         return 0;
     default:
         if (sub_08008524(0, 0x593) <= 0 && sub_08008524(1, 0x593) <= 0) {
-            u32 hand = E9_PS[player].handCount;
-            if (hand > 6)
-                sub_0802272C(player, hand - 6, 0, 0);
+            if (E9_PS[player].handCount > 6)
+                sub_0802272C(player, E9_PS[player].handCount - 6, 0, 0);
         }
         return 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804E948); /* 0x0804E948 size 0x6A8 */

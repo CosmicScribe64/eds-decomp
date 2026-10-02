@@ -663,3 +663,8 @@ updated: 2026-09-29
 - `src/code_08044224.c`: parked draft replaced by the improved candidate (volatile stats table, `u16` type inline, `b/off` pointer forms, `off += 4` loops, `cardNo`/`switch` compares, tail `word++` filters); unit still `MATCH`.
 - Masked region-diff metric 4667 -> about 1300; size 0x24A0-0x24EC vs 0x2514. Remaining gap is mostly register allocation (list base sl vs r9, count pointer ip) and the tail loop shapes.
 - Updated [[code-08044224]] with the confirmed idioms and allocation notes.
+
+## [2026-10-01] progress | sub_0801A130 matches; check.py ignores trailing alignment pad
+- `tools/check.py --diff`: a target size that exceeds the built `.size` only by the zero `.align 2, 0` pad up to a 4-byte boundary no longer prints a `size:` line, so `wf.py` scores byte-identical functions 0 instead of 8. Real size differences are still reported (tested with a +10-byte variant).
+- `src/code_08019554.c`: `sub_0801A130` enabled through `wf.py apply` (fresh hand pseudo `offset + (players + 0x684)`); unit `25/25 functions match; unit bytes MATCH`, enabled C 24/25. `check_all` 112/112.
+- Updated [[code-08019554]] (table row, unit status, resolved near-miss note, new "Hand search match" section) and [[agent-tooling]] (score note).

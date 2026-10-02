@@ -224,7 +224,14 @@ def main():
                   f'({100 * off / fsize:.1f}% matching prefix), {changed} differing lines')
         if bstart != fa:
             print(f'note: built {name} starts at 0x{bstart:08X}, target 0x{fa:08X} (earlier code differs in size)')
-        if name in syms and bsize != fsize:
+        # The target size runs to the next function, so it includes the `.align 2, 0` pad after a function
+        # ending on a 2-byte boundary; agbcc's .size does not. A shortfall that is only that zero pad is no
+        # difference.
+        pad = fsize - bsize
+        pad_only = (name in syms and 0 < pad < 4 and (fa + fsize) % 4 == 0
+                    and ROM[fa - BASE + bsize:fa - BASE + fsize] == bytes(pad)
+                    and built[bstart - lo + bsize:bstart - lo + fsize] == bytes(pad))
+        if name in syms and bsize != fsize and not pad_only:
             print(f'size: built 0x{bsize:X} vs target 0x{fsize:X} ({bsize - fsize:+d} bytes)')
         elif name not in syms:
             print(f'note: {name} is not defined by the build')

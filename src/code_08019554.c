@@ -351,13 +351,6 @@ int sub_0801A09C(int player, u16 no, int arg)
     }
     return 0;
 }
-#if 0 /* NONMATCHING (score 8): BYTE-IDENTICAL: whole unit reports 25/25 functions match, unit bytes MATCH with
-       * this C enabled. wf.py apply refuses only because check.py's size line compares the .size symbol (0x66, code
-       * only) with the table size 0x68, which includes the 2-byte trailing .align pad after bx r1 (matched sub_0801A09C
-       * shows the same -2 artifact). To enable: replace the INCLUDE_ASM with this C. Key: the hand pointer must be a
-       * fresh pseudo born as offset + (players + 0x684) (separate base temp), so offset dies there and shares r1 with
-       * hand; staging hand as two assignments to one variable made it conflict with offset and pushed the product into
-       * r0. */
 /* Return 1 (after sub_080193D4(player, i, 0, 1)) if the hand holds a card with number `no`. */
 int sub_0801A130(int player, u16 no)
 {
@@ -379,8 +372,6 @@ int sub_0801A130(int player, u16 no)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08019554", sub_0801A130); /* 0x0801A130 size 0x68 */
 void sub_0801A198(void)
 {
     int i;

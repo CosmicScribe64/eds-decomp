@@ -32,6 +32,9 @@ base, and they keep the result only if the whole unit still matches.
 
 Score = differing normalized lines + 4 x |size delta| (the same metric as the scout in
 `build/solo-s49/scout2.py`). `check.py --src FILE` and `permute.py --src FILE` are the underlying options.
+The size delta does not count the zero `.align 2, 0` pad that the function table includes after a function ending
+on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad showed as `-2 bytes`, held such
+functions at score 8, and made `apply` refuse them ([[code-08019554]], `sub_0801A130`).
 Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave.
 
 ## Running agents

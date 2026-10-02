@@ -538,12 +538,15 @@ int sub_0803AB78(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: 9-state dispatcher (ref, card). The ROM keeps the
-       * constant 1 in r4 and ref in r5 across the whole function, and extracts
-       * player before the 0x0201CFB0 field address. This build differs in
-       * register numbering from the 0x7F case on. */
+/* CardRef.targets really has three slots (+0xC, +0xE, +0x10); indexing through this view keeps the base
+ * pointer first in the address add, as in the ROM. */
+struct Tgt3AC34 { u16 v[3]; };
+/* Card word i of player p's list at 0x02019968, with the base added last as in the ROM. */
+#define HW_AC34(p, i) (*(u32 *)((p) * 0xD64 + (i) * 4 + (u32)gUnk_02019968))
 int sub_0803AC34(struct CardRef *ref, struct CardRef *card)
 {
+    int i;
+
     if (!ref->skip4) {
         switch (EFF_PHASE) {
         case 0x80:
@@ -558,8 +561,8 @@ int sub_0803AC34(struct CardRef *ref, struct CardRef *card)
 
             if (sub_08052F38(1) == 0)
                 goto ret7F;
-            p = ref->player;
-            id = CARD_ID(gUnk_02019968[p].w[DSV->w82C]);
+            p = ref->player & 1; /* the `& 1` leaves the constant 1 in a register that the later `1 & byte` reuses */
+            id = CARD_ID(HW_AC34(p, DSV->w82C));
             if (CARD_TYPE(id) <= 0x14 && sub_08007834(id) == 0) {
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)DSV->w82C << 8 | 0xB, 0);
                 ref->targets[0] = DSV->w82C;
@@ -572,83 +575,74 @@ int sub_0803AC34(struct CardRef *ref, struct CardRef *card)
             sub_080602A4(0x206, 0x613, 0xB, gUnk_080836BC);
         ret7D:
             return 0x7D;
-        case 0x7D: {
-            u32 *pw;
-
+        case 0x7D:
             if (sub_08052F38(1) == 0)
                 goto ret7D;
-            pw = &DSV->w82C;
-            if (CARD_TYPE11(gUnk_02019968[ref->player].w[*pw]) > 0x14) {
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)*pw << 8 | 0xB, 0);
-                ref->targets[1] = *pw;
+            if (CARD_TYPE11(HW_AC34(ref->player & 1, DSV->w82C)) > 0x14) {
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)DSV->w82C << 8 | 0xB, 0);
+                ref->targets[1] = DSV->w82C;
                 return 0x7C;
             }
             sub_08077AEC(3);
             goto ret7D;
-        }
         case 0x7C:
             sub_080602A4(0x206, 0x613, 0xB, gUnk_080836F0);
         ret7B:
             return 0x7B;
-        case 0x7B: {
-            u32 *pw;
-
+        case 0x7B:
             if (sub_08052F38(1) == 0)
                 goto ret7B;
-            pw = &DSV->w82C;
-            if (CARD_TYPE11(gUnk_02019968[ref->player].w[*pw]) > 0x14 && *pw != ref->targets[1]) {
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)*pw << 8 | 0xB, 0);
-                ref->targets[2] = *pw;
+            if (CARD_TYPE11(HW_AC34(ref->player & 1, DSV->w82C)) > 0x14 && DSV->w82C != ref->targets[1]) {
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)DSV->w82C << 8 | 0xB, 0);
+                ref->targets[2] = DSV->w82C;
                 EFF_SIDE = 0x10;
                 EFF_CNT = 0;
                 return 0x7A;
             }
             sub_08077AEC(3);
             goto ret7B;
-        }
         case 0x7A: {
-            int r;
+            struct Tgt3AC34 *t = (struct Tgt3AC34 *)ref->targets;
 
             do {
-                r = sub_08076F9C() % 3;
-            } while (r == gUnk_02017E22[0]);
-            EFF_CNT = r;
+                i = sub_08076F9C() % 3;
+            } while (i == gUnk_02017E22[0]);
+            EFF_CNT = i;
             if (EFF_SIDE != 0) {
                 EFF_SIDE--;
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8009 : 9, 0xB, ref->targets[EFF_CNT], 0);
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8009 : 9, 0xB, t->v[EFF_CNT], 0);
                 return 0x7A;
             }
-            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, *(u8 *)&ref->targets[EFF_CNT] << 8 | 0xB, 0);
+            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8008 : 8, ref->player, (u8)t->v[EFF_CNT] << 8 | 0xB, 0);
             return 0x79;
         }
         case 0x79: {
-            s16 i;
+            u8 *ex;
 
-            for (i = 0; i <= 2; i++) {
-                if (i != gUnk_02017E22[0])
+            for (i = 0, ex = gUnk_02017E22; i <= 2; i++) { /* ex set after i = 0, like a hoisted invariant */
+                if (i != *ex)
                     sub_080193D4(ref->player, ref->targets[i], 0, 0);
             }
             return 0x78;
         }
         case 0x78:
             if (EFF_CNT == 0) {
-                u32 *w = &gUnk_02019968[ref->player].w[ref->targets[0]];
+                u32 *row = gUnk_02019968[ref->player & 1].w;
+                u32 *w = row + ref->targets[0]; /* separate row temp: (p * 0xD64 + base) + t * 4 order */
 
-                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80C2 : 0xC2, ((u16 *)w)[0], ((u16 *)w)[1], 0);
                 sub_08019840(ref->player, CARD_ID(*w));
+                sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80C2 : 0xC2, ((u16 *)w)[0], ((u16 *)w)[1], 0);
                 sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80CA : 0xCA, 0, 0, 0);
                 sub_08056094(ref->player, w, 1, 0);
             } else {
+                sub_08019800(ref->player, CARD_ID(HW_AC34(ref->player, ref->targets[EFF_CNT])));
                 sub_080193D4(ref->player, ref->targets[EFF_CNT], 0, 1);
-                sub_08019800(ref->player, CARD_ID(gUnk_02019968[ref->player].w[ref->targets[EFF_CNT]]));
             }
             return 0x77;
         }
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0803A654", sub_0803AC34); /* 0x0803AC34 size 0x438 */
 int sub_0803B06C(struct CardRef *ref)
 {
     if (!ref->skip4) {

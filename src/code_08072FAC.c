@@ -287,13 +287,12 @@ void sub_08073574(void)
     *(vu16 *)0x04000036 = 0x100;
     *(vu16 *)0x04000008 = 4;
 }
-#if 0 /* NONMATCHING: structure matches; target derives 0xA84/0xAB4 as r2+0x30 from the 0xA54 literal and keeps base in r4/copy r5, the build uses separate literals and a different register assignment (reg+const CSE) */
 /* Link install: (re)initialise the SIO state block and hook the serial IRQ (sub_08075F74).
    a / b are the two IRQ handler slots (0x03000000 / 0x0300001C). */
 void sub_080735D4(u32 *a, u32 *b)
 {
     u8 i;
-    u8 zero;
+    u32 zero;
     REG_IME = 0;
     REG_IE &= 0xFF3F;
     REG_IME = 1;
@@ -312,16 +311,16 @@ void sub_080735D4(u32 *a, u32 *b)
     REG_SIOCNT = 0x1000;
     REG_SIOCNT = 0;
     REG_SIOCNT = 3;
-    REG_RCNT = 0;
     REG_SIOCNT |= 0x2000;
+    REG_RCNT = 0;
     gUnk_03005B60_s.state = 0xC;
     gUnk_03005B60_s.unkA40 = 0x1000;
-    gUnk_03005B60_s.irqSlotB = b;
     gUnk_03005B60_s.irqSlotA = a;
+    gUnk_03005B60_s.irqSlotB = b;
     REG_IME = 0;
     REG_IE |= 0x80;
-    *a = (u32)sub_08075F74 | 1;
-    *b = (u32)sub_08075F74 | 1;
+    *a = (u32)sub_08075F74;
+    *b = (u32)sub_08075F74;
     REG_SIOCNT |= 0x4000;
     REG_IME = 1;
     if (!(gUnk_03005B60_s.unkB0C & 4)) {
@@ -330,8 +329,6 @@ void sub_080735D4(u32 *a, u32 *b)
         REG_IME = 1;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_080735D4); /* 0x080735D4 size 0x168 */
 void sub_0807373C(void)
 {
     *(vu16 *)0x04000208 = 0;

@@ -34,9 +34,6 @@ extern struct TargetPlayer gUnk_020192E4[2];
 extern struct TargetPlayerList gUnk_02019AA8[2];
 extern struct TargetPlayerList gUnk_02019BE8[2];
 extern struct TargetList gUnk_0201D810;
-extern u32 gUnk_0201D81C[128];
-extern u16 gUnk_0201DA1C[128];
-extern u16 gUnk_0201DB1C;
 extern const u32 gUnk_08621DE0[];
 extern const u16 gUnk_08622AB4[];
 
@@ -69,7 +66,7 @@ static inline u16 TargetNumber(u32 id)
 #define TARGET_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define PP ((struct TargetPlayer *)(b + off))
 #define PPL (&gUnk_020192E4[player & 1])
-#define CASE_LOCALS struct TargetPlayer *p; u32 *word; u32 id; int cardNo; u32 type; u32 allowed; u32 attribute; int pidx; int j; u32 off; u8 *b; u32 *g;
+#define CASE_LOCALS struct TargetPlayer *p; u32 *word; u32 id; int cardNo; u32 type; u32 allowed; u32 attribute; int pidx; u32 off; u8 *b; u32 *g;
 #define ADD_TARGET(word, area) do { \
     gUnk_0201D810.cards[gUnk_0201D810.count] = (word); \
     gUnk_0201D810.areas[gUnk_0201D810.count] = (area); \
@@ -148,13 +145,21 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING: guard-typed32-wordfirst base; pointer formation, 0x7FF hoisting and global regalloc differ (see build/fable/sub_08044224/NOTES.md) */
+#if 0 /* NONMATCHING (score 5952): i pinned to r8 (FAKEMATCH); list base/0x7FF allocation, pointer formation and
+       * tail differ; see build/wf/sub_08044224/NOTES.md */
+struct TargetCards {
+    u32 cards[128];
+    u16 areas[128];
+    u16 count;
+};
+extern struct TargetCards gUnk_0201D81C;
 u16 sub_08044224(int player, u16 number, int arg)
 {
     u16 materials[4];
     int forceFilter = 0;
     int skipFilter = 0;
-    int i;
+    int flag;
+    register int i asm("r8");
     int j;
     int pidx;
     struct TargetPlayer *p;
@@ -418,9 +423,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         pidx = 0;
         do {
             i = 0;
-            p = &gUnk_020192E4[pidx & 1];
-            for (; i < PP->graveCount; i++) {
-                word = &PP->graveyard[i];
+            for (; i < gUnk_020192E4[pidx & 1].graveCount; i++) {
+                word = &gUnk_020192E4[pidx & 1].graveyard[i];
                 if (TARGET_TYPE(*word & 0x7FF) <= 20
                     && (u16)sub_0804412C(pidx, i) != 0)
                     ADD_TARGET(*word, 4);
@@ -434,15 +438,17 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         skipFilter = 1;
         i = 0;
-        p = &gUnk_020192E4[(1 - player) & 1];
+        b = (u8 *)gUnk_020192E4;
+        off = ((1 - player) & 1) * 0xD64;
         if (i < PP->graveCount) {
-            word = PP->graveyard;
+            g = (u32 *)(b + 0x904);
+            word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
                 ADD_TARGET(*word, 4);
         
                 word++; i++;
-            } while (i < PPL->graveCount);
+            } while (i < PP->graveCount);
         }
         break;
     }
@@ -451,7 +457,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         CASE_LOCALS
         skipFilter = 1;
         i = 0;
-        p = &gUnk_020192E4[(1 - player) & 1];
+        b = (u8 *)gUnk_020192E4;
+        off = ((1 - player) & 1) * 0xD64;
         for (; i < PP->deckCount && i <= 4; i++)
             ADD_TARGET(CopyTargetDeckWord(1-player, i), 2);
         break;
@@ -533,15 +540,17 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         i = 0;
-        p = &gUnk_020192E4[(1 - player) & 1];
+        b = (u8 *)gUnk_020192E4;
+        off = ((1 - player) & 1) * 0xD64;
         if (i < PP->graveCount) {
-            word = PP->graveyard;
+            g = (u32 *)(b + 0x904);
+            word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) == 22)
                 ADD_TARGET(*word, 4);
         
                 word++; i++;
-            } while (i < PPL->graveCount);
+            } while (i < PP->graveCount);
         }
         break;
     }
@@ -680,27 +689,27 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x45C:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->graveCount; i++) {
-            word = &PP->graveyard[i];
+        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+            word = &gUnk_020192E4[player & 1].graveyard[i];
             if (TARGET_TYPE(*word & 0x7FF) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGET(*word, 4);
         }
         if (player == arg) {
+            flag = 1;
             i = 0;
-            while (i < gUnk_0201D810.count) {
-                if (TARGET_NUMBER(gUnk_0201D81C[i]) == 0x45C) {
-                    gUnk_0201D810.count--;
-                    for (j = i; j < gUnk_0201D810.count; j++) {
-                        sub_08007558(&gUnk_0201D81C[j], &gUnk_0201D81C[j + 1]);
-                        gUnk_0201DA1C[j] = gUnk_0201DA1C[j + 1];
+            if (i < gUnk_0201D810.count) {
+                do {
+                    if (TARGET_NUMBER(TARGET_ID(gUnk_0201D81C.cards[i])) == 0x45C) {
+                        flag = 0;
+                        gUnk_0201D810.count--;
+                        for (j = i; j < gUnk_0201D810.count; j++) {
+                            sub_08007558(&gUnk_0201D81C.cards[j], &gUnk_0201D81C.cards[j + 1]);
+                            gUnk_0201D81C.areas[j] = gUnk_0201D81C.areas[j + 1];
+                        }
                     }
-                    break;
-                }
-                i++;
+                    i++;
+                } while (i < gUnk_0201D81C.count && flag);
             }
         }
         break;
@@ -851,15 +860,17 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         i = 0;
-        p = &gUnk_020192E4[(1 - player) & 1];
+        b = (u8 *)gUnk_020192E4;
+        off = ((1 - player) & 1) * 0xD64;
         if (i < PP->graveCount) {
-            word = PP->graveyard;
+            g = (u32 *)(b + 0x904);
+            word = (u32 *)((u8 *)g + off);
             do {
             if (TARGET_TYPE(TARGET_ID(*word)) <= 20)
                 ADD_TARGET(*word, 4);
         
                 word++; i++;
-            } while (i < PPL->graveCount);
+            } while (i < PP->graveCount);
         }
         break;
     }
@@ -1004,41 +1015,32 @@ u16 sub_08044224(int player, u16 number, int arg)
 
     fieldCount = sub_08008668(player);
     if ((forceFilter || fieldCount == 0) && !skipFilter) {
-        i = 0;
-        word = gUnk_0201D810.cards;
-        while (i < gUnk_0201D810.count) {
-            if (sub_0800756C(TARGET_NUMBER(TARGET_ID(*word))) != 0) {
+        for (i = 0; i < gUnk_0201D810.count;) {
+            if (sub_0800756C(TARGET_NUMBER(TARGET_ID(gUnk_0201D810.cards[i]))) != 0) {
                 /* Retain the ROM's final one-past-count copy and untouched area tags. */
                 for (j = i; j < gUnk_0201D810.count; j++)
                     gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];
                 gUnk_0201D810.count--;
             } else {
-                word++;
                 i++;
             }
         }
     }
-    i = 0;
-    word = gUnk_0201D810.cards;
-    while (i < gUnk_0201D810.count) {
-        if ((s32)(*word << 14) < 0) {
+    for (i = 0; i < gUnk_0201D810.count;) {
+        if ((s32)(gUnk_0201D810.cards[i] << 14) < 0) {
             for (j = i; j < gUnk_0201D810.count; j++)
                 gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];
             gUnk_0201D810.count--;
         } else {
-            word++;
             i++;
         }
     }
-    i = 0;
-    word = gUnk_0201D810.cards;
-    while (i < gUnk_0201D810.count) {
-        if (sub_0800966C(TARGET_ID(*word)) != 0) {
+    for (i = 0; i < gUnk_0201D810.count;) {
+        if (sub_0800966C(TARGET_ID(gUnk_0201D810.cards[i])) != 0) {
             for (j = i; j < gUnk_0201D810.count; j++)
                 gUnk_0201D810.cards[j] = gUnk_0201D810.cards[j + 1];
             gUnk_0201D810.count--;
         } else {
-            word++;
             i++;
         }
     }

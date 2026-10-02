@@ -510,69 +510,73 @@ void sub_0805E100(int a, int x, int y, int v)
         dst += 16;
     }
 }
-#if 0 /* NONMATCHING: 174 lines; shape right, register allocation differs (t in r7 vs r3, row in r6 vs r7) */
-void sub_0805E1D0(int bg, int x, int y, int tile)
+void sub_0805E1D0(int a, int x, int y, int v)
 {
-    u16 *row;
-    int t;
-    int i, j;
-
-    row = (u16 *)(0x06000000 + bg * 0x800);
-    t = tile / 2;
-    row += x / 2;
-    row += y * 16;
-    for (i = 0; i < 4; i++) {
+    u16 *dst = (u16 *)((a << 11) + 0x06000000);
+    int row;
+    int j;
+    v /= 2;
+    dst += x / 2;
+    dst += y * 16;
+    for (row = 0; row < 4; row++) {
+        u16 *p;
         if (x & 1) {
-            row[0] = (u8)t << 8;
-            t++;
+            *dst = (u8)v << 8;
+            v++;
+            p = dst + 1;
             for (j = 0; j < 6; j++) {
-                row[1 + j] = (u8)t | ((u8)(t + 1) << 8);
-                t += 2;
+                p[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
         } else {
             for (j = 0; j < 6; j++) {
-                row[j] = (u8)t | ((u8)(t + 1) << 8);
-                t += 2;
+                dst[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
-            row[6] = (u8)t;
-            t++;
+            dst[6] = (u8)v;
+            v++;
         }
-        row += 16;
+        dst += 16;
     }
-    for (i = 0; i < 10; i++) {
+    for (row = 0; row < 10; row++) {
         if (x & 1) {
-            row[0] |= t << 8;
-            row[1] |= (u8)(t + 1);
-            row[6] |= (u8)(t + 2) | ((u8)(t + 3) << 8);
+            dst[0] |= (u8)v << 8;
+            v++;
+            dst[1] |= (u8)v;
+            v++;
+            dst[6] |= (u8)v | (u8)(v + 1) << 8;
+            v += 2;
         } else {
-            row[0] |= (u8)t | ((u8)(t + 1) << 8);
-            row[5] |= (u8)(t + 2) << 8;
-            row[6] |= (u8)(t + 3);
+            dst[0] |= (u8)v | (u8)(v + 1) << 8;
+            v += 2;
+            dst[5] |= (u8)v << 8;
+            v++;
+            dst[6] |= (u8)v;
+            v++;
         }
-        t += 4;
-        row += 16;
+        dst += 16;
     }
-    for (i = 0; i < 4; i++) {
+    for (row = 0; row < 4; row++) {
+        u16 *p;
         if (x & 1) {
-            row[0] = (u8)t << 8;
-            t++;
+            *dst = (u8)v << 8;
+            v++;
+            p = dst + 1;
             for (j = 0; j < 6; j++) {
-                row[1 + j] = (u8)t | ((u8)(t + 1) << 8);
-                t += 2;
+                p[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
         } else {
             for (j = 0; j < 6; j++) {
-                row[j] = (u8)t | ((u8)(t + 1) << 8);
-                t += 2;
+                dst[j] = (u8)v | (u8)(v + 1) << 8;
+                v += 2;
             }
-            row[6] = (u8)t;
-            t++;
+            dst[6] = (u8)v;
+            v++;
         }
-        row += 16;
+        dst += 16;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805D58C", sub_0805E1D0); /* 0x0805E1D0 size 0x1E8 */
 extern u8 gUnk_020185A4[];
 extern const u16 gUnk_08631558[];
 extern const u16 gUnk_0862EEC0[];

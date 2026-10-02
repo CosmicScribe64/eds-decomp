@@ -392,8 +392,6 @@ u16 sub_08004AF8(void)
     }
 }
 /* License step 1: draws the centred notice text 0x080813F0 (drawn twice, offset, as an outline) and holds it. */
-#if 0 /* NONMATCHING: only the outline loop nest differs. The target strength-reduces x+i+j into a
-       * j-loop giv (r5, copied to r8) and keeps x in sl; here x+i is hoisted and j is added per iteration. */
 u16 sub_08004B84(void)
 {
     s32 x, i, j, k;
@@ -406,18 +404,18 @@ u16 sub_08004B84(void)
         for (i = 1; i >= 0; i--)
             for (j = 0; j <= 1; j++)
                 for (k = 0; k <= 0; k++)
-                    sub_0807501C(x + i + j, k + i, i == 1 ? 0x100F : 0x1008, gUnk_080813F0);
+                    sub_0807501C(x + j + i, k + i, i == 1 ? 0x100F : 0x1008, gUnk_080813F0);
         sub_08075114((void *)0x06004400, 0);
-        for (i = 0; i < 96; i++)
-            gMain.bgMapBuffer[1][0x120 + i] = i + 0x20;
+        for (j = 0; j < 96; j++)
+            gMain.bgMapBuffer[1][0x120 + j] = j + 0x20;
         gMain.seqState0++;
         return 0;
     case 1:
         REG_DISPCNT |= 0x200;
         if (!sub_08075BD0(1))
             return 0;
-        return 0;
         gMain.seqState0++;
+        return 0;
     case 2:
         if (gMain.seqIndex1++ < 120)
             return 0;
@@ -432,8 +430,6 @@ u16 sub_08004B84(void)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080044E4", sub_08004B84); /* 0x08004B84 size 0x138 */
 /* License step 2: shows the logo image 0x087D01F4, holds it 120 frames, fades out. */
 u16 sub_08004CBC(void)
 {

@@ -555,41 +555,34 @@ int sub_080729F8(u16 c)
     return 0;
 }
 
-#if 0 /* NONMATCHING: register allocation differs (target: s r9, col r6, tile r8, map sl, 0x1F mask
-       * hoisted in r7, width pointer spilled to [sp,0xC] across the sub_080728C0 call; built
-       * keeps the width pointer in a register and masks inline) */
 /* Same for 2-byte (Shift-JIS) text with line-break rules (no line start on sub_080728C0 chars,
-   no line end on sub_080729F8 chars). */
+   no line end on sub_080729F8 chars). Each char is read as a halfword and byte-swapped; the
+   (u8) casts and the repeated *(u16 *)s reads set col's live length so that ch gets r5. */
 void sub_08072A14(u16 col, u16 pk, u16 tile, u8 *s)
 {
-    u16 lo = pk;
-    u8 hi = pk >> 8;
     u16 *map = (u16 *)gUnk_0300045C;
+    u8 lo = pk;
+    u8 hi = pk >> 8;
     u16 base = col;
     map += col;
     while (1) {
-        struct MainMap *m = &gUnk_03000040_m;
-        u8 w = *(u16 *)s;
-        u8 b = *s;
         u16 ch;
-        if (b == 0)
-            break;
-        ch = (w >> 8) | (b << 8);
-        if (((col & 0x1F) >= (m->w & 0x1F) - 2 && !sub_080728C0_u16(ch))
-            || ((col & 0x1F) >= (m->w & 0x1F) - 3 && sub_080729F8_u16(ch))) {
+        if ((u8)*(u16 *)s == 0)
+            return;
+        ch = (u8)(*(u16 *)s >> 8) | ((u8)*(u16 *)s << 8);
+        if (((col & 0x1F) >= (gUnk_03000040_m.w & 0x1F) - 2 && !sub_080728C0_u16(ch))
+            || ((col & 0x1F) >= (gUnk_03000040_m.w & 0x1F) - 3 && sub_080729F8_u16(ch))) {
             base += 0x20;
             col = base;
-            map = &m->map[base];
+            map = (u16 *)gUnk_0300045C + base;
         }
         sub_08072808(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
         *map++ = tile;
         col++;
-        tile++;
         s += 2;
+        tile++;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08071F40", sub_08072A14); /* 0x08072A14 size 0xE4 */
 
 #if 0 /* NONMATCHING: register allocation differs. The base+offset shape matches (a u64 temp
        * prevents folding), but agbcc keeps `hi` in sl and map/base in r7/r8, while the target

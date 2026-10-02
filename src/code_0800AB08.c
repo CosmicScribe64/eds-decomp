@@ -11,6 +11,7 @@ struct ZoneCardBits { u32 id:12; u32 pad:5; u32 flag17:1; u32 rest:14; };
 struct ZoneAuxBits { u32 pad:13; u32 value:5; u32 rest:14; };
 struct ZoneFlags { u8 pad[6]; u8 flags; u8 tail; };
 struct ZoneDisabled { u8 pad[0x91]; u8 flags; };
+struct ZoneAux { u8 pad[0x90]; u32 lo:13; u32 value:5; u32 hi:14; };
 struct StatDuelFlags { u8 pad[0x1ACC]; u16 flags; };
 struct StatDuelFlagBytes { u8 pad[0x1ACD]; u8 flags; };
 #define ZONE_BASE(p, s) ((u8 *)gUnk_0201930C + (s) * 0x94 + (p) * 0xD64)
@@ -103,7 +104,8 @@ static inline struct DuelZone * GetFieldTarget(int player, int slot) { return (s
 #if 1 /* NONMATCHING: the frontier is 0x1CD0 versus 0x1CCC, with the target 0x50-byte frame
        * and 660 normalized +/- diff lines. Shared tails, field-table accesses and register
        * allocation still differ. See wiki/functions/code-0800ab08.md for experiment details. */
-#if 0 /* NONMATCHING (score 604): head + case 3 exact; first diff +0x76E (case 1 linked-zone address) */
+#if 0 /* NONMATCHING (score 574): head, case 3, case 1 head exact; first diff +0x7FC (card-number table pseudo
+       * in case 1) */
 void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
 {
     int i, p;
@@ -230,10 +232,8 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
             }
             break;
         case 1: {
-            struct DuelZone *linkedZone;
             if (!linkedId) break;
-            linkedZone = ZB(lp & 1, ls);
-            if (!(((struct ZoneDisabled *)linkedZone)->flags & 8) && !sub_08008524(0, 0x601) &&
+            if (!ZONE_DISABLED(lp & 1, ls) && !sub_08008524(0, 0x601) &&
                 !sub_08008524(1, 0x601) && !(*((u8 *)gUnk_0201930C + 0x1AA1) & 3) &&
                 (!immune || CARD_TYPE(linkedId) != 22)) {
                 switch (CARD_NUMBER(linkedId)) {
@@ -286,7 +286,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 667: if (out->attr == 1) equipAtk += 700; break;
                 case 962:
                     if (out->type == 7) {
-                        switch (((struct ZoneAuxBits *)((u8 *)linkedZone + 0x90))->value) {
+                        switch (((struct ZoneAux *)ZB(lp & 1, ls))->value) {
                         case 1: equipAtk += 700; break;
                         case 2: equipDef += 700; break;
                         }
@@ -297,7 +297,7 @@ void sub_0800ABC8(int player, int slot, struct ZoneCardInfo *out)
                 case 1042: equipAtk += 500; equipDef += 500; break;
                 case 1046: if (out->type != 7) equipAtk -= ZB(lp & 1, ls)->counter6 * 300; break;
                 case 1058: equipAtk -= 500; equipDef -= 500; break;
-                case 1060: equipAtk += 700 - linkedZone->counter6 * 200; break;
+                case 1060: equipAtk += 700 - ZB(lp & 1, ls)->counter6 * 200; break;
                 case 1182: if (out->type == 15) equipAtk += 700; break;
                 case 1242: equipAtk -= 500; break;
                 case 1420: equipAtk += 1000; equipDef -= 1000; break;

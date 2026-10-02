@@ -431,36 +431,34 @@ int sub_0804E5B4(int player)
         return 1;
     }
 }
-#if 0 /* NONMATCHING: same structure; the ROM keeps zone base in sl, the
-       * constant 1 in r7 and 0x7FF in r6, steps the zone pointer (add
-       * r3,#0x94) while still counting i up in loop 1; this build gets either
-       * a mul per iteration or a counted-down loop. */
 /* Two passes over the face-down monster zones of `player`: the first sets `found` when a monster of level <= 3 with byte +8 bit 0 clear exists (cleared again unless card 0x52A is present on either side; then message 0x73 is sent), the second destroys such monsters (sub_08018544) when found, and sends message 0xA6 (0x80A6) for each other face-down zone. */
+extern u8 gUnk_0201930C[];
+static inline int Level_E780(u16 id)
+{
+    switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 10;
+    default:
+        return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
+    }
+}
+/* Zone addresses go through the symbol gUnk_0201930C so GCSE keeps one copy of it in sl.
+ * Loop 1 computes the zone address twice, player term first: loop.c hoists the 0x94 only
+ * in its second pass, so the zone pointer is strength-reduced while i still counts up
+ * (a hand-stepped pointer gets a reversed counter). */
 void sub_0804E780(int player)
 {
     int found = 0;
-    s8 i;
-    struct DuelZoneL *zp = (struct DuelZoneL *)((player & 1) * 0x0201930C + 0xD64);
-    struct DuelZoneL *zn = zp;
-    for (i = 0; i <= 4; i++, zn++) {
-        int id = ID(zn);
+    int i;
+    for (i = 0; i <= 4; i++) {
+        struct DuelZoneL *zn = (struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C);
+        u32 id = ID(zn);
         if (id != 0 && (zn->flags6 & 2) != 0) {
-            u32 lv;
-            int t = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
-            switch (t) {
-            case 0x15:
-            case 0x16:
-            case 0x17:
-                lv = 0;
-                break;
-            case 0x18:
-                lv = 10;
-                break;
-            default:
-                lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
-                break;
-            }
-            if (lv <= 3 && (zn->b8 & 1) == 0)
+            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C))->b8 & 1) == 0)
                 found = 1;
         }
     }
@@ -473,37 +471,20 @@ void sub_0804E780(int player)
         sub_0801EC58(msg, gUnk_08624848[0], 1, 0);
     }
     for (i = 0; i <= 4; i++) {
-        struct DuelZoneL *zn = (struct DuelZoneL *)(i * 0x94 + (player & 1) * 0xD64 + 0x0201930C);
+        struct DuelZoneL *zn = (struct DuelZoneL *)(i * 0x94 + (player & 1) * 0xD64 + (int)gUnk_0201930C);
         u16 id = ID(zn);
         if (id != 0 && (zn->flags6 & 2) != 0) {
-            u32 lv;
-            int t = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
-            switch (t) {
-            case 0x15:
-            case 0x16:
-            case 0x17:
-                lv = 0;
-                break;
-            case 0x18:
-                lv = 10;
-                break;
-            default:
-                lv = (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
-                break;
-            }
-            if (lv <= 3 && (zn->b8 & 1) == 0 && found != 0) {
+            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C))->b8 & 1) == 0 && found != 0) {
                 sub_08018544(player, i, 1);
             } else {
                 u32 msg = 0xA6;
                 if (player != 0)
                     msg = 0x80A6;
-                sub_0801EC58(msg, (u16)i, 1, 0);
+                sub_0801EC58(msg, i, 1, 0);
             }
         }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804DB6C", sub_0804E780); /* 0x0804E780 size 0x1C8 */
 #if 0 /* NONMATCHING: 0x6C0 bytes versus the ROM's 0x6A8. The source was
        * audited against the assembly in full; the remaining differences are
        * the frame size (4 vs 8) and register lifetimes. */

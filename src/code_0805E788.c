@@ -492,15 +492,22 @@ extern const u16 gUnk_08622AB4[];
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 /* Duel card detail (zone view): name box, a counter box for the special cards 0x47/0x15B/0x4CE, and the
  * ATK/DEF/level numbers; cards 0x479/0x5A8 also show an icon block. */
-#if 0 /* NONMATCHING: control flow identical; broad register-allocation differences (name-string address, the zone-address products use r2/r1 swapped, `x`/`shown` allocation); it is the base for the permuter */
+static inline struct UiZone *ZoneF270(int player, int slot)
+{
+    int pl = player & 1;
+    return (struct UiZone *)(slot * 0x94 + pl * 0xD64 + (u32)gUnk_0201930C);
+}
+#define ZONE_F270(p, s) ZoneF270(p, s)
 void sub_0805F270(u16 id, u16 flag, int player, int slot)
 {
-    const u8 *str = gUnk_0822C720 + (id << 6);
-    s16 len = sub_080753E0(str);
+    /* FAKEMATCH: offset pinned to r0 as in sub_0805F074 */
+    register u32 off asm("r0") = id << 6;
+    const u8 *tbl = gUnk_0822C720;
+    const u8 *str = tbl + off;
+    int len = sub_080753E0(str);
     u32 w = 12;
     int x = 0xEC;
     int shown = 0;
-    int pl;
     struct UiZone *z;
     int v;
 
@@ -509,19 +516,15 @@ void sub_0805F270(u16 id, u16 flag, int player, int slot)
     sub_08074B08(0x20, 2);
     sub_0807501C(3, 9 - (w >> 1), (w << 8) | 8, str);
     sub_0807501C(2, 8 - (w >> 1), (w << 8) | 7, str);
-    pl = player & 1;
-    z = (struct UiZone *)(slot * 0x94 + pl * 0xD64 + (u32)gUnk_0201930C);
-    if (z->f6_1) {
+    if (ZONE_F270(player, slot)->f6_1) {
         int n = CARD_NUMBER(id);
         switch (n) {
         case 0x47:
         case 0x15B:
         case 0x4CE: {
             u32 t;
-            pl = player & 1;
-            z = (struct UiZone *)(slot * 0x94 + pl * 0xD64 + (u32)gUnk_0201930C);
             x -= 0x3C;
-            t = z->f6_2;
+            t = ZONE_F270(player, slot)->f6_2;
             if ((int)t <= 9) {
                 sub_080750E0(x + 1, 4, 0xA08, t);
                 sub_080750E0(x, 3, 0xA07, t);
@@ -556,19 +559,19 @@ void sub_0805F270(u16 id, u16 flag, int player, int slot)
         v = CardLevel(id);
         sub_0805EE78(0x37, v, 7, 2);
     }
-    pl = player & 1;
-    z = (struct UiZone *)(slot * 0x94 + pl * 0xD64 + (u32)gUnk_0201930C);
+    z = ZONE_F270(player, slot);
     if (z->f6_1) {
         int n = CARD_NUMBER(id);
-        if (n == 0x479)
+        switch (n) {
+        case 0x479:
             sub_0805EF00(0x1C, 9, gUnk_081A41A4[(z->w90 << 14) >> 27]);
-        else if (n == 0x5A8)
+            break;
+        case 0x5A8:
             sub_0805EF00(0x1C, 9, gUnk_081A41F8[(z->w90 << 14) >> 27]);
+            break;
+        }
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_0805E788", sub_0805F270); /* 0x0805F270 size 0x3DC */
-#endif
 /* Draws a two-row text box frame (rows of string `str`, palette/size byte `a`) and the number `val`
  * centred: `cnt` is the extra width in characters, each digit of `val` adds 1 (2 with 2-byte chars). */
 void sub_0805F64C(int a, const u8 *str, int val, int cnt)

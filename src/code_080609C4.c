@@ -483,100 +483,92 @@ void sub_0806120C(u16 a, u16 b, u16 c)
     t = gUnk_081A427C[(gMain.frameCounter >> 3) & 7] + c + 0x5400;
     sub_080761F0(x2, 0x40, t);
 }
-#if 0 /* NONMATCHING: hand translation from the m2c draft. The semantics follow the ROM (nested
-       * switch over attached-effect types), but codegen differs wholesale: no jump tables,
-       * player/zone kept in r6/r7 instead of r8/r9, and a different branch tree. Best-effort
-       * parked base only. */
+/* Private views of one zone (0x94 bytes) and of the per-player block (0xD64 bytes) for sub_080612F4. */
+struct Zone12F4 {
+    u32 card;               /* +0 card word, id in the low 12 bits */
+    u8 unk4;
+    u8 unk5;
+    u8 flags6;              /* +6 bit 1 = face-up */
+    u8 unk7;
+    u8 pad8[2];
+    u16 ids[0x20];          /* +0xA linked zone refs (player | zone << 8) */
+    u8 types[0x40];         /* +0x4A link types, stride 2 */
+    u16 count;              /* +0x8A link count */
+    u8 pad8C[0x94 - 0x8C];
+};
+struct PS12F4 {
+    u8 pad0[0xB];
+    u32 lowB : 4;
+    u32 mask : 5;           /* +0xB bit 4 .. +0xC bit 0: straddles the byte, read as two ldrb + shift/or */
+    u32 restC : 7;
+    u8 padD[0xD64 - 0xD];
+} __attribute__((packed));
+extern struct PS12F4 gPS12F4_020192E4[2];
+extern u8 gZ8_12F4_0201930C[];
+/* Byte-array form: in a dereference the offset is expanded as (1 & p), z * 0x94, then * 0xD64, as in the ROM. */
+#define ZA12F4(p, z) ((struct Zone12F4 *)&gZ8_12F4_0201930C[(1 & (p)) * 0xD64 + (z) * 0x94])
+#define PACK12F4(p, z) ((u16)((u8)(p) | ((u8)(z) << 8)))
+
+/* Draw cursor pairs for the links of zone (player, zone): kind 5 first scans every face-up occupied zone for links
+   pointing at (player, zone); kinds 0, 5 and 10 then draw the zone's own links (types 1/5/10 -> 0x20C, 2/7 -> 0x218)
+   and, when bit `zone` of the player's mask is set, a 0x218 cursor from (player, 0xF). */
 void sub_080612F4(u32 player, u32 zone, u32 kind)
 {
-    s32 sp0;
-    s16 e;
-    u32 p;
+    s32 p;
     s32 z;
-    struct PlayerState *ps;
-    struct DuelZone *zd;
+    s32 e;
     u16 id;
-    u32 type;
-    u32 mask;
-    u32 a;
+    u8 type;
 
-    switch (kind) {
+    switch ((s32)kind) {
+    case 5:
+        for (p = 0; p <= 1; p++) {
+            for (z = 0; z <= 10; z++) {
+                if ((*(u32 *)ZA12F4(p, z) << 20) != 0 && (ZA12F4(p, z)->flags6 & 2)) {
+                    for (e = 0; e < ZA12F4(p, z)->count; e++) {
+                        id = ZA12F4(p, z)->ids[e];
+                        switch (ZA12F4(p, z)->types[e * 2]) {
+                        case 1:
+                        case 5:
+                        case 10:
+                            if (id == PACK12F4(player, zone))
+                                sub_0806120C(id, PACK12F4(p, z), 0x20C);
+                            break;
+                        case 2:
+                        case 7:
+                            if (id == PACK12F4(player, zone))
+                                sub_0806120C(id, PACK12F4(p, z), 0x218);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        /* fallthrough */
     case 0:
     case 10:
-block_24:
-        e = 0;
-loop_32:
-        if (e < (s32)ZB(1 & player, zone)->count) {
-            zd = ZB(1 & player, zone);
-            id = zd->ids[e];
-            if ((zd->flags6 & 2) || (player == 0)) {
-                type = *((u8 *)zd + 0x4A + e * 2) - 1;
+        for (e = 0; e < ZA12F4(player, zone)->count; e++) {
+            id = ZA12F4(player, zone)->ids[e];
+            type = ZA12F4(player, zone)->types[e * 2];
+            if ((ZA12F4(player, zone)->flags6 & 2) || player == 0) {
                 switch (type) {
-                case 0:
-                case 4:
-                case 9:
-                    if (id == (u16)((((player << 24) >> 8) | (zone << 24)) >> 16))
-                        sub_0806120C(id, (u16)((((player << 24) >> 8) | (zone << 24)) >> 16), 0x20C);
-                    break;
                 case 1:
-                case 6:
-                    if (id == (u16)((((player << 24) >> 8) | (zone << 24)) >> 16))
-                        sub_0806120C(id, (u16)((((player << 24) >> 8) | (zone << 24)) >> 16), 0x218);
+                case 5:
+                case 10:
+                    sub_0806120C(id, PACK12F4(player, zone), 0x20C);
+                    break;
+                case 2:
+                case 7:
+                    sub_0806120C(id, PACK12F4(player, zone), 0x218);
                     break;
                 }
             }
-            e++;
-            goto loop_32;
         }
-        ps = &gUnk_020192E4[1 & player];
-        mask = ((ps->unkC & 1) << 4) | (ps->unkB >> 4);
-        if ((mask >> zone) & 1) {
-            a = (u8)player;
-            sub_0806120C(a | 0xF00, (u16)((zone << 8) | a), 0x218);
-        }
-        return;
-    case 5:
-        p = 0;
-loop_9:
-        z = 0;
-        sp0 = p + 1;
-loop_10:
-        zd = ZB(p, z);
-        if (((*(u32 *)zd << 20) != 0) && (zd->flags6 & 2)) {
-            e = 0;
-            if ((s32)zd->count > 0) {
-                do {
-                    zd = ZB(p, z);
-                    id = zd->ids[e];
-                    type = *((u8 *)zd + 0x4A + e * 2) - 1;
-                    switch (type) {
-                    case 0:
-                    case 4:
-                    case 9:
-                        if (id == (u16)((((player << 24) >> 8) | (zone << 24)) >> 16))
-                            sub_0806120C(id, (u16)((((p << 24) >> 8) | (z << 24)) >> 16), 0x20C);
-                        break;
-                    case 1:
-                    case 6:
-                        if (id == (u16)((((player << 24) >> 8) | (zone << 24)) >> 16))
-                            sub_0806120C(id, (u16)((((p << 24) >> 8) | (z << 24)) >> 16), 0x218);
-                        break;
-                    }
-                    e++;
-                } while (e < (s32)ZB(p, z)->count);
-            }
-        }
-        z++;
-        if (z <= 0xA)
-            goto loop_10;
-        p = sp0;
-        if (p <= 1)
-            goto loop_9;
-        goto block_24;
+        if ((gPS12F4_020192E4[1 & player].mask >> zone) & 1)
+            sub_0806120C((u8)player | 0xF00, (u8)player | ((u8)zone << 8), 0x218);
+        break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080609C4", sub_080612F4); /* 0x080612F4 size 0x28C */
 /* Per-frame draw of the duel board markers: zone cursor effects, hand strip cursor sprites, then the optional callback. */
 /* Per-player state block (0xD64 bytes) at gUnk_020192E0 + 4; only the +0x26 bitmask is used here. */
 struct PS580 {

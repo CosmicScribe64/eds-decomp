@@ -334,56 +334,56 @@ empty:
 }
 
 
-#if 0 /* NONMATCHING: the target re-reads rxCount and recomputes &rx[rxCount] + (++j)*2 per halfword
-       * (stores alias), compares j<n signed but j<=4 unsigned, and pushes r8-sl. This version
-       * hoists the entry pointer. */
-/* Queue `len` bytes (rounded up to halfwords, n) as 12-byte packets: up to 5 halfwords in one
-   0x90 packet, otherwise 0xA0 chunks (sent from the tail, header = remaining count) and a final
-   0xB0 packet (header = total count). Returns 1 on success, 0 if the queue is full. */
+#if 0 /* NONMATCHING (score 4): NONMATCHING: score 4. Direct gUnk_030049D0 field accesses (u16 h[6] packet
+       * view), u32 j with (int)j<(int)n, offset computed before the n<=5 test, u8 total for the 0xB0 header. Only diff:
+       * the target computes lsr #24 of (u8)total after the hoisted sl/r7 copies (zero-extend split around the loop
+       * preheader). */
+typedef struct { u16 h[6]; } QPkt;
+struct LinkQ {
+    QPkt rx[64];
+    u16 rxCount;
+};
+extern struct LinkQ gUnk_030049D0_q asm("gUnk_030049D0");
+#define Q gUnk_030049D0_q
 int sub_080723B4(u16 *src, u32 len)
 {
-    struct LinkBuf *b = &gUnk_030049D0;
-    s16 n = (len + 1) >> 1;
-    u16 *cnt = &b->rxCount;
-    u16 *e;
-    u16 *s2;
-    s16 j;
-    u16 zero;
+    u32 n = (len + 1) >> 1;
+    u32 j;
     u16 hdr;
-    if (*cnt > 0x3F)
-        return 0;
-    if (n <= 5) {
-        e = (u16 *)&b->rx[*cnt];
-        e[0] = (u8)n | 0x9000;
-        for (j = 0; j <= 4; j++) {
-            if (j < n)
-                e[j + 1] = *src++;
-            else
-                e[j + 1] = 0;
-        }
-        b->rxCount++;
-        return 1;
-    }
-    zero = 0;
-    hdr = (u8)n | 0xB000;
-    while (1) {
+    u8 total;
+    u32 off;
+    if (Q.rxCount < 0x40) {
+        off = Q.rxCount * 12;
         if (n <= 5) {
-            e = (u16 *)&b->rx[*cnt];
-            e[0] = hdr;
-            s2 = src;
-            for (j = 0; j <= 4; j++)
-                e[j + 1] = *s2++;
-            (*cnt)++;
+            *(u16 *)((u8 *)Q.rx + off) = (u8)n | 0x9000;
+            for (j = 0; j < 5; j++) {
+                if ((int)j < (int)n)
+                    Q.rx[Q.rxCount].h[j + 1] = *src++;
+                else
+                    Q.rx[Q.rxCount].h[j + 1] = 0;
+            }
+            Q.rxCount++;
             return 1;
         }
-        n -= 5;
-        e = (u16 *)&b->rx[*cnt];
-        e[0] = (u8)n | 0xA000;
-        s2 = src + n;
-        for (j = 0; j <= 4; j++)
-            e[j + 1] = *s2++;
-        (*cnt)++;
+        total = n;
+
+        while (1) {
+            if (n <= 5) {
+                Q.rx[Q.rxCount].h[0] = total | 0xB000;
+                for (j = 0; j < 5; j++)
+                    Q.rx[Q.rxCount].h[j + 1] = src[j];
+                Q.rxCount++;
+                return 1;
+            }
+            n -= 5;
+            Q.rx[Q.rxCount].h[0] = (u8)n | 0xA000;
+            for (j = 0; j < 5; j++)
+                Q.rx[Q.rxCount].h[j + 1] = src[n + j];
+            Q.rxCount++;
+
+        }
     }
+    return 0;
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08071F40", sub_080723B4); /* 0x080723B4 size 0x15C */

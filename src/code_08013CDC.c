@@ -130,11 +130,11 @@ void sub_08017ADC(u32 player, u16 id, u16 pos, u16 a);
 #define CMD_PLAYER() ((gUnk_020185C0.cmd & 0x8000) != 0)
 #define CUR_PLAYER() (gUnk_020192E4_lp[CMD_PLAYER()])
 
-#if 0 /* NONMATCHING (score 68): NONMATCHING: zone loop recomputes player*0xD64 per iteration (base struct var
-       * hoisted, id/stId read via (u8*)gUnk_0201930C_z + j*0x94 + player*0xD64 so the sum is j94+pD64); final loop
-       * duplicates the ROM's second mul via an asm-opaque player copy (FAKEMATCH) used in the count test. Remaining:
-       * zone-loop header reload regs (extra mov r2,sl => +2 bytes and pool pad), CARD_NUMBER lookup r0/r1 swap, stId
-       * table-load regs, p2 copy placed before i=0. */
+#if 0 /* NONMATCHING (score 30): NONMATCHING: zone loop: u32 sz = 0xD64 set before the loop (pseudo spilled ->
+       * rematerialised as ldr r4 each iteration, player*sz not hoisted), base struct var hoisted to sl, id/stId read via
+       * (u8*)gUnk_0201930C_z + j*0x94 + player*sz; final loop duplicates the ROM's second mul via an asm-opaque player
+       * copy (FAKEMATCH) used in the count test. Remaining: CARD_NUMBER switch lookup r0/r1 swap, stId table-load regs
+       * (r4/r2 vs r1), p2 copy placed before i=0 instead of before the mul. */
 struct Zone08013CDC {
     u32 id:12;
     u32 unk0_12:20;
@@ -167,6 +167,7 @@ void sub_08013CDC(void)
     u32 player = gUnk_020185C0.cmd >> 15;
     int i;
     int j;
+    u32 sz;
     u16 id, stId;
     struct Zone08013CDC *mon, *st;
 
@@ -184,13 +185,14 @@ void sub_08013CDC(void)
         gUnk_020192E4_lp[1].turns6_14 = 0;
     }
 
+    sz = 0xD64;
     for (j = 0; j <= 4; j++) {
         struct ZonesPlayer08013CDC *base = gUnk_0201930C_z;
-        struct ZonesPlayer08013CDC *zp = &base[player];
+        struct ZonesPlayer08013CDC *zp = (struct ZonesPlayer08013CDC *)((u8 *)base + player * sz);
         mon = &zp->zones[j];
         st = &zp->zones[j + 5];
-        id = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + j * 0x94 + player * 0xD64))->id;
-        stId = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + 0x2E4 + j * 0x94 + player * 0xD64))->id;
+        id = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + j * 0x94 + player * sz))->id;
+        stId = ((struct DuelCard *)((u8 *)gUnk_0201930C_z + 0x2E4 + j * 0x94 + player * sz))->id;
 
         if (id) {
             mon->flag7_2 = 0;

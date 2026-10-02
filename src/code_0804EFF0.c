@@ -630,9 +630,8 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 580): NONMATCHING: state machine audited against the ROM; cases
-       * 0-11,21,100,102,120-122 match; remaining diffs in cases 20 (level/destroy regs),101,110 (+3 insns),111 (-1
-       * insn): register allocation/reload rotation */
+#if 0 /* NONMATCHING (score 108): NONMATCHING: same size; function-scope id shared by cases 101/110/111;
+       * remaining register differences in cases 20 (level/destroy), 101, 110, 111 */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -642,6 +641,7 @@ int sub_0804FC4C(void)
     char text[128];
     char format[128];
     u32 player; u8 *base; u8 *b4; struct FcFlagsS *ps;
+    u32 id;
     player=((struct FcState *)&gUnk_020192E0)->flags; player=((u32)player<<30)>>31;
     base=FC_E; b4=base+4; ps=(struct FcFlagsS *)(b4+player*0xD64);
     if (ps->bit1<0) {
@@ -815,8 +815,8 @@ int sub_0804FC4C(void)
         for (;FC_ZONE<=9;FC_ZONE++) {
             struct Zone *z=(struct Zone *)(FC_ZONE*0x94+player*0xD64+FC_E+0x2C);
             if (FC_ID(z) && (z->f6&2)) {
-                u32 id=FC_ID(z);
                 int destroy=0;
+                id=FC_ID(z);
                 switch (FC_NUMBER(id)) {
                 case 0x47A:
                     if (sub_08008AF8(player,-1)>0) { FC_STEP=120; return 0; }
@@ -859,7 +859,7 @@ int sub_0804FC4C(void)
         return 0;
     }
     case 110: {
-        u32 id=FC_ID((struct Zone *)((player&1)*0xD64+FC_ZONE*0x94+FC_E+0x2C));
+        id=FC_ID((struct Zone *)((player&1)*0xD64+FC_ZONE*0x94+FC_E+0x2C));
         if (player) {
             switch (FcNum(id)) {
             case 0x3BA: {
@@ -897,11 +897,12 @@ int sub_0804FC4C(void)
     }
     case 111:
         if (gUnk_0201AE60.sel) {
-            u32 id=FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64));
-            u16 msg=0x43;
+            u16 msg;
+            id=FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+player*0xD64));
+            msg=0x43;
             if (player) msg=0x8043;
-            sub_0801EC58(msg,sub_0804F654(FC_NUMBER(id)),1,0);
-            if (FC_NUMBER(id)==0x3BA) {
+            sub_0801EC58(msg,sub_0804F654(FcNum(id)),1,0);
+            if (FcNum(id)==0x3BA) {
                 u16 msg2=0xB3;
                 if (player) msg2=0x80B3;
                 sub_0801EC58(msg2,FC_ZONE,500,0);

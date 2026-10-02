@@ -555,41 +555,56 @@ void sub_0800E630(void)
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_0800D8A4", sub_0800E630); /* 0x0800E630 size 0x244 */
-#if 0 /* NONMATCHING: logic/structure matches; register allocation differs (ROM: base r9, a r7, b r8, c sl, d at sp+0x9c, step r6; built keeps c/d differently and spills to sp+0x9c) */
 /* Command 0x84 (hypothesis): swap the contents of two zones. arg1/arg2 each
  * encode (player | slot << 8); step 0 checks both zones hold cards, step 1
  * animates the held card (sub_0802432C), step 2 performs the swap. */
+/* Zone address forms used by this handler. The add order picks the ROM's
+ * evaluation order: a local `base` keeps `(base + p*0xD64) + s*0x94` from being
+ * reassociated, and in a memory address the second product is emitted first. */
+#define ZONE_874(p, s) ((struct DuelZone *)(base + (p) * 0xD64 + (s) * 0x94))
+#define ZONE_874C(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 void sub_0800E874(void)
 {
-    u32 a = (u8)gCmd.arg1;      /* source zone: player */
-    u8 b = gCmd.arg1 >> 8;     /* source zone: slot */
-    u32 c = (u8)gCmd.arg2;      /* destination zone: player */
-    int d = gCmd.arg2 >> 8;     /* destination zone: slot */
+    struct CardLoc from;
+    struct CardLoc to;
+    struct DuelZone tmp;
+    struct DuelCmd *cmd = &gCmd;
+    u32 a = (u8)cmd->arg1;
+    u32 b = cmd->arg1 >> 8;
+    u32 c = (u8)cmd->arg2;
+    int d = cmd->arg2 >> 8;
     u32 step = gCmd.step;
 
-    if (step == 0) {
-        if (ZONE_CARD_ID(ZB(a & 1, b)) == 0 || ZONE_CARD_ID(ZB(c & 1, d)) == 0) {
-            gCmd.running = 0;
-            return;
+    switch (step) {
+    case 0:
+        /* Two separate ifs (cross-jumped later) give cmd the extra reference
+         * that puts it in r9 ahead of b. */
+        if (ZONE_CARD_ID(ZONE_874C(a & 1, b)) == 0) {
+            cmd->running = 0;
+            break;
+        }
+        if (ZONE_CARD_ID(ZONE_874C(c & 1, d)) == 0) {
+            cmd->running = 0;
+            break;
         }
         sub_0802408C(0x50);
         gCmd.step++;
-        return;
-    }
-    if (step == 1) {
-        struct CardLoc from;
-        struct CardLoc to;
-        struct DuelZone *zone = ZONE(a & 1, b);
+        break;
+    case 1: {
+        u8 *base = (u8 *)gUnk_0201930C;
+        u32 poff;
 
-        sub_08007558(&gCmd.saved814, &zone->card);
+        /* Naming only the player offset, assigned inside the argument, gives it
+         * r5 and the slot product r4 (as in the ROM). */
+        sub_08007558(&cmd->saved814, (struct DuelCard *)(base + (poff = (a & 1) * 0xD64) + b * 0x94));
         sub_08060FD0(a, b);
         sub_08060FD0(c, d);
-        from.player = a & 1;
+        from.player = a;
         from.area = 0;
         from.slot = b;
-        from.flag14 = zone->flag6_0;
-        from.flag15 = zone->flag6_1;
-        to.player = c & 1;
+        from.flag14 = ((struct DuelZone *)(b * 0x94 + poff + (u32)base))->flag6_0;
+        from.flag15 = ((struct DuelZone *)(b * 0x94 + poff + (u32)base))->flag6_1;
+        to.player = c;
         to.area = 0;
         to.slot = d;
         to.flag14 = from.flag14;
@@ -598,17 +613,17 @@ void sub_0800E874(void)
             from.flag14 = 0;
         sub_0802432C(&from, &to);
         gCmd.step++;
-        return;
+        break;
     }
-    {
-        struct DuelZone tmp;
+    default: {
+        u8 *base = (u8 *)gUnk_0201930C;
 
-        sub_08075294(&tmp, ZONE(c & 1, d), 0x94);
-        sub_08075294(ZONE(c & 1, d), ZONE(a & 1, b), 0x94);
-        sub_08075294(ZONE(a & 1, b), &tmp, 0x94);
+        sub_08075294(&tmp, ZONE_874(c & 1, d), 0x94);
+        sub_08075294(ZONE_874(c & 1, d), ZONE_874(a & 1, b), 0x94);
+        sub_08075294(ZONE_874(a & 1, b), &tmp, 0x94);
         sub_080611AC();
-        gCmd.running = 0;
+        cmd->running = 0;
+        break;
+    }
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0800D8A4", sub_0800E874); /* 0x0800E874 size 0x234 */

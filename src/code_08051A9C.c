@@ -583,13 +583,12 @@ int sub_08052714(void)
     gUnk_020192E0.sel = gUnk_020192E0.h1B52[gUnk_0201AE60.sel];
     return 1;
 }
-#if 0 /* NONMATCHING: first path builds (r << 8 | 0xB) then narrows to u16 (ROM folds to (r << 24 | 0xB0000) >> 16 and stores sel first); the bitfield byte is addressed [r1+0xD71] instead of [r1+0xD68]+9; w824/w828/w82C address temporaries differ */
 int sub_08052810(int a)
 {
     if (a != 0) {
-        u16 r = sub_080578F4();
+        int r = sub_080578F4();
         gUnk_020192E0.sel = r;
-        sub_0801EC58(0x8008, 0, ((r << 8) | 0xB) & 0xFFFF, 0);
+        sub_0801EC58(0x8008, 0, (u8)r << 8 | 0xB, 0);
         return 1;
     } else {
         struct Duel *d = &gUnk_020192E0;
@@ -600,25 +599,26 @@ int sub_08052810(int a)
             (*step)++;
             return 0;
         case 1:
-            ((struct DuelQ *)d)->q1.f0 = 1;
+            {
+                struct Q1 *q = &((struct DuelQ *)d)->q1;
+                q->f0 = 1;
+            }
             if (sub_08052F38(0x10000)) {
-                struct DuelScreen *sc;
                 sub_08077AEC(1);
-                sc = &gUnk_0201CFB0;
-                sub_0801EC58(8, (u16)sc->w824, (((u8)sc->w82C) << 8) | (u8)sc->w828, 0);
+                sub_0801EC58(8, (u16)gUnk_0201CFB0.w824, (u8)gUnk_0201CFB0.w828 | (((u8)gUnk_0201CFB0.w82C) << 8), 0);
                 (*step)++;
             }
             return 0;
         default:
-            ((struct DuelQ *)d)->q1.f0 = 0;
+            {
+                struct Q1 *q = &((struct DuelQ *)d)->q1;
+                q->f0 = 0;
+            }
             d->sel = gUnk_0201CFB0.w82C;
             return 1;
         }
     }
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08052810); /* 0x08052810 size 0xF8 */
-#endif
 #if 0 /* NONMATCHING: the eligibility logic and attachment scan are typed to
        * follow the ROM, but compiler allocation and loop structure differ.
        * Player parity, 16-bit mask banks, flag tests and matching attachment

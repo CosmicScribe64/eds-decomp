@@ -630,9 +630,9 @@ static inline u16 EndTurnCardId(u16 number)
     if (number<=0x7CF) return ((const u16 *)0x08623DF4)[number&0x7FF];
     return ((const u16 *)0x08623DF4)[(number-0x7D0)&0x7FF]+1;
 }
-#if 0 /* NONMATCHING (score 698): per-case return 0 tails; prologue and cases 0-3,5-11,21,100,102,120-122 match;
-       * remaining: case 4 loop mult CSE, case 20 level/destroy regs, 101/110/111 regalloc (player&1 kept in ROM), size
-       * -10; see build/wf/sub_0804FC4C/NOTES.md */
+#if 0 /* NONMATCHING (score 656): per-case return 0 tails; prologue and cases 0-3,5-11,21,100,102,120-122 match;
+       * player made opaque (set twice) so player&1 survives; remaining: case 4 loop mult CSE, case 20 regs, 101/110/111
+       * allocation and reload rotation; see build/wf/sub_0804FC4C/NOTES.md */
 struct FcFlagsS { u8 pad0[9]; u8 bit0:1; s8 bit1:1; u8 rest:6; };
 static inline int FcNum(u32 id) { return ((const u16 *)0x08622AB4)[id&0x7FF]; }
 struct FcCfb0 { u8 pad0[0x824]; int a824; u8 pad828[4]; int a82C; };
@@ -641,8 +641,9 @@ int sub_0804FC4C(void)
     u32 card; /* Written by sub_080195D0 on success before it is consumed. */
     char text[128];
     char format[128];
-    u16 player=((u32)((struct FcState *)&gUnk_020192E0)->flags<<30)>>31;
-    u8 *base=FC_E; u8 *b4=base+4; struct FcFlagsS *ps=(struct FcFlagsS *)(b4+player*0xD64);
+    u32 player; u8 *base; u8 *b4; struct FcFlagsS *ps;
+    player=((struct FcState *)&gUnk_020192E0)->flags; player=((u32)player<<30)>>31;
+    base=FC_E; b4=base+4; ps=(struct FcFlagsS *)(b4+player*0xD64);
     if (ps->bit1<0) {
         ps->bit1=0;
         goto done;
@@ -857,9 +858,9 @@ int sub_0804FC4C(void)
         return 0;
     }
     case 110: {
-        u32 id=FC_ID((struct Zone *)(FC_E+0x2C+FC_ZONE*0x94+(player&1)*0xD64));
+        u32 id=FC_ID((struct Zone *)((player&1)*0xD64+FC_ZONE*0x94+FC_E+0x2C));
         if (player) {
-            switch (FC_NUMBER(id)) {
+            switch (FcNum(id)) {
             case 0x3BA: {
                 int found=0;
                 if (sub_08056E04(1,0x2D6)) found=1;
@@ -879,13 +880,13 @@ int sub_0804FC4C(void)
                 else gUnk_0201AE60.sel=0;
                 break;
             default:
-                if ((((struct FcState *)&gUnk_020192E0)->players[1].life)>sub_0804F654(FC_NUMBER(id))+1000) gUnk_0201AE60.sel=1;
+                if ((((struct FcState *)&gUnk_020192E0)->players[1].life)>sub_0804F654(FcNum(id))+1000) gUnk_0201AE60.sel=1;
                 else gUnk_0201AE60.sel=0;
                 break;
             }
         } else {
             sub_080753F4(format,gUnk_08085CB4,gUnk_0822C720+(id<<6));
-            sub_08075434(text,format,sub_0804F654(FC_NUMBER(id)));
+            sub_08075434(text,format,sub_0804F654(FcNum(id)));
             sub_080602A4(0x206,0x613,11,text);
             sub_08060308(1,0,0);
         }

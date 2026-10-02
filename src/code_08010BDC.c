@@ -457,13 +457,11 @@ void sub_080119B0(void)
  * Sends a card on the field to its owner's area 14 (hypothesis: removed from
  * play): arg2 = slot as in sub_08011780, cleared with sub_08008E44.
  */
-#if 0 /* NONMATCHING: same problems as sub_08011780 (frame size, "& 1" on the zone flag reads) */
 void sub_080119F8(void)
 {
     struct DuelLoc from, to;
-    u16 player = CMD_PLAYER;
-    s16 slot = gUnk_020185C0.arg2;
-    struct DuelZone *zone;
+    u32 player = CMD_PLAYER;
+    int slot = gUnk_020185C0.arg2;
 
     switch (gUnk_020185C0.step) {
     case 0:
@@ -475,22 +473,22 @@ void sub_080119F8(void)
         break;
     case 1:
         if (slot <= 9) {
+            sub_08007558(CMD_CARD, &gUnk_020192E4[player & 1].zones[slot + 5].card);
             sub_08008E44(player, slot + 5);
             from.player = player;
-            sub_08007558(CMD_CARD, &gUnk_020192E4[player & 1].zones[slot + 5].card);
             from.area = 5;
             from.index = slot;
-            zone = ZONE(player & 1, slot + 5);
+            from.flag14 = (&gUnk_020192E4[player & 1].zones[slot + 5])->flag6_0;
+            from.flag15 = (&gUnk_020192E4[player & 1].zones[slot + 5])->flag6_1;
         } else {
             sub_08007558(CMD_CARD, &gUnk_020192E4[player & 1].zones[slot].card);
             sub_08008E44(player, slot);
             from.player = player;
             from.area = 10;
-            zone = ZONE(player & 1, slot);
             from.index = 0;
+            from.flag14 = (&gUnk_020192E4[player & 1].zones[slot])->flag6_0;
+            from.flag15 = (&gUnk_020192E4[player & 1].zones[slot])->flag6_1;
         }
-        from.flag14 = zone->flag6_0;
-        from.flag15 = zone->flag6_1;
         to.player = player;
         to.area = 14;
         to.index = 0;
@@ -505,5 +503,3 @@ void sub_080119F8(void)
         break;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08010BDC", sub_080119F8); /* 0x080119F8 size 0x1E8 */

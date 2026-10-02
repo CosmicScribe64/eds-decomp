@@ -555,13 +555,21 @@ int sub_0805AB90(void)
  * dispatch, reused for 0x7FF), body ptr r5, zones base r6 and 0x94 in r7; the build keeps the
  * gUnk_08622AB4 table address and 0x7FF in r6/r7 across the sub_08007590 call, so zones/0x94
  * spill to r8. Case 0x231 must use the body pointer (r5), not p. */
-#if 0 /* NONMATCHING */
+/* sub_08008860 returns int (see code_08007994.c); the unit header declares u16, which
+ * would add narrowing after each call, so call it through an int-returning cast. */
+#define B184_Count(pl) (((int (*)(int))sub_08008860)(pl))
+/* Step 6: scan player 1's monster zones 0-4 (counter f5) for card numbers that let the
+ * CPU attack / activate from that zone; on a hit advance the sub-state (f6), on a miss
+ * try the next zone. Sub-state 2 queues the action (sub_08055EB0) and returns to 1.
+ * The dispatch pointer (r4) and the body pointer (r1 -> r5) are separate locals, and the
+ * success increments mix pointer and global forms, as the ROM's unmerged tails show. */
 int sub_0805B184(void)
 {
     struct AiState *p = &gUnk_02015EF0;
-    struct AiState *q = &gUnk_02015EF0;
+    int phase = p->f6;
+    struct AiState *dispatch = &gUnk_02015EF0;
 
-    switch (p->f6) {
+    switch (phase) {
     case 0:
         p->f4 = 0;
         p->f5 = 0;
@@ -569,41 +577,69 @@ int sub_0805B184(void)
         /* fall through */
     case 1:
         {
+        struct AiState *q = dispatch;
         int z;
-        u8 id;
+        u32 id;
+        u16 number;
         if (q->f5 > 4)
             return 1;
         z = q->f5;
         id = CARD_ID(ZONE(z)->card);
         if (id == 0) {
-            return 0;
             q->f5 = z + 1;
+            return 0;
         }
         if (ZONE(z)->flags6 & 2) {
             q->f5 = z + 1;
             return 0;
         }
-        if (sub_08007590(CARD_NUMBER(id), 0) == 0) {
-            return 0;
+        if (sub_08007590(((const u16 *)0x08622AB4)[id & 0x7FF], 0) == 0) {
             q->f5++;
+            return 0;
         }
-        id = CARD_ID(ZONE(q->f5)->card);
-        switch (CARD_NUMBER(id)) {
+        number = ((const u16 *)0x08622AB4)[CARD_ID(ZONE(q->f5)->card) & 0x7FF];
+        switch (number) {
+        case 0x231:
+            if (B184_Count(0) != 0)
+                break;
+            q->f6++;
+            return 0;
+        case 0x21B:
+        case 0x24E:
+            if (gUnk_020192E4[1].handCount <= 2 || gUnk_020192E4[0].handCount > gUnk_020192E4[1].handCount + 2) {
+                gUnk_02015EF0.f6++;
+                return 0;
+            }
+            break;
+        case 0x1F4:
+        case 0x21C:
+        case 0x259:
+            if (B184_Count(0) > 0) {
+                gUnk_02015EF0.f6++;
+                return 0;
+            }
+            break;
+        case 0x452:
+        case 0x48B:
+            if (B184_Count(1) == 1 && B184_Count(0) > 1) {
+                gUnk_02015EF0.f6++;
+                return 0;
+            }
+            break;
+        case 0x280:
+            if (B184_Count(0) > B184_Count(1) + 1) {
+                q->f6++;
+                return 0;
+            }
+            break;
         case 0x27:
             if (sub_080090C8(0, 0x148) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
-        case 0x53:
-        case 0xDF:
-            if (sub_08009280(0, CARD_NUMBER(id)) > 0) {
-                gUnk_02015EF0.f6++;
-                return 0;
-            }
-            break;
-        case 0x65:
-            if (sub_08009150(1, 0x15) > 0) {
+        case 0x246:
+            if (sub_080090C8(0, 0x15B) > 0) {
                 q->f6++;
                 return 0;
             }
@@ -614,60 +650,32 @@ int sub_0805B184(void)
                 return 0;
             }
             break;
+        case 0x53:
+        case 0xDF:
+            if (sub_08009280(0, number) > 0) {
+                gUnk_02015EF0.f6++;
+                return 0;
+            }
+            break;
+        case 0x262:
+        case 0x2FA:
+            gUnk_02015EF0.f6++;
+            return 0;
+        case 0x249:
+            if (sub_08009280(0, number) > 1) {
+                q->f6++;
+                return 0;
+            }
+            break;
         case 0x1AB:
             if (sub_08009150(1, 0x16) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
-        case 0x1F4:
-        case 0x21C:
-        case 0x259:
-            if (sub_08008860(0) > 0) {
-                gUnk_02015EF0.f6++;
-                return 0;
-            }
-            break;
-        case 0x21B:
-        case 0x24E: {
-            s8 hc1 = gUnk_020192E4[1].handCount;
-            if (hc1 <= 2 || gUnk_020192E4[0].handCount > hc1 + 2) {
-                return 0;
-                gUnk_02015EF0.f6++;
-            }
-            break;
-        }
-        case 0x231:
-            if (sub_08008860(0) != 0)
-                break;
-            q->f6++;
-            return 0;
-        case 0x246:
-            if (sub_080090C8(0, 0x15B) > 0) {
+        case 0x65:
+            if (sub_08009150(1, 0x15) > 0) {
                 q->f6++;
-                return 0;
-            }
-            break;
-        case 0x249:
-            if (sub_08009280(0, CARD_NUMBER(id)) > 1) {
-                q->f6++;
-                return 0;
-            }
-            break;
-        case 0x262:
-        case 0x2FA:
-            return 0;
-            gUnk_02015EF0.f6++;
-        case 0x280:
-            if (sub_08008860(0) > sub_08008860(1) + 1) {
-                q->f6++;
-                return 0;
-            }
-            break;
-        case 0x452:
-        case 0x48B:
-            if (sub_08008860(1) == 1 && sub_08008860(0) > 1) {
-                gUnk_02015EF0.f6++;
                 return 0;
             }
             break;
@@ -683,6 +691,4 @@ int sub_0805B184(void)
     }
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0805A30C", sub_0805B184); /* 0x0805B184 size 0x270 */
 

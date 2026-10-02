@@ -173,9 +173,9 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 5053): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
-       * deck/grave loops with ROM address forms; shared type for attack checks; GCSE/loop/regalloc still differ; see
-       * build/wf/sub_08044224/NOTES.md */
+#if 0 /* NONMATCHING (score 4668): unpinned i + one empty r4-r7 clobber (FAKEMATCH) puts i in r8; natural
+       * deck/grave loops with ROM address forms (0x02019AA8/0x02019BE8 views); shared type for attack checks;
+       * GCSE/loop/regalloc still differ; see build/wf/sub_08044224/NOTES.md */
 struct TargetCard {
     u32 id:12;
     u32 owner:1;
@@ -741,12 +741,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     case 0x5F0:
     {
         CASE_LOCALS
-        i = 0;
-        b = (u8 *)gUnk_020192E4;
-        off = (player & 1) * 0xD64;
-        for (; i < PP->graveCount; i++) {
-            word = &PP->graveyard[i];
-            if (TARGET_TYPE(*word & 0x7FF) <= 20
+        for (i = 0; i < gUnk_020192E4[player & 1].graveCount; i++) {
+            word = (u32 *)((u8 *)gUnk_02019BE8 + i * 4 + (player & 1) * 0xD64);
+            if (TARGET_TYPE(TARGET_ID(*word)) <= 20
                 && (u16)sub_0804412C(player, i) != 0)
                 ADD_TARGET(*word, 4);
         }

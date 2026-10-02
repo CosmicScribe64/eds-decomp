@@ -252,9 +252,12 @@ void sub_0806710C(void)
     }
     gUnk_0201DB20_p.f1712[1] = gUnk_0201DB20_p.f1712[0];
 }
-#if 0 /* NONMATCHING: same instructions and control flow; register allocation of two temporaries (f634 byte in r2 / r4 in the target, r3 / r7+copy in built: built CSEs `D.f634` into a register kept across the fill branch, the target reloads it) and the literal 0x635 (target loads it, built derives it with `adds r7,#3` from 0x632) */
 /* Redraw the card panel after a page change: `a` = 2 / 3 is the direction. Sets up the window scroll, draws the current
    card's graphics (or clears them), places the page frame, then re-initialises the 5 card slots around the cursor. */
+/* sub_0807AFFC really takes a third argument, the VRAM page (see its definition in code_0807A6AC); passing D.f634
+   there puts the page byte in r2 and the `*3` temporary in r3. The unit-wide prototype has two parameters, so this
+   call goes through a cast to the three-parameter type. */
+typedef void (*Fn0807AFFC_x)(u16 id, u32 dst, u16 page);
 void sub_080671E8(u8 a)
 {
     u16 j;
@@ -266,9 +269,9 @@ void sub_080671E8(u8 a)
         sub_0807B100(6, 0, -1, D.f628);
     D.f634 ^= 1;
     if (D.cnt1494[D.arr14A0[D.cursor]][D.cursor] != 0) {
-        sub_0807AFFC(sub_08068D1C(D.cursor, D.arr14A0[D.cursor], D.arr620[D.cursor]), D.f634 * 0x1680 + 0x06008000);
+        ((Fn0807AFFC_x)sub_0807AFFC)(sub_08068D1C(D.cursor, D.arr14A0[D.cursor], D.arr620[D.cursor]), D.f634 * 0x1680 + 0x06008000, D.f634);
     } else {
-        u16 zero = 0;
+        u32 zero = 0;
         CpuFastSet(&zero, (void *)(D.f634 * 0x1680 + 0x06008000), 0x010005A0);
     }
     if (a == 3) {
@@ -291,8 +294,6 @@ void sub_080671E8(u8 a)
     D.f1C14 = 0;
     D.slot[0].b[0] = 5;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0806704C", sub_080671E8); /* 0x080671E8 size 0x28C */
 /* Key callback of the 3-panel selector: R (0x100) selects the next panel, L (0x200) the previous one (wrapping). */
 void sub_08067474(u8 *idx)
 {

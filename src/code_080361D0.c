@@ -314,13 +314,11 @@ int sub_080361D0(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic decoded. The ROM keeps j in r7 and reloads the
-       * 0x4DA / w1B64 constants each iteration, while this build hoists them
-       * and spills j. The register numbering of ref (r5) also differs. */
 int sub_08036254(struct CardRef *ref, int arg)
 {
     u16 ids[16];
     char buf[0x80];
+    int i;
 
     if (!ref->skip4) {
         switch (EFF_PHASE) {
@@ -347,36 +345,36 @@ int sub_08036254(struct CardRef *ref, int arg)
             }
             return 0x7D;
         }
-        case 0x7D: {
-            int i;
-
+        case 0x7D:
             for (i = 0; i <= 4; i++)
                 ids[i] = CARD_ID(gUnk_02017F84[i]);
             sub_080226CC(1 - ref->player, 12, ids, 5);
             return 0x7C;
-        }
         case 0x7C: {
             int first = 1;
-            int j;
 
-            for (j = 0; j <= 4; j++) {
-                u32 *pw = &gUnk_02017F84[j];
+            for (i = 0; i <= 4; i++) {
+                u32 *pw = &gUnk_02017F84[i];
                 u16 *ph = (u16 *)pw;
 
                 if (CARD_ID(*pw) == DG->w1B64 && first != 0) {
+                    /* the unit declares sub_08019820(int); the real one is (int player, u16 id) */
+                    ((void (*)(int, u16))sub_08019820)(ref->player, CARD_ID(*pw));
+                    sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80CB : 0xCB, ph[0], ph[1], 0);
                     first = 0;
-                    sub_08019820(ref->player);
-                    sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80CB : 0xCB, ph[0], ((u16 *)pw)[1], 0);
                 } else {
                     u32 w;
-                    u8 id;
+                    u32 id;
+                    u32 num;
 
                     sub_08019800(ref->player, CARD_ID(*pw));
                     sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x80D7 : 0xD7, ph[0], ph[1], 0);
                     w = *pw;
                     id = CARD_ID(w);
-                    if (CARD_NUMBER(id) == 0x4DA)
-                        sub_0801FBCC((((w << 19) >> 31) & 1) << 31 | id | 0x3C600000, 0);
+                    /* an int-width temporary keeps the compare in SImode, so loop.c does not hoist 0x4DA */
+                    num = CARD_NUMBER(id);
+                    if (num == 0x4DA)
+                        sub_0801FBCC(0x3C600000 | (((w << 19) >> 31) & 1) << 31 | id, 0);
                 }
             }
             return 0x64;
@@ -387,8 +385,6 @@ int sub_08036254(struct CardRef *ref, int arg)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080361D0", sub_08036254); /* 0x08036254 size 0x288 */
 int sub_080364DC(struct CardRef *ref)
 {
     if (!ref->skip4)

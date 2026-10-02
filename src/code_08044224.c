@@ -204,7 +204,7 @@ static inline u32 CopyTargetDeckWord(int player, int index)
     return *(u32 *)(index * 4 + off + (u32)gUnk_020192E4 + 0x7C4);
 }
 /* Populate the list-view overlay with targets for a card/effect number. */
-#if 0 /* NONMATCHING (score 1306): TargetAttackT returns u32; 0x439 natural; wf 1306 */
+#if 0 /* NONMATCHING (score 1072): bitfield card struct in 0x2F/0x23D; wf ~1070 */
 #define CARDP(p) ((struct TargetCard *)(p))
 #define PS ((struct TargetPlayerS *)(b + off))
 struct TargetPlayerListS {
@@ -255,8 +255,8 @@ u16 sub_08044224(int player, u16 number, int arg)
         i = 0;
         asm volatile("" ::: "r4", "r5", "r6", "r7");
         for (; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            u32 w = *(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(TARGET_ID(w)) <= 20 && TargetAttack(TARGET_ID(w)) <= 1500)
+            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
+            if (TARGET_TYPE(c.id) <= 20 && TargetAttack(c.id) <= 1500)
                 ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
@@ -355,9 +355,9 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            id = TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64));
-            if (TARGET_TYPE(id) <= 20 && TargetDefense(id) <= 1500)
-                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
+            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
+            if (TARGET_TYPE(c.id) <= 20 && TargetDefense(c.id) <= 1500)
+                ADD_TARGETB(gUnk_020192E4[player & 1].w.deck[i], 2);
         }
         break;
     }
@@ -726,9 +726,10 @@ u16 sub_08044224(int player, u16 number, int arg)
     {
         CASE_LOCALS
         for (i = 0; i < gUnk_020192E4[player & 1].w.deckCount; i++) {
-            if (TARGET_TYPE(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 10 && TargetLevel(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == arg
-                && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + i * 4 + (player & 1) * 0xD64))) == 0)
-                ADD_TARGET(gUnk_020192E4[player & 1].w.deck[i], 2);
+            struct TargetCard c = *(struct TargetCard *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64));
+            if (TARGET_TYPE(c.id) == 10 && TargetLevel(c.id) == arg
+                && sub_08007834(TARGET_ID(*(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64)))) == 0)
+                ADD_TARGETB(*(u32 *)((u8 *)gUnk_02019AA8 + (i * 4 + (player & 1) * 0xD64)), 2);
         }
         break;
     }

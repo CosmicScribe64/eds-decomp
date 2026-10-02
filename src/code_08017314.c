@@ -123,11 +123,6 @@ void sub_08017314(int player, int zone, u16 link0)
     }
 }
 
-#if 0 /* NONMATCHING (score 12): Written from scratch from the asm; only the player+0x0B |= 8 block differs
-       * (t*0xD64 product lands in r0 instead of r1). Keys: PLAYERS17460->p[player & 1] array view loads the 0x020192E4
-       * base first; ZONE_PTR(player, zone) under zone==10 (CSE folds zone to 10); ZONE_PZ (block-local t) for the
-       * 461/954/1095/1116 zone tests; u16 id2 in the loops; (owner<<31) | (cond ? A : B) | id; double read of
-       * unkE[zone]. */
 struct Unk02017A40_17460 { u8 pad[0x48A]; u16 w48A; };
 extern struct Unk02017A40_17460 gUnk_02017A40;
 struct DuelCard17460 {
@@ -137,11 +132,15 @@ struct DuelCard17460 {
     u32 unk14 : 3;
     u32 unk17 : 15;
 };
+/* Player view for this function: indexing the struct array through a pointer cast
+ * loads the 0x020192E4 base before the index (get_inner_reference), as the ROM does. */
 struct DuelPlayer17460 {
     u8 unk0[0xB];
-    u8 unkB;
+    u8 unkB_0 : 3;
+    u8 unkB_3 : 1;
+    u8 unkB_4 : 4;
     u8 unkC[2];
-    u16 unkE[11];
+    u16 unkE[11];           /* +0x0E: per-zone value passed to sub_08019980 by card 954 */
     u8 unk24[0xD64 - 0x24];
 };
 struct DuelPlayers17460 { struct DuelPlayer17460 p[2]; };
@@ -153,8 +152,12 @@ int sub_0800849C(int player, u16 number, int zone);
 int sub_0800756C(u16 number);
 void sub_08019980(int player, int lp);
 
+/* Zone pointer with `p & 1` evaluated first, then zone * 0x94, then t * 0xD64. */
 #define ZONE_PZ(p, z) ({ int _t = (p) & 1; ZONE_T(_t, z); })
 
+/* Card leaves (player, zone): per-card leave effects (333, 1162, 478/1042, 1160/1095/1068/1514),
+ * the leave event (0x79) and sub_08042AB0 notification by card type, then (if arg3) the
+ * re-trigger effects (sub_0801FBCC events, 461, 954, 1116, 1162) and sub_08017DE0. */
 void sub_08017460(int player, int zone, u16 arg, u16 arg3)
 {
     int t = player & 1;
@@ -180,6 +183,7 @@ void sub_08017460(int player, int zone, u16 arg, u16 arg3)
             sub_0801EC58(player ? 0x808F : 0x8F, zone, 0, 0);
             break;
         }
+        /* zone (not 10): CSE substitutes the known value and keeps t*0xD64 + 0x5C8 apart from the base */
         if (zone == 10 && (ZONE_PTR(player, zone)->flags6 & 2))
             sub_0801EC58(player ? 0x8011 : 0x11, 0, 0, 0);
     }
@@ -189,7 +193,7 @@ void sub_08017460(int player, int zone, u16 arg, u16 arg3)
         return;
     }
     if (CARD_TYPE(id) <= 20)
-        PLAYERS17460->p[player & 1].unkB |= 8;
+        PLAYERS17460->p[player & 1].unkB_3 = 1;
     if (CARD_NUMBER(id) == 478 || CARD_NUMBER(id) == 1042) {
         sub_0801EC58(player ? 0x8073 : 0x73, id, 1, 0);
         sub_0801EC58(player ? 0x8081 : 0x81, zone, arg, 0);
@@ -240,7 +244,7 @@ void sub_08017460(int player, int zone, u16 arg, u16 arg3)
     case 573:
     case 1241:
     case 1257:
-        if ((*(u32 *)card & 0x1C000) || zone > 4)
+        if ((*(u32 *)card & 0x1C000) || zone > 4)   /* mask test, not the unk14 bitfield read */
             sub_0801FBCC((card->owner << 31) | 0x3C600000 | id, 0);
         break;
     case 1242:
@@ -274,6 +278,7 @@ void sub_08017460(int player, int zone, u16 arg, u16 arg3)
                         sub_08017460(1 - player, i, 1, 1);
                 }
             }
+            /* read twice (CSE'd): a single local changes the register choice */
             if (PLAYERS17460->p[player & 1].unkE[zone] != 0) {
                 sub_08019980(player, PLAYERS17460->p[player & 1].unkE[zone]);
                 sub_0801EC58(player ? 0x80B3 : 0xB3, zone, 0, 0);
@@ -290,8 +295,6 @@ void sub_08017460(int player, int zone, u16 arg, u16 arg3)
     }
     sub_08017DE0(player, zone, 1);
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08017314", sub_08017460); /* 0x08017460 size 0x654 */
 
 void sub_08017AB4(int player, u16 a, u16 b, u16 c)
 {

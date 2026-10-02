@@ -397,6 +397,111 @@ u16 sub_08073B64(u32 id, void *dst)
     }
     return 0;
 }
+#if 0 /* NONMATCHING (score 54): first C draft: structure and size right; remaining: spill-slot swap (ret/k),
+       * case-3 reg alloc, some reload regs */
+/* LinkSio as seen by sub_08073C10 (0x03005B60). */
+struct LinkSioC10 {
+    u8 pad0[0x20C];
+    u16 rxBuf[2][2][0x101];     /* +0x20C [half][slot] */
+    u8 unkA14[4];               /* +0xA14 [half*2 + slot] packet length byte */
+    u8 unkA18[2];
+    u8 unkA1A[2];
+    u16 unkA1C;
+    u8 padA1E[0xA40 - 0xA1E];
+    u16 unkA40;
+    u8 padA42[0xAF4 - 0xA42];
+    u16 unkAF4[2];
+    u16 unkAF8[2];
+};
+#define gLinkC10 (*(struct LinkSioC10 *)&gUnk_03005B60_s)
+extern u8 gUnk_080876B4[];
+extern u8 gUnk_080876D4[];
+extern u8 gUnk_080876F8[];
+extern void sub_0801A7DC(const u8 *fmt, ...);
+extern void sub_0801A7E8(void);
+
+u32 sub_08073C10(int slot, void *dst)
+{
+    u16 rx[3][8];
+    u8 one = 1;
+    u8 i = 0;
+    u32 ret = 0;
+    u8 k;
+    u16 t;
+    u32 v;
+    int f;
+    u16 *q;
+    u8 *d;
+
+    v = sub_080740BC((u8 *)rx) << 16;
+    f = 0xF0000;
+    f = f & v;
+    f = (u32)f >> 16;
+    switch (f) {
+    case 3:
+        for (k = 0; k < 2; k++) {
+            u16 *p = rx[i];
+            t = *p & 0xF000;
+            if (t == 0x1000) {
+            } else if (t == 0x3000) {
+                if (i == (REG_SIOCNT & 0x30) >> 4)
+                    gLinkC10.unkA40 = 0x1000;
+                sub_0801A7DC(gUnk_080876B4, i, gLinkC10.unkA1A[i]);
+                CpuSet(p + 1,
+                       (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[i]++][i] + gLinkC10.unkAF4[i] * 14,
+                       7);
+                gLinkC10.unkAF4[i]++;
+                gLinkC10.unkA14[gLinkC10.unkA1A[i] * 2 + i] = *p;
+                if (i == slot) {
+                    if (--gLinkC10.unkA1C != 0xFFFF) {
+                        ret = gLinkC10.unkA14[gLinkC10.unkA18[i] * 2 + i];
+                        sub_0801A7DC(gUnk_080876D4, i, gLinkC10.unkA18[i], ret);
+                        CpuSet(gLinkC10.rxBuf[gLinkC10.unkA18[i]++][i], dst, ret >> 1);
+                        gLinkC10.unkA18[i] &= 1;
+                    }
+                }
+                gLinkC10.unkA1A[i] &= 1;
+            }
+            gLinkC10.unkAF8[i] = 0;
+            gLinkC10.unkAF4[i] = 0;
+            i++;
+        }
+        sub_0801A7E8();
+        return ret;
+    case 1:
+        t = rx[0][0] & 0xF000;
+        if (t == 0x1000) {
+        } else if (t == 0x3000) {
+            sub_0801A7DC(gUnk_080876F8, 0, gLinkC10.unkA1A[0], rx[0][0] & 0x1FF);
+            sub_0801A7E8();
+            gLinkC10.unkA14[gLinkC10.unkA1A[0] * 2] = rx[0][0];
+            d = (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[0]++];
+            CpuSet(&rx[0][1], d + gLinkC10.unkAF4[0] * 14, 7);
+            gLinkC10.unkA1A[0] &= one;
+            gLinkC10.unkAF4[0]++;
+            gLinkC10.unkA1C++;
+        }
+        break;
+    case 2:
+        q = rx[1];
+        t = *q & 0xF000;
+        if (t == 0x1000) {
+        } else if (t == 0x3000) {
+            sub_0801A7DC(gUnk_080876F8, 1, gLinkC10.unkA1A[1], *q & 0x1FF);
+            sub_0801A7E8();
+            gLinkC10.unkA14[gLinkC10.unkA1A[1] * 2 + 1] = *q;
+            CpuSet(q + 1,
+                   (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[1]++][1] + gLinkC10.unkAF4[1] * 14, 7);
+            gLinkC10.unkA1A[1] &= one;
+            gLinkC10.unkAF4[1]++;
+            gLinkC10.unkA1C++;
+        }
+        break;
+    }
+    return 0;
+}
+#undef gLinkC10
+#endif
 INCLUDE_ASM("asm/nonmatching/code_08072FAC", sub_08073C10); /* 0x08073C10 size 0x2F4 */
 /* LinkSio as seen by sub_08073F04 (0x03005B60). */
 struct LinkSioF04 {

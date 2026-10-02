@@ -65,7 +65,248 @@ extern int sub_08008C6C(int player);
 extern int sub_0800A2A8(int player, u16 number);
 extern void sub_08046A74(int player);
 
-INCLUDE_ASM("asm/nonmatching/code_0805A30C", sub_0805A30C); /* 0x0805A30C size 0x590 */
+extern int sub_08008A1C(int player);
+extern int sub_080578AC(void);
+extern int sub_080577FC(void);
+extern int sub_0800A304(int player, u16 number);
+extern int sub_08008794(int player, u16 number);
+extern int sub_0800C894(int player, int zone);
+extern int sub_08054398(int player, u16 id);
+extern int sub_08056300(int a, u16 number);
+extern int sub_08007834(u16 id);
+extern int sub_080564A8(u16 id);
+extern u32 gUnk_02015EE8[];
+/* Player 1's hand word i. The integer sum computes i << 2 before the symbol load, so the hand
+ * address is a short-lived pseudo (not a reload) and loop.c leaves it in the loop. */
+#define A30C_HAND(i) (*(u32 *)(((i) << 2) + (u32)gUnk_0201A6CC))
+/* Player 0's deck word i (0x020192E4 + 0x7C4): a constant address, reloaded inside the loop. */
+#define A30C_DECK(i) (((u32 *)0x02019AA8)[i])
+/* sub_08008860 returns int (the unit header says u16, which adds narrowing). */
+#define A30C_COUNT(p) (((int (*)(int))sub_08008860)(p))
+/* FAKEMATCH: the ROM calls sub_08009280 without setting r1 (one-argument call through a cast). */
+#define A30C_9280(p) (((int (*)(int))sub_08009280)(p))
+#define A30C_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define A30C_TYPE(id) ((A30C_STATS(id) & 0x1F00000) >> 20)
+#define A30C_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+
+/* DEF-like value: 0 for types 0x15-0x17, 4000 for 0x18, else (stats & 0x1FF) * 10. The u16 AND makes
+ * 0x1FF a halfword constant (ldr r2; adds r0, r2); the u16 return gives the r0 result + copy. */
+static inline u16 A30C_Def(u16 id)
+{
+    int r;
+
+    switch ((int)A30C_TYPE(id)) {
+    case 21:
+    case 22:
+    case 23:
+        r = 0;
+        break;
+    case 24:
+        r = 4000;
+        break;
+    default:
+        r = ((u16)A30C_STATS(id) & 0x1FF) * 10;
+        break;
+    }
+    return r;
+}
+
+/* Level: 0 for types 0x15-0x17, 10 for 0x18, else bits 25-28. The u8 return adds RTL that combine
+ * removes later; it keeps the second hand loop big enough that loop.c does not hoist the count address. */
+static inline u8 A30C_Level(u16 id)
+{
+    switch ((int)A30C_TYPE(id)) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 10;
+    default:
+        return (A30C_STATS(id) & 0x1E000000) >> 25;
+    }
+}
+
+/* Phase-10 hand choice for the CPU (player 1): scripted checks pick a hand index for specific card
+ * numbers via sub_0800A304(1, number); otherwise the best DEF-like value >= the opponent's strongest
+ * zone value (sub_0800C894) passing the playability filters, then the first level <= 4 monster that
+ * passes them. Returns the hand index, or -1. Some checks use idx > -1 and others idx >= 0, as in the ROM. */
+int sub_0805A30C(void)
+{
+    int idx;
+    int i;
+    int max, best, w;
+    u16 id;
+
+    if (sub_08008A1C(1) == 0)
+        return -1;
+    if (gUnk_02015EE8[1] & 0x200) {
+        if (sub_080578AC() != 0) {
+            idx = sub_0800A304(1, 0x259);
+            if (idx >= 0)
+                return idx;
+        }
+        if (sub_080577FC() != 0) {
+            idx = sub_0800A304(1, 0x2F);
+            if (idx > -1)
+                return idx;
+            idx = sub_0800A304(1, 0x23D);
+            if (idx > -1)
+                return idx;
+            if (sub_08008794(1, 0x2F) > 0 || sub_08008794(1, 0x23D) > 0) {
+                idx = sub_0800A304(1, 0x23D);
+                if (idx > -1)
+                    return idx;
+            }
+            idx = sub_0800A304(1, 0x463);
+            if (idx >= 0)
+                return idx;
+        }
+    }
+    if (A30C_COUNT(0) > 1) {
+        idx = sub_0800A304(1, 0x259);
+        if (idx >= 0)
+            return idx;
+    }
+    if (A30C_COUNT(0) > 0) {
+        idx = sub_0800A304(1, 0x1F4);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x21C);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x259);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0xFF);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x419);
+        if (idx > -1)
+            return idx;
+    }
+    if (sub_08009150(1, 0x16) > 0) {
+        idx = sub_0800A304(1, 0x1AB);
+        if (idx >= 0)
+            return idx;
+    }
+    if (sub_08009150(1, 0x15) > 0) {
+        idx = sub_0800A304(1, 0x65);
+        if (idx >= 0)
+            return idx;
+    }
+    if (gUnk_020192E4[1].handCount <= 2 || gUnk_020192E4[0].handCount > gUnk_020192E4[1].handCount + 2) {
+        idx = sub_0800A304(1, 0x21B);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x24E);
+        if (idx > -1)
+            return idx;
+    }
+    if (gUnk_020192E4[0].deckCount <= 4) {
+        idx = sub_0800A304(1, 0x231);
+        if (idx >= 0)
+            return idx;
+    }
+    for (i = 0; i <= 4; i++) {
+        switch (CARD_NUMBER(CARD_ID(A30C_DECK(i)))) {
+        case 0x10:
+        case 0x11:
+        case 0x12:
+        case 0x13:
+        case 0x14:
+        case 0x14F:
+        case 0x150:
+        case 0x1DA:
+        case 0x290:
+        case 0x29F:
+        case 0x2EF:
+        case 0x3AB:
+        case 0x3C8:
+        case 0x3F0:
+        case 0x3F2:
+        case 0x403:
+        case 0x420:
+        case 0x42C:
+            idx = sub_0800A304(1, 0x231);
+            if (idx >= 0)
+                goto ret;
+            break;
+        }
+    }
+    if (sub_080090C8(0, 0x15B) > 0) {
+        idx = sub_0800A304(1, 0x246);
+        if (idx >= 0)
+            return idx;
+    }
+    if (sub_080090C8(0, 0x148) > 0) {
+        idx = sub_0800A304(1, 0x27);
+        if (idx >= 0)
+            return idx;
+    }
+    if (sub_080091B4(0) > 1) {
+        idx = sub_0800A304(1, 0x109);
+        if (idx >= 0)
+            return idx;
+    }
+    if (A30C_9280(0) > 1) {
+        idx = sub_0800A304(1, 0x249);
+        if (idx >= 0)
+            return idx;
+    }
+    if (A30C_9280(0) > 0) {
+        idx = sub_0800A304(1, 0xDF);
+        if (idx >= 0)
+            return idx;
+    }
+    if (A30C_COUNT(0) > 0 && A30C_COUNT(1) == 0) {
+        idx = sub_0800A304(1, 0x48B);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x452);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x45A);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x45B);
+        if (idx > -1)
+            return idx;
+        idx = sub_0800A304(1, 0x51B);
+        if (idx > -1)
+            return idx;
+    }
+    max = 0;
+    for (i = 0; i <= 4; i++) {
+        int v = sub_0800C894(0, i);
+        if (max < v)
+            max = v;
+    }
+    best = 0;
+    idx = -1;
+    for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
+        id = CARD_ID(A30C_HAND(i));
+        w = A30C_Def(id);
+        if (best < w && max <= w && sub_08054398(1, id) != 0
+            && sub_08056300(2, A30C_NUMBER(id)) == 0 && sub_08007834(id) == 0
+            && sub_080564A8(id) != 0) {
+            idx = i;
+            best = w;
+        }
+    }
+    if (idx >= 0) {
+    ret:
+        return idx;
+    }
+    for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
+        u16 id2 = CARD_ID(A30C_HAND(i));
+        if (A30C_Level(id2) <= 4 && A30C_TYPE(id2) <= 0x14
+            && sub_08056300(2, A30C_NUMBER(id2)) == 0 && sub_08007834(id2) == 0
+            && sub_080564A8(id2) != 0)
+            return i;
+    }
+    return -1;
+}
 /* Step 0: reset the AI work area, announce the turn and ask the scripted-strategy
  * picker (sub_0805BC24). When one applies, jump to step 8, else let the runner
  * advance to step 1. */

@@ -620,10 +620,6 @@ int sub_0804AC18(int player)
         return 1;
     }
 }
-#if 0 /* NONMATCHING (score 198): Structure matches (state switch on cnt at gUnk_0201930C+0x1AEA, member-access
-       * cnt/stage forms, cross-jumped reset tails via return-inside-if). Remaining: case 0 register allocation of
-       * opp/num and their asm-barrier copies (target opp r8, num r4, copies r6/sl, n r5, &gBattle r9); case 30 table reg
-       * r2 vs r1. */
 struct AEZone {
     u32 card;
     u8 b4;
@@ -642,7 +638,6 @@ struct AEF00 {
 };
 #define AE_F00 (*(struct AEF00 *)&gUnk_02015F00)
 #define AE_ZB ((u8 *)gUnk_0201930C)
-#define AEZ(p, z) ((struct AEZone *)((z) * 0x94 + (p) * 0xD64 + (u32)AE_ZB))
 #define AEZb(p, z) ((struct AEZone *)((p) * 0xD64 + (z) * 0x94 + (u32)AE_ZB))
 #define AEZ1(z) ((struct AEZone *)(AE_ZB + 0xD64) + (z))
 #define AE_CNT (*(struct DGCnt *)(AE_ZB + 0x1AEA))
@@ -656,16 +651,18 @@ struct AEStage {
 struct AECur { u8 pad[0x82C]; u8 b82C; };
 #define AE_CUR (*(struct AECur *)&gUnk_0201CFB0)
 #define AE_ST (*(struct AEStage *)&gUnk_020192E0)
-int sub_0800AB08(int player, u16 number);
-int sub_0800AB6C(int player, u16 number);
+int sub_0800AB08(int player, int number);
+int sub_0800AB6C(int player, int number);
 int sub_0800C894(int player, int zone);
 int sub_0800C8A8(int player, int zone);
 void sub_080197E0(int player, u16 id);
 int sub_08052F38(u32 keys);
 int sub_0800756C(u16 number);
-extern const u16 gUnk_08623DF4[];
 extern const u8 gUnk_08085958[], gUnk_0808598C[];
 
+/* Attack step machine switched on the duel step counter (+0x1B16): card 0x422 on the defender's side
+ * redirects the attack (steps 0, 20), then target selection (2, 3, 10, 11, 30) and messages.
+ * Returns 1 when the step hands over to a message, else 0. */
 int sub_0804AE64(int player)
 {
     u32 pl = player & 1;
@@ -682,13 +679,14 @@ int sub_0804AE64(int player)
         int opp = 1 - player;
         u32 num = 0x422;
         if (sub_0800AB08(opp, num) > 0) {
+            /* FAKEMATCH: the ROM keeps copies of opp (r6) and num (sl) beside the originals (r8, r4).
+             * The empty asms stop CSE from merging them; the sl pin fixes the allocation order. */
+            register int c asm("sl");
             int p, n, zone, a, b, mine;
-            u16 c;
             sub_080197E0(opp, ((const u16 *)0x08623DF4)[num]);
             p = opp;
             c = num;
-            /* FAKEMATCH: keep the copies of opp/num as separate registers */
-            asm("" : "+r"(p));
+            asm("" : "+r"(opp));
             asm("" : "+r"(c));
             n = sub_0800AB08(p, c);
             if (n == 1) {
@@ -820,7 +818,7 @@ int sub_0804AE64(int player)
     case 30:
         if (player != 0)
             return 0;
-        if (sub_08052F38(0xF00000) && sub_0800756C(*(u16 *)((u8 *)gUnk_08622AB4 + ((AEZ1(gUnk_0201CFB0.w82C)->card << 21) >> 20)))) {
+        if (sub_08052F38(0xF00000) && sub_0800756C(((const u16 *)0x08622AB4)[(AEZ1(gUnk_0201CFB0.w82C)->card << 20 >> 20) & 0x7FF])) {
             BTB.defSlot = AE_CUR.b82C;
             AE_CNT.cnt = 3;
         }
@@ -834,5 +832,3 @@ int sub_0804AE64(int player)
     }
     return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_0804A008", sub_0804AE64); /* 0x0804AE64 size 0x7DC */

@@ -241,77 +241,110 @@ static inline int Has2_86E8(u16 id)
 }
 struct Mode86E8 { u8 pad[0x4874]; u8 mode : 2; };
 extern struct Mode86E8 gMain_86E8 asm("gUnk_03000040");
-#if 0 /* NONMATCHING: 760 lines; first draft. ROM frame is 0xC (build 0x4) and keeps 0x0201DB20 in r8; list-row helper shape unknown */
-/* Rebuild the three deck-edit card lists from the trunk counts, filtered by the list mode, then compact the
- * second row of every list whose filter flag (arr14A0) is 1 (hypothesis). */
+#if 0 /* NONMATCHING (score 352): NONMATCHING: score 352; private rebuild_lists draft (RebuildRead/RebuildWrite
+       * inline switches) gives right size 0x4A8 and 0xC frame; register allocation/branch layout differ */
+/* Rebuild visible collection/deck rows, then compact the selected saved rows. */
+struct ListMainMode { u8 pad[0x4874]; u8 mode : 2; u8 rest : 6; };
+extern struct ListMainMode gListMainMode asm("gUnk_03000040");
+extern const u16 gUnk_08622AB4[];
+#define REBUILD_NUMBER(i) (gUnk_08622AB4[(i) & 0x7FF])
+#define REBUILD_OWN(i) ((u32)TN(i) << 22)
+#define REBUILD_DECK(i) (((u32)T9(i) << 28) >> 30)
+#define REBUILD_EXTRA(i) (T9(i) >> 6)
+#define REBUILD_SIDE(i) (((u32)T9(i) << 26) >> 30)
+#define REBUILD_ST gUnk_0201DB20_p
+static inline u16 RebuildRead(u8 list, u8 row, u16 col)
+{
+    switch (list) {
+    case 0: return REBUILD_ST.lists.l0[row][col];
+    case 1: return REBUILD_ST.lists.l1.a[row][col];
+    case 2: return REBUILD_ST.lists.l2.a[row][col];
+    }
+}
+static inline void RebuildWrite(u16 val, u8 list, u8 row, u16 col)
+{
+    switch (list) {
+    case 0: REBUILD_ST.lists.l0[row][col] = val; break;
+    case 1: REBUILD_ST.lists.l1.a[row][col] = val; break;
+    case 2: REBUILD_ST.lists.l2.a[row][col] = val; break;
+    }
+}
 void sub_080686E8(void)
 {
     u16 i;
-    u16 id;
-
     for (i = 0; i <= 2; i++)
-        CNT_86E8[0][i] = 0;
-    switch (gMain_86E8.mode) {
+        REBUILD_ST.cnt1494[0][i] = 0;
+    switch (gListMainMode.mode) {
     case 1:
-        for (id = 1; id <= 0x334; id++) {
-            u16 num = ((const u16 *)0x08622AB4)[id & 0x7FF];
-            if ((u16)(num - 0x4BA) > 0x315 || (u16)(num - 0x76C) <= 0x13) {
-                if (TN(id))
-                    L0_86E8[0][CNT_86E8[0][0]++] = id;
-                if (Has2_86E8(id))
-                    L1_86E8[0][CNT_86E8[0][1]++] = id;
-                if ((T9(id) << 26) >> 30)
-                    L2_86E8[0][CNT_86E8[0][2]++] = id;
+        for (i = 1; i <= 0x334; i++) {
+            u16 number = REBUILD_NUMBER(i);
+            if ((u16)(number - 0x4BA) > 0x315 || (u16)(number - 0x76C) <= 0x13) {
+                if (REBUILD_OWN(i) != 0)
+                    REBUILD_ST.lists.l0[0][REBUILD_ST.cnt1494[0][0]++] = i;
+                if ((s32)((u32)gUnk_0201DB20[0x1C5A] << 26) < 0) {
+                    if (REBUILD_DECK(i) != 0)
+                        REBUILD_ST.lists.l1.a[0][REBUILD_ST.cnt1494[0][1]++] = i;
+                } else if (REBUILD_DECK(i) != 0 || REBUILD_EXTRA(i) != 0) {
+                    REBUILD_ST.lists.l1.a[0][REBUILD_ST.cnt1494[0][1]++] = i;
+                }
+                if (REBUILD_SIDE(i) != 0)
+                    REBUILD_ST.lists.l2.a[0][REBUILD_ST.cnt1494[0][2]++] = i;
             }
         }
         break;
     case 0:
-        for (id = 1; id <= 0x334; id++) {
-            if ((u16)(((const u16 *)0x08622AB4)[id & 0x7FF] - 0x780) > 0x4F) {
-                if (TN(id))
-                    L0_86E8[0][CNT_86E8[0][0]++] = id;
-                if (Has2_86E8(id))
-                    L1_86E8[0][CNT_86E8[0][1]++] = id;
-                if ((T9(id) << 26) >> 30)
-                    L2_86E8[0][CNT_86E8[0][2]++] = id;
+        for (i = 1; i <= 0x334; i++) {
+            if ((u16)(REBUILD_NUMBER(i) - 0x780) > 0x4F) {
+                if (REBUILD_OWN(i) != 0)
+                    REBUILD_ST.lists.l0[0][REBUILD_ST.cnt1494[0][0]++] = i;
+                if ((s32)((u32)gUnk_0201DB20[0x1C5A] << 26) < 0) {
+                    if (REBUILD_DECK(i) != 0)
+                        REBUILD_ST.lists.l1.a[0][REBUILD_ST.cnt1494[0][1]++] = i;
+                } else if (REBUILD_DECK(i) != 0 || REBUILD_EXTRA(i) != 0) {
+                    REBUILD_ST.lists.l1.a[0][REBUILD_ST.cnt1494[0][1]++] = i;
+                }
+                if (REBUILD_SIDE(i) != 0)
+                    REBUILD_ST.lists.l2.a[0][REBUILD_ST.cnt1494[0][2]++] = i;
             }
         }
         break;
     case 2:
-        for (id = 1; id <= 0x334; id++) {
-            if ((u16)(((const u16 *)0x08622AB4)[id & 0x7FF] - 0x76C) > 0x63)
-                L0_86E8[0][CNT_86E8[0][0]++] = id;
+        for (i = 1; i <= 0x334; i++) {
+            if ((u16)(REBUILD_NUMBER(i) - 0x76C) > 0x63)
+                REBUILD_ST.lists.l0[0][REBUILD_ST.cnt1494[0][0]++] = i;
         }
         break;
     }
     for (i = 0; i <= 2; i++) {
-        if (gUnk_0201DB20_p.arr14A0[i] == 1) {
-            u16 k = 0;
+        if (REBUILD_ST.arr14A0[i] == 1) {
+            u16 n = 0;
             u16 j;
-            for (j = 0; j < CNT_86E8[1][i]; j++) {
-                u16 c;
+            for (j = 0; j < REBUILD_ST.cnt1494[1][i]; j++) {
                 switch (i) {
-                case 2:
-                    c = L2_86E8[1][j];
-                    if ((T9(c) << 26) >> 30)
-                        Row1_86E8(i)[k++] = c;
-                    break;
                 case 0:
-                    c = L0_86E8[1][j];
-                    if (TN(c))
-                        Row1_86E8(i)[k++] = c;
+                    if (REBUILD_OWN(RebuildRead(i, 1, j)))
+                        RebuildWrite(RebuildRead(i, 1, j), i, 1, n++);
                     break;
                 case 1:
-                    c = L1_86E8[1][j];
-                    if (((T9(c) << 28) >> 30) || (T9(c) >> 6))
-                        Row1_86E8(i)[k++] = Row1_86E8(i)[j];
+                    if (REBUILD_DECK(RebuildRead(i, 1, j)) || REBUILD_EXTRA(RebuildRead(i, 1, j)))
+                        RebuildWrite(RebuildRead(i, 1, j), i, 1, n++);
+                    break;
+                case 2:
+                    if (REBUILD_SIDE(RebuildRead(i, 1, j)))
+                        RebuildWrite(RebuildRead(i, 1, j), i, 1, n++);
                     break;
                 }
             }
-            CNT_86E8[1][i] = k;
+            REBUILD_ST.cnt1494[1][i] = n;
         }
     }
 }
+#undef REBUILD_NUMBER
+#undef REBUILD_OWN
+#undef REBUILD_DECK
+#undef REBUILD_EXTRA
+#undef REBUILD_SIDE
+#undef REBUILD_ST
 #endif
 INCLUDE_ASM("asm/nonmatching/code_08068180", sub_080686E8); /* 0x080686E8 size 0x4A8 */
 /* Load the graphic of the currently selected card into VRAM 0x06012FE0 if it changed. */

@@ -616,12 +616,13 @@ int sub_080327F4(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: 487 lines; case set and body order match the ROM's switch, register allocation differs from the first target-zone block on */
+#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
 /* Sweep effect keyed by the triggering card number: face-up spells (type 0x15) on the player's side are
  * re-activated through sub_08018DC8/sub_08019840, other cards are removed with sub_08018544 (hypothesis). */
 int sub_0803283C(struct CardRef *ref, struct CardRef *src)
 {
     int z;
+    u16 id; /* function scope, shared by every case: its loop-weighted refs give it r5 in case A too */
 
     if (ref->skip4 || src == NULL || src->player == ref->player)
         return 0;
@@ -634,31 +635,29 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
     case 0x46F: {
         u8 tp = src->targets[0];
         u32 tz = src->targets[0] >> 8;
-        struct DuelZone *zn = ZB(tp & 1, tz);
-        u32 id = CARD_ID(CARD_WORD(zn->card));
+        id = CARD_ID(CARD_WORD(ZB2(tp & 1, tz)->card));
         if (id == 0)
             return 0;
         if (tp == ref->player && tz == ref->zone)
             return 0;
         if (CARD_TYPE(id) != 0x15)
             return 0;
-        if (!(ZFLAGS(zn) & 2)) {
+        if (!ZB2(tp & 1, tz)->flag6_1) {
             sub_08018DC8(tp, tz, 0);
             sub_08019840(ref->player, id);
             sub_08018DC8(tp, tz, 0);
         }
-        if (CARD_TYPE(src->id) <= 0x14)
-            return 0;
-        break;
+        if (CARD_TYPE(src->id) > 0x14)
+            sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+        return 0;
     }
     case 0x29F:
     case 0x426:
         for (z = 5; z <= 10; z++) {
-            struct DuelZone *zn = ZB(ref->player & 1, z);
-            u32 id = CARD_ID(CARD_WORD(zn->card));
+            id = CARD_ID(CARD_WORD(ZB2(ref->player & 1, z)->card));
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
-                    if (!(ZFLAGS(zn) & 2)) {
+                    if (!ZB2(ref->player & 1, z)->flag6_1) {
                         sub_08018DC8(ref->player, z, 0);
                         sub_08019840(ref->player, id);
                         sub_08018DC8(ref->player, z, 0);
@@ -668,16 +667,15 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
                 }
             }
         }
-        if (CARD_TYPE(src->id) <= 0x14)
-            return 0;
-        break;
+        if (CARD_TYPE(src->id) > 0x14)
+            sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+        return 0;
     case 0x425:
         for (z = 5; z <= 10; z++) {
-            struct DuelZone *zn = ZB(ref->player & 1, z);
-            u32 id = CARD_ID(CARD_WORD(zn->card));
+            id = CARD_ID(CARD_WORD(ZB2(ref->player & 1, z)->card));
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
-                    if (!(ZFLAGS(zn) & 2)) {
+                    if (!ZB2(ref->player & 1, z)->flag6_1) {
                         sub_08018DC8(ref->player, z, 0);
                         sub_08019840(ref->player, id);
                         sub_08018DC8(ref->player, z, 0);
@@ -688,17 +686,17 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
             }
         }
         for (z = 5; z <= 10; z++) {
-            if (CARD_WORD(ZB((1 - ref->player) & 1, z)->card) << 20)
+            if (CARD_WORD(ZB2((1 - ref->player) & 1, z)->card) << 20)
                 sub_08018544(ref->player, z, 1);
         }
-        break;
+        sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+        return 0;
     case 0x42B:
         for (z = 0; z <= 10; z++) {
-            struct DuelZone *zn = ZB(ref->player & 1, z);
-            u32 id = CARD_ID(CARD_WORD(zn->card));
+            id = CARD_ID(CARD_WORD(ZB2(ref->player & 1, z)->card));
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
-                    if (!(ZFLAGS(zn) & 2)) {
+                    if (!ZB2(ref->player & 1, z)->flag6_1) {
                         sub_08018DC8(ref->player, z, 0);
                         sub_08019840(ref->player, id);
                         sub_08018DC8(ref->player, z, 0);
@@ -709,15 +707,11 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
             }
         }
         for (z = 0; z <= 10; z++) {
-            if (CARD_WORD(ZB((1 - ref->player) & 1, z)->card) << 20)
+            if (CARD_WORD(ZB2((1 - ref->player) & 1, z)->card) << 20)
                 sub_08018544(ref->player, z, 1);
         }
-        break;
-    default:
+        sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
         return 0;
     }
-    sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08031BC8", sub_0803283C); /* 0x0803283C size 0x474 */

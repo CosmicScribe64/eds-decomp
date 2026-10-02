@@ -222,11 +222,12 @@ struct Main {
 };
 extern struct Main gUnk_03000040;
 
-#if 0 /* NONMATCHING (score 84): same size and block layout as the ROM; only register allocation differs:
-       * scoring init (ROM bestIdx r9, maxAtk sl initialised by mov sl,r7), ABC8/fallback loop counter r4 vs r6, found2
-       * temp r6 vs r2, n-test reload r1 vs r0 */
+#if 0 /* NONMATCHING (score 30): same size/layout; only the scoring init differs: ROM n-test reload uses r0
+       * (ours r1) and ROM inits maxAtk with mov sl,r7 (reload inheritance) where ours does mov r1,#0; mov sl,r1. Single
+       * loop counter k for all loops needs global-alloc priority below the 1AB mask (7 empty asm volatile in the ABC8
+       * loop pad k's live length = FAKEMATCH) */
 /* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in gUnk_02015F00.handPick, -1 if none. */
-static inline int AtkVal56(int id)
+static inline int AtkVal56(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
     case 0x15:
@@ -258,7 +259,7 @@ static inline int AtkVal56b(int id)
     }
     return r;
 }
-static inline u16 DefVal56(int id)
+static inline u16 DefVal56(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
     case 0x15:
@@ -276,7 +277,7 @@ int sub_08056ECC(u16 id)
 {
     int n;
     int j;
-    int v0, v1;
+    int k;
     int ok;
     int best, bestIdx, maxAtk, maxDef;
     int buf[3];
@@ -286,9 +287,11 @@ int sub_08056ECC(u16 id)
     if (n == 0)
         goto fail;
     if (gUnk_02015EE8.flags & 0x200) {
-        for (v0 = 0; v0 < n; v0++) {
+        for (k = 0; k < n; k++) {
+            u16 c;
             ok = 0;
-            switch (CNS56(CARD_ID(*(gUnk_0201D81C + v0)))) {
+            c = CARD_ID(*(gUnk_0201D81C + k));
+            switch (CNS56(c)) {
             case 0x10:
             case 0x11:
             case 0x12:
@@ -311,7 +314,7 @@ int sub_08056ECC(u16 id)
                 break;
             }
             if (ok) {
-                gUnk_02015F00.handPick = v0;
+                gUnk_02015F00.handPick = k;
                 return gUnk_02015F00.handPick;
             }
         }
@@ -322,9 +325,9 @@ int sub_08056ECC(u16 id)
     case 0x1AB:
     case 0x65:
     case 0x443:
-        for (v0 = 0; (u32)v0 <= 0xC; v0++) {
+        for (k = 0; (u32)k <= 0xC; k++) {
             for (j = 0; j < n; j++) {
-                if (CNS56(CARD_ID(gUnk_0201D81C[j])) == gUnk_0819D2FC[v0])
+                if (CNS56(CARD_ID(gUnk_0201D81C[j])) == gUnk_0819D2FC[k])
                     goto found2;
             }
         }
@@ -333,33 +336,40 @@ int sub_08056ECC(u16 id)
     if (n <= 0)
         goto fail;
     best = 0;
-    maxAtk = 0;
     bestIdx = -1;
-    maxDef = 0;
-    for (v1 = 0; v1 <= 4; v1++) {
-        sub_0800ABC8(0, v1, buf);
+    maxAtk = maxDef = 0;
+    for (k = 0; k <= 4; k++) {
+        sub_0800ABC8(0, k, buf);
+        asm volatile("");
+        asm volatile("");
+        asm volatile("");
+        asm volatile("");
+        asm volatile("");
+        asm volatile("");
+        asm volatile("");
+
         if (maxAtk < buf[1])
             maxAtk = buf[1];
     }
-    for (v0 = 0; v0 < n; v0++) {
-        int cid = CARD_ID(gUnk_0201D81C[v0]);
+    for (k = 0; k < n; k++) {
+        u16 cid = CARD_ID(gUnk_0201D81C[k]);
 
         if (best < AtkVal56(cid) + DefVal56(cid)) {
             if (maxAtk <= AtkVal56(cid) || maxDef < AtkVal56(cid) || maxAtk <= DefVal56(cid)) {
                 best = AtkVal56(cid) + DefVal56(cid);
-                bestIdx = v0;
+                bestIdx = k;
             }
         }
     }
     if (bestIdx <= -1) {
         bestIdx = -1;
         best = 0;
-        for (v1 = 0; v1 < n; v1++) {
-            u16 cid = CARD_ID(gUnk_0201D81C[v1]);
+        for (k = 0; k < n; k++) {
+            u16 cid = CARD_ID(gUnk_0201D81C[k]);
 
             if (best < CardValue(cid)) {
                 best = CardValue(cid);
-                bestIdx = v1;
+                bestIdx = k;
             }
         }
         if (bestIdx < 0)
@@ -371,8 +381,8 @@ random:
     gUnk_02015F00.handPick = sub_08076F9C() % n;
     return gUnk_02015F00.handPick;
 found2:
-    v0 = gUnk_02015F00.handPick;
-    return v0;
+    j = gUnk_02015F00.handPick;
+    return j;
 fail:
     return -1;
 }

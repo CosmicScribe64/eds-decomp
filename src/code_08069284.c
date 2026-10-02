@@ -421,4 +421,290 @@ void sub_08069FAC(void)
     gUnk_0201DB20.f1C54++;
     sub_08069F40(gUnk_086F41A0, (void *)0x06003C00, (gUnk_0201DB20.f1C54 * 3) & 0x7F);
 }
-INCLUDE_ASM("asm/nonmatching/code_08069284", sub_08069FE4); /* 0x08069FE4 size 0x948 */
+/* View of the scene state 0x0201DB20 used by the filter/sort menu handler. */
+struct FMObject {
+    u8 pad0[0xE];
+    u8 mark;                    /* +0xE */
+    u8 padF[0x14 - 0xF];
+};
+struct FilterMenu {
+    u8 pad0[0x618];
+    u8 transition[6];           /* +0x618 */
+    u8 transitionState;         /* +0x61E */
+    u8 pad61F[0x1718 - 0x61F];
+    struct FMObject objs[14];   /* +0x1718 */
+    u8 pad1830[0x1C1C - 0x1830];
+    u8 cursor;                  /* +0x1C1C */
+    u8 pad1C1D[0x1C3D - 0x1C1D];
+    u8 dirty : 3;               /* +0x1C3D */
+    u8 dirtyRest : 5;
+    u8 pad1C3E;
+    u8 filter[3];               /* +0x1C3F */
+    u8 sort[3];                 /* +0x1C42 */
+    u8 pad1C45[3];
+    u8 f1C48Low : 1;            /* +0x1C48 */
+    u8 f1C48 : 4;
+    u8 f1C48Rest : 3;
+    u8 filterSel;               /* +0x1C49 */
+    u8 sortSel;                 /* +0x1C4A */
+    u8 phase;                   /* +0x1C4B */
+    u16 scrollX;                /* +0x1C4C */
+    u16 scrollY;                /* +0x1C4E */
+    u8 blend;                   /* +0x1C50 */
+    s8 blendStep;               /* +0x1C51 */
+    u8 fading;                  /* +0x1C52 */
+    u8 timer;                   /* +0x1C53 */
+    u8 anim;                    /* +0x1C54 */
+    u8 pad1C55[0x1C5A - 0x1C55];
+    u8 flags;                   /* +0x1C5A */
+    u8 special;                 /* +0x1C5B */
+};
+#define FM (*(struct FilterMenu *)&gUnk_0201DB20)
+struct FMMain {
+    u8 pad0[6];
+    u16 keys;                   /* +0x6 */
+    u8 pad8[0x414 - 8];
+    u32 callback;               /* +0x414 */
+};
+#define FM_MAIN (*(struct FMMain *)&gUnk_03000040)
+extern const u8 gUnk_0808756C[][4];
+extern const u8 gUnk_08087588[][4];
+extern const u8 gUnk_080875A4[][4];
+extern const u8 gUnk_080875BC[];
+void sub_08077AEC(int sound);
+void sub_0807883C(void *state);
+void sub_0807B4A8(u32 level);
+void sub_0807871C(void *objects);
+void sub_08078534(void *objects, int a, int b, int c, int d, int e, int f, int g, int h, void *state);
+void sub_0807A298(void *state);
+void sub_0807A2EC(void *state);
+
+/* Filter/sort menu frame handler: scrolls BG3, moves the filter (phase 0) and sort (phase 1) cursors through the
+   neighbour tables, applies the choice with sub_08069284 (phase 2), runs the 13-frame confirm timer and the fades.
+   Returns 1 when the exit transition is done. The `case 3..5` / `case 4..5` switches give the ROM's signed bound tests. */
+int sub_08069FE4(void)
+{
+    u32 keys;
+
+    keys = FM_MAIN.keys & 0x3FF;
+    sub_0807883C(FM.transition);
+    FM.scrollX += 0x80;
+    FM.scrollY += 0x80;
+    REG_BG3HOFS = FM.scrollX >> 8;
+    REG_BG3VOFS = FM.scrollY >> 8;
+    if (FM.timer == 0) {
+        switch (FM.phase) {
+        case 0:
+            switch (keys) {
+            case 0x40:
+                FM.objs[FM.filterSel].mark = 0xFF;
+                if (FM.flags & 0x20)
+                    FM.filterSel = gUnk_08087588[FM.filterSel][0];
+                else
+                    FM.filterSel = gUnk_0808756C[FM.filterSel][0];
+                FM.objs[FM.filterSel].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x80:
+                FM.objs[FM.filterSel].mark = 0xFF;
+                if (FM.flags & 0x20)
+                    FM.filterSel = gUnk_08087588[FM.filterSel][1];
+                else
+                    FM.filterSel = gUnk_0808756C[FM.filterSel][1];
+                FM.objs[FM.filterSel].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x10:
+                FM.objs[FM.filterSel].mark = 0xFF;
+                if (FM.flags & 0x20)
+                    FM.filterSel = gUnk_08087588[FM.filterSel][2];
+                else
+                    FM.filterSel = gUnk_0808756C[FM.filterSel][2];
+                FM.objs[FM.filterSel].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x20:
+                FM.objs[FM.filterSel].mark = 0xFF;
+                if (FM.flags & 0x20)
+                    FM.filterSel = gUnk_08087588[FM.filterSel][3];
+                else
+                    FM.filterSel = gUnk_0808756C[FM.filterSel][3];
+                FM.objs[FM.filterSel].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 2:
+                if (FM.transitionState == 0)
+                    FM.blendStep = 1;
+                sub_08077AEC(2);
+                break;
+            default:
+                FM.objs[FM.filterSel].mark = 1;
+                break;
+            case 1:
+                FM.timer = 1;
+                sub_08077AEC(1);
+                break;
+            }
+            if (FM.fading != 0 && FM.blend <= 8)
+                sub_08069DD8(FM.filterSel);
+            break;
+        case 1:
+            switch (keys) {
+            case 0x40:
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                FM.sortSel = gUnk_080875A4[FM.sortSel][0];
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x80:
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                FM.sortSel = gUnk_080875A4[FM.sortSel][1];
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x10:
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                FM.sortSel = gUnk_080875A4[FM.sortSel][2];
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 0x20:
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                FM.sortSel = gUnk_080875A4[FM.sortSel][3];
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 1;
+                sub_08077AEC(0);
+                break;
+            case 2:
+                FM.phase = 0;
+                REG_DISPCNT |= 0x200;
+                REG_DISPCNT &= 0xFEFF;
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                FM.objs[FM.filterSel].mark = 0;
+                sub_08077AEC(0);
+                break;
+            case 1:
+                FM.timer = 1;
+                sub_08077AEC(1);
+                break;
+            default:
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 1;
+                break;
+            }
+            if (FM.fading != 0 && FM.blend <= 8)
+                sub_08069DD8(gUnk_080875BC[FM.sortSel]);
+            break;
+        case 2:
+            switch (keys) {
+            case 2:
+                if (FM.transitionState == 0) {
+                    FM.blendStep = 1;
+                    sub_08077AEC(2);
+                }
+                break;
+            case 1:
+                sub_08069F40(gUnk_086F41A0, (void *)0x06003C00, (FM.scrollX >> 8) & 0x7F);
+                sub_08077AEC(1);
+                break;
+            default:
+                FM.objs[10].mark = 1;
+                FM.anim = 0;
+                FM_MAIN.callback = (u32)sub_08069FAC;
+                switch (FM.special) {
+                case 3:
+                case 4:
+                case 5:
+                    sub_08069284(FM.cursor, FM.filterSel, FM.special);
+                    FM.special = 0;
+                    FM.sort[FM.cursor] = 1;
+                    FM.dirty = 3;
+                    break;
+                default:
+                    sub_08069284(FM.cursor, FM.filterSel, FM.sortSel);
+                    break;
+                }
+                FM_MAIN.callback = 0;
+                sub_08069F40(gUnk_086F41A0, (void *)0x06003C00, 0x80);
+                FM.blendStep = 1;
+                FM.phase = 3;
+                break;
+            }
+            break;
+        }
+    }
+    if (FM.timer != 0) {
+        switch (FM.phase) {
+        case 0:
+            if (FM.timer == 13) {
+                FM.timer = 0;
+                FM.objs[FM.filterSel].mark = 0xFF;
+                REG_DISPCNT &= 0xFDFF;
+                REG_DISPCNT |= 0x100;
+                switch (FM.filterSel) {
+                case 4:
+                case 5:
+                    FM.filter[FM.cursor] = FM.filterSel;
+                    FM.dirty = 3;
+                    FM.sort[FM.cursor] = FM.sortSel;
+                    FM.dirty = 3;
+                    FM.timer = 0;
+                    sub_08069E64();
+                    FM.phase = 2;
+                    break;
+                default:
+                    FM.phase = 1;
+                    FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0;
+                    break;
+                }
+            } else if (++FM.timer <= 11) {
+                sub_08069E20(FM.filterSel);
+            }
+            break;
+        case 1:
+            if (FM.timer == 13) {
+                FM.filter[FM.cursor] = FM.filterSel;
+                FM.dirty = 3;
+                FM.sort[FM.cursor] = FM.sortSel;
+                FM.dirty = 3;
+                FM.timer = 0;
+                FM.objs[gUnk_080875BC[FM.sortSel]].mark = 0xFF;
+                sub_08069E64();
+                FM.phase = 2;
+            } else if (++FM.timer <= 11) {
+                sub_08069E20(gUnk_080875BC[FM.sortSel]);
+            }
+            break;
+        case 2:
+            break;
+        }
+    }
+    if (FM.transitionState == 2) {
+        FM.f1C48 = 4;
+        FM.dirty = 3;
+        return 1;
+    }
+    if (FM.transitionState == 3) {
+        REG_BLDCNT = 0x3F44;
+        sub_0807B4A8(0x10);
+        REG_DISPCNT |= 0x400;
+        FM.transitionState = 0;
+        FM.blendStep = -1;
+        FM.fading = 1;
+    }
+    if (FM.blendStep != 0) {
+        FM.blend += FM.blendStep;
+        if (FM.blend == 8)
+            FM.blendStep = 0;
+        if (FM.blend == 16) {
+            REG_DISPCNT &= 0xFBFF;
+            sub_080787F4(0, 0x180, 0, FM.transition);
+            FM.blendStep = 0;
+            FM.fading = 0;
+        }
+        sub_0807B4A8(FM.blend);
+    }
+    sub_0807871C(FM.objs);
+    sub_08078534(FM.objs, 0, 0, 0, 0, 0, 3, 0, 0, &gUnk_0201DB20);
+    sub_0807A298(&gUnk_0201DB20);
+    sub_0807A2EC(&gUnk_0201DB20);
+    return 0;
+}

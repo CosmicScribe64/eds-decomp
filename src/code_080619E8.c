@@ -504,42 +504,28 @@ static inline u16 CardNumberToId(u16 n)
 }
 
 /* Draw the five slot sprites of the list at 0x02015160 (hypothesis). */
-#if 0 /* NONMATCHING: register allocation differs. With explicit i2/y induction vars the index regs
-       * match (r6=i, r8=2i, r7=32i, r9=-4, sl=0xFFFF, r5=else y copy), but gcc hoists the 0x7CF
-       * compare (the target reloads it, keeping 0xFFFF). Tried reading b10C at each use
-       * (trick 1). A `unsigned long long lim=0x7CF`/table-address temp (trick 2) un-hoists
-       * 0x7CF but emits a dead double-word load. A goto loop with manual IVs (trick 3) loses
-       * the base/0xFFFF hoists. Explicit i2/y locals (tricks 4/6) fix the index registers. The
-       * 0x7CF hoist is the last diff. */
+/* The ROM loads this table through a symbol (a constant-pool symbol_ref), which loop.c hoists in
+ * its first pass; that pushes the 0xFFFF compare hoist to the second pass so it wins sl.
+ * The cast-address macro above is used only here. */
+#undef gUnk_0808659C
+extern const u16 gUnk_0808659C[];
+
 void sub_080624A4(void)
 {
     int i;
-    int i2 = 0;
-    int y = 0;
     for (i = 0; i <= 4; i++) {
-        u8 kind = gUnk_02015160.b10C[i];
-        if (kind <= 0x17) {
-            u16 e = gUnk_0808659C[kind];
-            u32 tile;
-            if (e & 0x1000) {
-                u16 id = CardNumberToId(*(u16 *)((u8 *)&gUnk_02015160 + 0x102 + i2));
-                tile = (u16)(gUnk_0808659C[gUnk_02015160.b10C[i]] + sub_08062140(id));
-            } else {
-                tile = e;
-            }
-            sub_080766A4(-4, y, 0x80, tile);
+        if (gUnk_02015160.b10C[i] <= 0x17) {
+            u16 tile;
+            if (gUnk_0808659C[gUnk_02015160.b10C[i]] & 0x1000)
+                tile = gUnk_0808659C[gUnk_02015160.b10C[i]] + sub_08062140(CardNumberToId(gUnk_02015160.w102[i]));
+            else
+                tile = gUnk_0808659C[gUnk_02015160.b10C[i]];
+            sub_080766A4(-4, i * 32, 0x80, tile);
         } else {
-            int a = -4;
-            int y2 = y;
-            u16 id = CardNumberToId(*(u16 *)((u8 *)&gUnk_02015160 + 0x102 + i2));
-            sub_080766A4(a, y2, 0x80, 0x1000 | sub_08062140(id));
+            sub_080766A4(-4, i * 32, 0x80, 0x1000 | sub_08062140(CardNumberToId(gUnk_02015160.w102[i])));
         }
-        i2 += 2;
-        y += 0x20;
     }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080619E8", sub_080624A4); /* 0x080624A4 size 0x160 */
 extern void sub_08074B08(u32 a, u32 b);
 extern void sub_0807501C(u32 a, u32 b, u32 c, const void *d);
 extern void sub_08075114(void *dst, u32 v);

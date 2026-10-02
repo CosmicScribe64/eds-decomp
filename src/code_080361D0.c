@@ -594,10 +594,38 @@ int sub_080369C4(struct CardRef *ref)
     }
     return 0;
 }
-#if 0 /* NONMATCHING: logic decoded, and the differences are register
-       * allocation. The ROM hoists 1 into r10 and keeps a second copy of the
-       * deck pointer in r8 (used only by the second message), and rereads
-       * EFF_SIDE after each call. */
+/* Player state at 0x020192E4 (stride 0xD64) as a real array, so the base address is
+ * loaded before the index (a `((struct PF *)gUnk_020192E4)[i]` cast loads it after). */
+struct PFA {
+    u16 lifePoints;
+    u8 handCount;
+    u8 deckCount;
+    u8 unk4[0x7C4 - 4];
+    u32 deck[80];
+    u8 filler[0xD64 - 0x7C4 - 80 * 4];
+};
+extern struct PFA gPF_020192E4[2];
+/* The (u8) narrowing of an int makes the QImode AND take the mask register as its
+ * first operand, so the constant 1 stays a QImode pseudo (shared by both player
+ * lookups) and `1 - EFF_SIDE` below loads a fresh 1. */
+static inline int EffSideIndex(int p)
+{
+    return (u8)p & 1;
+}
+/* Level-like value of a card: 0 for types 0x15-0x17, 10 for 0x18, else stat bits 25-28. */
+static inline u32 EffCardLevel(int type, int id)
+{
+    switch (type) {
+    case 0x15:
+    case 0x16:
+    case 0x17:
+        return 0;
+    case 0x18:
+        return 0xA;
+    default:
+        return (CARD_STATS(id) & 0x1E000000) >> 25;
+    }
+}
 int sub_08036A68(struct CardRef *ref)
 {
     if (!ref->skip4) {
@@ -606,7 +634,7 @@ int sub_08036A68(struct CardRef *ref)
             int i;
 
             for (i = 0; i <= 1; i++) {
-                s16 j;
+                int j;
 
                 for (j = 0; j <= 4; j++) {
                     sub_08030028(i, j);
@@ -618,53 +646,37 @@ int sub_08036A68(struct CardRef *ref)
             return 0x7F;
         }
         case 0x7F: {
-            int p = EFF_SIDE & 1;
             u32 *deck;
+            u16 *h;
             u32 w;
             int id;
 
-            if (PF[p].deckCount == 0)
+            if (gPF_020192E4[EffSideIndex(EFF_SIDE)].deckCount == 0)
                 return 0x78;
-            deck = PF[p].deck;
+            deck = gPF_020192E4[EffSideIndex(EFF_SIDE)].deck;
+            h = (u16 *)deck;    /* second copy of the pointer, kept in r8 for the 0x7E message */
             sub_0801EC58(EFF_SIDE ? 0x8061 : 0x61, 1, 1, 0);
             sub_08019840(EFF_SIDE, CARD_ID(*deck));
             w = *deck;
             if (((w << 19) >> 31) != EFF_SIDE && (int)(w << 14) < 0 && CARD_NUMBER(CARD_ID11(w)) == 0x2FA) {
                 if (sub_08008A1C(1 - EFF_SIDE) > 0) {
-                    sub_0801EC58(EFF_SIDE ? 0x80C2 : 0xC2, ((u16 *)deck)[0], ((u16 *)deck)[1], 0);
+                    sub_0801EC58(EFF_SIDE ? 0x80C2 : 0xC2, h[0], h[1], 0);
                     sub_08007558(&ESC->cards[0], deck);
                     return 0x7D;
                 }
-                sub_080193D4(EFF_SIDE, PF[EFF_SIDE & 1].handCount, 0, 1);
-                return 0x7C;
-            }
-            id = CARD_ID(*deck);
-            {
-                u16 type = CARD_TYPE(id);
-                u32 v;
+                sub_080193D4(EFF_SIDE, gPF_020192E4[EffSideIndex(EFF_SIDE)].handCount, 0, 1);
+            } else {
+                u32 type;
 
-                if (type > 0x14)
-                    return 0x7C;
-                switch (type) {
-                case 0x15:
-                case 0x16:
-                case 0x17:
-                    v = 0;
-                    break;
-                case 0x18:
-                    v = 0xA;
-                    break;
-                default:
-                    v = (CARD_STATS(id) & 0x1E000000) >> 25;
+                id = CARD_ID(*deck);
+                type = CARD_TYPE(id);
+                if (type <= 0x14 && EffCardLevel(type, id) <= 4 && sub_08007834(id) == 0) {
+                    sub_0801EC58(EFF_SIDE ? 0x80C2 : 0xC2, h[0], h[1], 0);
+                    sub_08007558(&ESC->cards[0], deck);
+                    return 0x7E;
                 }
-                if (v > 4)
-                    return 0x7C;
             }
-            if (sub_08007834(id) != 0)
-                return 0x7C;
-            sub_0801EC58(EFF_SIDE ? 0x80C2 : 0xC2, ((u16 *)deck)[0], ((u16 *)deck)[1], 0);
-            sub_08007558(&ESC->cards[0], deck);
-            return 0x7E;
+            return 0x7C;
         }
         case 0x7E:
             sub_08056094(EFF_SIDE, &ESC->cards[0], 0, 0);
@@ -676,6 +688,8 @@ int sub_08036A68(struct CardRef *ref)
             if (--EFF_CNT == 0) {
                 EFF_SIDE = 1 - EFF_SIDE;
                 EFF_CNT = 5;
+                /* FAKEMATCH: the ROM rereads EFF_SIDE after storing EFF_CNT */
+                asm volatile("" ::: "memory");
                 if (EFF_SIDE == DG->b1)
                     return 0x78;
             }
@@ -684,8 +698,6 @@ int sub_08036A68(struct CardRef *ref)
     }
     return 0;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_080361D0", sub_08036A68); /* 0x08036A68 size 0x2C8 */
 int sub_08036D30(struct CardRef *ref)
 {
     u32 *card = &gUnk_0201D810.cards[gUnk_0201D810.row + gUnk_0201D810.top];

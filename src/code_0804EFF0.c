@@ -107,32 +107,35 @@ void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
 void sub_08077AEC(u16 se);
 int sub_0802B9EC(int a, int b);
 
-#if 0 /* NONMATCHING: register allocation differs (ROM: i in r8, i+1 in r7, (u8)player in r9, 0xD64 in r4, found in r4; the build spills more) */
+#if 0 /* NONMATCHING (score 8): NONMATCHING: score 8; only L9E/p-preheader reload regs differ (poff reload r1 vs
+       * ROM r4, const-1 reload r4 vs ROM r5). Keys: int i; z2 address written (p&1)*0xD64 + j*0x94 (ZB2) so loop.c
+       * hoists (u8)player into the j preheader; (u8) cast on the case-0x62 bit test and TBL(card<<20>>20) shift i/z
+       * allocation priorities. */
+#define ZB2(p, z) ((struct Zone *)((p) * 0xD64 + (z) * 0x94 + (u32)&gUnk_0201930C[0]))
 void sub_0804EFF0(int player)
 {
-    u8 i;
+    int i;
     for (i = 0; i < 5; i++) {
-        if ((ZB(player & 1, i)->card << 20) != 0 && (ZB(player & 1, i)->f6 & 2)) {
+        if ((ZB2(player & 1, i)->card << 20) != 0 && (ZB2(player & 1, i)->f6 & 2)) {
             int found = 0;
-            if (ZB(player & 1, i)->b8C_4)
-                ZB(player & 1, i)->b8C_4 = 0;
-            switch (*(u16 *)((u8 *)gUnk_08622AB4 + ((ZB(player & 1, i)->card << 21) >> 20))) {
+            if (ZB2(player & 1, i)->b8C_4)
+                ZB2(player & 1, i)->b8C_4 = 0;
+            switch (TBL(ZB2(player & 1, i)->card << 20 >> 20)) {
             case 0x52:
-                if (!(ZB(player & 1, i)->f7 & 0x20))
+                if (!(ZB2(player & 1, i)->f7 & 0x20))
                     found = 1;
                 break;
             case 0x62:
-                if (((u32)(ZB(player & 1, i)->f6 << 26) >> 28) <= 3)
+                if ((u8)((u32)(ZB2(player & 1, i)->f6 << 26) >> 28) <= 3)
                     sub_08046738(player, i);
                 break;
             }
-            if (found != 0 && ((u32)(ZB(player & 1, i)->f6 << 26) >> 28) <= 5) {
+            if (found != 0 && ((u32)(ZB2(player & 1, i)->f6 << 26) >> 28) <= 5) {
                 int p, j;
                 for (p = 0; p < 2; p++) {
                     for (j = 0; j < 5; j++) {
-                        struct Zone *z2 = ZB(p & 1, j);
-                        if ((z2->card << 20) != 0 && (z2->f6 & 2) && sub_0800C8BC(p, j) == 2
-                            && z2->w4 <= ZB(player & 1, i)->w4)
+                        if ((ZB2(p & 1, j)->card << 20) != 0 && (ZB2(p & 1, j)->f6 & 2) && sub_0800C8BC(p, j) == 2
+                            && ZB2(p & 1, j)->w4 <= ZB2(player & 1, i)->w4)
                             sub_08017AB4(player, (u8)player | (u8)i << 8, (u8)p | (u8)j << 8, 2);
                     }
                 }

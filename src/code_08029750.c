@@ -835,31 +835,44 @@ void sub_080757AC(void);
 void sub_080759F4(void);
 u16 sub_08075AE4(u16 step);
 
-#if 0 /* NONMATCHING: state machine logic/calls agree; agbcc schedules the state dispatch/tail and the state-2 loop constants differently (register names and branch targets throughout) although the gUnk_0201D810 base lands in r4 */
-/* List screen init state machine (5 states); branches fall through to common state++/return 0. */
+struct ListInit {
+    u8 lo : 4;              /* +0 */
+    u8 b4 : 1;
+    u8 mode : 3;
+    u8 pad1[2];
+    u8 state;               /* +3 */
+    u8 pad4;
+    u8 sel : 2;             /* +5 */
+    u8 pad5 : 6;
+    u16 scroll;             /* +6 */
+    u8 cur : 2;             /* +8 */
+    u8 mask : 4;
+    u8 pad8 : 2;
+    u8 pad9[0x30C - 9];
+    u16 count;              /* +0x30C */
+};
+#define LI ((struct ListInit *)&gUnk_0201D810)
+struct MainLI {
+    u8 f0[0x49C];
+    u16 tiles[0x120];       /* +0x49C */
+    u8 f6DC[0x4422 - 0x6DC];
+    s16 ofs;                /* +0x4422 */
+};
+#define ML ((struct MainLI *)&gMain)
+
 u16 sub_0802A6DC(void)
 {
-    struct Sel *unk = &gUnk_0201D810;
-    s8 var_r3_2;
-    u8 temp_r2_2;
-    s16 var_r1;
-    u32 var_r9;
-    u32 var_sl;
-    s8 var_r8;
-    u32 temp_r2;
-    u8 temp_r4;
-    u32 temp_r5;
-    s16 i;
+    s32 i, j, k;
+    u32 tbl;
 
-    switch (gUnk_0201D810.filler1[2]) {
+    switch (LI->state) {
     case 0:
-        if (sub_08060B4C() == 0)
-            return 0;
-        gUnk_0201CFB0.bit2 = 0;
-        gUnk_0201CFB0.bit1 = 0;
-        gUnk_0201D810.filler1[2] += 1;
+        if (sub_08060B4C()) {
+            gUnk_0201CFB0.bit2 = 0;
+            gUnk_0201CFB0.bit1 = 0;
+            LI->state++;
+        }
         return 0;
-
     case 1:
         sub_08073574();
         sub_08073498();
@@ -870,9 +883,12 @@ u16 sub_0802A6DC(void)
         REG_BG1CNT = 0x104;
         REG_BG2CNT = 0x206;
         REG_BG3CNT = 0x387;
-        goto state_next;
-
+        LI->state++;
+        return 0;
     case 2:
+        /* Assigned up front so the base is a call-crossing pseudo that loses the
+           register contest and is rematerialised at its use, as in the ROM. */
+        tbl = (u32)gUnk_0869B55C;
         sub_080759F4();
         sub_080757AC();
         sub_080752B0((void *)0x05000200, gUnk_08698C7C, 0x20);
@@ -883,92 +899,53 @@ u16 sub_0802A6DC(void)
         sub_080731D0(0x440, 0x20, 0x354, gUnk_0869C45C);
         sub_080731D0(0x560, 0x30, 0x2E0, gUnk_0869D758);
         sub_08075294((void *)0x05000080, gUnk_0869EECC, 0x20);
-        var_r9 = 0;
-        var_sl = 0;
-        var_r8 = 1;
-        {
-            u32 vramBase = 0x06004000;
-            const void *srcBase = gUnk_0869EEEC;
-            s16 offset = 0x15A;
-            do {
-                temp_r5 = var_r9 >> 0x10;
-                temp_r4 = var_sl >> 0x10;
-                sub_080752B0((void *)(((temp_r4 + offset) << 5) + vramBase),
-                             (const void *)((temp_r5 << 5) + (u32)srcBase), offset - 0x5A);
-                sub_080752B0((void *)(((temp_r4 + 0x162) << 5) + vramBase),
-                             (const void *)(((temp_r5 + 0x1C) << 5) + (u32)srcBase), 0x40);
-                sub_080752B0((void *)(((temp_r4 + 0x164) << 5) + vramBase),
-                             (const void *)(((temp_r5 + 0x20) << 5) + (u32)srcBase), 0x20);
-                sub_080752B0((void *)(((temp_r4 + 0x165) << 5) + vramBase),
-                             (const void *)(((temp_r5 + 0x3D) << 5) + (u32)srcBase), 0x20);
-                sub_080752B0((void *)(((temp_r4 + 0x166) << 5) + vramBase),
-                             (const void *)(((temp_r5 + 0x40) << 5) + (u32)srcBase), 0x40);
-                sub_080752B0((void *)(((temp_r4 + 0x168) << 5) + vramBase),
-                             (const void *)(((temp_r5 + 0x5D) << 5) + (u32)srcBase), 0x20);
-                var_sl += 0xF0000;
-                var_r9 += 0x600000;
-                var_r8 -= 1;
-            } while (var_r8 >= 0);
+        for (i = 0; i < 2; i++) {
+            u16 s = i * 0x60;
+            u16 d = i * 15;
+            sub_080752B0((u8 *)0x06004000 + (d + 0x15A) * 32, gUnk_0869EEEC + s * 32, 0x100);
+            sub_080752B0((u8 *)0x06004000 + (d + 0x162) * 32, gUnk_0869EEEC + (s + 0x1C) * 32, 0x40);
+            sub_080752B0((u8 *)0x06004000 + (d + 0x164) * 32, gUnk_0869EEEC + (s + 0x20) * 32, 0x20);
+            sub_080752B0((u8 *)0x06004000 + (d + 0x165) * 32, gUnk_0869EEEC + (s + 0x3D) * 32, 0x20);
+            sub_080752B0((u8 *)0x06004000 + (d + 0x166) * 32, gUnk_0869EEEC + (s + 0x40) * 32, 0x40);
+            sub_080752B0((u8 *)0x06004000 + (d + 0x168) * 32, gUnk_0869EEEC + (s + 0x5D) * 32, 0x20);
         }
         sub_080752B0((void *)0x050000E0, gUnk_0869B53C, 0x20);
-        temp_r2 = gUnk_0201D810.flags << 0x18;
-        if ((temp_r2 >> 0x1D) <= 4) {
-            sub_080752B0((void *)0x06006840,
-                         (const void *)(((temp_r2 >> 0x1D) * 0x300) + (u32)gUnk_0869B55C),
-                         0x300);
-            for (i = 0; i <= 0xB; i++) {
-                gUnk_0300045C[i] = i + 0x7142;
-                gUnk_0300045C[i + 0x20] = i + 0x714E;
+        if (LI->mode <= 4) {
+            sub_080752B0((void *)0x06006840, (const u8 *)(LI->mode * 0x300 + tbl), 0x300);
+            for (j = 0; j < 12; j++) {
+                u16 x = j;
+                gUnk_0300045C[x] = j + 0x7142;
+                gUnk_0300045C[x + 0x20] = j + 0x714E;
             }
         }
-        goto state_next;
-
+        LI->state++;
+        return 0;
     case 3:
-        if (unk->count != 0) {
+        if (LI->count != 0) {
             sub_0802A47C();
             sub_0802A45C();
             sub_0802A4A4();
-            *MAPP(0x4422) = (s16)(0 - ((u32)(unk->sel << 0x1E) >> 0x1A));
-            temp_r2 = (u32)(-4 & unk->filler8[0]);
-            unk->filler8[0] = (temp_r2 & ~0x3C)
-                          | ((1 | ((u32)(temp_r2 << 0x1A) >> 0x1C)) * 4);
+            ML->ofs = -(LI->sel * 16);
+            LI->cur = 0;
+            LI->mask |= 1;
         } else {
             sub_08074B08(0x20, 9);
             sub_08029FC8(0x42, 0x18, gUnk_08082768, 0xC);
-            {
-                u16 *p = MAPP(0x49C);
-                for (var_r1 = 0; var_r1 <= 0x11F; var_r1++)
-                    *p++ = var_r1 + 0x10;
-            }
+            for (k = 0; k < 0x120; k++)
+                ML->tiles[k] = k + 0x10;
             sub_08075114((void *)0x06004200, 0);
-            unk->filler8[0] = (-4 & unk->filler8[0]) | 1;
+            LI->cur = 1;
         }
-        var_r3_2 = unk->filler8[0];
-        if (!(((s32)((u32)(var_r3_2 << 0x1A) >> 0x1C)
-                    >> ((u32)(var_r3_2 << 0x1E) >> 0x1E)) & 1)) {
-            do {
-                temp_r2_2 = (-4 & var_r3_2) | ((((u32)(var_r3_2 << 0x1E) >> 0x1E) + 1) & 3);
-                var_r3_2 = temp_r2_2;
-            } while (!(((s32)((u32)(temp_r2_2 << 0x1A) >> 0x1C)
-                        >> ((u32)(temp_r2_2 << 0x1E) >> 0x1E)) & 1));
-            unk->filler8[0] = temp_r2_2;
-        }
-        unk->flags |= 0x10;
-        goto state_next;
-
+        while (!((LI->mask >> LI->cur) & 1))
+            LI->cur++;
+        LI->b4 = 1;
+        LI->state++;
+        return 0;
     case 4:
         REG_DISPCNT |= 0x1F00;
-        if ((sub_08075AE4(4) << 0x10) != 0)
-            goto state_next;
+        if (sub_08075AE4(4))
+            LI->state++;
         return 0;
-
-    default:
-        return 1;
     }
-
-state_next:
-    gUnk_0201D810.filler1[2] += 1;
-    return 0;
+    return 1;
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08029750", sub_0802A6DC); /* 0x0802A6DC size 0x3E4 */

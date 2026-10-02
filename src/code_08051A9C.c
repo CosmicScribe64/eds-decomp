@@ -219,7 +219,6 @@ int sub_08051CD8(int player, int unused, int count)
 #else
 INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051CD8); /* 0x08051CD8 size 0x11C */
 #endif
-#if 0 /* NONMATCHING: 20 diff lines, only the register order of the three `0x0201CFB0` field addresses: ROM keeps &w824/&w828/&w82C in r4/r6/r7, built in r6/r7/r4 (and therefore swaps the two `ldrb` operands of the message). The ternary for the message id and computing `*pb + *pc` before `*pa` are both needed. Tried: msg local, a before b, pc from its own literal, &w82C written directly, sc without a local. */
 int sub_08051DF4(int player)
 {
     struct Duel *d = &gUnk_020192E0;
@@ -239,22 +238,15 @@ int sub_08051DF4(int player)
         return 0;
     }
     if (sub_08052F38(0xF0)) {
-        struct DuelScreen *sc = &gUnk_0201CFB0;
-        u32 *pa = &sc->w824;
-        u32 *pb = &sc->w828;
-        u32 *pc = pb + 1;
-        u32 b = *pb + *pc;
-        u32 a = *pa;
+        u32 a = gUnk_0201CFB0.w824;
+        u32 b = gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C;
         sub_08077AEC(1);
-        sub_0801EC58(player != 0 ? 0x8008 : 8, (u16)*pa, (((u8)*pc) << 8) | (u8)*pb, 0);
+        sub_0801EC58(player != 0 ? 0x8008 : 8, (u16)gUnk_0201CFB0.w824, (u8)gUnk_0201CFB0.w828 | (((u8)gUnk_0201CFB0.w82C) << 8), 0);
         sub_08017FF4(a, b);
         return 1;
     }
     return 0;
 }
-#else
-INCLUDE_ASM("asm/nonmatching/code_08051A9C", sub_08051DF4); /* 0x08051DF4 size 0xDC */
-#endif
 #if 0 /* NONMATCHING: 13 lines, 2 bytes short. Everything up to the level
        * switch matches; the ROM reloads the stats table address in the level
        * default case, the build reuses the earlier load (also tried: level as

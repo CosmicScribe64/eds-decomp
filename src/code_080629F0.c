@@ -167,82 +167,109 @@ extern const struct PackTblEntry gUnk_081A562C[28];
         } while (retry);                                                     \
     }
 
-#if 0 /* NONMATCHING: control flow, switch dispatch and all stores match, but register allocation
-       * differs (ROM: out=sl, pack/retry=r9, valid=r8, i+1 spilled to [sp+0x14], out+i in
-       * [sp+8/0xC/0x10]) */
+#if 0 /* NONMATCHING (score 24): score 24; only the reload-register rotation at the tops of cases 0x66/0x67
+       * differs (ROM movs r7,#1 / adds r0 / movs r1,#0; ours r3 / r7 / r0). Keys: per-case valid, id and j (block scope
+       * in the macro), retry and pack are one int variable (FAKEMATCH), SLOT(p,k) cast form, sizeof-style unsigned 28u
+       * loop bound, pick loop as while, i from 1, rolled != common. */
+struct PackGenBuf {
+    u16 pad0;
+    u16 buf[0x80];    /* +0x002 shuffled copy of the common slot */
+    u16 ids[5];       /* +0x102 */
+    u8 state[5];      /* +0x10C */
+    u8 pad111;
+    u16 x112;         /* +0x112 */
+};
+#define PG ((struct PackGenBuf *)&gUnk_02015160)
+#define SLOT(p, k) ((struct PackSlot *)((k) * 8 + (u32)(p)))
+
+#define PICK_RANDOM2(TYPECHECK)                                              \
+    {   int valid; u16 id;                                                     \
+    for (i = 0; i <= 4; i++) {                                               \
+        retry = 1;                                                           \
+        do {                                                                 \
+            valid = 0;                                                       \
+            id = sub_08076F9C() % 0x335;                                         \
+            if ((u16)(CARD_NUMBER(id) - 0x780) > 0x4F TYPECHECK) {           \
+                int j;                                                       \
+                valid = 1;                                                   \
+                for (j = 0; j < i; j++) {                                    \
+                    if (CARD_NUMBER(out[j]) == CARD_NUMBER(id))              \
+                        valid = 0;                                           \
+                }                                                            \
+            }                                                                \
+            if (valid) {                                                     \
+                retry = 0;                                                   \
+                out[i] = CARD_NUMBER(id);                                    \
+            }                                                                \
+        } while (retry);                                                     \
+    } }
+
 /* Fills out[0..4] with the five cards of a booster pack; returns the rolled rarity slot, or -1. */
 int sub_08062AF4(u16 *out, u16 packId)
 {
-    struct PackSlots *pack = 0;
-    int retry;
-#define retry (*(int *)&pack)
-    int valid;
+    int retry = 0; /* FAKEMATCH: one variable is both the retry flag and the pack pointer */
+#define pack ((struct PackSlots *)retry)
     int i;
-    u32 j;
-    s16 id;
-    u16 rolled;
+    int rolled;
     int common;
-    int n;
     int idx;
-    u16 *buf;
+
 
     switch (packId) {
     case 0x6E:
-        PICK_RANDOM()
+        PICK_RANDOM2()
         break;
     case 0x66:
-        PICK_RANDOM(&& CARD_TYPE(id) == 0x15)
+        PICK_RANDOM2(&& CARD_TYPE(id) == 0x15)
         break;
     case 0x67:
-        PICK_RANDOM(&& CARD_TYPE(id) == 0x16)
+        PICK_RANDOM2(&& CARD_TYPE(id) == 0x16)
         break;
     default:
         goto normal;
     }
-    *(u16 *)((u8 *)&gUnk_02015160 + 0x112) = 9999;
+    PG->x112 = 9999;
     return -1;
 normal:
-    for (i = 0; i < 28; i++) {
+    for (i = 0; i < 28u; i++) {
         if (gUnk_081A562C[i].id == packId)
-            pack = gUnk_081A562C[i].p;
+            retry = (int)gUnk_081A562C[i].p;
     }
     if (pack == 0)
         return -1;
     rolled = sub_08062A0C(pack, packId);
     common = sub_080629F0(pack);
-    buf = (u16 *)((u8 *)&gUnk_02015160 + 2);
     out[0] = sub_08062AD4(pack, rolled);
-    for (i = 0; i < pack->slot[common].count; i++)
-        buf[i] = pack->slot[common].cards[i];
-    for (i = 0; i < pack->slot[common].count * 2; i++) {
-        int a = sub_08076F9C() % pack->slot[common].count;
-        int b = sub_08076F9C() % pack->slot[common].count;
-        u16 t = buf[a];
-        buf[a] = buf[b];
-        buf[b] = t;
+    for (i = 0; i < SLOT(pack, common)->count; i++)
+        PG->buf[i] = SLOT(pack, common)->cards[i];
+    for (i = 0; i < SLOT(pack, common)->count * 2; i++) {
+        int a = sub_08076F9C() % SLOT(pack, common)->count;
+        int b = sub_08076F9C() % SLOT(pack, common)->count;
+        u16 x = PG->buf[a];
+        PG->buf[a] = PG->buf[b];
+        PG->buf[b] = x;
     }
     idx = 0;
-    n = pack->slot[common].count;
-    for (i = 3; i >= 0; i--) {
-        if (buf[idx] == out[0]) {
-            u8 c = buf[idx];
-            do {
-                idx = (idx + 1) % n;
-            } while (buf[idx] == c);
+    for (i = 1; i < 5; i++) {
+        while (PG->buf[idx] == out[0]) {
+            idx++;
+            idx %= SLOT(pack, common)->count;
         }
-        out[4 - i] = buf[idx];
-        idx = (idx + 1) % n;
+        out[i] = PG->buf[idx];
+        idx++;
+        idx %= SLOT(pack, common)->count;
     }
-    if (common != rolled)
-        *(u16 *)((u8 *)&gUnk_02015160 + 0x112) = out[0];
-    for (i = 24; i >= 0; i--) {
+    if (rolled != common)
+        PG->x112 = out[0];
+    for (i = 0; i < 25; i++) {
         int a = sub_08076F9C() % 5;
         int b = sub_08076F9C() % 5;
-        u16 t = out[a];
+        u16 x = out[a];
         out[a] = out[b];
-        out[b] = t;
+        out[b] = x;
     }
     return rolled;
+#undef pack
 }
 #endif
 INCLUDE_ASM("asm/nonmatching/code_080629F0", sub_08062AF4); /* 0x08062AF4 size 0x3F4 */

@@ -444,13 +444,28 @@ static inline u32 CardAttack32390(u16 id)
     }
     return ((CARD_STATS(id) >> 9) & 0x1FF) * 10;
 }
-#if 0 /* NONMATCHING: 192 lines; shape right, register allocation differs (opp r6 vs r4, id r4 vs r6) */
 /* Two-step effect on the opponent's cards: step 0x7F walks the hand one card per call, step 0x80 the five
  * monster zones; cards with ATK over 1500 are destroyed (hypothesis from the calls). */
+/* Printed ATK: 0 for types 21-23, 4000 for type 24, else the stats field * 10. The u16 return keeps the
+ * 0x80 loop's register order (faceDown r5, id r6). */
+static inline u16 MonsterAtk32390(u16 id)
+{
+    u32 type = ((CARD_STATS(id) & 0x1F00000) >> 20);
+    switch ((s32)type) {
+    case 21:
+    case 22:
+    case 23:
+        return 0;
+    case 24:
+        return 4000;
+    }
+    return ((CARD_STATS(id) >> 9) & 0x1FF) * 10;
+}
 int sub_08032390(struct CardRef *ref)
 {
     int opp = 1 - ref->player;
     int i;
+    u32 type;
 
     if (ref->skip4)
         return 0;
@@ -462,21 +477,14 @@ int sub_08032390(struct CardRef *ref)
             u16 id = CARD_ID(CARD_WORD(z->card));
             if (id != 0) {
                 u32 faceDown = ((u32)ZFLAGS(z) << 30) >> 31;
-                u16 msg = 8;
-                if (ref->player)
-                    msg = 0x8008;
-                sub_0801EC58(msg, opp, i << 8, 0);
+                sub_0801EC58(ref->player ? 0x8008 : 8, opp, i << 8, 0);
                 if (faceDown == 0) {
-                    msg = 0x7F;
-                    if (opp)
-                        msg = 0x807F;
-                    sub_0801EC58(msg, i, 0, 0);
-                    if (CardAttack32390(id) <= 1499) {
+                    u32 atk;
+                    sub_0801EC58(opp ? 0x807F : 0x7F, i, 0, 0);
+                    atk = MonsterAtk32390(id);
+                    if (atk <= 1499) {
                         sub_08019840(opp, id);
-                        msg = 0x7F;
-                        if (opp)
-                            msg = 0x807F;
-                        sub_0801EC58(msg, i, 0, 0);
+                        sub_0801EC58(opp ? 0x807F : 0x7F, i, 0, 0);
                     } else {
                         sub_08019800(opp, id);
                         sub_08030028(opp, i);
@@ -492,32 +500,46 @@ int sub_08032390(struct CardRef *ref)
         return 0x7F;
     case 0x7F:
         if (EFF_SIDE < gUnk_020192E4[opp & 1].handCount) {
-            u32 id = CARD_ID(CARD_WORD(gUnk_020192E4[opp & 1].hand[EFF_SIDE]));
-            u16 msg = 8;
-            if (ref->player)
-                msg = 0x8008;
-            sub_0801EC58(msg, opp, (EFF_SIDE << 8) | 0xB, 0);
-            if (CARD_TYPE(id) <= 0x14 && CardAttack32390(id) > 1499) {
-                sub_08019800(opp, id);
-                sub_080193D4(opp, EFF_SIDE, 1, 1);
-                return 0x7F;
+            u8 side;
+            u32 id;
+            u32 raw = EFF_SIDE;
+            side = raw;
+            asm("" : "+r"(raw)); /* FAKEMATCH: load into r0, copy to r2, index from r0 (cf. sub_0805C0A0) */
+            id = CARD_ID(CARD_WORD(gUnk_020192E4[opp & 1].hand[raw]));
+            sub_0801EC58(ref->player ? 0x8008 : 8, opp, (side << 8) | 0xB, 0);
+            type = CARD_TYPE(id);
+            if (type <= 0x14) {
+                u32 atk;
+                switch ((int)type) {
+                case 21:
+                case 22:
+                case 23:
+                    atk = 0;
+                    break;
+                case 24:
+                    atk = 4000;
+                    break;
+                default:
+                    atk = ((CARD_STATS(id) << 14) >> 23) * 10;
+                    break;
+                }
+                if (atk > 1499) {
+                    sub_08019800(opp, id);
+                    sub_080193D4(opp, EFF_SIDE, 1, 1);
+                    return 0x7F;
+                }
             }
-            sub_08019840(opp, id);
+            /* FAKEMATCH: int-typed call (u32 id, no u16 narrowing) keeps opp's live range short enough for r4 */
+            ((void (*)(int, int))sub_08019840)(opp, id);
             EFF_SIDE++;
             return 0x7F;
         }
         return 0x7E;
-    default: {
-        u16 msg = 0x69;
-        if (opp)
-            msg = 0x8069;
-        sub_0801EC58(msg, 3, 0, 0);
+    default:
+        sub_0801EC58(opp ? 0x8069 : 0x69, 3, 0, 0);
         return 0;
     }
-    }
 }
-#endif
-INCLUDE_ASM("asm/nonmatching/code_08031BC8", sub_08032390); /* 0x08032390 size 0x2DC */
 int sub_0803266C(struct CardRef *ref)
 {
     if (!ref->skip4) {

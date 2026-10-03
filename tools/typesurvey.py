@@ -10,7 +10,8 @@ import glob
 import re
 import sys
 
-FILES = sorted(glob.glob('src/code_*.c'))
+FILES = sorted(f'src/{u}.c' for u in (l.split('#')[0].strip() for l in open('units.txt'))
+               if u and not u.startswith('@') and glob.glob(f'src/{u}.c'))
 
 
 def strip_comments(t):

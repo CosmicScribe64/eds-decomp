@@ -4,12 +4,20 @@ type: function
 status: solid
 confidence: medium
 sources: [rom-analysis]
-updated: 2026-10-02
+updated: 2026-10-03
 ---
 # Unit `text_render` (`0x080784E4`-`0x0807960C`)
 
 Thumb, `old_agbcc -O2` ([[compiler-flags]]). Source: `src/text_render.c`. **25/25 functions in C** after workflow waves 2-3 (2026-10-01/02: `0x080788AC`, `0x08078CC8`, `0x080794E0` in wave 2, `0x08079068` in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 21/25. The unit as a whole matches (`unit bytes MATCH`).
 Neighbours: [[collection-c]] (sound API / OAM helpers before it), [[gfx-util-c]] (tilemap/palette library after it), [[sprite-c]] (sprite emitters).
+
+**Shared headers (2026-10-03):** the first unit migrated to the per-subsystem headers ([[shared-headers]]). It includes
+`palette.h` (struct Fade, FadeStart/FadeTick), `bg.h` (CopyTileRows), `sprite.h` (struct AnimSeq / AnimState /
+AnimBlock, OamListAdd*) and `text.h` (the glyph and map-text renderers it defines), plus `gba.h`, and its four local
+structs are gone. Local views kept on purpose: byte views of `gTextCanvas` and `gSaveData` (the ROM folds
+`gTextCanvas + 0x10000` into one literal and tests `gSaveData[4] & 0x80` as a byte) and a 5-argument view of
+`RenderStringToTiles` for DrawStringTiles. Still `unit bytes MATCH`, with identical assembly against the legacy and the
+staged post-H0 `gba.h`.
 
 ## Functions
 

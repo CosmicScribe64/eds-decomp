@@ -4,7 +4,7 @@ type: concept
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-01
+updated: 2026-10-03
 ---
 # Shared headers
 
@@ -29,10 +29,33 @@ compiles differently.
   with agbcc's layout rules, and lists which names and types the units use at each offset.
 - The layout rules were verified against old_agbcc:
   - every struct is aligned and padded to 4 bytes (STRUCTURE_SIZE_BOUNDARY 32; `sizeof(struct {u8 a;}) == 4`);
-  - bitfields pack LSB-first across declared types, and only jump when a field would straddle a boundary of its own
-    type's size.
+  - bitfields pack LSB-first and contiguously, across declared types and across byte/halfword/word boundaries.
+
+> [!warning] Contradiction (resolved 2026-10-03)
+> This page used to say that a bitfield jumps to the next boundary of its own type's size when it would straddle
+> one, and `tools/structmap.py` implemented that rule. Compiling probes shows otherwise: with old_agbcc,
+> `struct { u16 a:12; u16 b:8; }` puts `b` at bits 12-19 (initialiser bytes `00 f0 0f`, sizeof 4), a `u32 x:8` at
+> bit 26 is read with two `ldrb` (duel_core writer's probe), and the matched code relies on it (`SummonAction.cardId` spans bits 31-46,
+> `DeckReorder_Run` reads a timer across `+0x53F`/`+0x540`). Only a zero-width bitfield aligns (to 32 bits).
+> structmap.py was fixed (the straddle rule removed); the duel_core and duel_flow header writers found the bug
+> independently.
 - `tools/mkheader.py` drafts a struct from those maps (the most-used meaningful name wins, with alternatives in
   comments). The drafts were finalised by hand.
+
+## Per-subsystem headers (readability pass, 2026-10-03)
+- `tools/headerplan.py` writes the plan (`build/readability/header_plan.json`): 47 headers in a fixed include order
+  (`include/constants/*.h` first, then `gba.h`, `main.h`, `util.h` ... `duel_link.h`), which header owns every
+  struct, enum, global and prototype, and each prototype exactly as its definition compiles today.
+- Eleven writer groups wrote the headers; one integrator pass made them consistent: all 47 pass
+  `tools/hdrcheck.py --all` with 0 errors and 0 warnings, and one TU that includes all of them (in order, twice, and
+  in reverse order) compiles with old_agbcc and agbcc at `-W -Wall` with no diagnostics.
+- Step H0 has not run yet: `include/gba.h`, `main.h`, `duel.h`, `duel_ui.h` and `sound.h` are still the legacy
+  headers above, which most units include. The new versions of `gba.h`, `main.h`, `duel.h` and `sound.h` are
+  staged under `build/readability/hcheck/` until H0 moves the legacy files to `include/legacy/`.
+- `src/text_render.c` is the first unit migrated to the new headers (palette.h, bg.h, sprite.h, text.h, plus gba.h):
+  `unit bytes MATCH`, and the same assembly with the legacy and the staged gba.h. See [[text-render-c]].
+- The migration guide (which header for what, how to keep a deliberate local view, per-unit notes from the header
+  writers) is `build/readability/HEADERS.md`.
 
 ## Player layout (verified offsets; some meanings are hypotheses)
 Five 80-card lists (0x140 each), whose counts sit at `+0x2`..`+0x6`:

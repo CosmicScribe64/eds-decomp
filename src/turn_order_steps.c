@@ -103,7 +103,7 @@ struct Main {
     u8 seqIndex1;           /* +0x4859: step index of the runner */
     u8 filler485A[0x4870 - 0x485A];
     u8 unk4870b0 : 1;       /* +0x4870 bit 0 = last pick (hypothesis) */
-    u8 unk4870b1 : 5;       /* bits 1-5: opponent index (see code_0801bcfc) */
+    u8 unk4870b1 : 5;       /* bits 1-5: opponent index (see campaign_steps.c) */
 };
 extern struct Main gMain;
 #define gMain gMain

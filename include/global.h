@@ -17,8 +17,18 @@ typedef u32 bool32;
 #define FALSE 0
 #define NULL ((void *)0)
 
+/* Number of elements of an array object (not of a pointer). */
+#define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+/* Byte offset of a struct member as a constant expression (agbcc has no <stddef.h> offsetof). */
+#define OFFSET_OF(type, member) ((u32)&((type *)0)->member)
+
+/* File-scope compile-time check: a false condition gives a negative array size, which does not compile.
+ * Usage: STATIC_ASSERT(sizeof(struct Main) == 0x488C, MainSize);  (name: unique per translation unit) */
+#define STATIC_ASSERT(cond, name) typedef char static_assert_##name[(cond) ? 1 : -1]
+
 /* Pull a not-yet-decompiled function's assembly into a C translation unit, in place.
- * Usage (file scope):  INCLUDE_ASM("asm/nonmatching/code_08000228", GetDuelistName);  */
+ * Usage (file scope):  INCLUDE_ASM("asm/nonmatching/bustup_scene", GetDuelistName);  */
 #ifdef OBJDIFF_BASE
 /* objdiff "base" build (make objdiff-report): leave not-yet-decompiled functions out entirely,
  * so they count as unmatched instead of trivially matching their own assembly. */

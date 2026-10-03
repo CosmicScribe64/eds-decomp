@@ -802,3 +802,18 @@ updated: 2026-09-29
   - the 0x2F `asm volatile` clobber in `src/code_08044224.c` has no `/* FAKEMATCH */` comment;
   - `src/code_0800EAA8.c` lines 403–457 keep a dead `#if 0 /* NONMATCHING */` draft of `sub_0800F3D0`;
   - `src/code_080383F0.c:83` calls `sub_08038FB8` a non-matching draft.
+
+## [2026-10-03] progress | Shared headers integrated (47/47 clean), text_render migrated
+- [[shared-headers]]: new section on the per-subsystem headers of the readability pass (plan, writer groups, H0 still
+  pending, staged gba.h/main.h/duel.h/sound.h, migration guide in `build/readability/HEADERS.md`); the bitfield
+  straddle rule was wrong (contradiction callout, resolved by an old_agbcc probe: `u16 a:12; u16 b:8` puts b at bits
+  12-19) and `tools/structmap.py` was fixed.
+- [[text-render-c]]: first unit on the new headers (palette.h, bg.h, sprite.h, text.h, gba.h); byte views of
+  gTextCanvas/gSaveData and a 5-argument RenderStringToTiles view kept on purpose.
+- [[overview]]: the "Game code" line still said `src/code_*.c`; it now names `src/<unit>.c` and the rename map.
+  [[main-c]]: a stale `code_08074xxx` unit reference now says `src/text_canvas.c`.
+- Verified for this entry: `tools/dr python3 tools/check.py text_render` (25/25, `unit bytes MATCH`);
+  `tools/dr python3 tools/check_all.py` (112/112); `tools/dr sh build/readability/integrate/check.sh text_render`
+  (hdrcheck --all 47/47 OK with 0 warnings in a shadow tree with the staged headers; all headers in one TU, in order
+  twice and reversed, 0 diagnostics with old_agbcc and agbcc; text_render identical assembly with legacy and staged
+  gba.h). `make compare` not run (coordinator).

@@ -13,7 +13,6 @@ The draft is re-parsed and its layout checked against the intended offsets.
 """
 import argparse
 import collections
-import glob
 import os
 import re
 import sys
@@ -28,11 +27,14 @@ BITS = {1: 'u8', 2: 'u16', 4: 'u32'}
 def collect(base, size, views, elem):
     """views: [(addr, elem, lo, hi)]: only offsets lo <= off < hi of that view (in its own coordinates) count."""
     recs = collections.defaultdict(lambda: collections.defaultdict(set))
-    for f in sorted(glob.glob('src/code_*.c')):
+    import target
+    syms = target.known_symbols()
+    names = {v[0]: [n for n, (a, _) in syms.items() if a == v[0]] for v in views}
+    for f in structmap.c_unit_files():
         unit = f[4:-2]
         for vaddr, velem, vlo, vhi in views:
             try:
-                _, leaves = structmap.unit_fields(f, vaddr, velem)
+                _, leaves = structmap.unit_fields(f, vaddr, velem, names[vaddr])
             except Exception:  # noqa: BLE001
                 continue
             for path, bit, w, fsize, ty in leaves:

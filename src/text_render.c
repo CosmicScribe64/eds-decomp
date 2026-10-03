@@ -1,71 +1,34 @@
 #include "global.h"
-#include "gba.h"
+#include "gba.h"        /* CpuSet, REG_BLDCNT, REG_BLDY */
+#include "palette.h"    /* struct Fade, FadeStart, FadeTick, SetBldY */
+#include "bg.h"         /* CopyTileRows */
+#include "sprite.h"     /* struct AnimSeq, AnimState, AnimBlock; OamListAddTemplate, OamListAddSpriteGroup */
+#include "text.h"       /* glyph and map-text renderers defined here; TextCanvas*, TextDraw*, fonts */
 
-struct AnimSeq {            /* 8-byte step of an animation script */
-    u8 frames;              /* +0 duration (0 = end) */
-    u8 unk1;
-    u8 pad[2];
-    u32 data;               /* +4 */
-};
-struct AnimState {          /* 0x14 bytes */
-    struct AnimSeq *seq;    /* +0 */
-    u32 data;               /* +4 */
-    u16 unk8;
-    u16 unkA;
-    u8 unkC;                /* +C */
-    u8 idx;                 /* +D current step */
-    u8 active;              /* +E */
-    u8 timer;               /* +F */
-    u8 prio;                /* +0x10 */
-    u8 pad[3];
-};
+/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md):
+ * - the matched code indexes the text canvas and the save image as bytes (gTextCanvas[0x10000] folds
+ *   base + offset into one literal; gSaveData[4] & 0x80 is the sjisText bit read as a whole byte);
+ * - DrawStringTiles calls RenderStringToTiles with a fifth argument, which the ROM passes on the stack. */
+extern u8 gTextCanvasBytes[] asm("gTextCanvas");    /* byte view of struct TextCanvas gTextCanvas */
+extern u8 gSaveDataBytes[] asm("gSaveData");        /* byte view of struct SaveData gSaveData */
+extern void RenderStringToTiles5(u8 *str, u8 *dst, u8 fg, u8 bg, u8 extra) asm("RenderStringToTiles");
 
-extern void OamListAddTemplate(void *p, u8 a, u8 b, u8 c, u32 d);
-extern void AnimStateTick(struct AnimState *st);
-extern void SetBldY(u32 v);
-extern void TextDrawGlyph(u16 ch, s32 x, s32 y, u16 sc);
-extern int SjisToGlyphIndex(u16 sjis);
-extern u16 ExpandGlyphNibble(u32 nib, u16 a, u16 b);
-extern void TextCanvasInit(u8 a, u8 b);
-extern void TextDrawString(s32 x, s32 y, u16 attr, const u8 *str);
-extern void TextCanvasToTiles(void *dest, u16 b);
-extern void OverlayBoldGlyphTile(u8 *dst, u8 *src, u8 pal, u8 n);
 extern void *memcpy(void *dst, const void *src, unsigned int n);
-extern void RenderFullWidthGlyph(u16 ch, u16 *dst, u16 a, u16 b);
-extern void RenderHalfWidthGlyph(u8 ch, u16 *dst, u16 a, u16 b, u16 mode);
-extern void PutMapTileRun(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
-extern void OamListAddSpriteGroup(u32 data, u8 a, u8 c1, u16 d8, u16 dA, u8 mode, u8 b, u8 c, u8 d, u8 e, u8 zero, u32 last);
-extern u8 gTextCanvas[];
-extern u8 gSaveData[];
-extern u8 gDigitTileChars[];
+extern u8 gDigitTileChars[];        /* only used here: the 13 characters LoadDigitTiles turns into tiles */
 
-struct Fade {
-    u8 kind;            /* +0 */
-    u8 pad1;
-    u16 level;          /* +2, 8.8 fixed, 0..0x1000 */
-    s16 step;           /* +4 */
-    u8 state;           /* +6 1 = running, 2 = full, 3 = zero */
-    u8 unk7;
-};
-
-struct SpriteList {
-    u8 pad0[4];
-    u8 *items;              /* +4, array of 8-byte entries */
-    u8 pad8[4];
-    u8 count;               /* +C */
-};
-void AnimStateDrawRaw(struct SpriteList *l, u8 a, u32 unused, u8 c, u8 d, u32 e)
+void AnimStateDrawRaw(struct AnimState *anim, u8 layer, u32 unusedPriority, u8 tileOffset, u8 palette, u32 oam)
 {
     u8 i;
 
-    for (i = 0; i < l->count; i++)
-        OamListAddTemplate(l->items + i * 8, a, c, d, e);
+    for (i = 0; i < anim->pieceCount; i++)
+        OamListAddTemplate((u16 *)&anim->pieces[i], layer, tileOffset, palette, (void *)oam);
 }
 /* Draw/update every active animation state of a block; returns int (callers ignore it, but the ROM epilogue pops r1). */
-int AnimBlockDraw(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h, u32 last)
+int AnimBlockDraw(u8 *block, u8 layer, u8 priority, u8 tileOffset, u8 palette, u8 format, u8 mode, u16 x, u16 y,
+                  u32 oam)
 {
     u8 i;
-    struct AnimState *st;
+    struct AnimState *anim;
 
     switch (mode) {
     case 1:
@@ -73,163 +36,164 @@ int AnimBlockDraw(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h,
     case 4:
     case 8: {
         int zero = 0;
-        for (i = 0; i < *(u16 *)(list + 0x190); i++) {
-            st = (struct AnimState *)(list + i * 0x14);
-            if ((s8)st->active != -1) {
-                st->unk8 = g;
-                st->unkA = h;
-                OamListAddSpriteGroup(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, zero, last);
+        for (i = 0; i < ((struct AnimBlock *)block)->count; i++) {
+            anim = &((struct AnimBlock *)block)->anims[i];
+            if ((s8)anim->active != -1) {
+                anim->x = x;
+                anim->y = y;
+                OamListAddSpriteGroup((u16 *)anim->pieces, layer, anim->pieceCount, anim->x, anim->y, mode,
+                                      priority, tileOffset, palette, format, zero, (void *)oam);
             }
         }
         break;
     }
     default:
-        for (i = 0; i < *(u16 *)(list + 0x190); i++) {
-            st = (struct AnimState *)(list + i * 0x14);
-            if ((s8)st->active != -1) {
-                OamListAddSpriteGroup(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, 0, last);
+        for (i = 0; i < ((struct AnimBlock *)block)->count; i++) {
+            anim = &((struct AnimBlock *)block)->anims[i];
+            if ((s8)anim->active != -1) {
+                OamListAddSpriteGroup((u16 *)anim->pieces, layer, anim->pieceCount, anim->x, anim->y, mode,
+                                      priority, tileOffset, palette, format, 0, (void *)oam);
             }
         }
         break;
     }
 }
-u8 AnimBlockInit(struct AnimSeq **list, u8 *base)
+u8 AnimBlockInit(struct AnimSeq **scripts, u8 *block)
 {
     u8 i = 0;
-    struct AnimState *st;
-    struct AnimSeq *sq;
+    struct AnimState *anim;
+    struct AnimSeq *seq;
 
     do {
-        st = (struct AnimState *)(base + i * 0x14);
-        sq = *list++;
-        st->seq = sq;
-        st->data = sq->data;
-        st->unkC = sq->unk1;
-        st->unk8 |= 0xFFFF;
-        st->unkA |= 0xFFFF;
-        st->idx = 0;
-        st->active = 1;
-        st->timer = sq->frames;
-        st->prio = 0x13 - i;
+        anim = &((struct AnimBlock *)block)->anims[i];
+        seq = *scripts++;
+        anim->seq = seq;
+        anim->pieces = seq->pieces;
+        anim->pieceCount = seq->pieceCount;
+        anim->x |= 0xFFFF;
+        anim->y |= 0xFFFF;
+        anim->stepIdx = 0;
+        anim->active = ANIM_PLAYING;
+        anim->timer = seq->frames;
+        anim->layer = 0x13 - i;
         i++;
-    } while (*list != 0);
-    *(u16 *)(base + 0x190) = i;
+    } while (*scripts != 0);
+    ((struct AnimBlock *)block)->count = i;
     return i;
 }
 void AnimStateTick(struct AnimState *arg)
 {
     /* FAKEMATCH: retain the ROM's state/index registers and separate byte mask. */
-    register struct AnimState *st __asm__("r1") = arg;
-    struct AnimSeq *sq;
+    register struct AnimState *anim __asm__("r1") = arg;
+    const struct AnimSeq *seq;
     u32 next;
     register u32 i __asm__("r3");
     u32 t;
     u32 mask;
 
-    if (st->active == 1) {
-        t = st->timer - 1;
-        st->timer = t;
+    if (anim->active == ANIM_PLAYING) {
+        t = anim->timer - 1;
+        anim->timer = t;
         mask = 0xFF;
         __asm__ __volatile__("" : "+r"(mask));
         if ((u8)t == 0xFF) {
-            next = st->idx + 1;
-            st->idx = next;
+            next = anim->stepIdx + 1;
+            anim->stepIdx = next;
             next &= mask;
-            sq = st->seq;
-            if (sq[next].frames == 0) {
-                st->idx = 0;
-                st->active = 0;
+            seq = anim->seq;
+            if (seq[next].frames == 0) {
+                anim->stepIdx = 0;
+                anim->active = ANIM_FINISHED;
             }
-            i = st->idx;
-            st->timer = sq[i].frames;
-            st->data = sq[i].data;
-            st->unkC = sq[i].unk1;
+            i = anim->stepIdx;
+            anim->timer = seq[i].frames;
+            anim->pieces = seq[i].pieces;
+            anim->pieceCount = seq[i].pieceCount;
             /* Keep the unscaled index live through the final sequence-byte load. */
             __asm__ __volatile__("" : : "r"(i));
         }
     }
 }
 
-void AnimBlockTick(u8 *base)
+void AnimBlockTick(u8 *block)
 {
     u8 i;
 
-    for (i = 0; i < *(u16 *)(base + 0x190); i++)
-        AnimStateTick((struct AnimState *)(base + i * 0x14));
+    for (i = 0; i < ((struct AnimBlock *)block)->count; i++)
+        AnimStateTick(&((struct AnimBlock *)block)->anims[i]);
 }
 
-void CopyTileRows(u8 *src, u8 *dst, u16 mode, u8 n, u8 rows)
+void CopyTileRows(u8 *src, u8 *dst, u16 colors, u8 rowCount, u8 tilesPerRow)
 {
     u16 i;
 
-    if (mode != 0x10) {
-        if (mode == 0x100) {
-            for (i = 0; i < n; i++) {
-                CpuSet(src, dst, (rows << 5) & 0x1FFFFF);
+    if (colors != TILE_COLORS_16) {
+        if (colors == TILE_COLORS_256) {
+            for (i = 0; i < rowCount; i++) {
+                CpuSet(src, dst, (tilesPerRow << 5) & 0x1FFFFF);
                 src += 0x200;
                 dst += 0x400;
             }
         }
     } else {
-        for (i = 0; i < n; i++) {
-            CpuSet(src, dst, (rows << 4) & 0x1FFFFF);
+        for (i = 0; i < rowCount; i++) {
+            CpuSet(src, dst, (tilesPerRow << 4) & 0x1FFFFF);
             src += 0x200;
             dst += 0x400;
         }
     }
 }
 
-void FadeStart(u8 kind, s16 step, u8 c, struct Fade *f)
+void FadeStart(u8 color, s16 step, u8 param, struct Fade *fade)
 {
     u16 level;
     u32 bld;
 
-    f->kind = kind;
+    fade->color = color;
     if (step >= 0)
-        f->level = 0;
+        fade->level = 0;
     else
-        f->level = 0x1000;
-    f->step = step;
-    f->state = 1;
-    f->unk7 = c;
-    *(vu16 *)0x04000054 = f->level >> 8;
+        fade->level = 0x1000;
+    fade->step = step;
+    fade->state = FADE_STATE_RUNNING;
+    fade->param = param;
+    REG_BLDY = fade->level >> 8;
     bld = 0xBF;
-    if (kind == 0)
+    if (color == FADE_BLACK)
         bld = 0xFF;
-    *(vu16 *)0x04000050 = bld;
+    REG_BLDCNT = bld;
 }
-u32 FadeTick(struct Fade *f)
+u32 FadeTick(struct Fade *fade)
 {
-    if (f->state == 1 && f->step != 0) {
-        f->level += f->step;
-        if (f->step > 0) {
-            if (f->level > 0x1000) {
-                f->level = 0x1000;
-                f->step = 0;
-                f->state = 2;
+    if (fade->state == FADE_STATE_RUNNING && fade->step != 0) {
+        fade->level += fade->step;
+        if (fade->step > 0) {
+            if (fade->level > 0x1000) {
+                fade->level = 0x1000;
+                fade->step = 0;
+                fade->state = FADE_STATE_FADED_OUT;
                 SetBldY(0x10);
                 return 1;
             }
         } else {
-            if (f->level > 0x1000) {
-                f->level = 0;
-                f->step = 0;
-                f->state = 3;
+            if (fade->level > 0x1000) {
+                fade->level = 0;
+                fade->step = 0;
+                fade->state = FADE_STATE_FADED_IN;
                 SetBldY(0);
                 return 1;
             }
         }
-        SetBldY(f->level >> 8);
+        SetBldY(fade->level >> 8);
     }
     return 0;
 }
-void ClearKatakanaFlag(u8 *p)
+void ClearKatakanaFlag(u8 *flags)
 {
     s32 m = ~1;
 
-    *p = *p & m;
+    *flags = *flags & m;
 }
-extern u8 gFontLatin8x8Bold[];
 /* Render one 8x8 glyph (font 0x0822BB00, 8 bytes each) into 8 4bpp words with a drop shadow:
  * glyph bits get colour a and mark buf[row + 1]; buf[row] bits left unset get colour b.
  * The loop bound lives in a variable (n = 8): reload substitutes its constant, which keeps the
@@ -241,7 +205,7 @@ void RenderShadowedGlyph(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
     u32 c4, c8, c12, c16, c20, c24, c28;
     u32 one = 1;
     u32 w;
-    u8 *g;
+    const u8 *g;
     u16 i;
     u16 n = 8;
 
@@ -347,7 +311,7 @@ void TextCanvasRowsToTiles(u16 *dst, u16 color, u8 x)
         color |= color << 4;
         color |= color << 8;
     } while (0);
-    w = gTextCanvas[0x10000];
+    w = gTextCanvasBytes[0x10000];  /* gTextCanvas.width */
     /* FAKEMATCH: do-while(0) weights x's refs so x is allocated (r5) before the block-0 base pointer (r6) */
     do {
         dst += (x << 4) * w;
@@ -356,7 +320,7 @@ void TextCanvasRowsToTiles(u16 *dst, u16 color, u8 x)
     i = 0;
     if (i < w * 3) {
         /* FAKEMATCH: assigning the base in the preheader keeps the block-0 base live into it (allocated r6) */
-        buf = gTextCanvas;
+        buf = gTextCanvasBytes;
         do {
             /* FAKEMATCH: (w & 0xFF) is a loop-invariant no-op that loop.c hoists to the [sp+4] copy the ROM spills
                (and drags w*x out with it); the u32 sum puts the tile offset before the base in the add */
@@ -465,8 +429,8 @@ void RenderFullWidthGlyph(u16 ch, u16 *dst, u16 a, u16 b)
 /* Render one 10-row glyph (0x14 bytes per glyph at 0x081D0200, index from SjisToGlyphIndex) as two 4bpp tile
  * columns: bit i of each row goes to nibble (a + 7 - i) of the word at dst, and bit (a + 8 - i) of the
  * byte-swapped row to nibble i of the word at dst + 0x10. Set bits take colour c, clear bits colour
- * `color`; with 0x02011C20[4] bit 7 the words start as solid `color`, otherwise they keep the existing
- * tile data. Rows run 8 per block, two blocks 0x150 halfwords apart, stopping after 10 rows. */
+ * `color`; with gSaveData.sjisText (+4 bit 7) the words start as solid `color`, otherwise they keep the
+ * existing tile data. Rows run 8 per block, two blocks 0x150 halfwords apart, stopping after 10 rows. */
 void RenderKanji10x10Glyph(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 {
     u16 *src = (u16 *)(0x081D0200 + SjisToGlyphIndex(ch) * 20);
@@ -480,7 +444,7 @@ void RenderKanji10x10Glyph(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 
     for (blk = 0; blk < 2; blk++) {
         for (row = 0; row < 8; row++) {
-            if (gSaveData[4] & 0x80) {
+            if (gSaveDataBytes[4] & 0x80) {     /* gSaveData.sjisText */
                 w[0] = w[1] = color | (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24) | (color << 28);
             } else {
                 w[0] = dst[0] | (dst[1] << 16);
@@ -526,7 +490,7 @@ void RenderStringToTiles(u8 *str, u8 *dst, u8 a, u8 b)
 
     p = str;
     while (*p != 0) {
-        if (gSaveData[4] & 0x80) {
+        if (gSaveDataBytes[4] & 0x80) {         /* gSaveData.sjisText */
             ch = (p[0] << 8) | p[1];
             if (ch > 0x813F) {
                 RenderFullWidthGlyph(ch, (u16 *)(dst + ((col++ + row * 32) << 5)), a, b);
@@ -588,19 +552,18 @@ void DrawTextStrip(u8 *str, u8 *dst, u32 p2, u16 x, u8 q0, u8 q1, u8 q2, u8 q3)
     len = (n * 5 + 7) >> 3;
     TextCanvasInit(len, 2);
     TextDrawString(0, 0, q1 | 0xA00, str);
-    TextCanvasToTiles((void *)p2, q2);
+    TextCanvasToTiles((u16 *)p2, q2);
     PutMapTileRun(x, (u16 *)dst, q0, q3, len);
     if (dst == (u8 *)0x0600C7C8)
         dst = (u8 *)0x0600BFC8;
     PutMapTileRun(x + len, (u16 *)(dst + 0x40), q0, q3, len);
 }
-extern void sub_080791F4_5(u8 *str, u8 *dst, u8 a, u8 b, u8 extra) asm("RenderStringToTiles");
 
 void DrawStringTiles(u8 *s, u32 p1, u32 p2, u16 p3, u8 q0, u8 q1, u8 q2, u8 q3)
 {
     u8 n;
 
-    sub_080791F4_5(s, (u8 *)p2, q1, q2, q3);
+    RenderStringToTiles5(s, (u8 *)p2, q1, q2, q3);
     n = 0;
     while (*s++ != 0)
         n++;
@@ -625,7 +588,7 @@ void LoadDigitTiles(u8 *dst, u8 unused, u8 pal)
     while (d2[2] & 0x80000000)
         ;
     for (i = 0; i < 13; i++)
-        OverlayBoldGlyphTile(dst + i * 32, buf + i, pal, 4);
+        OverlayBoldGlyphTile((u32 *)(dst + i * 32), buf + i, pal, 4);
 }
 /* Print `val` as decimal digits right to left starting at (col, row) of a tilemap; mode 0 = zero padded to n digits, mode 1 = no leading zeros. */
 void DrawNumberTiles(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2)
@@ -634,14 +597,14 @@ void DrawNumberTiles(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u
     u16 d;
 
     switch (mode) {
-    case 0:
+    case NUMBER_ZERO_PAD:
         for (i = 0; i < n; i++) {
             d = val % 10;
             val = val / 10;
             PutMapTileRun(base + d, dst + (col-- + row * 32), pal, m2, 1);
         }
         break;
-    case 1:
+    case NUMBER_NO_LEADING_ZEROS:
         if (val == 0) {
             PutMapTileRun(base, dst + (col-- + row * 32), pal, m2, 1);
             return;

@@ -447,7 +447,7 @@ function renderDetail() {
   } else if (zoom) {
     el.innerHTML = `<h2 class="mono">${zoom.name}</h2><dl><dt>Range</dt><dd class="mono">${hex(zoom.start)}–${hex(zoom.start + zoom.bytes)}</dd><dt>Status</dt><dd>${unitSummary(zoom)}</dd></dl>${zoom.desc ? `<p>${escapeHtml(zoom.desc)}</p>` : ''}<p>Tap a function for details.</p>`;
   } else {
-    el.innerHTML = `<h2>Tap a block</h2><p>Each small block is one function. The outlined groups are code units of about 4 KiB, each built from one C file (<span class="mono">src/code_08XXXXXX.c</span>) and tagged with its start address. On a phone, tap a unit to zoom in, then tap a function for its name, address, size and status.</p>`;
+    el.innerHTML = `<h2>Tap a block</h2><p>Each small block is one function. The outlined groups are code units of about 4 KiB, each built from one C file (<span class="mono">src/&lt;unit&gt;.c</span>, named after what it does) and tagged with its start address. On a phone, tap a unit to zoom in, then tap a function for its name, address, size and status.</p>`;
   }
 }
 function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

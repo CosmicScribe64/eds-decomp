@@ -99,7 +99,7 @@ Remaining: none (`0x08075114` matched in wave 2; `0x08075F74` and `0x0807609C` i
 
 ## Open questions
 
-> [!question] The `TextDrawSjisNumber`/`TextDrawLatinNumber` pair (`0x08075050`, `0x0807509C`, in `code_08074xxx`) look like Shift-JIS vs ASCII text-tile drawers selected by save flag `gSaveData+4` bit 7 (hypothesis).
+> [!question] The `TextDrawSjisNumber`/`TextDrawLatinNumber` pair (`0x08075050`, `0x0807509C`, in `src/text_canvas.c`) look like Shift-JIS vs ASCII text-tile drawers selected by save flag `gSaveData+4` bit 7 (hypothesis).
 
 Related: [[decomp-workflow]], [[compiler-flags]].
 

@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Map every named field of a shared global, across all C units, to its byte/bit offset (agbcc layout rules).
 
-  python3 tools/structmap.py 0x03000040            # merged field map of gMain (all units' declarations)
-  python3 tools/structmap.py 0x020192E4 --elem     # for arrays: offsets within one element
-  python3 tools/structmap.py --check               # self-test the layout rules against old_agbcc
+  python3 tools/structmap.py gMain                 # merged field map of gMain (all units' declarations)
+  python3 tools/structmap.py 0x03000040            # the same, by address (every symbol at that address)
+  python3 tools/structmap.py gDuelPlayers --elem   # for arrays: offsets within one element
 
-Layout rules (verified against old_agbcc, see --check):
+Layout rules (verified against old_agbcc by compiling probes; __attribute__((packed)) is not modelled):
   - every struct (and union) is aligned to, and padded to a multiple of, 4 bytes (STRUCTURE_SIZE_BOUNDARY 32);
   - scalars are aligned to their size; arrays to their element's alignment;
-  - bitfields are packed LSB-first, continuing in the same storage across declared types; a bitfield that
-    would straddle a boundary of its own declared type's size starts at the next such boundary.
+  - bitfields are packed LSB-first and contiguously, continuing in the same storage across declared types and
+    across byte/halfword/word boundaries (`u16 a:12; u16 b:8` puts b at bits 12-19; `u32 x:8` at bit 26 is
+    read with two ldrb); only a zero-width bitfield aligns (to 32 bits).
 Output rows: byte offset, bit range (for bitfields), size, the names/types units use there, and how many units.
 """
 import collections
-import glob
 import os
 import re
 import subprocess
@@ -27,12 +27,29 @@ SCALAR = {'char': 1, 'short': 2, 'int': 4, 'long': 4, 'long long': 8, 'float': 4
           '_Bool': 1}
 
 
+def _strip_attributes(t):
+    out, i = [], 0
+    for m in re.finditer(r'\b__attribute__\s*\(', t):
+        if m.start() < i:
+            continue
+        depth, j = 0, m.end() - 1
+        while j < len(t):
+            depth += {'(': 1, ')': -1}.get(t[j], 0)
+            j += 1
+            if depth == 0:
+                break
+        out.append(t[i:m.start()])
+        i = j
+    out.append(t[i:])
+    return ''.join(out)
+
+
 def preprocess(path):
     r = subprocess.run(['cpp', '-P', '-nostdinc', '-undef', '-DOBJDIFF_BASE', '-I', 'include', '-I',
                         '/opt/agbcc/include', '-iquote', '.', path], capture_output=True, text=True)
     t = r.stdout
     t = re.sub(r'^\s*asm\s*\(.*?\)\s*;', '', t, flags=re.M | re.S)
-    t = re.sub(r'\b__attribute__\s*\(\(.*?\)\)', '', t)
+    t = _strip_attributes(t)        # balanced: __attribute__((packed, aligned(2))); packing itself is ignored
     t = re.sub(r'\)\s*(asm|__asm__)\s*\(\s*"[^"]*"\s*\)', ')', t)        # symbol aliases: f(void) asm("sym")
     # variable aliases (another view of a global): `T name[] asm("sym")` -> `T sym_aliasN[]`, counted as sym
     t = re.sub(r'\b(\w+)\s*((?:\[[^\]]*\])*)\s*(?:asm|__asm__)\s*\(\s*"(\w+)"\s*\)',
@@ -149,9 +166,10 @@ class Layout:
             if d.bitsize is not None:
                 w = self.const(d.bitsize)
                 s, _ = self.size_align(d.type)
-                sb = s * 8
-                if w and (pos // sb) != ((pos + w - 1) // sb):
-                    pos = -(-pos // sb) * sb
+                # agbcc packs bitfields contiguously, also across byte/halfword/word boundaries of their
+                # declared type (`u16 a:12; u16 b:8` puts b at bits 12-19); a zero-width one aligns to 32 bits.
+                if not w:
+                    pos = -(-pos // 32) * 32
                 if d.name:
                     out.append((d.name, pos, w, s, d.type))
                 pos += w
@@ -224,11 +242,12 @@ def typestr(t):
     return type(t).__name__
 
 
-def unit_fields(path, addr, elem):
+def unit_fields(path, addr, elem, names=()):
     text = preprocess(path)
     ast = c_parser.CParser().parse(text, path)
     lay = Layout(ast)
-    name_re = re.compile(r'^(gUnk_|g\w*?_?)' + f'{addr:08X}' + r'(__alias\d+)?$')
+    alts = '|'.join(re.escape(n) for n in names)
+    name_re = re.compile(r'^((gUnk_|g\w*?_?)' + f'{addr:08X}' + (f'|{alts}' if alts else '') + r')(__alias\d+)?$')
     found = []
     for ext in ast.ext:
         if isinstance(ext, c_ast.Decl) and ext.name and name_re.match(ext.name):
@@ -242,15 +261,38 @@ def unit_fields(path, addr, elem):
     return (addr if found else None), found
 
 
+def c_unit_files():
+    """src/<unit>.c of every C unit in units.txt (the units were renamed from code_<addr> in 2026-10)."""
+    out = []
+    for line in open('units.txt'):
+        u = line.split('#')[0].strip()
+        if u and not u.startswith('@') and os.path.exists(f'src/{u}.c'):
+            out.append(f'src/{u}.c')
+    return out
+
+
 def main():
     args = sys.argv[1:]
-    addr = int(args[0], 16)
+    if not args or args[0].startswith('-'):
+        sys.exit(__doc__)
     elem = '--elem' in args
+    import target
+    syms = target.known_symbols()
+    if re.match(r'^(0x)?[0-9A-Fa-f]{8}$', args[0]):
+        addr = int(args[0], 16)
+    else:
+        r = target.resolve_symbol(args[0], syms)
+        if r is None:
+            sys.exit(f'{args[0]}: unknown symbol')
+        addr = r[0]
+    names = sorted(n for n, (a, _) in syms.items() if a == addr)
+    if not re.match(r'^(0x)?[0-9A-Fa-f]{8}$', args[0]) and args[0] not in names:
+        names.append(args[0])
     rows = collections.defaultdict(lambda: collections.defaultdict(set))
     nunits, failures = 0, []
-    for f in sorted(glob.glob('src/code_*.c')):
+    for f in c_unit_files():
         try:
-            gname, leaves = unit_fields(f, addr, elem)
+            gname, leaves = unit_fields(f, addr, elem, names)
         except Exception as e:  # noqa: BLE001
             failures.append(f'{f}: {str(e)[:80]}')
             continue
@@ -264,7 +306,8 @@ def main():
                 continue
             key = (bit // 8, bit % 8 if w is not None else None, w, size)
             rows[key][f'{path}: {ty}'].add(unit)
-    print(f'0x{addr:08X}: {nunits} units declare it ({len(failures)} could not be parsed)')
+    print(f'0x{addr:08X} ({", ".join(names) or "no symbol"}): {nunits} units declare it '
+          f'({len(failures)} could not be parsed)')
     for (byte, bit, w, size), names in sorted(rows.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0)):
         where = f'+0x{byte:X}' + (f' bits {bit}..{bit + w - 1}' if w is not None else f' ({size} bytes)')
         tot = len(set().union(*names.values()))

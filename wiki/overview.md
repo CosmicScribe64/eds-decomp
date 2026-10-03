@@ -33,7 +33,7 @@ The project is a byte-matching decompilation of *Yu-Gi-Oh! The Eternal Duelist S
 - `src/sdk/agb_sram.c` (AgbSram v1.12) and `src/sdk/libagbsyscall.s` (BIOS stubs): see [[agb-sram]] and [[bios-swi-stubs]].
 - `src/sound_mixer_arm.s`: the hand-written ARM PCM mixer ([[sound-mixer]]).
 - `asm/crt0.s`: startup and `IntrMain` ([[crt0]]).
-- Game code: `src/code_*.c`, with one wiki page per unit. `src/sound_driver.c` holds the Konami driver ([[sound-driver]]).
+- Game code: C units `src/<unit>.c` named after what they do (`src/duel_zones.c`, `src/text_render.c`, ...; renamed from `src/code_<addr>.c` in commit 45642ef, map in `build/readability/unit_names.tsv`), with one wiki page per unit (`wiki/functions/<unit>-c.md`). `src/sound_driver.c` holds the Konami driver ([[sound-driver]]).
 
 ## ROM layout (summary)
 See [[rom-map]] for the full map.

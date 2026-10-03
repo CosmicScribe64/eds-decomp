@@ -1,394 +1,452 @@
 #include "global.h"
+#include "gba.h"                    /* A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
+#include "main.h"                   /* gMain.newKeys, gMain.frameCounter */
+#include "util.h"                   /* Random */
+#include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_32x32 */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu, TextBoxMenuState */
+#include "card_data.h"              /* gCardIdToNumber, gCardStats, CARD_ID_MASK, CARD_STATS_* */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType, CardAttribute, CardKind */
+#include "constants/duel.h"         /* enum DuelArea, ZONE_*, RESPONSE_SUMMONED, CHAIN_KIND_MONSTER */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_*, DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
 
-/* Menu block 0x0201AE60 (see duel_phases) */
-struct Ui {
-    u8 u0[0xA];
-    u16 w0A;        /* +0xA */
-    u8 u0C[2];
-    u16 h;          /* +0xE */
-    u8 u10[4];
-    u16 sel;        /* +0x14 */
-    u8 u16_[0x21 - 0x16];
-    u8 b21;
-    u8 state;       /* +0x22 */
-    u8 timer;       /* +0x23 */
+/*
+ * Painful Choice's five-card prompt, the hand-summon legality checks, the summon position prompt and the step
+ * machines of the two hand-summon actions (wiki/functions/summon-checks-c.md).
+ *
+ * DuelPrompt_PickOneOfFiveCards is prompt kind 12 (PROMPT_PICK_ONE_OF_FIVE_CARDS): one player picks one of the
+ * five card IDs in gDuel.promptArgs, with FiveCardMenu_Draw and FiveCardMenu_HandleInput as the menu callbacks.
+ *
+ * CanSummonFromHand decides whether a hand monster can be summoned now: fusion and ritual monsters never, Toon
+ * monsters only with Toon World, the cards with their own procedure (Gate Guardian, Valkyrion, the Moths, the
+ * Graveyard-banish Special Summons of the non-EDS keys 1514-1519) by that procedure, and everything else by
+ * its level (1-4 needs a free monster zone, 5-6 one tributable monster, 7 and up two). CanSummonValkyrion,
+ * CanSummonKey1257 and CanPayBanishSummonCost are its helpers.
+ *
+ * ExecuteSummonAction and ExecuteSummonActionAskPosition are the step machines of the summon records of kind
+ * SUMMON_ACTION_NORMAL (1) and SUMMON_ACTION_NORMAL_CHOOSE_POSITION (2) in gSummonAction (summon.h), run by
+ * SummonAction_Update (summon_action.c). The second asks Attack or Defense first, with the SummonPositionMenu_*
+ * callbacks.
+ */
+
+/* ---- BEGIN pre-H0 subset of duel.h ---- */
+/*
+ * The part of the staged duel.h that this unit and the headers it includes need (names, types and bitfield
+ * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
+ * header switch (H0, build/readability/HEADERS.md), and chain.h, summon.h, duel_screen.h and duel_cmd.h
+ * include it, so this block also defines its include guard. After H0, replace the block (BEGIN to END) with
+ * #include "duel.h".
+ */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-extern struct Ui gTextBox;
-struct MainKeys { u8 u0[6]; u16 keys; u8 u8_[0x485E - 8]; u16 frameCounter; };
-extern struct MainKeys gMain;
-extern u16 gUnk_0300489E;   /* gMain.frameCounter */
-/* Duel global 0x020192E0 */
-struct Duel {
-    u8 u0[0x1B50];
-    u8 b1B50;
-    u8 pad;
-    u16 h1B52[5];       /* +0x1B52 candidate card ids */
-    u8 u1B5C[0x1B62 - 0x1B5C];
-    u8 step;            /* +0x1B62 */
-    u8 pad2;
-    u16 sel;            /* +0x1B64 */
+
+struct DuelLoc {
+    u16 player:1;                   /* bit 0: side of the field */
+    u16 area:4;                     /* bits 1-4: enum DuelArea */
+    u16 index:9;                    /* bits 5-13 */
+    u16 isDefense:1;                /* bit 14 */
+    u16 isFaceUp:1;                 /* bit 15 */
+    u16 unk2;
 };
-extern u8 gDuel[];
-#define DUEL (*(struct Duel *)gDuel)
-extern const u16 gPulseScaleCurve[];
-extern const u8 gStrPromptSelectOneOfFive[];
-int GetCardIconObjTile(u16 a);
-void PlaySE(u16 se);
-/* A card instance word in the duel lists (see duel_zones). */
-struct DuelCardBits {
-    u32 id : 12;
-    u32 unk12 : 20;
-};
+
 struct DuelZone {
-    u32 card;               /* +0: struct DuelCard word */
-    u8 unk4[0x94 - 4];
+    struct DuelCard card;           /* +0x00 */
+    u8 unk4[0x94 - 4];              /* not used here; chain.h embeds a whole zone */
 };
-/* Per-player duel state (0xD64 bytes), two of them at 0x020192E4. */
+
 struct DuelPlayer {
-    u8 unk0[2];
-    u8 handCount;           /* +2 */
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
     u8 unk3;
-    u8 numGrave;            /* +4 */
-    u8 unk5[7];
-    u8 b0C_0 : 5;
-    u8 flag0C_5 : 1;        /* +0xC bit 5 (hypothesis: the player's monsters are "sealed") */
-    u8 b0C_6 : 2;
-    u8 unkD[0x28 - 0xD];
-    struct DuelZone zones[11];      /* +0x28 */
-    u32 hand[80];                  /* +0x684 */
-    u32 deck[80];                  /* +0x7C4 */
-    u32 grave[80];                  /* +0x904 */
-    u8 unkA44[0xD64 - 0xA44];
+    u8 graveCount;                  /* +0x004: entries in graveyard[] */
+    u8 unk5[7];                     /* +0x005 */
+    u8 unkC_0:5;                    /* +0x00C bits 0-4 */
+    u8 banishCostFromField:1;       /* +0x00C bit 5: graveyard-banish summon costs are paid from the field */
+    u8 unkC_6:2;
+    u8 unkD[0xD64 - 0xD];
 };
-extern struct DuelPlayer gDuelPlayers[2];
+
+/* gDuelZones (0x0201930C = &gDuel.players[0].zones): the zones of each player with the player stride. */
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 11 * 0x94];
+    u8 rest[0xD64 - 11 * 0x94];
 };
-extern struct DuelZonesPlayer gDuelZones[2];
-extern u32 gDuelGraveyards[];
-extern const u32 gCardStats[];
-extern const u16 gCardIdToNumber[];
-#define ZONE(p, i) (*(u32 *)(((p) & 1) * 0xD64 + (i) * 0x94 + (u32)gDuelZones))
-#define GRAVE(p, i) (*(u32 *)(0x02019BE8 + ((p) & 1) * 0xD64 + (i) * 4))
-#define CARD_ID(w) (((struct DuelCardBits *)&(w))->id)
-#define CARD_STATS(id) (*(gCardStats + ((id) & 0x7FF)))
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-int GetZoneCardType(int player, int zone);
-int GetZoneCardAttribute(int player, int zone);
-/* Duel action record at 0x0201CF90 (see summon_builders): only the fields read here. */
-struct ActRec {
-    u32 player : 1;
-    u32 zone5 : 5;
-    u32 zone8 : 8;
-    u32 f14 : 1;        /* bit 14: a card is attached (hypothesis) */
-    u32 f15 : 1;
-    u32 f16 : 3;
-    u32 f19 : 3;
-    u32 pad22 : 3;
-    u32 f25 : 1;
-    u32 f26 : 1;
-    u32 pad27 : 1;
-    u32 f28 : 1;
-    u32 f29 : 1;
-    u32 pad30 : 1;
-    u32 cardId : 16;    /* bits 31-46 (straddles the word boundary) */
-    u32 pad47 : 17;
-    u32 card8;          /* +8 */
-    u16 h0C;            /* +0xC */
-    u16 lo5 : 5;        /* +0xE bits 0-4 */
-    u16 step : 7;       /* +0xE bits 5-11: step of the action */
-    u16 hi4 : 4;
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B50 - 0x1ACC];
+    u8 promptLinked:1;              /* +0x1B50 bit 0: the prompt is mirrored over the link */
+    u8 promptActive:1;              /* +0x1B50 bit 1: a prompt is pending */
+    u8 promptPlayer:1;              /* +0x1B50 bit 2: player who answers (1 = CPU or link partner) */
+    u8 unk1B50_3:1;
+    u16 promptKind:6;               /* +0x1B50 bits 4-9: enum DuelPromptKind */
+    u16 unk1B51_2:6;
+    u16 promptArgs[8];              /* +0x1B52: [0] argument, [1] value (DuelPrompt_Post); all 8 for PostData */
+    u8 promptStep;                  /* +0x1B62: step of the running prompt handler */
+    u8 unk1B63;
+    u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID) */
+    u8 unk1B66[0x1B78 - 0x1B66];
 };
-void TributeMonster(int a, int b);
-void DuelCursor_Select(u32 player, u32 a, u32 b);
-void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
-void Chain_AddPending(u32 a, int b);
-void TriggerMysteriousPuppeteer(int player);
-void ChangeBattlePosition(int player, int zone, int a, int b);
-void DestroyFieldCard(int player, int zone, int a);
-u16 AiShouldSetMonster(u16 id, int a);
-extern const u8 gStrSelectDisplayPosition[];
-void SummonPositionMenu_Draw(void);
-u16 SummonPositionMenu_HandleInput(void);
-extern struct ActRec gSummonAction;
-void AddAffineSprite(u32 yx, u16 shapeSize, u16 attr2, u32 affine);
-void DuelInfo_DrawCard(u16 id, int a);
-void TextCellsClear(void);
-int Random(void);
-void TextBoxOpen(u16 a, u16 b, u16 c, const u8 *d);
-void TextBoxSetMenu(u16 a, void (*b)(void), u16 (*c)(void));
-int CountActiveCardsOnField(int player, u16 number);
-int CountMonstersByNumber(int player, u16 number);
-int CountFaceUpMonstersByNumber(int player, u16 number);
-int CountHandCardsByNumber(int player, u16 number);
-int CountFreeMonsterZones(int player);
-int IsCardProhibited(u16 id);
-int IsToonMonster(u16 cardNo);
-int HasFaceUpToonWorld(int player);
-int CanSpecialSummon(int player);
-int CanActivateEffectOfCard(int player, u16 id, int a);
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+extern struct DuelCard gDuelGraveyards[];       /* 0x02019BE8 = gDuelPlayers[0].graveyard (player stride 0xD64) */
+
+u32 IsToonMonster(u16 cardNo);                          /* the four Toon effect monsters */
+u32 IsCardProhibited(u16 cardId);                       /* an active Prohibition declares the same name */
+int CountActiveCardsOnField(int player, u16 cardNo);    /* face-up, not-disabled copies in zones 0-10 */
+int CountFaceUpMonstersByNumber(int player, u16 cardNo);
+int CountMonstersByNumber(int player, u16 cardNo);      /* face up or down */
 int CountMonsters(int player);
-int CanPayBanishSummonCost(int player, u16 id);
-#define CARD_NUMBER_C(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_STATS_C(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_TYPE_C(id) ((CARD_STATS_C(id) & 0x1F00000) >> 20)
-/* Monster level used by the prompts: 0 for Magic/Trap/Ticket, 10 for type 0x18, else stats bits 25-28. */
-static inline int GetCardLevel(u16 id)
+int CountHandCardsByNumber(int player, u16 cardNo);
+int CountFreeMonsterZones(int player);
+int CountTributableMonsters(int player, int excludeZone);   /* excludeZone -1 = none */
+int HasFaceUpToonWorld(int player);
+u32 GetZoneCardType(s32 player, s32 slot);              /* effective type of the card in a zone, 0 if empty */
+u32 GetZoneCardAttribute(s32 player, s32 slot);         /* effective attribute, 0 if empty */
+void PlaySE(u32 seId);                                  /* legacy sound.h lacks it */
+/* ---- END pre-H0 subset ---- */
+
+#include "chain.h"                  /* Chain_AddPending */
+#include "summon.h"                 /* struct SummonAction, gSummonAction, the summon rules */
+#include "duel_actions.h"           /* TributeMonster, ChangeBattlePosition, DestroyFieldCard */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_flow.h"              /* gPulseScaleCurve, gStrSelectDisplayPosition */
+#include "duel_prompt.h"            /* the five-card menu prototypes */
+#include "duel_screen.h"            /* DuelCursor_Select, GetCardIconObjTile, DuelInfo_DrawCard, TextCellsClear */
+#include "ai.h"                     /* AiShouldSetMonster */
+#include "effect.h"                 /* CanActivateEffectOfCard, TriggerMysteriousPuppeteer */
+
+/* ROM data used only here. */
+extern const u8 gStrPromptSelectOneOfFive[];            /* "Select 1 card from out of 5." */
+
+/* Text-box positions and sizes (x | y << 8, width | height << 8, in cells). */
+#define BOX_ONE_OF_FIVE_POS     0x206       /* cell (6, 2) */
+#define BOX_ONE_OF_FIVE_SIZE    0x213       /* 19 x 2 */
+#define BOX_POSITION_POS        0x207       /* cell (7, 2) */
+#define BOX_POSITION_SIZE       0x30F       /* 15 x 3 */
+
+/* gCardIdToNumber, gCardStats and gPulseScaleCurve through their integer addresses (0x08622AB4, 0x08621DE0,
+ * 0x081A4424): the ROM's register allocation needs these forms (the symbols give other code). */
+#define CARD_NUMBER_C(id)       (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define CARD_STATS_C(id)        (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_TYPE_C(id)         CARD_STATS_TYPE(CARD_STATS_C(id))
+#define PULSE_SCALE_CURVE       ((const u16 *)0x081A4424)
+
+/* Card ID, bits 0-11, of a card word. */
+#define CARD_WORD_ID(word)      (((word) << 20) >> 20)
+/* The card word of zone (player, zone), with the address terms in the ROM's order: player * 0xD64 + zone * 0x94 +
+ * the base of gDuelZones. */
+#define ZONE_CARD_WORD(player, zone) \
+    (*(u32 *)(((player) & 1) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
+
+/*
+ * Monster level of a card ID, as the prompts use it: 0 for Trap, Magic and Ticket cards, 10 for the Divine cards,
+ * else the stars in the stats word.
+ */
+static inline int GetCardLevel(u16 cardId)
 {
-    switch ((int)CARD_TYPE_C(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    switch ((int)CARD_TYPE_C(cardId)) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 10;
     default:
-        return (CARD_STATS_C(id) & 0x1E000000) >> 25;
+        return CARD_STATS_LEVEL(CARD_STATS_C(cardId));
     }
 }
-/* Card category: 3 for card 1910, 1 for 1911-1912, 7 Magic, 8 Trap, 9 Ticket, else the monster kind (see card_canvas). */
-static inline int GetCardSubtype(u16 id)
-{
-    switch (CARD_NUMBER_C(id)) {
-    case 1910:
-        return 3;
-    case 1911:
-    case 1912:
-        return 1;
-    }
-    switch ((u8)CARD_TYPE_C(id)) {
-    case 22:
-        return 7;
-    case 21:
-        return 8;
-    case 23:
-        return 9;
-    default:
-        return (CARD_STATS_C(id) & 0xC0000) >> 18;
-    }
-}
-int CountTributableMonsters(int player, int a);
-u16 FiveCardMenu_HandleInput(void);
-void FiveCardMenu_Draw(void);
 
+/*
+ * enum CardKind of a card ID, the frame kind: Obelisk counts as a Ritual monster, Slifer and Ra as Effect
+ * monsters; Magic, Trap and Ticket cards have their own kinds; other monsters use the stats kind bits.
+ */
+static inline int GetCardKind(u16 cardId)
+{
+    switch (CARD_NUMBER_C(cardId)) {
+    case CARD_OBELISK_THE_TORMENTOR:
+        return CARD_KIND_RITUAL;
+    case CARD_SLIFER_THE_SKY_DRAGON:
+    case CARD_THE_WINGED_DRAGON_OF_RA:
+        return CARD_KIND_EFFECT;
+    }
+    switch ((u8)CARD_TYPE_C(cardId)) {
+    case CARD_TYPE_MAGIC:
+        return CARD_KIND_MAGIC;
+    case CARD_TYPE_TRAP:
+        return CARD_KIND_TRAP;
+    case CARD_TYPE_TICKET:
+        return CARD_KIND_TICKET;
+    default:
+        return CARD_STATS_KIND(CARD_STATS_C(cardId));
+    }
+}
+
+/* Chain_AddPending trigger word, as ChainEntry lays it out: player << 31 | event << 25 | kind << 21 | zone << 16 |
+ * card ID. These are the bits that do not depend on the card: a monster-kind RESPONSE_SUMMONED trigger. */
+#define SUMMONED_TRIGGER_BITS   ((RESPONSE_SUMMONED << 25) | (CHAIN_KIND_MONSTER << 21))
+
+/*
+ * Draw callback of the five-card pick: the card IDs gDuel.promptArgs[0..4] as 32x32 affine card sprites at
+ * x = 0x28 + 32 * slot, y = (revealRow - height + 2) * 8. The selected card (gTextBox.result) pulses with
+ * gPulseScaleCurve; the others keep scale 0x100.
+ */
 void FiveCardMenu_Draw(void)
 {
-    int y = (gTextBox.b21 - gTextBox.h + 2) * 8;
+    int y = (gTextBox.revealRow - gTextBox.height + 2) * 8;
     int i = 0;
-    u32 base = (u32)&DUEL;
+    /* Matching: promptArgs is reached as gDuel + 0x1B52 through two locals, and the pulse curve by its integer
+     * address; gDuel.promptArgs and the symbol gPulseScaleCurve give other code. */
+    u32 base = (u32)&gDuel;
     int x = 0x28;
-    u32 off = 0x1B52;
+    u32 off = OFFSET_OF(struct DuelState, promptArgs);
     u16 *cards;
-    u16 *fc;
+    u16 *frame;
 
     cards = (u16 *)(base + off);
 
-    fc = &gUnk_0300489E;
+    frame = &gMain.frameCounter;
     do {
         u16 id = *cards;
-        u16 pulse = ((const u16 *)0x081A4424)[(*fc >> 1) & 0xF];
+        u16 pulse = PULSE_SCALE_CURVE[(*frame >> 1) & 0xF];
         u32 yx;
         u16 tile;
-        if (i != gTextBox.sel)
+        if (i != gTextBox.result)
             pulse = 0x100;
         yx = ((u32)y << 16) | (u32)x;
-        tile = GetCardIconObjTile(id) + 0x1000;
-        AddAffineSprite(yx, 0x80, tile, (u32)pulse << 16);
+        tile = GetCardIconObjTile(id) + 0x1000;     /* OBJ palette 1 */
+        AddAffineSprite(yx, SPRITE_SHAPE_32x32, tile, (u32)pulse << 16);
         x += 0x20;
         cards++;
     } while (++i <= 4);
 }
 
 
-/* Key callback: left/right cycle the selection (5 entries), A confirms. */
+/*
+ * Input callback of the five-card pick: returns 1 on A. The first frame (menuState 0) shows the info of
+ * the selected card; then Left and Right move the selection (modulo 5) and redraw the info.
+ */
 u16 FiveCardMenu_HandleInput(void)
 {
-    struct Ui *u = &gTextBox;
-    u8 *st = &u->state;
-    if (*st == 0) {
-        DuelInfo_DrawCard(DUEL.h1B52[u->sel], 1);
-        (*st)++;
+    struct TextBox *box = &gTextBox;
+    u8 *state = &box->menuState;
+    if (*state == TEXTBOX_MENU_STATE_SELECT) {
+        DuelInfo_DrawCard(gDuel.promptArgs[box->result], 1);
+        (*state)++;
         return 0;
     }
-    if (gMain.keys & 0x20)
-        u->sel = u->sel + 4;
-    else if (gMain.keys & 0x10)
-        u->sel = u->sel + 1;
+    if (gMain.newKeys & DPAD_LEFT)
+        box->result = box->result + 4;
+    else if (gMain.newKeys & DPAD_RIGHT)
+        box->result = box->result + 1;
     else
         goto check_a;
-    u->sel = u->sel % 5;
+    box->result = box->result % 5;
     TextCellsClear();
-    DuelInfo_DrawCard(DUEL.h1B52[u->sel], 1);
+    DuelInfo_DrawCard(gDuel.promptArgs[box->result], 1);
     return 0;
-check_a:
-    if (gMain.keys & 1)
+check_a:    /* Matching: the shared tail is a goto target, as in the ROM's block order */
+    if (gMain.newKeys & A_BUTTON)
         return 1;
     return 0;
 }
-/* Candidate pick step: CPU (or forced random) picks one of the 5 candidates; the human gets a menu. */
+
+/*
+ * PROMPT_PICK_ONE_OF_FIVE_CARDS (Painful Choice): the answering player picks one of the five card IDs in
+ * promptArgs. The CPU's prompt (promptPlayer) picks Random() % 5; the human gets the text box with the
+ * five-card menu and the next call takes the menu's result. Either way promptResult = the chosen card ID.
+ * Returns 1 when finished.
+ */
 int DuelPrompt_PickOneOfFiveCards(void)
 {
-    struct Duel *d = &DUEL;
-    int idx;
+    struct DuelState *duel = &gDuel;
+    int pick;
     /* FAKEMATCH: retain the initialized step pointer across menu setup. */
-    register u8 *st asm("r5");
-    if (d->b1B50 & 4) {
-        idx = Random() % 5;
+    register u8 *step asm("r5");
+    if (duel->promptPlayer) {
+        pick = Random() % 5;
         goto store;
     }
     {
         /* FAKEMATCH: initialized base/offset copies retain the ADD order. */
-        register u32 base asm("r4") = (u32)d;
-        register u32 off asm("r0") = 0x1B62;
+        register u32 base asm("r4") = (u32)duel;
+        register u32 off asm("r0") = OFFSET_OF(struct DuelState, promptStep);
         asm("" : "+r"(off));
-        st = (u8 *)(base + off);
+        step = (u8 *)(base + off);
     }
-    if (*st != 0) {
-        idx = gTextBox.sel;
+    if (*step != 0) {
+        pick = gTextBox.result;
     store:
         {
-            u32 off = (u32)idx << 1;
-            u32 startOff = 0x1B52;
-            u32 range = (u32)d + startOff;
-            d->sel = *(u16 *)(off + range);
+            u32 byteOffset = (u32)pick << 1;
+            u32 argsOffset = OFFSET_OF(struct DuelState, promptArgs);
+            u32 args = (u32)duel + argsOffset;
+            duel->promptResult = *(u16 *)(byteOffset + args);
         }
         return 1;
     }
-    TextBoxOpen(0x206, 0x213, 0xB, gStrPromptSelectOneOfFive);
-    TextBoxSetMenu(5, FiveCardMenu_Draw, FiveCardMenu_HandleInput);
-    (*st)++;
+    TextBoxOpen(BOX_ONE_OF_FIVE_POS, BOX_ONE_OF_FIVE_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrPromptSelectOneOfFive);
+    TextBoxSetMenu(TEXTBOX_MENU_CUSTOM, FiveCardMenu_Draw, FiveCardMenu_HandleInput);
+    (*step)++;
     return 0;
 }
 
 
-/* Usability test for a card chain: needs card numbers 0x2E1, 0x2F4, 0x320 on the player's side. */
-int CanSummonValkyrion(int p)
+/*
+ * Valkyrion the Magna Warrior's summon condition. Alpha, Beta and Gamma The Magnet Warrior must each be in
+ * the hand or face up on the field; field copies count only while key 1418 (which forbids Tributes) is
+ * active on neither field. The CPU (player 1) must also hold Valkyrion in its hand. Returns 0 when no monster
+ * zone is free and none of the three is on the field (to be Tributed), else 1.
+ */
+int CanSummonValkyrion(int player)
 {
-    int a = 0, b = 0, c = 0;
-    int ok = 1;
-    int cnt = 0;
-    u16 n = 0x58A;
-    if (CountActiveCardsOnField(0, n) > 0)
-        ok = 0;
-    if (CountActiveCardsOnField(1, n) > 0)
-        ok = 0;
-    if (p != 0 && CountHandCardsByNumber(p, 0x34D) == 0)
+    int hasAlpha = 0, hasBeta = 0, hasGamma = 0;
+    int tributesAllowed = 1;
+    int fieldCount = 0;
+    u16 noTributeKey = CARD_1418;
+    if (CountActiveCardsOnField(0, noTributeKey) > 0)
+        tributesAllowed = 0;
+    if (CountActiveCardsOnField(1, noTributeKey) > 0)
+        tributesAllowed = 0;
+    if (player != 0 && CountHandCardsByNumber(player, CARD_VALKYRION_THE_MAGNA_WARRIOR) == 0)
         return 0;
-    if (CountFaceUpMonstersByNumber(p, 0x2E1) && ok) {
-        a = 1;
-        cnt++;
+    if (CountFaceUpMonstersByNumber(player, CARD_ALPHA_THE_MAGNET_WARRIOR) && tributesAllowed) {
+        hasAlpha = 1;
+        fieldCount++;
     }
-    if (CountHandCardsByNumber(p, 0x2E1))
-        a = 1;
-    if (a == 0)
+    if (CountHandCardsByNumber(player, CARD_ALPHA_THE_MAGNET_WARRIOR))
+        hasAlpha = 1;
+    if (hasAlpha == 0)
         return 0;
-    if (CountFaceUpMonstersByNumber(p, 0x2F4) && ok) {
-        b = 1;
-        cnt++;
+    if (CountFaceUpMonstersByNumber(player, CARD_BETA_THE_MAGNET_WARRIOR) && tributesAllowed) {
+        hasBeta = 1;
+        fieldCount++;
     }
-    if (CountHandCardsByNumber(p, 0x2F4))
-        b = 1;
-    if (b == 0)
+    if (CountHandCardsByNumber(player, CARD_BETA_THE_MAGNET_WARRIOR))
+        hasBeta = 1;
+    if (hasBeta == 0)
         return 0;
-    if (CountFaceUpMonstersByNumber(p, 0x320) && ok) {
-        c = 1;
-        cnt++;
+    if (CountFaceUpMonstersByNumber(player, CARD_GAMMA_THE_MAGNET_WARRIOR) && tributesAllowed) {
+        hasGamma = 1;
+        fieldCount++;
     }
-    if (CountHandCardsByNumber(p, 0x320))
-        c = 1;
-    if (c == 0)
+    if (CountHandCardsByNumber(player, CARD_GAMMA_THE_MAGNET_WARRIOR))
+        hasGamma = 1;
+    if (hasGamma == 0)
         return 0;
-    if (CountFreeMonsterZones(p) == 0 && cnt == 0)
+    if (CountFreeMonsterZones(player) == 0 && fieldCount == 0)
         return 0;
     return 1;
 }
-int CanSummonKey1257(int p)
+
+/*
+ * Summon condition of key 1257 (not an EDS card): key 1418 (no Tributes) active on neither field, one of the
+ * keys 1410 or 1412 among the player's monsters (face up or down), and more than one tributable monster.
+ */
+int CanSummonKey1257(int player)
 {
-    int f = 0;
-    u16 n = 0x58A;
-    if (CountActiveCardsOnField(0, n) > 0 || CountActiveCardsOnField(1, n) > 0)
+    int hasKeyMonster = 0;
+    u16 noTributeKey = CARD_1418;
+    if (CountActiveCardsOnField(0, noTributeKey) > 0 || CountActiveCardsOnField(1, noTributeKey) > 0)
         return 0;
-    if (CountMonstersByNumber(p, 0x582))
-        f = 1;
-    if (CountMonstersByNumber(p, 0x584))
-        f = 1;
-    if (f != 0 && CountTributableMonsters(p, -1) > 1)
+    if (CountMonstersByNumber(player, 1410))    /* key 1410, no EDS card */
+        hasKeyMonster = 1;
+    if (CountMonstersByNumber(player, 1412))    /* key 1412, no EDS card */
+        hasKeyMonster = 1;
+    if (hasKeyMonster != 0 && CountTributableMonsters(player, -1) > 1)
         return 1;
     return 0;
 }
-/* Do the player's field (if `sealed`) or graveyard hold enough matching monsters (1-3) for the ritual/fusion-like card `id`? */
-int CanPayBanishSummonCost(int player, u16 id)
+
+/*
+ * Can the player pay the "remove monsters from play" Special Summon cost of card `cardId` (the non-EDS keys
+ * 1514-1519)? 1514 needs 3 Fiends, 1515 two LIGHT monsters, 1516 FIRE, 1517 WATER, 1518 EARTH and 1519 WIND
+ * one each. Normally the monsters are counted in the player's Graveyard, and the cost cannot be paid while key
+ * 1511 is active on the opponent's field. With banishCostFromField set it counts the monsters in the
+ * monster zones by GetZoneCardType / GetZoneCardAttribute instead and ignores key 1511. Returns 1 as soon as
+ * enough are found.
+ */
+int CanPayBanishSummonCost(int player, u16 cardId)
 {
     int need = 1;
-    int mode = 0;
+    int attribute = 0;
     int i;
-    int flag;
-    /* FAKEMATCH: retain the initialized mode across the opponent-card test. */
-    asm("" : "+r"(mode));
-    flag = gDuelPlayers[player & 1].flag0C_5;
-    if (CountActiveCardsOnField(1 - player, 0x5E7) > 0 && flag == 0)
+    int fromField;
+    /* FAKEMATCH: retain the initialized attribute across the opponent-card test. */
+    asm("" : "+r"(attribute));
+    fromField = gDuelPlayers[player & 1].banishCostFromField;
+    if (CountActiveCardsOnField(1 - player, CARD_1511) > 0 && fromField == 0)
         return 0;
-    switch (CARD_NUMBER_C(id)) {
-    case 0x5EA:
+    switch (CARD_NUMBER_C(cardId)) {
+    case CARD_1514:
         need = 3;
-        if (flag) {
+        if (fromField) {
             for (i = 0; i <= 4; i++) {
-                if (ZONE(player, i) << 20 != 0 && GetZoneCardType(player, i) == 3) {
+                if (ZONE_CARD_WORD(player, i) << 20 != 0 && (int)GetZoneCardType(player, i) == CARD_TYPE_FIEND) {
                     if (--need == 0)
                         return 1;
                 }
             }
         } else {
-            for (i = 0; i < gDuelPlayers[player & 1].numGrave; i++) {
+            for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
                 /* FAKEMATCH: preserve the initialized grave-base load. */
-                register u32 addr asm("r0") = (u32)gDuelGraveyards;
-                u32 off = (player & 1) * 0xD64 + i * 4;
-                u16 cid;
+                register u32 graveBase asm("r0") = (u32)gDuelGraveyards;
+                u32 offset = (player & 1) * sizeof(struct DuelPlayer) + i * sizeof(struct DuelCard);
+                u16 id;
 
-                cid = CARD_ID(*(u32 *)(off + addr));
-                if (CARD_TYPE_C(cid) == 3) {
+                id = CARD_WORD_ID(*(u32 *)(offset + graveBase));
+                if (CARD_TYPE_C(id) == CARD_TYPE_FIEND) {
                     if (--need == 0)
                         return 1;
                 }
             }
         }
         return 0;
-    case 0x5EB:
+    case 1515:      /* key 1515, no EDS card */
         need = 2;
-        mode = 1;
+        attribute = ATTRIBUTE_LIGHT;
         break;
-    case 0x5EC:
-        mode = 4;
+    case 1516:      /* key 1516, no EDS card */
+        attribute = ATTRIBUTE_FIRE;
         break;
-    case 0x5ED:
-        mode = 3;
+    case CARD_1517:
+        attribute = ATTRIBUTE_WATER;
         break;
-    case 0x5EE:
-        mode = 5;
+    case 1518:      /* key 1518, no EDS card */
+        attribute = ATTRIBUTE_EARTH;
         break;
-    case 0x5EF:
-        mode = 6;
+    case CARD_1519:
+        attribute = ATTRIBUTE_WIND;
         break;
     }
-    if (flag) {
+    if (fromField) {
         for (i = 0; i <= 4; i++) {
-            if (ZONE(player, i) << 20 != 0 && GetZoneCardAttribute(player, i) == mode) {
+            if (ZONE_CARD_WORD(player, i) << 20 != 0 && (int)GetZoneCardAttribute(player, i) == attribute) {
                 if (--need == 0)
                     return 1;
             }
         }
     } else {
-        for (i = 0; i < gDuelPlayers[player & 1].numGrave; i++) {
+        for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
             /* FAKEMATCH: each initialized grave base stays in the load scratch. */
-            register u32 addr asm("r0") = (u32)gDuelGraveyards;
-            u32 off = (player & 1) * 0xD64 + i * 4;
-            u16 cid;
-            u32 st;
+            register u32 graveBase asm("r0") = (u32)gDuelGraveyards;
+            u32 offset = (player & 1) * sizeof(struct DuelPlayer) + i * sizeof(struct DuelCard);
+            u16 id;
+            u32 stats;
 
-            cid = CARD_ID(*(u32 *)(off + addr));
-            st = CARD_STATS_C(cid);
-            if (((st & 0x1F00000) >> 20) <= 0x14 && (st >> 29) == mode) {
+            id = CARD_WORD_ID(*(u32 *)(offset + graveBase));
+            stats = CARD_STATS_C(id);
+            if (CARD_STATS_TYPE(stats) <= CARD_TYPE_REPTILE && (int)CARD_STATS_ATTR(stats) == attribute) {
                 if (--need == 0)
                     return 1;
             }
@@ -397,87 +455,99 @@ int CanPayBanishSummonCost(int player, u16 id)
     return 0;
 }
 
-/* Can the player use card `id` (a monster-or-not candidate of a prompt) right now? Nothing for empty slots, unsafe cards,
-   fusion / ritual monsters, then per-card-number conditions; other cards depend on their level. */
-/* Return the zero-extended halfword as a word, as the ROM callers consume it. */
-int CanSummonFromHand(int player, u16 id)
+/*
+ * Can the player summon the hand monster `cardId` now? Returns 0 for an empty slot, a card under Prohibition, a
+ * non-monster (type above CARD_TYPE_REPTILE), a ritual or fusion monster, and a Toon monster without the
+ * player's face-up Toon World. Then per card number:
+ *   1514-1519 (non-EDS keys): a Special Summon must be allowed, and a free monster zone (or banishCostFromField)
+ *     and CanPayBanishSummonCost;
+ *   Red-Eyes Black Metal Dragon, Harpie Lady Sisters, Metalzoa, Dark Sage: never;
+ *   Larvae Moth, Great Moth, Perfectly Ultimate Great Moth, Wall Shadow: a Special Summon must be allowed and
+ *     CanActivateEffectOfCard;
+ *   keys 1250 and 1350: their own hand and monster-count conditions;
+ *   Gate Guardian: a Special Summon, more than two tributable monsters and face-up Sanga, Kazejin and Suijin;
+ *   Valkyrion: CanSummonValkyrion; key 1257: CanSummonKey1257;
+ *   any other monster by level: 1-4 needs a free monster zone, 5-6 a tributable monster, 7 and up two.
+ * The result is a zero-extended halfword as the ROM callers consume it.
+ */
+int CanSummonFromHand(int player, u16 cardId)
 {
     u16 number;
-    int lvl;
-    if (id == 0)
+    int level;
+    if (cardId == 0)
         return 0;
-    if (IsCardProhibited(id) != 0)
+    if (IsCardProhibited(cardId) != 0)
         return 0;
-    if (CARD_TYPE_C(id) > 0x14)
+    if (CARD_TYPE_C(cardId) > CARD_TYPE_REPTILE)
         return 0;
-    if (GetCardSubtype(id) == 3)
+    if (GetCardKind(cardId) == CARD_KIND_RITUAL)
         return 0;
-    if (GetCardSubtype(id) == 2)
+    if (GetCardKind(cardId) == CARD_KIND_FUSION)
         return 0;
-    number = CARD_NUMBER_C(id);
+    number = CARD_NUMBER_C(cardId);
     if (IsToonMonster(number) != 0 && HasFaceUpToonWorld(player) == 0)
         return 0;
     switch (number) {
-    case 0x5EA:
-    case 0x5EB:
-    case 0x5EC:
-    case 0x5ED:
-    case 0x5EE:
-    case 0x5EF:
+    case CARD_1514:
+    case 1515:      /* keys 1514-1519: Special Summons that remove monsters from play (non-EDS) */
+    case 1516:
+    case CARD_1517:
+    case 1518:
+    case CARD_1519:
         if (CanSpecialSummon(player) != 0)
             goto summon_check;
         return 0;
-    case 0x2E5:
-    case 0x3E:
-    case 0x187:
-    case 0x4B2:
+    case CARD_RED_EYES_BLACK_METAL_DRAGON:
+    case CARD_HARPIE_LADY_SISTERS:
+    case CARD_METALZOA:
+    case CARD_DARK_SAGE:
         return 0;
-    case 0x37:
-    case 0x38:
-    case 0x42:
-    case 0x170:
+    case CARD_LARVAE_MOTH:
+    case CARD_GREAT_MOTH:
+    case CARD_PERFECTLY_ULTIMATE_GREAT_MOTH:
+    case CARD_WALL_SHADOW:
         if (CanSpecialSummon(player) == 0)
             return 0;
-        return (u16)(CanActivateEffectOfCard(player, id, 1));
-    case 0x4E2:
+        return (u16)(CanActivateEffectOfCard(player, cardId, 1));
+    case 1250:      /* key 1250, no EDS card */
         if (gDuelPlayers[player & 1].handCount == 1 && CountFreeMonsterZones(player) > 0)
             return 1;
         if (CountTributableMonsters(player, -1) > 1)
             return 1;
         return 0;
-    case 0x546:
+    case CARD_1350:
         if (CountMonsters(player) + 1 < CountMonsters(1 - player) && CountFreeMonsterZones(player) > 0)
             return 1;
         if (CountTributableMonsters(player, -1) > 0)
             return 1;
         return 0;
-    case 0x175:
+    case CARD_GATE_GUARDIAN:
         if (CanSpecialSummon(player) == 0)
             return 0;
         if (CountTributableMonsters(player, -1) <= 2)
             return 0;
-        if (CountFaceUpMonstersByNumber(player, 0x172) == 0)
+        if (CountFaceUpMonstersByNumber(player, CARD_SANGA_OF_THE_THUNDER) == 0)
             return 0;
-        if (CountFaceUpMonstersByNumber(player, 0x173) == 0)
+        if (CountFaceUpMonstersByNumber(player, CARD_KAZEJIN) == 0)
             return 0;
-        if (CountFaceUpMonstersByNumber(player, 0x174) == 0)
+        if (CountFaceUpMonstersByNumber(player, CARD_SUIJIN) == 0)
             return 0;
         return 1;
-    case 0x34D:
+    case CARD_VALKYRION_THE_MAGNA_WARRIOR:
         if (CanSpecialSummon(player) == 0)
             return 0;
         return (u16)(CanSummonValkyrion(player));
     summon_check:
-        if (CountFreeMonsterZones(player) == 0 && !gDuelPlayers[player & 1].flag0C_5)
+        if (CountFreeMonsterZones(player) == 0 && !gDuelPlayers[player & 1].banishCostFromField)
             return 0;
-        return (u16)(CanPayBanishSummonCost(player, id));
-    case 0x4E9:
+        return (u16)(CanPayBanishSummonCost(player, cardId));
+    case CARD_1257:
         return (u16)(CanSummonKey1257(player));
     default:
-        lvl = GetCardLevel(id);
-        /* Keep the initialized level at the original switch join; no instructions. */
-        __asm__("" : : "r"(lvl));
-        switch (lvl) {
+        level = GetCardLevel(cardId);
+        /* FAKEMATCH: keeps the initialized level live at the switch join, as in the ROM; emits no instruction. */
+        __asm__("" : : "r"(level));
+        switch (level) {
         case 5:
         case 6:
             if (CountTributableMonsters(player, -1) <= 0)
@@ -499,77 +569,101 @@ int CanSummonFromHand(int player, u16 id)
     }
 }
 
-/* Draw callback of the yes/no prompt: two card sprites (the action record's card, or a blank tile) that pulse when selected. */
+/*
+ * Draw callback of the summon position menu ('Select display position of card.'): two 32x32 card sprites
+ * at x = 0x40 and 0x90, y = textTop * 8 + 0x20 - (height + textTop - revealRow + 2) * 8. The left one shows the
+ * record's card upright (Attack Position); the right one is turned a quarter turn (angle 0x20 of 128, Defense
+ * Position) and shows the card back (OBJ tile 0x40) unless the record is already face up. The one that
+ * gTextBox.result selects (0 = left) pulses with gPulseScaleCurve; the other keeps scale 0x100.
+ */
 void SummonPositionMenu_Draw(void)
 {
-    int y = gTextBox.w0A * 8 + 0x20;
+    int y = gTextBox.y * 8 + 0x20;
     u32 yx1, yx2;
     u16 tile1, tile2;
-    u32 aff1, aff2;
-    y -= (gTextBox.h + gTextBox.w0A - gTextBox.b21 + 2) * 8;
+    u32 scaleAngle1, scaleAngle2;
+    y -= (gTextBox.height + gTextBox.y - gTextBox.revealRow + 2) * 8;
     yx1 = (y << 16) | 0x40;
-    tile1 = GetCardIconObjTile(gSummonAction.cardId) | 0x1000;
-    if (gTextBox.sel == 0)
-        aff1 = gPulseScaleCurve[(gMain.frameCounter & 0x1E) >> 1] << 16;
+    tile1 = GetCardIconObjTile(gSummonAction.cardId) | 0x1000;      /* OBJ palette 1 */
+    if (gTextBox.result == 0)
+        scaleAngle1 = gPulseScaleCurve[(gMain.frameCounter & 0x1E) >> 1] << 16;
     else
-        aff1 = 0x01000000;
-    AddAffineSprite(yx1, 0x80, tile1, aff1);
+        scaleAngle1 = 0x01000000;
+    AddAffineSprite(yx1, SPRITE_SHAPE_32x32, tile1, scaleAngle1);
     yx2 = (y << 16) | 0x90;
-    if (gSummonAction.f14)
+    if (gSummonAction.isFaceUp)
         tile2 = GetCardIconObjTile(gSummonAction.cardId) | 0x1000;
     else
-        tile2 = 0x40;
-    if (gTextBox.sel != 0)
-        aff2 = (gPulseScaleCurve[(gMain.frameCounter & 0x1E) >> 1] << 16) | 0x20;
+        tile2 = 0x40;                                               /* card back */
+    if (gTextBox.result != 0)
+        scaleAngle2 = (gPulseScaleCurve[(gMain.frameCounter & 0x1E) >> 1] << 16) | 0x20;
     else
-        aff2 = 0x01000020;
-    AddAffineSprite(yx2, 0x80, tile2, aff2);
+        scaleAngle2 = 0x01000020;
+    AddAffineSprite(yx2, SPRITE_SHAPE_32x32, tile2, scaleAngle2);
 }
-/* Key callback of a two-entry yes/no prompt: L/R toggle, A confirms; then a 60-tick flash before returning 1. */
+
+/*
+ * Input callback of the summon position menu: returns 1 when done. SELECT: Left or Right toggles
+ * result = 1 - result (SE_CURSOR), A plays SE_CONFIRM and enters CONFIRMED. CONFIRMED: a 60-frame flash on
+ * menuTimer, then DONE. DONE: returns 1.
+ */
 u16 SummonPositionMenu_HandleInput(void)
 {
-    struct Ui *u = &gTextBox;
-    u8 *st = &u->state;
-    int s = *st;
+    struct TextBox *box = &gTextBox;
+    u8 *state = &box->menuState;
+    int s = *state;
     unsigned short t = s; /* FAKEMATCH: the short copy keeps the state byte in r2 and `s + 1` in r2 */
+    /* Matching: the (&gTextBox)-> spelling below is kept; through `box` the code differs. */
     switch (t) {
-    case 1:
-        if ((&gTextBox)->timer <= 0x3B)
-            (&gTextBox)->timer++;
+    case TEXTBOX_MENU_STATE_CONFIRMED:
+        if ((&gTextBox)->menuTimer <= 0x3B)
+            (&gTextBox)->menuTimer++;
         else
-            *st = s + 1;
+            *state = s + 1;
         return 0;
-    case 2:
+    case TEXTBOX_MENU_STATE_DONE:
         return 1;
     default:
-        if (gMain.keys & 0x30) {
-            PlaySE(0);
-            (&gTextBox)->sel = 1 - (&gTextBox)->sel;
+        if (gMain.newKeys & (DPAD_LEFT | DPAD_RIGHT)) {
+            PlaySE(SE_CURSOR);
+            (&gTextBox)->result = 1 - (&gTextBox)->result;
         }
-        if (gMain.keys & 1) {
-            PlaySE(1);
-            (&gTextBox)->state = 1;
-            (&gTextBox)->timer = 0;
+        if (gMain.newKeys & A_BUTTON) {
+            PlaySE(SE_CONFIRM);
+            (&gTextBox)->menuState = TEXTBOX_MENU_STATE_CONFIRMED;
+            (&gTextBox)->menuTimer = 0;
         }
         return 0;
     }
 }
-/* Step machine of the action record at 0x0201CF90: step 0 announces it (messages 0xC4/0x80C4), 1 / 2 handle the zone
-   (messages 0x71 / 0x90), then the step counter is advanced. Returns 1 when done. */
+
+/*
+ * Step machine of the summon record of kind SUMMON_ACTION_NORMAL (Normal Summon or Set from the hand, with up
+ * to two Tributes); returns 1 when done.
+ *   0: Tribute the marked monsters (owners tribute1Player / tribute2Player), then push
+ *      DUEL_CMD_PLACE_MONSTER_FROM_HAND with arg4 = zone | hand index << 4 | isFaceUp << 8 | isDefense << 9;
+ *   1: move the cursor to the zone; a face-down Set ends here (step 10), a face-up summon pushes
+ *      DUEL_CMD_SHOW_CARD_ASSEMBLE;
+ *   2: if the zone still holds a card, push DUEL_CMD_SET_ZONE_STATUS_FLAGS with statusFlags, run the Mysterious
+ *      Puppeteer gain and the on-summon effects: Dragon Seeker, Senju of the Thousand Hands, Sonic Bird and
+ *      keys 1240, 1246 and 1332 queue a monster-kind RESPONSE_SUMMONED trigger; Total Defense Shogun changes
+ *      position; Boar Soldier and key 1413 are destroyed. Then the step advances.
+ */
 int ExecuteSummonAction(void)
 {
     switch (gSummonAction.step) {
     case 0: {
         u16 msg;
-        if (gSummonAction.f25)
-            TributeMonster(gSummonAction.f28, gSummonAction.f16);
-        if (gSummonAction.f26)
-            TributeMonster(gSummonAction.f29, gSummonAction.f19);
-        msg = gSummonAction.player ? 0x80C4 : 0xC4;
+        if (gSummonAction.hasTribute1)
+            TributeMonster(gSummonAction.tribute1Player, gSummonAction.tribute1Zone);
+        if (gSummonAction.hasTribute2)
+            TributeMonster(gSummonAction.tribute2Player, gSummonAction.tribute2Zone);
+        msg = gSummonAction.player ? DUEL_CMD_PLACE_MONSTER_FROM_HAND | DUEL_CMD_PLAYER
+                                   : DUEL_CMD_PLACE_MONSTER_FROM_HAND;
         {
             int id = gSummonAction.cardId;
             /* FAKEMATCH: preserve the initialized shifted field and shared mask. */
-            register u32 shifted asm("r0") = *(u16 *)&gSummonAction >> 6;
+            register u32 shifted asm("r0") = *(u16 *)&gSummonAction >> 6;    /* sourceIndex, bits 6-13 */
             u16 mask = 15;
             u32 packed = mask;
             asm("" : : "r"(mask));
@@ -577,57 +671,57 @@ int ExecuteSummonAction(void)
             packed <<= 4;
             {
                 u32 lower = mask;
-                asm("" : "+r"(lower));
-                lower &= gSummonAction.zone5;
+                asm("" : "+r"(lower)); /* FAKEMATCH: second use of the shared mask (see above) */
+                lower &= gSummonAction.zone;
                 mask = lower;
             }
             packed |= mask;
-            packed |= (gSummonAction.f14 | gSummonAction.f15 << 1) << 8;
+            packed |= (gSummonAction.isFaceUp | gSummonAction.isDefense << 1) << 8;
             DuelCmd_Push(msg, id, packed, 0);
         }
         gSummonAction.step++;
         return 0;
     }
     case 1:
-        DuelCursor_Select(gSummonAction.player, 0, gSummonAction.zone5);
-        if (!gSummonAction.f14) {
+        DuelCursor_Select(gSummonAction.player, DUEL_AREA_MONSTER, gSummonAction.zone);
+        if (!gSummonAction.isFaceUp) {
             gSummonAction.step = 10;
             return 0;
         }
-        DuelCmd_Push(0x71, gSummonAction.cardId, 1, 0);
+        DuelCmd_Push(DUEL_CMD_SHOW_CARD_ASSEMBLE, gSummonAction.cardId, 1, 0);
         gSummonAction.step++;
         return 0;
     case 2: {
         /* FAKEMATCH: keep the player extraction in its original two scratches. */
         register u32 playerBits asm("r1") = (u32)*(u8 *)&gSummonAction << 31;
         register u32 player asm("r3") = playerBits >> 31;
-        u32 zone = gSummonAction.zone5;
+        u32 zone = gSummonAction.zone;
         u16 msg;
         u32 a, t;
-        if ((*(u32 *)(player * 0xD64 + zone * 0x94 + (u32)gDuelZones) << 20) == 0)
+        if ((*(u32 *)(player * sizeof(struct DuelPlayer) + zone * sizeof(struct DuelZone) + (u32)gDuelZones) << 20) == 0)
             return 1;
-        msg = 0x90;
+        msg = DUEL_CMD_SET_ZONE_STATUS_FLAGS;
         if (player)
-            msg = 0x8090;
-        DuelCmd_Push(msg, zone, gSummonAction.h0C, 0);
+            msg = DUEL_CMD_SET_ZONE_STATUS_FLAGS | DUEL_CMD_PLAYER;
+        DuelCmd_Push(msg, zone, gSummonAction.statusFlags, 0);
         TriggerMysteriousPuppeteer(gSummonAction.player);
-        switch (*((gSummonAction.cardId & 0x7FF) + gCardIdToNumber)) {
-        case 0x1F3:
-        case 0x455:
-        case 0x462:
-        case 0x4D8:
-        case 0x4DE:
-        case 0x534:
+        switch (*((gSummonAction.cardId & CARD_ID_MASK) + gCardIdToNumber)) {
+        case CARD_DRAGON_SEEKER:
+        case CARD_SENJU_OF_THE_THOUSAND_HANDS:
+        case CARD_SONIC_BIRD:
+        case CARD_1240:
+        case CARD_1246:
+        case CARD_1332:
             a = gSummonAction.player << 31;
-            t = (gSummonAction.zone5 << 16) | 0x0A400000;
-            Chain_AddPending(a | t | gSummonAction.cardId, gSummonAction.player | (gSummonAction.zone5 << 8));
+            t = (gSummonAction.zone << 16) | SUMMONED_TRIGGER_BITS;
+            Chain_AddPending(a | t | gSummonAction.cardId, gSummonAction.player | (gSummonAction.zone << 8));
             break;
-        case 0x31C:
-            ChangeBattlePosition(gSummonAction.player, gSummonAction.zone5, 0, 0);
+        case CARD_TOTAL_DEFENSE_SHOGUN:
+            ChangeBattlePosition(gSummonAction.player, gSummonAction.zone, 0, 0);
             break;
-        case 0x45E:
-        case 0x585:
-            DestroyFieldCard(gSummonAction.player, gSummonAction.zone5, 1);
+        case CARD_BOAR_SOLDIER:
+        case 1413:      /* key 1413, no EDS card */
+            DestroyFieldCard(gSummonAction.player, gSummonAction.zone, 1);
             break;
         }
         gSummonAction.step++;
@@ -638,56 +732,70 @@ int ExecuteSummonAction(void)
     }
 }
 
-/* Step machine of the yes/no prompt for the action record at 0x0201CF90: step 0 asks (CPU decides with AiShouldSetMonster, the
-   human gets the prompt 0x207/0x30F with the callbacks SummonPositionMenu_Draw / SummonPositionMenu_HandleInput), 1 stores the answer in the record,
-   2 / 3 / 4 announce and run the card (see ExecuteSummonAction). Returns 1 when done. */
+/*
+ * Card number of a card ID through gCardIdToNumber with the table address held in r3, as ExecuteSummonActionAskPosition
+ * does (ExecuteSummonAction reads the table symbol directly).
+ */
 static inline u16 ActionBNumber(u16 id)
 {
-    u32 off = (id & 0x7FF) * 2;
+    u32 off = (id & CARD_ID_MASK) * 2;
     /* FAKEMATCH: this initialized table address uses the original r3 scratch. */
     register const u16 *base asm("r3") = gCardIdToNumber;
     off += (u32)base;
     return *(const u16 *)off;
 }
 
+/*
+ * Step machine of the summon record of kind SUMMON_ACTION_NORMAL_CHOOSE_POSITION (a Normal Summon granted by an
+ * effect, Attack or Defense chosen now); returns 1 when done.
+ *   0: the CPU decides with AiShouldSetMonster into gTextBox.result; the human gets 'Select display position of
+ *      card.' with the SummonPositionMenu_* callbacks;
+ *   1: isDefense = result and isFaceUp = !isDefense, except that the card is face up while key 1151 (Light of
+ *      Intervention) is active on either field;
+ *   2: Tribute and push DUEL_CMD_PLACE_MONSTER_FROM_HAND as ExecuteSummonAction's step 0 does (the Tributes
+ *      belong to the acting player);
+ *   3: move the cursor, push DUEL_CMD_SET_ZONE_STATUS_FLAGS, then a Set ends (step 10) or a face-up summon
+ *      pushes DUEL_CMD_SHOW_CARD_ASSEMBLE;
+ *   4: the Mysterious Puppeteer gain and the on-summon effects of ExecuteSummonAction's step 2.
+ */
 int ExecuteSummonActionAskPosition(void)
 {
     int step = gSummonAction.step;
-    struct ActRec *r = &gSummonAction;
+    struct SummonAction *action = &gSummonAction;
 
     switch (step) {
     case 0:
-        if (r->player) {
-            gTextBox.sel = AiShouldSetMonster(r->cardId, 0);
+        if (action->player) {
+            gTextBox.result = AiShouldSetMonster(action->cardId, 0);
         } else {
-            TextBoxOpen(0x207, 0x30F, 0xB, gStrSelectDisplayPosition);
-            TextBoxSetMenu(5, SummonPositionMenu_Draw, SummonPositionMenu_HandleInput);
+            TextBoxOpen(BOX_POSITION_POS, BOX_POSITION_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectDisplayPosition);
+            TextBoxSetMenu(TEXTBOX_MENU_CUSTOM, SummonPositionMenu_Draw, SummonPositionMenu_HandleInput);
         }
-        r->step++;
+        action->step++;
         return 0;
     case 1: {
-        u16 n;
-        gSummonAction.f15 = gTextBox.sel;
-        if (gSummonAction.f15)
-            gSummonAction.f14 = 0;
+        u16 lightOfIntervention;
+        gSummonAction.isDefense = gTextBox.result;
+        if (gSummonAction.isDefense)
+            gSummonAction.isFaceUp = 0;
         else
-            gSummonAction.f14 = 1;
-        n = 0x47F;
-        if (CountActiveCardsOnField(0, n) != 0 || CountActiveCardsOnField(1, n) != 0)
-            gSummonAction.f14 = 1;
-        goto next_global;
+            gSummonAction.isFaceUp = 1;
+        lightOfIntervention = CARD_LIGHT_OF_INTERVENTION;
+        if (CountActiveCardsOnField(0, lightOfIntervention) != 0 || CountActiveCardsOnField(1, lightOfIntervention) != 0)
+            gSummonAction.isFaceUp = 1;
+        goto next_step;
     }
     case 2: {
         u16 msg;
-        if (r->f25)
-            TributeMonster(r->player, r->f16);
-        if (r->f26)
-            TributeMonster(r->player, r->f19);
-        msg = r->player ? 0x80C4 : 0xC4;
+        if (action->hasTribute1)
+            TributeMonster(action->player, action->tribute1Zone);
+        if (action->hasTribute2)
+            TributeMonster(action->player, action->tribute2Zone);
+        msg = action->player ? DUEL_CMD_PLACE_MONSTER_FROM_HAND | DUEL_CMD_PLAYER : DUEL_CMD_PLACE_MONSTER_FROM_HAND;
         {
-            int id = r->cardId;
+            int id = action->cardId;
             /* FAKEMATCH: preserve the initialized shifted field and shared mask. */
-            register u32 shifted asm("r0") = *(u16 *)r >> 6;
+            register u32 shifted asm("r0") = *(u16 *)action >> 6;    /* sourceIndex, bits 6-13 */
             u16 mask = 15;
             u32 packed = mask;
             asm("" : : "r"(mask));
@@ -695,58 +803,58 @@ int ExecuteSummonActionAskPosition(void)
             packed <<= 4;
             {
                 u32 lower = mask;
-                asm("" : "+r"(lower));
-                lower &= r->zone5;
+                asm("" : "+r"(lower)); /* FAKEMATCH: second use of the shared mask (see above) */
+                lower &= action->zone;
                 mask = lower;
             }
             packed |= mask;
-            packed |= (r->f14 | r->f15 << 1) << 8;
+            packed |= (action->isFaceUp | action->isDefense << 1) << 8;
             DuelCmd_Push(msg, id, packed, 0);
         }
-        r->step++;
+        action->step++;
         return 0;
     }
     case 3: {
         /* FAKEMATCH: preserve an initialized pointer copy before the calls. */
-        register struct ActRec *copy asm("r5") = r;
-        struct ActRec *r2;
+        register struct SummonAction *copy asm("r5") = action;
+        struct SummonAction *record;
         u16 msg;
         asm("" : : "r"(copy));
-        r2 = copy;
-        DuelCursor_Select(r2->player, 0, r2->zone5);
-        msg = r2->player ? 0x8090 : 0x90;
-        DuelCmd_Push(msg, r2->zone5, r2->h0C, 0);
-        if (!r2->f14) {
-            r2->step = 10;
+        record = copy;
+        DuelCursor_Select(record->player, DUEL_AREA_MONSTER, record->zone);
+        msg = record->player ? DUEL_CMD_SET_ZONE_STATUS_FLAGS | DUEL_CMD_PLAYER : DUEL_CMD_SET_ZONE_STATUS_FLAGS;
+        DuelCmd_Push(msg, record->zone, record->statusFlags, 0);
+        if (!record->isFaceUp) {
+            record->step = 10;
             return 0;
         }
-        DuelCmd_Push(0x71, r->cardId, 1, 0);
-        r->step++;
+        DuelCmd_Push(DUEL_CMD_SHOW_CARD_ASSEMBLE, action->cardId, 1, 0);
+        action->step++;
         return 0;
     }
     case 4: {
         u32 a, t;
         TriggerMysteriousPuppeteer(gSummonAction.player);
         switch (ActionBNumber(gSummonAction.cardId)) {
-        case 0x1F3:
-        case 0x455:
-        case 0x462:
-        case 0x4D8:
-        case 0x4DE:
-        case 0x534:
+        case CARD_DRAGON_SEEKER:
+        case CARD_SENJU_OF_THE_THOUSAND_HANDS:
+        case CARD_SONIC_BIRD:
+        case CARD_1240:
+        case CARD_1246:
+        case CARD_1332:
             a = gSummonAction.player << 31;
-            t = (gSummonAction.zone5 << 16) | 0x0A400000;
-            Chain_AddPending(a | t | gSummonAction.cardId, gSummonAction.player | (gSummonAction.zone5 << 8));
+            t = (gSummonAction.zone << 16) | SUMMONED_TRIGGER_BITS;
+            Chain_AddPending(a | t | gSummonAction.cardId, gSummonAction.player | (gSummonAction.zone << 8));
             break;
-        case 0x31C:
-            ChangeBattlePosition(gSummonAction.player, gSummonAction.zone5, 0, 0);
+        case CARD_TOTAL_DEFENSE_SHOGUN:
+            ChangeBattlePosition(gSummonAction.player, gSummonAction.zone, 0, 0);
             break;
-        case 0x45E:
-        case 0x585:
-            DestroyFieldCard(gSummonAction.player, gSummonAction.zone5, 1);
+        case CARD_BOAR_SOLDIER:
+        case 1413:      /* key 1413, no EDS card */
+            DestroyFieldCard(gSummonAction.player, gSummonAction.zone, 1);
             break;
         }
-    next_global:
+    next_step:
         gSummonAction.step++;
         return 0;
     }
@@ -754,4 +862,3 @@ int ExecuteSummonActionAskPosition(void)
         return 1;
     }
 }
-

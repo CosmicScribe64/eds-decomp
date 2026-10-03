@@ -1,383 +1,544 @@
 #include "global.h"
+#include "gba.h"                    /* A_BUTTON, B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
+#include "util.h"                   /* Random, FormatStr, FormatInt */
+#include "sprite.h"                 /* AddSprite */
+#include "card_data.h"              /* gCardStats, gCardNames, gCardIdToNumber, CARD_ID_MASK */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* CARD_TYPE_*, SPELL_* */
+#include "constants/duel.h"         /* enum DuelArea, DuelPromptKind, ResponseEventKind */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_* */
+#include "constants/sound.h"        /* SE_* */
 
-struct Player { u8 unk0[2]; u8 handCount; u8 pad[0x684 - 3]; u32 hand[80]; u8 pad2[0xD64 - 0x684 - 0x140]; };
-extern struct Player gDuelPlayers[];
-extern const u32 gCardStats[];
-#define CARD_STATS(id) (*(gCardStats + ((id) & 0x7FF)))
-#define CARD_STATS_RAW(id) (*(gCardStats + (id)))
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-/* Menu block 0x0201AE60 */
-struct Ui {
-    u8 u0[8];
-    u16 x;      /* +8 */
-    u16 y;      /* +0xA */
-    u8 uC[2];
-    u16 h;      /* +0xE */
-    u8 u10[4];
-    u16 sel;    /* +0x14 */
-    u8 u16_[0x21 - 0x16];
-    u8 b21;
-    u8 state;   /* +0x22 */
-    u8 timer;   /* +0x23 */
+/*
+ * The end of a turn, the opponent's turn, the partner's requests in a Link Battle, and the hand-discard
+ * prompt (wiki/functions/duel-turn-end-c.md).
+ *
+ *  - DuelPhase_TurnEnd (duel step 7) removes the cards taken with Graverobber, shows the destroy countdowns of
+ *    the turn player's monsters, queues the turn-end duel commands and hands the turn over.
+ *  - DuelPhase_OpponentTurn (duel step 8) runs the CPU's turn (AiRunTurn) or, in a Link Battle, waits for the
+ *    partner while serving its requests, until LINKMSG_TURN_END arrives; the duel then goes back to step 2.
+ *  - DuelLink_Run* answer what the link partner asked this GBA to do: a Yes/No card question and the chainA,
+ *    chainB and resolve handlers of a card, run on the partner's chain entries mirrored to this side
+ *    (DuelLink_RunPartnerRequests picks the pending one).
+ *  - DuelPrompt_Discard and DuelPrompt_DiscardCost (prompt kinds PROMPT_DISCARD and PROMPT_DISCARD_COST) make a
+ *    player discard hand cards: the CPU picks them itself, the human picks with the text-box callbacks
+ *    DiscardPrompt_DrawRemaining and DiscardPrompt_HandleInput.
+ *  - CountDiscardableHandCards is dead code.
+ */
+
+/* ---- BEGIN pre-H0 subset of duel.h and sound.h ---- */
+/*
+ * The part of those headers this unit uses, with their names, types and bitfield containers (fields the
+ * unit does not use keep the header's names). include/duel.h and sound.h still hold the legacy headers until
+ * the header switch (H0, build/readability/HEADERS.md), and chain.h, duel_cmd.h, duel_link.h, duel_screen.h
+ * and battle.h include duel.h, so this block also defines duel.h's include guard. After H0, replace this block
+ * (BEGIN to END) with the include lines of duel.h and sound.h, in that order (checked: the unit compiles to
+ * the same assembly with the new headers).
+ */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty */
+    u32 owner:1;                    /* bit 12 */
+    u32 unk13:1;
+    u32 unk14:1;
+    u32 normalSummoned:1;           /* bit 15 */
+    u32 specialSummoned:1;          /* bit 16 */
+    u32 planted:1;                  /* bit 17 */
+    u32 graverobbed:1;              /* bit 18: taken with Graverobber; cleared when it leaves the field */
+    u32 unk19:13;
 };
-extern struct Ui gTextBox;
-/* Action list block 0x02017A40 (see duel_setup). */
-struct ActBlk {
-    u8 u0[0x3D6];
-    s16 effIdx;         /* +0x3D6 */
-    u32 fn3D8;
-    u8 u3DC[0x3E0 - 0x3DC];
-    u8 b3E0;
-    u8 b3E1;
-    u8 u3E2[0x3E4 - 0x3E2];
-    u8 b3E4;
-    u8 b3E5;
-    u8 u3E6[0x480 - 0x3E6];
-    u32 fn480;
-    u32 fn484;
-    u8 u488[0x4FC - 0x488];
-    u8 b4FC;
-    u8 count;           /* +0x4FD */
+
+struct DuelLoc {
+    u16 player:1;
+    u16 area:4;
+    u16 index:9;
+    u16 isDefense:1;
+    u16 isFaceUp:1;
+    u16 unk2;
 };
-extern struct ActBlk gChain;
-/* Byte views of the duel global 0x020192E0 and the link block 0x02017FB0 */
-struct MainKeys { u8 u0[6]; u16 keys; };
-extern struct MainKeys gMain;
-struct Cnt2 { u8 b0; u8 b1; };
-extern struct Cnt2 gDuelCtrl;
-u16 DuelLink_RunPartnerRequests(void);
-int DuelScreen_HandleInput(void);
-int AiRunTurn(void);
-void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
-void DuelLink_SendMessage(u16 msg, u16 a, u16 b, u16 c);
-u16 DuelLink_SendMessageData(u16 head, const void *src, int size);
-u16 DuelLink_RunCardPrompt(void);
-u16 DuelLink_RunRemoteChainB(void);
-u16 DuelLink_RunRemoteChainA(void);
-u16 DuelLink_RunRemoteResolve(void);
-int DuelLink_AnswerActivateQuery(void);
-int ChainListScreen_Run(void);
-struct DG3 {
-    u8 pad[0x1B12];
-    u8 b1B12;
-    u8 pad2[0x1B62 - 0x1B13];
-    u8 step;
+
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0 */
+    u8 isFaceUp:1;                  /* +0x06 bit 1 */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u16 destroyCountdown:4;         /* +0x06 bits 6-9: turns until the monster is destroyed */
+    u8 positionLocked:1;            /* +0x07 bit 2 */
+    u8 unk7_3:1;
+    u8 unk7_4:1;
+    u8 effectUnused:1;
+    u8 revivedByMonsterReborn:1;
+    u8 summonedFromGraveyard:1;
+    u8 levelCheckDone:1;            /* +0x08 bit 0 */
+    u8 unk8_1:7;
+    u8 unk9;
+    u16 links[32];                  /* +0x0A */
+    u16 linkKinds[32];              /* +0x4A */
+    u16 numLinks;                   /* +0x8A */
+    u8 unk8C_0:1;                   /* +0x8C */
+    u8 destroyAfterBattle:1;
+    u32 returnAfterBattle:1;
+    u8 cannotAttackNextTurn:1;
+    u8 cannotAttack:1;
+    u8 atkHalved:1;
+    u8 unk8C_6:2;
+    u8 unk8D[3];
+    u32 unk90_0:6;
+    u32 unk90_6:4;
+    u32 canActivate:1;
+    u8 isDisabled:1;
+    u32 unk91_4:1;
+    u32 declaredValue:5;
+    u32 unk92_2:14;
 };
-extern const u8 gStrDiscardFromHand[];
-int AiPickDiscard(void);
-int AiPickWeakestHandCard(struct Player *ps, int a);
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003 */
+    u8 graveCount;                  /* +0x004 */
+    u8 fusionCount;                 /* +0x005 */
+    u8 banishedCount;               /* +0x006 */
+    u8 deckOut:1;                   /* +0x007 */
+    u8 exodiaWin:1;
+    u8 destinyBoardWin:1;
+    u8 noNormalSummon:1;
+    u8 noSpecialSummon:1;
+    u8 positionChangeLocked:1;
+    u8 magicTrapLockTurns:2;
+    u8 noBattleDamage:1;            /* +0x008 */
+    u8 battleProtected:1;
+    u8 unk8_2:1;
+    u8 insectQueenWonBattle:1;
+    u8 normalSummonUsed:1;
+    u8 summonedThisTurn:1;
+    u8 extraBattlePhase:1;
+    u8 unk8_7:1;
+    u8 handRevealed:1;              /* +0x009 */
+    u8 skipStandbyPhase:1;
+    u8 skipDrawPhase:1;
+    u8 skipTurn:1;
+    u8 battlePhaseDone:1;
+    u8 magicTrapActivatedThisTurn:1;
+    u32 lockedZones:10;             /* +0x009 bit 6 .. +0x00A bit 7 */
+    u8 crushCardTurns:3;            /* +0x00B */
+    u8 monsterSentToGraveThisTurn:1;
+    u32 removedMask:5;              /* +0x00B bit 4 .. +0x00C bit 0 */
+    u8 delayedSummonCount:3;        /* +0x00C bits 1-3 */
+    u8 destroyedTriggerPending:1;
+    u8 banishCostFromField:1;
+    u8 unkC_6:2;
+    u8 unkD;
+    u16 lpPaid[11];                 /* +0x00E */
+    u16 attackableMask;             /* +0x024 */
+    u16 attackedMask;               /* +0x026 */
+    struct DuelZone zones[11];      /* +0x028 */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4 */
+};
+
+struct CardMenu {
+    u16 open:1;
+    u16 confirmed:1;
+    u16 command:4;
+    u16 slide:4;
+    u32 available:16;
+    u32 state:8;
+    u32 step:8;
+    u8 summonSeq:4;
+    u32 tributeSources:4;
+    u16 timer:7;
+    u16 player:1;
+    u32 area:7;
+    u32 index:8;
+    u32 placeZone:8;
+    u32 unk0A_1:15;
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B10 - 0x1ACC];
+    u16 turnCount;                  /* +0x1B10: ++ at the end of every turn */
+    u8 bgmOn:1;                     /* +0x1B12 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;
+    u8 linkError:1;
+    u8 result:2;
+    u8 unk1B13_0:1;
+    u8 unk1B13_1:7;
+    u16 unk1B14_0:1;                /* +0x1B14 */
+    u16 interruptActive:1;          /* +0x1B14 bit 1: the non-turn link player is acting */
+    u16 unk1B14_2:7;
+    u32 battleStage:8;
+    u16 battleStep:8;
+    u16 battleArg0:8;
+    u16 battleArg1:8;
+    u16 unk1B19_1:7;
+    u8 unk1B1A[2];
+    struct DuelCard battleCard;     /* +0x1B1C */
+    u8 phaseStep;                   /* +0x1B20: step of the current duel-step handler */
+    u8 phaseCounter;                /* +0x1B21: zone cursor / counter of the phase handlers */
+    u8 phaseSubStep;                /* +0x1B22 */
+    u8 phaseSubCounter;             /* +0x1B23 */
+    u8 unk1B24[2];
+    u8 endTurnAfterBattle:1;        /* +0x1B26 bit 0 */
+    u8 unk1B26_1:7;
+    u8 unk1B27;
+    u16 cardMenuCard;               /* +0x1B28 */
+    u16 summonTributes;             /* +0x1B2A */
+    struct CardMenu cardMenu;       /* +0x1B2C */
+    u8 unk1B38[0x1B50 - 0x1B38];
+    u8 promptLinked:1;              /* +0x1B50 bit 0 */
+    u8 promptActive:1;              /* +0x1B50 bit 1 */
+    u8 promptPlayer:1;              /* +0x1B50 bit 2 */
+    u8 unk1B50_3:1;
+    u16 promptKind:6;               /* +0x1B50 bits 4-9: enum DuelPromptKind */
+    u16 unk1B51_2:6;
+    u16 promptArgs[8];              /* +0x1B52: [0] argument, [1] value (DuelPrompt_Post) */
+    u8 promptStep;                  /* +0x1B62: step of the running prompt handler */
+    u8 unk1B63;
+    u16 promptResult;               /* +0x1B64 */
+    u8 unk1B66[0x1B78 - 0x1B66];
+};
+
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+
 int FindMagicInHand(int player);
 int FindTrapInHand(int player);
-int Random(void);
-void DuelScreen_ScrollToZone(int player, int a);
-void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
-void TextBoxSetMenu(u32 a, void (*b)(void), int (*c)(void));
-void DiscardPrompt_DrawRemaining(void);
-int DiscardPrompt_HandleInput(void);
-void TriggerForcedRequisition(int player, int a);
-void EventResponse_Request(int player, int kind, u32 arg);
-extern const u8 gStrAttackTargetZeroAtkFmt[], gStrKuribohDiscardFmt[], gStrAttackTargetSubstituteFmt[], gStrAttackTargetRedirectFmt[];
-extern const u8 gStrTurnsUntilDestroyedFmt[];
-extern const u8 gCardNames[];
-extern const u16 gCardIdToNumber[];
-extern const u16 gUnk_08623E66;
-extern const u16 gUnk_0862467A;
-void FormatStr(char *dst, const void *fmt, const void *name);
-struct Bits8 { u8 g0 : 1; u8 g1 : 1; u8 g2 : 1; u8 g3 : 5; u8 pad[4]; };
-struct T8 { u8 f0 : 1; u8 rest : 7; u8 pad[4]; };
-struct T16 { u16 lo : 8; u16 hi : 8; };
-struct EffEntry4 { u16 idx; u16 u2; u32 fn4; u8 pad[24 - 8]; };
-struct HandW { u32 lo : 17; u32 f17 : 1; u32 f18 : 1; u32 rest : 13; };
-struct DuelScreen { u8 unk0[0x82C]; u32 w82C; };
-extern struct DuelScreen gDuelScreen;
-struct LinkBlk;
-#define OFF(t, f) ((u32)&((t *)0)->f)
-struct LinkBlk {
-    u8 u0[0x306];
-    u8 b306;
-    u8 b307;
-    u32 f308_0 : 1;
-    u32 f308_1 : 1;
-    u32 f308_2 : 1;
-    u32 f308_3 : 1;
-    u32 f308_4 : 1;
-    u32 f308_5 : 1;
-    u32 f308_6 : 1;
-    u32 f308_7 : 25;
-    u8 u30C[0x450 - 0x30C];
-    u32 f450_0 : 1;
-    u32 f450_1 : 15;
-    u16 h452;
-    u16 h454;
-    u16 h456;
-    u16 h458;
-    u16 h45A;
-    u16 id45C;
-    u8 b45E;
-    u8 u45F[0x48D - 0x45F];
-    u8 step48D;
-    u8 step48E;
-    u8 step48F;
-};
-typedef char chk452[(OFF(struct LinkBlk, h452) == 0x452) ? 1 : -1];
-typedef char chk45C[(OFF(struct LinkBlk, id45C) == 0x45C) ? 1 : -1];
-extern struct LinkBlk gLinkState;
-struct EffEntry { u16 idx; u16 u2; u32 fn4; u8 u8_[0x10 - 8]; u32 fn10; u32 fn14; };
-extern struct EffEntry gCardEffects[];
-struct DuelSel {
-    u8 unk0[0x1B10];
-    u16 w1B10;      /* +0x1B10 */
-    u8 b1B12;       /* +0x1B12 */
-    u8 u1B13[0x1B20 - 0x1B13];
-    u8 step;        /* +0x1B20 */
-    u8 b1B21;       /* +0x1B21 */
-    u8 u1B22[0x1B54 - 0x1B22];
-    u16 w1B54;      /* +0x1B54 */
-};
-extern struct DuelSel gDuel;
-extern u8 gDuelZones[];      /* per-player zone block (0x94-byte entries) */
-extern struct Cnt2 gAiState;
-void ShowCardEffect(int player, u16 a);
-void DestroyFieldCard(int player, int idx, int a);
-void FormatInt(char *a, char *b, int n);
-int FindCardEffect(int id);
-int DuelCursor_PickTarget(u32 mask);
-void DiscardHandCard(int player, int idx, int a, int b);
-void DuelCursor_Select(u32 player, u32 a, u32 b);
-void AddSprite(u32 yx, u16 shapeSize, u16 attr2);
-void PlaySE(u16 se);
-u16 DiscardPrompt_TryDiscardSelected(u16 a, u16 b);
 
-struct S50Card { u32 id:12; u32 b12:6; u32 f18:1; u32 b19:13; };
-struct S50Zone {
-    struct S50Card card;    /* +0x00 */
-    u16 serial;             /* +0x04 */
-    u16 f6_0:1;
-    u16 f6_1:1;             /* +0x06 bit 1 */
-    u16 f6_2:4;
-    u16 cnt:4;              /* +0x06 bits 6..9 */
-    u16 f6_10:6;
-    u8 pad8[0x94 - 8];
-};
-struct S50Player {
-    u16 lp;
-    u8 handCount;
-    u8 pad3[0x28 - 3];
-    struct S50Zone zones[11];   /* +0x28 */
-    struct S50Card hand[80];    /* +0x684 */
-    u8 padx[0xD64 - 0x684 - 80 * 4];
-};
-struct S50Duel {
-    u32 unk0;
-    struct S50Player players[2];
-    u8 pad[0x1B10 - 4 - 2 * 0xD64];
-    u16 w1B10;
-    u8 f0:1;
-    u8 turn:1;
-    u8 f2:6;
-    u8 pad13[0x1B20 - 0x1B13];
-    u8 step;
-    u8 idx;
-};
-#define D50 (*(struct S50Duel *)&gDuel)
-#define P50 ((struct S50Player *)gDuelPlayers)
-/* Zone z of player p (0x0201930C = players[0].zones). The loops want the zone term first and the
- * found blocks the player term first (agbcc's multiply order follows the operand order). */
-#define ZONE50(p, z) ((struct S50Zone *)((z) * 0x94 + ((p) & 1) * 0xD64 + (u32)gDuelZones))
-#define ZONE50F(p, z) ((struct S50Zone *)(((p) & 1) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
+void PlaySE(u32 seId);
+/* ---- END pre-H0 subset ---- */
 
-static inline int S50Sub(u16 id)
+#include "duel_flow.h"              /* gDuelCtrl, enum TurnEndStep, DuelPhase_TurnEnd, DuelPhase_OpponentTurn */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_link.h"              /* gLinkState, DuelLink_*, LINKMSG_* */
+#include "duel_screen.h"            /* gDuelScreen, DuelScreen_ScrollToZone, DuelCursor_*, ChainListScreen_Run */
+#include "duel_actions.h"           /* ShowCardEffect, DestroyFieldCard, DiscardHandCard */
+#include "duel_prompt.h"            /* the DuelPrompt_Discard* and DiscardPrompt_* functions defined here */
+#include "effect.h"                 /* gCardEffects, FindCardEffect, TriggerForcedRequisition */
+#include "chain.h"                  /* gChain, EventResponse_Request */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "ai.h"                     /* gAiState, AiRunTurn, AiPickDiscard, AiPickWeakestHandCard */
+
+/* ---- ROM data used only here ---- */
+
+extern const char gStrTurnsUntilDestroyedFmt[];     /* "%d turn(s) remaining before '%s' is destroyed." */
+extern const char gStrAttackTargetZeroAtkFmt[];     /* Sanga/Kazejin/Suijin: "%s has been designated as the attack
+                                                     * target. Do you wish to ... reduce the attacking monster's ATK
+                                                     * to 0?" */
+extern const char gStrKuribohDiscardFmt[];          /* "You've suffered damage from battle. Do you wish to reduce the
+                                                     * damage to 0 by discarding %s?" */
+extern const char gStrAttackTargetSubstituteFmt[];  /* key 1243: "... select your opponent's monster to substitute as
+                                                     * the target?" */
+extern const char gStrAttackTargetRedirectFmt[];    /* key 1522: "... designate another monster as target?" */
+extern const u8 gStrDiscardFromHand[];              /* "Discard from your hand." */
+extern const u16 gUnk_0862467A;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
+extern const u16 gUnk_08623E66;                     /* = gCardNumberToId[CARD_KURIBOH]: Kuriboh's ID */
+
+/* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
+
+/*
+ * Zone `zone` of `player` as a sum of integers on the gDuelZones address, zone term first or player term first.
+ * Matching: the ROM adds the two products to the table address itself, and their order in the sum decides
+ * agbcc's multiply order; gDuelZones[p].zones[z] folds them differently.
+ */
+#define ZONE_ZP(player, zone)   ((struct DuelZone *)((zone) * 0x94 + ((player) & 1) * 0xD64 + (u32)gDuelZones))
+#define ZONE_PZ(player, zone)   ((struct DuelZone *)(((player) & 1) * 0xD64 + (zone) * 0x94 + (u32)gDuelZones))
+
+/*
+ * Matching: the flag byte at gLinkState +0x306 is read into a register and tested as the sign of the byte shifted
+ * left (lsl; blt) instead of masking the bitfield (LinkState.turnEndReceived, duelResultReceived,
+ * remoteDuelEnded). The byte is reached through a cast view so that the ROM's address form (the symbol and the
+ * offset 0x306 as two literals) results.
+ */
+struct LinkStateFlagBytes { u8 pad[0x306]; u8 flags306; };
+#define LINK_FLAGS_306                  (((struct LinkStateFlagBytes *)&gLinkState)->flags306)
+#define LINK_FLAG_TURN_END_RECEIVED     2
+#define LINK_FLAG_DUEL_RESULT_RECEIVED  3
+#define LINK_FLAG_REMOTE_DUEL_ENDED     5
+#define LINK_FLAG_IS_SET(flags, bit)    (((flags) << (31 - (bit))) < 0)
+
+/* Byte +2 of remoteEntries[0] (bit 0 = player). Matching: set with a plain byte OR; the bitfield assignment
+ * compiles to a mask and an or. */
+#define REMOTE_ENTRY0_BYTE2             (((u8 *)&gLinkState.remoteEntries[0])[2])
+
+/* The handler slots of gChain (u16 / u32 results, as Chain_Build and Chain_Resolve call them) and the rows of
+ * gCardEffects (int results) declare the same handlers with different return types; a slot is filled with a
+ * cast. */
+typedef u16 (*ChainHandlerFn)(struct ChainEntry *link, struct ChainEntry *chainedTo);
+typedef u32 (*ChainResolveFn)(struct ChainEntry *link, struct ChainEntry *chainedTo);
+
+/* AiRunTurn is tested as an int; the header's u16 return adds a narrowing. */
+int AiRunTurnInt(void) asm("AiRunTurn");
+
+/* The card number (gCardIdToNumber) and the name record (gCardNames) of a card ID, through the tables' constant
+ * addresses (the ROM loads the address as a literal instead of going through the symbol). */
+#define CARD_NUMBER_OF(id)  (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define CARD_NAME_OF(id)    ((const char *)0x0822C720 + ((id) << 6))
+
+/* gDuel.promptArgs[1] of a discard prompt (DuelPrompt_PostDiscard): bit 0 = only monsters may be discarded, bit 1 =
+ * the discard is forced by the opponent's effect. */
+#define DISCARD_FLAG_MONSTERS_ONLY  1
+#define DISCARD_FLAG_BY_OPPONENT    2
+
+/* gTextBox.menuTimer as the sub-step of DiscardPrompt_HandleInput. */
+enum DiscardInputStep {
+    DISCARD_INPUT_PICK = 0,         /* wait for a hand card to be discarded */
+    DISCARD_INPUT_CURSOR_BACK = 1,  /* put the cursor back on the hand */
+    DISCARD_INPUT_COUNT = 2         /* one card less to discard; done when none is left */
+};
+
+#define DISCARD_MARKER_ATTR2    0x431C      /* OBJ tile 0x31C, palette 4: one marker per card still to discard */
+
+#define TEXTBOX_XY(x, y)    ((x) | ((y) << 8))      /* pos / size word of TextBoxOpen: low byte x, high byte y */
+
+/*
+ * The card type of a card ID (gCardStats bits 20-24) in the two forms the ROM uses here: through the gCardStats
+ * symbol (pointer arithmetic, DiscardPrompt_TryDiscardSelected) and through its constant address.
+ */
+#define CARD_TYPE_OF_SYM(id)    CARD_STATS_TYPE(*(gCardStats + ((id) & CARD_ID_MASK)))
+static inline int GetCardType(u16 cardId)
 {
-    u32 st = ((const u32 *)0x08621DE0)[id & 0x7FF];
-    switch ((int)((st & 0x1F00000) >> 20)) {
-    case 21:
-    case 22:
-        return (st & 0xE0000) >> 17;
+    return (((const u32 *)0x08621DE0)[cardId & CARD_ID_MASK] & CARD_STATS_TYPE_MASK) >> CARD_STATS_TYPE_SHIFT;
+}
+
+/* Magic/Trap subtype (enum SpellSubtype) of a card ID, 0 for any other card. */
+static inline int GetSpellSubtype(u16 cardId)
+{
+    u32 stats = ((const u32 *)0x08621DE0)[cardId & CARD_ID_MASK];
+    switch ((int)((stats & CARD_STATS_TYPE_MASK) >> CARD_STATS_TYPE_SHIFT)) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+        return (stats & CARD_STATS_SUBTYPE_MASK) >> CARD_STATS_SUBTYPE_SHIFT;
     default:
         return 0;
     }
 }
 
-/* Duel step machine on 0x020192E0+0x1B20: 0/1 = turn player / opponent: play the first hand card
- * with bit 18 set (DiscardHandCard), else flip the first marked card in zones 5..10 (skipping face-up
- * field/equip/continuous spells, subtypes 2..4); 2 = text box for each monster zone whose counter
- * (+6 bits 6..9) is > 1; 3/4 = queue events 2/3 (+0x8000 for player 1); then link sync, return 1. */
+/* gDuel +0x1B14 with interruptActive in a u8 container (duel.h: u16). Matching: padded past 4 bytes so that it
+ * is read with ldrb. */
+struct DuelStateInterruptView {
+    u8 unk0:1;
+    u8 interruptActive:1;
+    u8 unk2:6;
+    u8 pad[4];
+};
+
+/*
+ * Duel step 7: the end of the turn (enum TurnEndStep; also gAiTurnPhases[5]). Steps 0 and 1 handle the turn
+ * player's, then the opponent's, cards taken with Graverobber (card bit 18), one card per call: the first such
+ * card in the hand is discarded (ShowCardEffect of Graverobber, DiscardHandCard); failing that, the first such
+ * card in the spell/trap zones 5-10 (other than a face-up Field, Equip or Continuous card, which stay) loses
+ * the bit and is destroyed. Step 1 skips the countdown messages on the CPU's turn. Step 2 shows, for each of
+ * the turn player's monsters with a destroy countdown above 1, 'N turn(s) remaining before ... is destroyed.'.
+ * Steps 3 and 4 queue DUEL_CMD_TURN_END and DUEL_CMD_SHOW_END_TURN_HAND. The last step resets the AI state
+ * before the CPU's turn (or tells the link partner the turn is over) and counts the turn. Returns 1 when the
+ * step is finished.
+ */
 int DuelPhase_TurnEnd(void)
 {
-    char buf[0x80];
-    int p = D50.turn;
+    char text[0x80];
+    int player = gDuel.turnPlayer;
     int i;
-    struct S50Player *ps;
-    struct S50Player *ps0; /* separate pointer per case: the ROM gives them different registers */
-    u8 n0;
-    u8 n2;
-    int op;
+    struct DuelPlayer *playersForOpponent;
+    struct DuelPlayer *playersForOwn; /* separate pointer per case: the ROM gives them different registers */
+    u8 ownHandCount;
+    u8 opponentHandCount;
+    int opponent;
 
-    switch (D50.step) {
-    case 0:
+    switch (gDuel.phaseStep) {
+    case TURN_END_STEP_GRAVEROBBED_OWN:
         i = 0;
-        ps0 = P50;
-        if (i < ps0[p & 1].handCount) {
-            u8 *hands = (u8 *)ps0->hand;
-            n0 = ps0[p & 1].handCount;
+        playersForOwn = gDuelPlayers;
+        if (i < playersForOwn[player & 1].handCount) {
+            struct DuelCard *hand = playersForOwn->hand;
+            ownHandCount = playersForOwn[player & 1].handCount;
             do {
-                struct S50Card c = *(struct S50Card *)((p & 1) * 0xD64 + (u32)hands + i * 4);
-                if (c.f18) {
-                    ShowCardEffect(p, gUnk_0862467A);
-                    DiscardHandCard(p, i, 0, 1);
+                /* Matching: the card is addressed as hand + player * 0xD64 + i * 4, not hand[i] of the player. */
+                struct DuelCard card = *(struct DuelCard *)((player & 1) * 0xD64 + (u32)hand + i * 4);
+                if (card.graverobbed) {
+                    ShowCardEffect(player, gUnk_0862467A);
+                    DiscardHandCard(player, i, 0, 1);
                     return 0;
                 }
                 i++;
-            } while (i < n0);
+            } while (i < ownHandCount);
         }
-        for (i = 5; i <= 10; i++) {
-            struct S50Zone *z = ZONE50(p, i);
-            struct S50Card c = z->card;
-            if (c.id != 0 && c.f18) {
+        for (i = ZONE_SPELL_0; i <= ZONE_FIELD; i++) {
+            struct DuelZone *z = ZONE_ZP(player, i);
+            struct DuelCard card = z->card;
+            if (card.id != 0 && card.graverobbed) {
                 int ok = 1;
-                if (z->f6_1) {
-                    switch (S50Sub(c.id)) {
-                    case 2:
-                    case 3:
-                    case 4:
+                if (z->isFaceUp) {
+                    switch (GetSpellSubtype(card.id)) {
+                    case SPELL_FIELD:
+                    case SPELL_EQUIP:
+                    case SPELL_CONTINUOUS:
                         ok = 0;
                     }
                 }
                 if (ok) {
-                    ZONE50F(p, i)->card.f18 = 0;
-                    ShowCardEffect(p, gUnk_0862467A);
-                    DestroyFieldCard(p, i, 0);
+                    ZONE_PZ(player, i)->card.graverobbed = 0;
+                    ShowCardEffect(player, gUnk_0862467A);
+                    DestroyFieldCard(player, i, 0);
                     return 0;
                 }
             }
         }
-        D50.step++;
+        gDuel.phaseStep++;
         return 0;
-    case 1:
+    case TURN_END_STEP_GRAVEROBBED_OPPONENT:
         i = 0;
-        ps = P50;
-        if (i < ps[(1 - p) & 1].handCount) {
-            u8 *hands;
-            /* FAKEMATCH: the first call takes this copy, the second recomputes 1 - p (as in the ROM) */
-            op = 1 - p;
-            hands = (u8 *)ps->hand;
-            n2 = ps[(1 - p) & 1].handCount;
+        playersForOpponent = gDuelPlayers;
+        if (i < playersForOpponent[(1 - player) & 1].handCount) {
+            struct DuelCard *hand;
+            /* FAKEMATCH: the first call takes this copy, the second recomputes 1 - player (as in the ROM). */
+            opponent = 1 - player;
+            hand = playersForOpponent->hand;
+            opponentHandCount = playersForOpponent[(1 - player) & 1].handCount;
             do {
-                struct S50Card c = *(struct S50Card *)((op & 1) * 0xD64 + (u32)hands + i * 4);
-                if (c.f18) {
-                    ShowCardEffect(op, gUnk_0862467A);
-                    DiscardHandCard(1 - p, i, 0, 1);
+                struct DuelCard card = *(struct DuelCard *)((opponent & 1) * 0xD64 + (u32)hand + i * 4);
+                if (card.graverobbed) {
+                    ShowCardEffect(opponent, gUnk_0862467A);
+                    DiscardHandCard(1 - player, i, 0, 1);
                     return 0;
                 }
                 i++;
-            } while (i < n2);
+            } while (i < opponentHandCount);
         }
-        for (i = 5; i <= 10; i++) {
-            struct S50Zone *z = ZONE50(1 - p, i);
-            struct S50Card c = z->card;
-            if (c.id != 0 && c.f18) {
+        for (i = ZONE_SPELL_0; i <= ZONE_FIELD; i++) {
+            struct DuelZone *z = ZONE_ZP(1 - player, i);
+            struct DuelCard card = z->card;
+            if (card.id != 0 && card.graverobbed) {
                 int ok = 1;
-                if (z->f6_1) {
-                    switch (S50Sub(c.id)) {
-                    case 2:
-                    case 3:
-                    case 4:
+                if (z->isFaceUp) {
+                    switch (GetSpellSubtype(card.id)) {
+                    case SPELL_FIELD:
+                    case SPELL_EQUIP:
+                    case SPELL_CONTINUOUS:
                         ok = 0;
                     }
                 }
                 if (ok) {
-                    ZONE50F(1 - p, i)->card.f18 = 0;
-                    ShowCardEffect(1 - p, gUnk_0862467A);
-                    DestroyFieldCard(1 - p, i, 0);
+                    ZONE_PZ(1 - player, i)->card.graverobbed = 0;
+                    ShowCardEffect(1 - player, gUnk_0862467A);
+                    DestroyFieldCard(1 - player, i, 0);
                     return 0;
                 }
             }
         }
-        if (p)
-            D50.step++;
-        D50.step++;
-        D50.idx = 0;
+        if (player)
+            gDuel.phaseStep++;
+        gDuel.phaseStep++;
+        gDuel.phaseCounter = 0;
         return 0;
-    case 2:
-        while (D50.idx <= 4) {
-            u8 n = D50.idx;
-            struct S50Zone *z = (struct S50Zone *)(n * 0x94 + p * 0xD64 + (u32)D50.players[0].zones);
-            struct S50Card c = z->card;
-            s16 id = c.id; /* FAKEMATCH: s16 adds loop insns so loop.c keeps movs #0x94 in the loop */
-            if (id != 0 && z->cnt > 1) {
+    case TURN_END_STEP_COUNTDOWN_MESSAGES:
+        while (gDuel.phaseCounter <= ZONE_MONSTER_4) {
+            u8 zone = gDuel.phaseCounter;
+            /* gDuel.players[0].zones addressed through gDuel (the other scans use gDuelZones). */
+            struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + player * 0xD64 + (u32)gDuel.players[0].zones);
+            struct DuelCard card = z->card;
+            s16 id = card.id; /* FAKEMATCH: s16 adds loop insns so loop.c keeps movs #0x94 in the loop */
+            if (id != 0 && z->destroyCountdown > 1) {
                 /* FAKEMATCH: integer table address; the gCardNames symbol shifts reload registers */
-                FormatStr(buf, gStrTurnsUntilDestroyedFmt, (const u8 *)0x0822C720 + id * 0x40);
-                FormatInt(buf, buf, z->cnt - 1);
-                TextBoxOpen(0x206, 0x712, 0xB, buf);
-                D50.idx++;
+                FormatStr(text, gStrTurnsUntilDestroyedFmt, CARD_NAME_OF(id));
+                FormatInt(text, text, z->destroyCountdown - 1);
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, text);
+                gDuel.phaseCounter++;
                 return 0;
             }
-            D50.idx = n + 1;
+            gDuel.phaseCounter = zone + 1;
         }
-        D50.step++;
+        gDuel.phaseStep++;
         return 0;
-    case 3:
-        DuelCmd_Push((D50.turn) ? 0x8002 : 2, 0, 0, 0);
-        D50.step++;
+    case TURN_END_STEP_CMD_TURN_END:
+        DuelCmd_Push(gDuel.turnPlayer ? DUEL_CMD_TURN_END | DUEL_CMD_PLAYER : DUEL_CMD_TURN_END, 0, 0, 0);
+        gDuel.phaseStep++;
         return 0;
-    case 4:
-        DuelCmd_Push((D50.turn) ? 0x8003 : 3, 0, 0, 0);
-        D50.step++;
+    case TURN_END_STEP_CMD_END_HAND:
+        DuelCmd_Push(gDuel.turnPlayer ? DUEL_CMD_SHOW_END_TURN_HAND | DUEL_CMD_PLAYER : DUEL_CMD_SHOW_END_TURN_HAND,
+                     0, 0, 0);
+        gDuel.phaseStep++;
         return 0;
     default:
-        if (!(gDuelCtrl.b1 & 1)) {
-            if (!D50.turn) {
-                gAiState.b0 = 0;
-                gAiState.b1 = 0;
+        /* Single player, the human's turn is over: reset the AI state for the CPU's turn that follows. */
+        if (!gDuelCtrl.isLinkDuel) {
+            if (!gDuel.turnPlayer) {
+                gAiState.turnPhase = 0;
+                gAiState.step = 0;
             }
         }
-        if (gDuelCtrl.b1 & 1)
-            DuelLink_SendMessage(0xF002, 0, 0, 0);
-        D50.w1B10++;
+        if (gDuelCtrl.isLinkDuel)
+            DuelLink_SendMessage(LINKMSG_TURN_END, 0, 0, 0);
+        gDuel.turnCount++;
         return 1;
     }
 }
-/* ROM table views at fixed addresses preserve the target lookup allocation. */
+
+/*
+ * Called by DuelLink_RunPartnerRequests: the Yes/No question about a card that the partner asked
+ * (LINKMSG_CARD_PROMPT; gLinkState.cardPromptStep is the step). Step 0 opens the question for the card's
+ * number: Sanga/Kazejin/Suijin 'reduce the attacking monster's ATK to 0?', Kuriboh 'reduce the damage to 0 by
+ * discarding Kuriboh?', key 1243 'select your opponent's monster to substitute as the target?', key 1522
+ * 'designate another monster as target?'. Step 1 stores gTextBox.result as the answer and returns 1 for those
+ * cards (0 for any other card, which would wait forever). Returns 1 when answered.
+ */
 u16 DuelLink_RunCardPrompt(void)
 {
-    char buf[0x100];
-    switch (gLinkState.h452) {
+    char text[0x100];
+    switch (gLinkState.cardPromptStep) {
     case 0:
-        switch (((const u16 *)0x08622AB4)[gLinkState.h454 & 0x7FF]) {
-        case 0x172:
-        case 0x173:
-        case 0x174:
-            FormatStr(buf, gStrAttackTargetZeroAtkFmt, ((const u8 *)0x0822C720) + (gLinkState.h454 << 6));
-            TextBoxOpen(0x204, 0xA14, 0xB, buf);
-            TextBoxSetMenu(1, 0, 0);
+        switch (CARD_NUMBER_OF(gLinkState.cardPromptCard)) {
+        case CARD_SANGA_OF_THE_THUNDER:
+        case CARD_KAZEJIN:
+        case CARD_SUIJIN:
+            FormatStr(text, gStrAttackTargetZeroAtkFmt, CARD_NAME_OF(gLinkState.cardPromptCard));
+            TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(20, 10), TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;
-        case 0x39:
-            FormatStr(buf, gStrKuribohDiscardFmt, ((const u8 *)0x0822C720) + (gUnk_08623E66 << 6));
-            TextBoxOpen(0x204, 0x915, 0xB, buf);
-            TextBoxSetMenu(1, 0, 0);
+        case CARD_KURIBOH:
+            FormatStr(text, gStrKuribohDiscardFmt, CARD_NAME_OF(gUnk_08623E66));
+            TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(21, 9), TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;
-        case 0x4DB:
-            FormatStr(buf, gStrAttackTargetSubstituteFmt, ((const u8 *)0x0822C720) + (gLinkState.h454 << 6));
-            TextBoxOpen(0x206, 0x713, 0xB, buf);
-            TextBoxSetMenu(1, 0, 0);
+        case CARD_1243:
+            FormatStr(text, gStrAttackTargetSubstituteFmt, CARD_NAME_OF(gLinkState.cardPromptCard));
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 7), TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;
-        case 0x5F2:
-            FormatStr(buf, gStrAttackTargetRedirectFmt, ((const u8 *)0x0822C720) + (gLinkState.h454 << 6));
-            TextBoxOpen(0x206, 0x713, 0xB, buf);
-            TextBoxSetMenu(1, 0, 0);
+        case CARD_1522:
+            FormatStr(text, gStrAttackTargetRedirectFmt, CARD_NAME_OF(gLinkState.cardPromptCard));
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 7), TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;
         }
-        gLinkState.h452++;
+        gLinkState.cardPromptStep++;
         return 0;
     case 1:
-        switch (((const u16 *)0x08622AB4)[gLinkState.h454 & 0x7FF]) {
-        case 0x172:
-        case 0x173:
-        case 0x174:
-        case 0x39:
-        case 0x4DB:
-        case 0x5F2:
-            gLinkState.h45A = gTextBox.sel;
+        switch (CARD_NUMBER_OF(gLinkState.cardPromptCard)) {
+        case CARD_SANGA_OF_THE_THUNDER:
+        case CARD_KAZEJIN:
+        case CARD_SUIJIN:
+        case CARD_KURIBOH:
+        case CARD_1243:
+        case CARD_1522:
+            gLinkState.cardPromptAnswer = gTextBox.result;
             return 1;
         }
         return 0;
@@ -386,23 +547,28 @@ u16 DuelLink_RunCardPrompt(void)
     }
 }
 
+/*
+ * Called by DuelLink_RunPartnerRequests: run the cost (chainA) handler of the card in remoteEntries[0] on the
+ * partner's chain entries (gLinkState.remoteChainAStep is the step). Step 0 looks the handler up; step 1 calls
+ * it until it returns nonzero. Returns 1 when finished, also when the card has no chainA handler.
+ */
 u16 DuelLink_RunRemoteChainA(void)
 {
-    struct LinkBlk *b = &gLinkState;
-    u8 *step = &b->step48D;
+    struct LinkState *link = &gLinkState;
+    u8 *step = &link->remoteChainAStep;
     switch (*step) {
     case 0:
-        gChain.effIdx = FindCardEffect(b->id45C);
-        if (gChain.effIdx < 0)
+        gChain.effectIndex = FindCardEffect(link->remoteEntries[0].card);
+        if (gChain.effectIndex < 0)
             return 1;
-        gChain.fn480 = gCardEffects[gChain.effIdx].fn10;
-        if (gChain.fn480 == 0)
+        gChain.chainA = (ChainHandlerFn)gCardEffects[gChain.effectIndex].chainA;
+        if (gChain.chainA == NULL)
             return 1;
-        ((u8 *)&gChain)[0x3E4] = 0;
+        gChain.costStep = 0;
         (*step)++;
         return 0;
     case 1:
-        if (((u16(*)(void *, void *))gChain.fn480)((u8 *)b + 0x45C, (u8 *)b + 0x470) == 0)
+        if (gChain.chainA(&link->remoteEntries[0], &link->remoteEntries[1]) == 0)
             return 0;
         (*step)++;
         return 0;
@@ -410,23 +576,25 @@ u16 DuelLink_RunRemoteChainA(void)
         return 1;
     }
 }
+
+/* Called by DuelLink_RunPartnerRequests: DuelLink_RunRemoteChainA for the target (chainB) handler. */
 u16 DuelLink_RunRemoteChainB(void)
 {
-    struct LinkBlk *b = &gLinkState;
-    u8 *step = &b->step48E;
+    struct LinkState *link = &gLinkState;
+    u8 *step = &link->remoteChainBStep;
     switch (*step) {
     case 0:
-        gChain.effIdx = FindCardEffect(b->id45C);
-        if (gChain.effIdx < 0)
+        gChain.effectIndex = FindCardEffect(link->remoteEntries[0].card);
+        if (gChain.effectIndex < 0)
             return 1;
-        gChain.fn484 = gCardEffects[gChain.effIdx].fn14;
-        if (gChain.fn484 == 0)
+        gChain.chainB = (ChainHandlerFn)gCardEffects[gChain.effectIndex].chainB;
+        if (gChain.chainB == NULL)
             return 1;
-        *(u8 *)((u8 *)&gChain + 0x3E5) = 0;
+        gChain.targetStep = 0;
         (*step)++;
         return 0;
     case 1:
-        if (((u16(*)(void *, void *))gChain.fn484)((u8 *)b + 0x45C, (u8 *)b + 0x470) == 0)
+        if (gChain.chainB(&link->remoteEntries[0], &link->remoteEntries[1]) == 0)
             return 0;
         (*step)++;
         return 0;
@@ -434,178 +602,179 @@ u16 DuelLink_RunRemoteChainB(void)
         return 1;
     }
 }
-/* Link copy of an effect source/target ref (0x14 bytes, at link block +0x45C and +0x470). */
-struct LinkRef {
-    u16 id;
-    u8 b2;              /* +0x02: bit 0 player (struct T8 view) */
-    u8 u3[3];
-    u16 pos;            /* +0x06: low byte player */
-    u16 w8;             /* +0x08: low byte player */
-    u8 uA[0x14 - 0xA];
-};
-#define LINK_REF(l, off) ((struct LinkRef *)((l) + (off)))
-#define LINK_REF_PLAYER(l, off) (((struct T8 *)&LINK_REF(l, off)->b2)->f0)
-/* Swaps the low-byte player of a packed halfword: 1 - player, high byte kept. */
-#define FLIP_LO_PLAYER(h) ((u8)(1 - (h)) | ((h) >> 8 << 8))
-/* Mirror both refs to the other side's point of view (player = 1 - player), then look up and start the
- * effect handler fn4 (step 0); call it with (ref, target or NULL) until it returns 0 (step 1). */
+
+/* Swap the low-byte player of a packed halfword: 1 - player, high byte kept. */
+#define FLIP_LO_PLAYER(h)   ((u8)(1 - (h)) | ((h) >> 8 << 8))
+
+/*
+ * Called by DuelLink_RunPartnerRequests: run the resolve handler of the card in remoteEntries[0]. Step 0 mirrors both
+ * remote entries to this GBA's point of view (player = 1 - player, also in the player byte of loc0 / loc1),
+ * looks up the handler and starts it with gChain.effectStep = EFFECT_STEP_START. Step 1 calls it (with
+ * remoteEntries[1] when remoteResolveMode bit 0 is set, else NULL) until it returns 0. Returns 1 when finished.
+ */
 u16 DuelLink_RunRemoteResolve(void)
 {
-    u8 *l = (u8 *)&gLinkState;
-    u8 *step = l + 0x48F;
+    struct LinkState *link = &gLinkState;
+    u8 *step = &link->remoteResolveStep;
     switch (*step) {
     case 0:
         /* FAKEMATCH: the u8 constant gives the minuend its own QImode register, as in the ROM */
-        { u8 v = LINK_REF_PLAYER(l, 0x45C); u8 one = 1; LINK_REF_PLAYER(l, 0x45C) = one - v; }
-        { u8 v = LINK_REF_PLAYER(l, 0x470); u8 one = 1; LINK_REF_PLAYER(l, 0x470) = one - v; }
-        { u16 *hp = &LINK_REF(l, 0x45C)->pos; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
-        { u16 *hp = &LINK_REF(l, 0x45C)->w8; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
-        { u16 *hp = &LINK_REF(l, 0x470)->pos; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
-        { u16 *hp = &LINK_REF(l, 0x470)->w8; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
-        gChain.effIdx = FindCardEffect(gLinkState.id45C);
-        if (gChain.effIdx < 0)
+        { u8 v = link->remoteEntries[0].player; u8 one = 1; link->remoteEntries[0].player = one - v; }
+        { u8 v = link->remoteEntries[1].player; u8 one = 1; link->remoteEntries[1].player = one - v; }
+        { u16 *hp = &link->remoteEntries[0].loc0; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &link->remoteEntries[0].loc1; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &link->remoteEntries[1].loc0; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        { u16 *hp = &link->remoteEntries[1].loc1; u16 h = *hp; *hp = FLIP_LO_PLAYER(h); }
+        gChain.effectIndex = FindCardEffect(gLinkState.remoteEntries[0].card);
+        if (gChain.effectIndex < 0)
             return 1;
-        gChain.fn3D8 = gCardEffects[gChain.effIdx].fn4;
-        if (gChain.fn3D8 == 0)
+        gChain.resolve = (ChainResolveFn)gCardEffects[gChain.effectIndex].resolve;
+        if (gChain.resolve == NULL)
             return 1;
-        gChain.b3E0 = 0x80;
-        gChain.b3E1 = 0;
+        gChain.effectStep = EFFECT_STEP_START;
+        gChain.effectSubStep = 0;
         (*step)++;
         return 0;
     case 1:
-        if (l[0x490] & 1)
-            gChain.b3E0 = ((u8(*)(void *, void *))gChain.fn3D8)(l + 0x45C, l + 0x470);
+        if (link->remoteResolveMode & 1)
+            gChain.effectStep = gChain.resolve(&link->remoteEntries[0], &link->remoteEntries[1]);
         else
-            gChain.b3E0 = ((u8(*)(void *, void *))gChain.fn3D8)(l + 0x45C, 0);
-        if (gChain.b3E0 == 0)
-            gLinkState.step48F++;
+            gChain.effectStep = gChain.resolve(&link->remoteEntries[0], NULL);
+        if (gChain.effectStep == 0)
+            gLinkState.remoteResolveStep++;
         return 0;
     default:
         return 1;
     }
 }
-#undef LINK_REF
-#undef LINK_REF_PLAYER
 #undef FLIP_LO_PLAYER
+
+/*
+ * Serve the first request the link partner has pending (one per call) and answer it; returns 1 while one is
+ * being handled, else 0. In priority order: a Yes/No card question, the chainA handler, the chainB handler,
+ * an 'activate?' query, the resolve handler, showing the chain list. Each pending flag is cleared when its
+ * handler finishes.
+ */
 u16 DuelLink_RunPartnerRequests(void)
 {
-    if (gLinkState.f450_0 && !((gLinkState.b306 << 26) < 0)) {
+    if (gLinkState.cardPromptPending && !LINK_FLAG_IS_SET(LINK_FLAGS_306, LINK_FLAG_REMOTE_DUEL_ENDED)) {
         if (DuelLink_RunCardPrompt() != 0) {
-            gLinkState.f450_0 = 0;
-            DuelLink_SendMessage(0xF058, gLinkState.h45A, gLinkState.h456, gLinkState.h458);
+            gLinkState.cardPromptPending = 0;
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT_ANSWER, gLinkState.cardPromptAnswer, gLinkState.cardPromptArg1,
+                                 gLinkState.cardPromptArg2);
         }
         return 1;
     }
-    if (gLinkState.f308_2) {
+    if (gLinkState.remoteChainAPending) {
         if (DuelLink_RunRemoteChainA() != 0) {
-            gLinkState.f308_2 = 0;
-            gLinkState.b45E |= 1;
-            DuelLink_SendMessageData(0xF092, &gLinkState.id45C, 0x14);
+            gLinkState.remoteChainAPending = 0;
+            REMOTE_ENTRY0_BYTE2 |= 1;
+            DuelLink_SendMessageData(LINKMSG_REMOTE_CHAIN_A_DONE, &gLinkState.remoteEntries[0], sizeof(struct ChainEntry));
         }
         return 1;
     }
-    if (gLinkState.f308_0) {
+    if (gLinkState.remoteChainBPending) {
         if (DuelLink_RunRemoteChainB() != 0) {
-            gLinkState.f308_0 = 0;
-            gLinkState.b45E |= 1;
-            DuelLink_SendMessageData(0xF082, &gLinkState.id45C, 0x14);
+            gLinkState.remoteChainBPending = 0;
+            REMOTE_ENTRY0_BYTE2 |= 1;
+            DuelLink_SendMessageData(LINKMSG_REMOTE_CHAIN_B_DONE, &gLinkState.remoteEntries[0], sizeof(struct ChainEntry));
         }
         return 1;
     }
-    if ((*(u16 *)&gLinkState.b306 & 0x420) == 0x400) {
+    if (gLinkState.activateQueryPending && !gLinkState.remoteDuelEnded) {
         if (DuelLink_AnswerActivateQuery() != 0)
-            ((struct Bits8 *)&gLinkState.b307)->g2 = 0;
+            gLinkState.activateQueryPending = 0;
         return 1;
     }
-    if (gLinkState.f308_4) {
+    if (gLinkState.remoteResolvePending) {
         if (DuelLink_RunRemoteResolve() != 0) {
-            gLinkState.f308_4 = 0;
-            DuelLink_SendMessage(0xF073, 0, 0, 0);
+            gLinkState.remoteResolvePending = 0;
+            DuelLink_SendMessage(LINKMSG_REMOTE_RESOLVE_DONE, 0, 0, 0);
         }
         return 1;
     }
-    if (gLinkState.f308_6) {
+    if (gLinkState.showChainListPending) {
         if (ChainListScreen_Run() != 0) {
-            gLinkState.f308_6 = 0;
-            DuelLink_SendMessage(0xF065, 0, 0, 0);
+            gLinkState.showChainListPending = 0;
+            DuelLink_SendMessage(LINKMSG_CHAIN_LIST_SHOWN, 0, 0, 0);
         }
         return 1;
     }
     return 0;
 }
-struct DG2 {
-    u8 pad[0x1B12];
-    u8 f0 : 1;
-    u8 f1 : 1;
-    u8 f2 : 6;
-    u8 pad2[0x1B20 - 0x1B13];
-    u8 step;
-    u8 b1B21;
-};
+
+/*
+ * Duel step 8: the opponent's turn. gDuel.turnPlayer is 1 for the whole turn. Single player: run AiRunTurn until
+ * it finishes. Link duel: the partner's result ends the duel (the next duel step is DUEL_STEP_RESULT); otherwise
+ * serve its requests, and while the non-turn player is interrupting ('Just a moment') let our player play on the
+ * field until B ends the interrupt (DUEL_CMD_SHOW_END_TURN_HAND, LINKMSG_INTERRUPT_END), or send
+ * LINKMSG_INTERRUPT_REQUEST when A is pressed. LINKMSG_TURN_END ends the turn. The turn then goes back to the
+ * human player at DUEL_STEP_TURN_START (the step is moved back by 6 here, not by DuelMainStep). Returns 1 only
+ * to move on to the result; 0 otherwise.
+ */
 int DuelPhase_OpponentTurn(void)
 {
-    struct Bits8 *q;
-    ((struct DG2 *)&gDuel)->f1 = 1;
-    if (gDuelCtrl.b1 & 1) {
-        u8 t = gLinkState.b306;
-        if ((t << 28) < 0) {
-            gDuelCtrl.b0++;
+    struct DuelStateInterruptView *view;
+
+    gDuel.turnPlayer = 1;
+    if (gDuelCtrl.isLinkDuel) {
+        u8 flags = LINK_FLAGS_306;
+        if (LINK_FLAG_IS_SET(flags, LINK_FLAG_DUEL_RESULT_RECEIVED)) {
+            gDuelCtrl.phase++;
             return 1;
         }
-        if ((t << 26) < 0)
+        if (LINK_FLAG_IS_SET(flags, LINK_FLAG_REMOTE_DUEL_ENDED))
             return 0;
         if (DuelLink_RunPartnerRequests() != 0)
             return 0;
-        q = (struct Bits8 *)((u8 *)&gDuel + 0x1B14);
-        if (q->g1) {
+        view = (struct DuelStateInterruptView *)((u8 *)&gDuel + 0x1B14);
+        if (view->interruptActive) {
             if (DuelScreen_HandleInput() != 0)
                 return 0;
-            if (gMain.keys & 2) {
-                q->g1 = 0;
-                DuelCmd_Push(3, 0, 0, 0);
-                DuelLink_SendMessage(0xF006, 0, 0, 0);
+            if (gMain.newKeys & B_BUTTON) {
+                view->interruptActive = 0;
+                DuelCmd_Push(DUEL_CMD_SHOW_END_TURN_HAND, 0, 0, 0);
+                DuelLink_SendMessage(LINKMSG_INTERRUPT_END, 0, 0, 0);
             }
-        } else if (gMain.keys & 1) {
-            DuelLink_SendMessage(0xF004, 0, 0, 0);
+        } else if (gMain.newKeys & A_BUTTON) {
+            DuelLink_SendMessage(LINKMSG_INTERRUPT_REQUEST, 0, 0, 0);
         }
         {
-            u8 t2 = gLinkState.b306;
-            if ((t2 << 29) >= 0)
+            u8 flagsNow = LINK_FLAGS_306;
+            if (!LINK_FLAG_IS_SET(flagsNow, LINK_FLAG_TURN_END_RECEIVED))
                 return 0;
             {
-                int m = -5;
-                m &= t2;
-                gLinkState.b306 = m;
+                int mask = -5;
+                mask &= flagsNow;
+                LINK_FLAGS_306 = mask;
             }
         }
-    } else if (AiRunTurn() == 0) {
+    } else if (AiRunTurnInt() == 0) {
         return 0;
     }
-    ((struct DG2 *)&gDuel)->f1 = 0;
-    gDuelCtrl.b0 -= 6;
-    ((struct DG2 *)&gDuel)->step = 0;
-    ((struct DG2 *)&gDuel)->b1B21 = 0;
+    gDuel.turnPlayer = 0;
+    gDuelCtrl.phase -= 6;
+    gDuel.phaseStep = 0;
+    gDuel.phaseCounter = 0;
     return 0;
 }
-static inline int W515Type(u16 id)
-{
-    return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20;
-}
-/* Count hand cards of `player` whose word has neither bit 17 nor bit 18; flag != 0 also requires
- * type <= 0x14. flag 0: just the hand count. */
-int CountDiscardableHandCards(int player, u16 flag)
+
+/* Number of the player's hand cards that are neither planted nor graverobbed (bits 17 and 18 of the card
+ * word); with monstersOnly also at most CARD_TYPE_REPTILE (a monster). monstersOnly 0 is the plain hand
+ * count. Dead code. */
+int CountDiscardableHandCards(int player, u16 monstersOnly)
 {
     int six;
     int i;
     int count = 0;
     int n;
 
-    if (flag == 0)
+    if (monstersOnly == 0)
         return gDuelPlayers[player & 1].handCount;
     n = gDuelPlayers[player & 1].handCount;
     for (i = 0; i < n; i++) {
-        u32 *p = &gDuelPlayers[player & 1].hand[i];
-        if ((u32)W515Type((*p << 20) >> 20) <= 20 || flag == 0) {
+        u32 *p = (u32 *)&gDuelPlayers[player & 1].hand[i];
+        if ((u32)GetCardType((*p << 20) >> 20) <= CARD_TYPE_REPTILE || monstersOnly == 0) {
             /* FAKEMATCH: the mask goes through a temporary (permuter find); it swaps count (r5) and the base (r6). */
             if (!(((u8 *)p)[2] & (six = 6)))
                 count++;
@@ -614,175 +783,196 @@ int CountDiscardableHandCards(int player, u16 flag)
     return count;
 }
 
-/* Returns 1 when player 0 hands over the selected card (a: type <= 0x14 only). */
-u16 DiscardPrompt_TryDiscardSelected(u16 a, u16 b)
+/*
+ * The discard prompt's hand pick for player 0: 1 if the hand is empty. Otherwise the cursor picks a hand card
+ * (DuelCursor_PickTarget(PICK_HAND)); the card at gDuelScreen.selIndex is discarded and 1 returned when it is
+ * allowed (any card, or a monster when monstersOnly) and neither planted nor graverobbed; else the error
+ * sound. Returns 0 while waiting.
+ */
+u16 DiscardPrompt_TryDiscardSelected(u16 monstersOnly, u16 byOpponent)
 {
-    struct Player *ps = gDuelPlayers;
-    if (ps->handCount == 0)
+    struct DuelPlayer *player = gDuelPlayers;
+    if (player->handCount == 0)
         return 1;
-    if (DuelCursor_PickTarget(1) != 0) {
-        u32 idx = gDuelScreen.w82C;
-        u32 off4 = idx << 2;
-        u32 *hp = gDuelPlayers->hand;
-        struct HandW *w = (struct HandW *)((u8 *)hp + off4);
-        if (a == 0 || CARD_TYPE((*(u32 *)w << 20) >> 20) <= 0x14) {
-            struct HandW v = *w;
+    if (DuelCursor_PickTarget(PICK_HAND) != 0) {
+        u32 index = gDuelScreen.selIndex;
+        u32 offset = index << 2;
+        struct DuelCard *hand = gDuelPlayers->hand;
+        struct DuelCard *card = (struct DuelCard *)((u8 *)hand + offset);
+        if (monstersOnly == 0 || CARD_TYPE_OF_SYM((*(u32 *)card << 20) >> 20) <= CARD_TYPE_REPTILE) {
+            struct DuelCard value = *card;
             int ok = 1;
-            if (v.f17)
+            if (value.planted)
                 ok = 0;
-            if (v.f18)
+            if (value.graverobbed)
                 ok = 0;
             if (ok != 0) {
-                DiscardHandCard(0, idx, b, 1);
+                DiscardHandCard(0, index, byOpponent, 1);
                 return 1;
             }
         }
-        PlaySE(3);
+        PlaySE(SE_ERROR);
     }
     return 0;
 }
 
-/* Draws the cursor sprites for the pending list entries. */
+/* Text-box draw callback of the discard prompt: one marker sprite per card still to discard, 10 pixels apart,
+ * at the text box's left edge two rows below its revealed top. */
 void DiscardPrompt_DrawRemaining(void)
 {
     int i;
     int x = (gTextBox.x + 1) << 3;
-    int y = (gTextBox.b21 - gTextBox.h + 2) << 3;
-    for (i = 0; i < gChain.count; i++) {
+    int y = (gTextBox.revealRow - gTextBox.height + 2) << 3;
+    for (i = 0; i < gChain.handPickCount; i++) {
         /* FAKEMATCH: no-op self-store (found by the permuter). It enlarges the loop body enough that loop.c
          * keeps y << 16 inside the loop, and the extra uses of the count address give that pointer r6 ahead of y. */
-        gChain.count += 0;
-        AddSprite((x + i * 10) | (y << 16), 0, 0x431C);
+        gChain.handPickCount += 0;
+        AddSprite((x + i * 10) | (y << 16), SPRITE_SHAPE_8x8, DISCARD_MARKER_ATTR2);
     }
 }
+
+/* Text-box input callback of the discard prompt; gTextBox.menuTimer is its sub-step. 0: pick a card until one is
+ * discarded. 1: put the cursor back on the hand. 2: one card less to discard; 1 when none is left. */
 int DiscardPrompt_HandleInput(void)
 {
-    struct Ui *u = &gTextBox;
-    u8 *st = &u->timer;
-    switch (*st) {
-    case 0:
-        if (DiscardPrompt_TryDiscardSelected(gDuel.w1B54 & 1, gDuel.w1B54 & 2)) {
-        inc:
-            (*st)++;
+    struct TextBox *box = &gTextBox;
+    u8 *state = &box->menuTimer;
+    switch (*state) {
+    case DISCARD_INPUT_PICK:
+        if (DiscardPrompt_TryDiscardSelected(gDuel.promptArgs[1] & DISCARD_FLAG_MONSTERS_ONLY, gDuel.promptArgs[1] & DISCARD_FLAG_BY_OPPONENT)) {
+        next:
+            (*state)++;
         }
         break;
-    case 1:
-        DuelCursor_Select(0, 0xB, 0);
-        goto inc;
-    case 2:
-        gChain.count--;
-        if (gChain.count == 0)
+    case DISCARD_INPUT_CURSOR_BACK:
+        DuelCursor_Select(0, DUEL_AREA_HAND, 0);
+        goto next;
+    case DISCARD_INPUT_COUNT:
+        gChain.handPickCount--;
+        if (gChain.handPickCount == 0)
             return 1;
-        *st = 0;
+        *state = 0;
         return 0;
     }
     return 0;
 }
-int DuelPrompt_Discard(int player, int b, int c, u16 d)
+
+/*
+ * Handler of PROMPT_DISCARD (enum DiscardPromptStep in gDuel.promptStep): make `player` discard `count` hand
+ * cards. The CPU discards one per call, picking AiPickDiscard, else the weakest card, else a Magic, a Trap, or
+ * (with more than 2 cards in player 1's hand) a random card, else the first. The human gets 'Discard from your
+ * hand.' with the callbacks above. Then Forced Requisition (the opponent discards too) and the discard trigger
+ * for the other player. monstersOnly is not read here: the input callback takes it from promptArgs[1]. Returns 1
+ * when finished.
+ */
+int DuelPrompt_Discard(int player, int count, int monstersOnly, u16 byOpponent)
 {
-    struct DG3 *e = (struct DG3 *)&gDuel;
-    u8 *step = &e->step;
+    struct DuelState *duel = &gDuel;
+    u8 *step = &duel->promptStep;
     switch (*step) {
-    case 0:
-        DuelScreen_ScrollToZone(player, 0xB);
-        gChain.b4FC = 0;
-        gChain.count = b;
+    case DISCARD_STEP_INIT:
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
+        gChain.handPickTimer = 0;
+        gChain.handPickCount = count;
         (*step)++;
         return 0;
-    case 1:
+    case DISCARD_STEP_PICK:
         if (player != 0) {
-            struct Player *ps;
-            int r;
-            if (gChain.count == 0)
-                goto inc;
-            ps = (struct Player *)((u8 *)e + 4);
-            if (ps[player & 1].handCount == 0)
-                goto inc;
-            r = AiPickDiscard();
-            if (r < 0) {
-                r = AiPickWeakestHandCard(ps, 1);
-                if (r < 0) {
-                    r = FindMagicInHand(1);
-                    if (r < 0) {
-                        r = FindTrapInHand(1);
-                        if (r < 0) {
-                            u8 *q = (u8 *)e + 0xD6A;
-                            if (*q > 2)
-                                r = Random() % *q;
+            struct DuelPlayer *players;
+            int pick;
+            if (gChain.handPickCount == 0)
+                goto next;
+            players = duel->players;
+            if (players[player & 1].handCount == 0)
+                goto next;
+            pick = AiPickDiscard();
+            if (pick < 0) {
+                pick = AiPickWeakestHandCard(players, 1);
+                if (pick < 0) {
+                    pick = FindMagicInHand(1);
+                    if (pick < 0) {
+                        pick = FindTrapInHand(1);
+                        if (pick < 0) {
+                            u8 *handCount = &duel->players[1].handCount;
+                            if (*handCount > 2)
+                                pick = Random() % *handCount;
                             else
-                                r = 0;
+                                pick = 0;
                         }
                     }
                 }
             }
-            DiscardHandCard(player, r, d, 1);
-            gChain.count--;
+            DiscardHandCard(player, pick, byOpponent, 1);
+            gChain.handPickCount--;
             return 0;
         }
-        DuelCursor_Select(0, 0xB, 0);
-        TextBoxOpen(0x209, 0x50E, 0xB, gStrDiscardFromHand);
-        TextBoxSetMenu(5, DiscardPrompt_DrawRemaining, DiscardPrompt_HandleInput);
-    inc:
-        ((struct DG3 *)&gDuel)->step++;
+        DuelCursor_Select(0, DUEL_AREA_HAND, 0);
+        TextBoxOpen(TEXTBOX_XY(9, 2), TEXTBOX_XY(14, 5), TEXTBOX_FLAGS_DEFAULT, gStrDiscardFromHand);
+        TextBoxSetMenu(TEXTBOX_MENU_CUSTOM, DiscardPrompt_DrawRemaining, (u16 (*)(void))DiscardPrompt_HandleInput);
+    next:
+        gDuel.promptStep++;
         return 0;
-    case 2:
-        TriggerForcedRequisition(player, b);
+    case DISCARD_STEP_FORCED_REQUISITION:
+        TriggerForcedRequisition(player, count);
         (*step)++;
         return 0;
-    case 3:
-        EventResponse_Request(1 - ((u32)(e->b1B12 << 30) >> 31), 0x1D, (u8)player);
+    case DISCARD_STEP_TRIGGER:
+        EventResponse_Request(1 - duel->turnPlayer, RESPONSE_DISCARDED, (u8)player);
         (*step)++;
         return 0;
     default:
         return 1;
     }
 }
-int DuelPrompt_DiscardCost(int player, int b, int c, u16 d)
+
+/* Handler of PROMPT_DISCARD_COST: the first two steps of DuelPrompt_Discard (same CPU picks and human prompt),
+ * without Forced Requisition and the discard trigger. Returns 1 when finished. */
+int DuelPrompt_DiscardCost(int player, int count, int monstersOnly, u16 byOpponent)
 {
-    struct DG3 *e = (struct DG3 *)&gDuel;
-    u8 *step = &e->step;
+    struct DuelState *duel = &gDuel;
+    u8 *step = &duel->promptStep;
     switch (*step) {
-    case 0:
-        DuelScreen_ScrollToZone(player, 0xB);
-        gChain.b4FC = 0;
-        gChain.count = b;
+    case DISCARD_STEP_INIT:
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
+        gChain.handPickTimer = 0;
+        gChain.handPickCount = count;
         (*step)++;
         return 0;
-    case 1:
+    case DISCARD_STEP_PICK:
         if (player != 0) {
-            struct Player *ps;
-            int r;
-            if (gChain.count == 0)
-                goto inc;
-            ps = (struct Player *)((u8 *)e + 4);
-            if (ps[player & 1].handCount == 0)
-                goto inc;
-            r = AiPickDiscard();
-            if (r < 0) {
-                r = AiPickWeakestHandCard(ps, 1);
-                if (r < 0) {
-                    r = FindMagicInHand(1);
-                    if (r < 0) {
-                        r = FindTrapInHand(1);
-                        if (r < 0) {
-                            u8 *q = (u8 *)e + 0xD6A;
-                            if (*q > 2)
-                                r = Random() % *q;
+            struct DuelPlayer *players;
+            int pick;
+            if (gChain.handPickCount == 0)
+                goto next;
+            players = duel->players;
+            if (players[player & 1].handCount == 0)
+                goto next;
+            pick = AiPickDiscard();
+            if (pick < 0) {
+                pick = AiPickWeakestHandCard(players, 1);
+                if (pick < 0) {
+                    pick = FindMagicInHand(1);
+                    if (pick < 0) {
+                        pick = FindTrapInHand(1);
+                        if (pick < 0) {
+                            u8 *handCount = &duel->players[1].handCount;
+                            if (*handCount > 2)
+                                pick = Random() % *handCount;
                             else
-                                r = 0;
+                                pick = 0;
                         }
                     }
                 }
             }
-            DiscardHandCard(player, r, d, 1);
-            gChain.count--;
+            DiscardHandCard(player, pick, byOpponent, 1);
+            gChain.handPickCount--;
             return 0;
         }
-        DuelCursor_Select(0, 0xB, 0);
-        TextBoxOpen(0x209, 0x50E, 0xB, gStrDiscardFromHand);
-        TextBoxSetMenu(5, DiscardPrompt_DrawRemaining, DiscardPrompt_HandleInput);
-    inc:
-        ((struct DG3 *)&gDuel)->step++;
+        DuelCursor_Select(0, DUEL_AREA_HAND, 0);
+        TextBoxOpen(TEXTBOX_XY(9, 2), TEXTBOX_XY(14, 5), TEXTBOX_FLAGS_DEFAULT, gStrDiscardFromHand);
+        TextBoxSetMenu(TEXTBOX_MENU_CUSTOM, DiscardPrompt_DrawRemaining, (u16 (*)(void))DiscardPrompt_HandleInput);
+    next:
+        gDuel.promptStep++;
         return 0;
     default:
         return 1;

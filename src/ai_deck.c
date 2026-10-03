@@ -1,252 +1,350 @@
+/*
+ * ai_deck (0x080590E4-0x0805A30B): the CPU opponent's deck and its main-phase spell logic
+ * (wiki/functions/ai-deck-c.md).
+ *
+ *  - RemoveAllDeckCardsByNumber, CountDeckCardsByNumber, RemoveOverLimitDeckCards and LoadOpponentDeck build the
+ *    CPU's deck (player 1) for a Campaign duel from gOpponentDecks[gMain.opponent].
+ *  - AiHasUsableSpellTrap, AiSelectUsableSpellTrap and AiTryPlaySpellTrap find a Magic or Trap card by card number,
+ *    either as a set card on the CPU's field or in its hand, and start playing it.
+ *  - AiActivateMonsterEffects, AiActivateExodiaTraps and AiPlaySpells are the sub-steps of the CPU's main phase
+ *    (AiStepMainPhase in ai_steps.c): monster effects, the Exodia deck's traps, and the big spell state machine.
+ *  - AiRiskSetCounter and AiIsOpponentThreatening are the conditions the spell logic asks.
+ *
+ * The CPU is always player 1; the human is player 0. "Card number" is the Konami number (constants/cards.h), "card
+ * ID" the alphabetical index of the card tables (card_data.h).
+ */
 #include "global.h"
-#include "gba.h"
+#include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_STATS_* extractors */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* CARD_TYPE_*, SPELL_FIELD, CARD_STATS_* layout */
+#include "constants/duel.h"         /* ZONE_*, CHAIN_KIND_* */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER, DUEL_CMD_POINT_AT_CARD, DUEL_CMD_FLIP_CARD */
+#include "constants/game.h"         /* DUELIST_RARE_HUNTER */
+#include "main.h"                   /* gMain.opponent */
 
-/* One card instance word (see duel_card_lists). */
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
+ * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
+ * guard so that chain.h, summon.h, duel_cmd.h and card_menu.h do not pull in the legacy header.
+ * After H0, replace the block (BEGIN to END) with #include "duel.h"
+ * (see build/readability/issues/ai_deck.md). */
+#define GUARD_DUEL_H
+
 struct DuelCard {
-    u32 id : 12;
-    u32 unk12 : 20;
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-struct DuelZone {
-    struct DuelCard card;   /* +0 */
-    u8 unk4[2];
-    u8 flags6;              /* +6 */
-    u8 unk7[0x94 - 7];
-};
-/* Per-player duel state, 0xD64 bytes, two of them at 0x020192E4 (see duel_card_lists). */
-struct DuelPlayer {
-    u16 w0;                         /* +0x000 */
-    u8 handCount;                   /* +0x002 */
-    u8 deckCount;                   /* +0x003 */
-    u8 count904;                    /* +0x004 */
-    u8 fusionCount;                 /* +0x005 */
-    u8 unk6[0x20];
-    u16 unk26;                      /* +0x026 */
-    struct DuelZone zones[11];      /* +0x028 */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] = top */
-    struct DuelCard list904[80];    /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard listB84[80];    /* +0xB84 */
-    u16 arrCC4[80];                 /* +0xCC4 */
-};
-extern struct DuelPlayer gDuelPlayers[2];
-#define PLAYER(p) (gDuelPlayers[(p) & 1])
-#define CARD_ID(word) (((struct DuelCard *)(word))->id)
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])   /* card ID to card number */
 
-/* Card reference record passed to the usability tests (see duel_response). */
-struct CardRef {
-    u16 id;             /* +0x00 */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 kind : 6;
-    u8 unk4_0 : 2;
-    u8 skip4 : 1;
-    u8 unk4_3 : 5;
-    u8 unk5;
-    u16 pos;
-    u16 unk8;
-    u8 numTargets : 3;  /* +0x0A bits 0-2 */
-    u8 unkA_3 : 5;
-    u8 unkB;
-    u16 targets[3];     /* +0x0C */
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 unk6_2:6;
+    u8 unk7[0x8D - 7];
+    u8 unk8D[3];                    /* +0x8D */
+    u32 unk90_0:6;                  /* +0x90 */
+    u32 unk90_6:4;
+    u32 canActivate:1;              /* +0x91 bit 2: a set card that may be activated */
+    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
+    u32 unk91_4:1;
+    u32 declaredValue:5;            /* +0x91 bits 5-9 */
+    u32 unk92_2:14;
 };
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003: entries in deck[] */
+    u8 graveCount;                  /* +0x004 */
+    u8 fusionCount;                 /* +0x005 */
+    u8 unk6[0x28 - 6];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
+    u8 unk904[0xD64 - 0x904];
+};
+
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 11 * 0x94];
+    u8 rest[0xD64 - 11 * 0x94];
 };
-extern struct DuelZonesPlayer gDuelZones[2];
-extern int CanActivateFieldCard(struct CardRef *ref, int player, int idx);
-extern u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out);
-extern int GetCardCopyLimit(u32 id);
-extern int CountActivatableSetCards(int a, u16 b);
-extern u32 Random(void);
-extern void Chain_AddPending(u32 a, int b);
+
+/* The card command menu (gDuel.cardMenu, 0xC bytes). */
+struct CardMenu {
+    u16 open:1;                     /* bit 0 */
+    u16 confirmed:1;                /* bit 1: a command was chosen (the AI sets it directly) */
+    u16 command:4;                  /* bits 2-5: enum CardMenuCommand */
+    u16 slide:4;                    /* bits 6-9 */
+    u32 available:16;               /* bits 10-25 */
+    u32 state:8;                    /* bits 26-33 */
+    u32 step:8;                     /* bits 34-41: step of the command handler; reset before confirming */
+    u8 summonSeq:4;                 /* bits 42-45 */
+    u32 tributeSources:4;           /* bits 46-49 */
+    u16 timer:7;                    /* bits 50-56 */
+    u16 player:1;                   /* bit 57: player of the confirmed command */
+    u32 area:7;                     /* bits 58-64 */
+    u32 index:8;                    /* bits 65-72: zone index (field) or hand index (hand) */
+    u32 placeZone:8;                /* bits 73-80 */
+    u32 unk0A_1:15;
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B28 - 0x1ACC];
+    u16 cardMenuCard;               /* +0x1B28: card ID under the cursor when the command was confirmed */
+    u16 summonTributes;             /* +0x1B2A */
+    struct CardMenu cardMenu;       /* +0x1B2C */
+    u8 unk1B38[0x1B78 - 0x1B38];
+};
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+extern struct DuelCard gDuelHandP1[80];         /* 0x0201A6CC = gDuelPlayers[1].hand */
+extern struct DuelCard gDuelDeckP1[80];         /* 0x0201A80C = gDuelPlayers[1].deck */
+
+u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out);
+void AddCardNumberToDeckTop(int player, u16 number);
+void RemoveAllDeckCardsByNumber(int player, u16 number);
+int CountDeckCardsByNumber(int player, u16 number);
+void RemoveOverLimitDeckCards(int player);
+int FindHandCardByNumber(int player, u16 cardNo);
+int CountHandMonsters(int player);
+int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone);
+int CountActiveCardsOnField(int player, u16 cardNo);
+int CountMonstersByNumber(int player, u16 cardNo);
+int CountMonsters(int player);
+int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
+int CountActivatableSetCards(int player, int cardNoWord);
+int GetFaceUpFieldMagicNumber(void);
+int CanPlaceSpellTrapCard(int player, u16 cardId);
+u32 IsSpecialSummonOnly(u16 cardId);
+u32 GetZoneCardAtk(u32 player, u32 slot);
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* the Ai* functions defined here, struct AiState, enum AiSpellState */
+#include "card_menu.h"              /* CardMenu_PlaySpellTrapFromHand */
+#include "chain.h"                  /* struct ChainEntry, Chain_AddPending, CanActivateFieldCard */
+#include "duel_actions.h"           /* FlipFieldCard */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_flow.h"              /* gDuelCtrl */
+#include "effect.h"                 /* CanActivateEffect */
+#include "effect_handlers.h"        /* EffectEquipTargetCheck, EffectBackupSoldierPrepare, ... */
+#include "save.h"                   /* GetCardCopyLimit */
+#include "util.h"                   /* MemClear16, Random */
+
+#define PLAYER(p) (gDuelPlayers[(p) & 1])
+
+/* The card word of a zone or pile entry as one u32. Matching: the ROM loads the whole word (ldr) and extracts the ID
+ * with shifts; a .id bitfield read would load only the halfword that holds it. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+/* Card ID (bits 0-11) of a card word: lsl #20; lsr #20. */
+#define CARD_ID(word) (((word) << 20) >> 20)
+
+/* Matching: this unit calls DuelCmd_Push with u16 operands (duel_cmd.h takes arg4 and arg6 as int); the narrowing of
+ * the packed operands is part of the ROM's code. */
+extern void DuelCmdPush16(u32 cmd, u16 arg2, u16 arg4, u32 arg6) asm("DuelCmd_Push");
+
+/* Matching: the card tables are read through integer-constant addresses (the ROM reloads the table address at every
+ * use; the symbol forms generate other literal pools). */
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])       /* gCardIdToNumber */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])        /* gCardStats */
+#define gCardNumberToIdAddr ((const u16 *)0x08623DF4)                           /* gCardNumberToId */
 
 /* Remove every card with card number `number` from the deck of `player`. */
 void RemoveAllDeckCardsByNumber(int player, u16 number)
 {
     int i;
-    struct DuelCard out;
+    struct DuelCard removed;
+
     for (i = 0; i < PLAYER(player).deckCount;) {
-        if (CARD_NUMBER(CARD_ID(&PLAYER(player).deck[i])) == number)
-            TakeDeckCardAt(player, i, &out);
+        if (CARD_NUMBER(CARD_ID(CARD_WORD(PLAYER(player).deck[i]))) == number)
+            TakeDeckCardAt(player, i, &removed);    /* the next card slides into slot i */
         else
             i++;
     }
 }
-
-extern const u16 gCardIdToNumber[];   /* card ID to card number (extern form: the table address is hoisted) */
 
 /* Number of cards in the deck of `player` with card number `number`. */
 int CountDeckCardsByNumber(int player, u16 number)
 {
-    int n = 0;
+    int count = 0;
     int i;
+
     for (i = 0; i < PLAYER(player).deckCount; i++) {
-        u32 id = CARD_ID(&PLAYER(player).deck[i]);
-        if (*((id & 0x7FF) + gCardIdToNumber) == number)
-            n++;
+        u32 id = CARD_ID(CARD_WORD(PLAYER(player).deck[i]));
+        /* Matching: index term first (not gCardIdToNumber[...]), which gives the ROM's register order. */
+        if (*((id & CARD_ID_MASK) + gCardIdToNumber) == number)
+            count++;
     }
-    return n;
+    return count;
 }
+
+/* Remove from the deck of `player` every card whose copy count is over its limit (GetCardCopyLimit, usually 3).
+ * All copies of such a card go, not only the excess ones. */
 void RemoveOverLimitDeckCards(int player)
 {
     int i = 0;
+
     while (i < PLAYER(player).deckCount) {
-        u16 id = CARD_ID(&PLAYER(player).deck[i]);
-        const u16 *p = (id & 0x7FF) + gCardIdToNumber;
-        if (CountDeckCardsByNumber(player, *p) > GetCardCopyLimit(id))
-            RemoveAllDeckCardsByNumber(player, *p);
+        u16 id = CARD_ID(CARD_WORD(PLAYER(player).deck[i]));
+        const u16 *number = (id & CARD_ID_MASK) + gCardIdToNumber;
+        if (CountDeckCardsByNumber(player, *number) > GetCardCopyLimit(id))
+            RemoveAllDeckCardsByNumber(player, *number);
         else
             i++;
     }
 } /* 0x080591BC size 0x9C */
-/* gMain (0x03000040), only the byte at +0x4870 is used here. */
-struct Main {
-    u8 pad0[0x4870];
-    u8 unk4870_0 : 1;
-    u8 mode : 5;                    /* +0x4870 bits 1-5: scenario / opponent index */
-    u8 unk4870_6 : 2;
-};
-extern struct Main gMain;
-struct Flags5EE8 { u32 w0; u32 w4; };
-extern struct Flags5EE8 gDuelCtrl;
-extern u8 gDuelDeckP1[];
-struct DeckList { const u16 *ids; u16 n; u16 pad; };
+
+/* gOpponentDecks[duelist] (0x0819DC6C) and gOpponentAltDecks (0x0819DD34): the card numbers of each CPU deck. */
 extern const struct DeckList gOpponentDecks[];
 extern const struct DeckList gOpponentAltDecks[];
-extern void MemClear16(void *dst, u32 size);
-extern void AddCardNumberToDeckTop(int a, int b);
-extern void RemoveOverLimitDeckCards(int player);
+/* Matching: the deck is cleared through the deck symbol with byte offsets: the deck (0x140 bytes), the fusion
+ * deck at +0x280 (0xA44 - 0x7C4) and the two counts at -0x7C1 (deckCount) and -0x7BF (fusionCount). */
+extern u8 gDuelDeckP1Bytes[] asm("gDuelDeckP1");
 
-/* Reset the two 0x140-byte work buffers and add the starting cards for scenario `mode` (hypothesis). */
-void LoadOpponentDeck(u16 alt)
+/*
+ * Build the CPU's deck for a Campaign duel: empty player 1's deck and fusion deck, add the card numbers of
+ * gOpponentDecks[gMain.opponent] (gOpponentAltDecks when `useAltDeck`; the one caller, Campaign_SetupDuel, always
+ * passes 0), then drop the cards over their copy limit. Rare Hunter, the Exodia deck, also gets AI_FLAG_EXODIA.
+ */
+void LoadOpponentDeck(u16 useAltDeck)
 {
     int k;
-    const struct DeckList *l;
-    int mode = gMain.mode;
+    const struct DeckList *list;
+    int opponent = gMain.opponent;
     int zero = 0;
-    MemClear16(gDuelDeckP1, 0x140);
-    MemClear16(gDuelDeckP1 + 0x280, 0x140);
-    gDuelDeckP1[-0x7C1] = zero;
-    gDuelDeckP1[-0x7BF] = zero;
-    if (mode != 0) {
-        if (mode == 0xB)
-            gDuelCtrl.w4 |= 0x200;
-        l = alt != 0 ? &gOpponentAltDecks[mode] : &gOpponentDecks[mode];
-        /* Preserve the reset-size register and put the list pointer in r6. */
+
+    MemClear16(gDuelDeckP1Bytes, 0x140);
+    MemClear16(gDuelDeckP1Bytes + 0x280, 0x140);
+    gDuelDeckP1Bytes[-0x7C1] = zero;    /* deckCount */
+    gDuelDeckP1Bytes[-0x7BF] = zero;    /* fusionCount */
+    if (opponent != 0) {
+        if (opponent == DUELIST_RARE_HUNTER)
+            gDuelCtrl.aiFlags |= AI_FLAG_EXODIA;
+        list = useAltDeck != 0 ? &gOpponentAltDecks[opponent] : &gOpponentDecks[opponent];
+        /* FAKEMATCH: keep r5 live so the list pointer lands in r6 as in the ROM. */
         __asm__ __volatile__("" : : : "r5");
-        for (k = 0; k < l->n; k++)
-            AddCardNumberToDeckTop(1, l->ids[k]);
+        for (k = 0; k < list->count; k++)
+            AddCardNumberToDeckTop(1, list->cards[k]);
     }
     RemoveOverLimitDeckCards(1);
 }
 
-/* 1 if a spell/trap zone (5-9) of player 1 holds card number `number` and it is usable as an effect source. */
+/*
+ * 1 if one of the CPU's spell/trap zones (5-9) holds a card with number `number` that it can activate now (a set
+ * card; CanActivateFieldCard decides).
+ */
 int AiHasUsableSpellTrap(u16 number)
 {
-    struct CardRef ref;
+    struct ChainEntry ref;
     int z;
-    for (z = 5; z <= 9; z++) {
+
+    for (z = ZONE_SPELL_0; z <= ZONE_SPELL_4; z++) {
         struct DuelZone *zone = &gDuelZones[1].zones[z];
-        if (CARD_ID(zone) != 0) {
+        if (CARD_ID(CARD_WORD(zone->card)) != 0) {
             ref.player = 1;
-            ref.kind = 0;
-            if (CARD_NUMBER(CARD_ID(zone)) == number && CanActivateFieldCard(&ref, 1, z) != 0)
+            ref.event = 0;
+            if (CARD_NUMBER(CARD_ID(CARD_WORD(zone->card))) == number && CanActivateFieldCard(&ref, 1, z) != 0)
                 return 1;
         }
     }
     return 0;
 }
-/* AI step state at 0x02015EF0 (hypothesis): state machine byte, loop counters, chosen zone / hand slot. */
-struct Sel5EF0 {
-    u8 pad0[6];
-    u8 state;                   /* +6: 0, 0x64, 0xC8 ... */
-    u8 b7;                      /* +7 */
-    u8 b8;                      /* +8 */
-    u8 pad9;
-    u8 bA;                      /* +0xA */
-    u8 bB;                      /* +0xB: zone / hand index */
-};
-extern struct Sel5EF0 gAiState;
 
-/* Like AiHasUsableSpellTrap, but fills the whole CardRef (id, zone) and on success records the zone in `gAiState`. */
+/*
+ * Like AiHasUsableSpellTrap, but fills the whole chain entry first and, on success, selects the zone: it stores
+ * the zone in gAiState.cardIndex and sets gAiState.subState to AI_SPELLS_CONFIRM_HAND_CARD, so AiPlaySpells (or
+ * AiActivateExodiaTraps) activates it next. 1 if a zone was selected.
+ */
 int AiSelectUsableSpellTrap(u16 number)
 {
-    struct CardRef ref;
+    struct ChainEntry ref;
     int z;
-    for (z = 5; z <= 9; z++) {
+
+    for (z = ZONE_SPELL_0; z <= ZONE_SPELL_4; z++) {
         struct DuelZone *zone = &gDuelZones[1].zones[z];
-        if (CARD_ID(zone) != 0) {
+        if (CARD_ID(CARD_WORD(zone->card)) != 0) {
             ref.player = 1;
-            ref.id = CARD_ID(zone);
+            ref.card = CARD_ID(CARD_WORD(zone->card));
             ref.zone = z;
-            ref.kind = 0;
-            if (CARD_NUMBER(CARD_ID(zone)) == number && CanActivateFieldCard(&ref, 1, z) != 0) {
-                gAiState.bB = z;
-                gAiState.state = 0xC8;
+            ref.event = 0;
+            if (CARD_NUMBER(CARD_ID(CARD_WORD(zone->card))) == number && CanActivateFieldCard(&ref, 1, z) != 0) {
+                gAiState.cardIndex = z;
+                gAiState.subState = AI_SPELLS_CONFIRM_HAND_CARD;
                 return 1;
             }
         }
     }
     return 0;
 }
-extern int FindHandCardByNumber(int player, u16 number);
-extern int GetFaceUpFieldMagicNumber(void);
-extern int EffectEquipTargetCheck(struct CardRef *ref, u16 pos);
-extern int CanActivateEffect(struct CardRef *ref, int a, int b);
-extern int CanPlaceSpellTrapCard(int player, u16 id);
-extern void DuelCmd_Push(u32 a, u16 b, u16 c, u32 d);
-#define gCardNumberToId ((const u16 *)0x08623DF4)   /* card number to card ID */
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 
-/* Converts a card number to a card ID: 0xFFFF means none, numbers up to 0x7CF map directly, and anything else uses the alternate entry + 1. */
-static inline u16 CardNumberToId(u16 n)
+/* Converts a card number to a card ID: 0xFFFF means none, numbers up to 1999 map directly, and an alternate-art
+ * number (2000 + n) uses the ID of n plus one. */
+static inline u16 CardNumberToId(u16 number)
 {
-    if (n == 0xFFFF)
+    if (number == 0xFFFF)
         return 0;
-    if (n <= 0x7CF)
-        return *((n & 0x7FF) + gCardNumberToId);
-    return *(((n - 0x7D0) & 0x7FF) + gCardNumberToId) + 1;
+    if (number <= CARD_NUMBER_ALT_ART - 1)
+        return *((number & CARD_ID_MASK) + gCardNumberToIdAddr);
+    return *(((number - CARD_NUMBER_ALT_ART) & CARD_ID_MASK) + gCardNumberToIdAddr) + 1;
 }
 
-/* Spell/trap subtype (stats bits 17-19) for Magic and Trap cards, else 0. */
+/* Spell/trap subtype (enum SpellSubtype) of a Magic or Trap card from its stats word, else 0. */
 static inline int GetSpellSubtype(u32 stats)
 {
-    switch ((int)((stats & 0x1F00000) >> 20)) {
-    case 0x15:
-    case 0x16:
-        return (stats & 0xE0000) >> 17;
+    switch ((int)CARD_STATS_TYPE(stats)) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+        return CARD_STATS_SUBTYPE(stats);
     default:
         return 0;
     }
 }
 
+/*
+ * The location DUEL_LOC(1, z) (player 1, zone z) in the high halfword of a word; the caller shifts it down by 16
+ * for EffectEquipTargetCheck's position argument.
+ * FAKEMATCH: the empty asm keeps the flag in the register that receives the OR, as in the ROM.
+ */
 static inline u32 PackRefPosition(int z)
 {
     u32 hi = (u32)z << 24;
     u32 flag = 0x10000;
-    /* Keep the flag as the destination of the packed-position OR. */
     __asm__ __volatile__("" : "+r"(flag) : "r"(hi));
     return flag | hi;
 }
 
-/* AI: tries to activate or set the spell or trap card with number `number` (hypothesis). Returns 1 if an action was queued. */
-/* Return the zero-extended halfword as a word, as the ROM callers consume it. */
+/* The word Chain_AddPending takes for a CPU activation: card ID | kind << 21 | player 1 << 31 (chain.h). */
+#define CPU_CHAIN_KIND(kind) (0x80000000 | ((kind) << 21))
+
+/*
+ * Try to play the Magic or Trap card `number` for the CPU, in this order:
+ *  1. when the human has an activatable set Magic Jammer, back off at random (3 times in 4 with AI_FLAG_CAREFUL, else 1 time in 8);
+ *  2. refuse a Field Magic that is already face up on the field;
+ *  3. an Equip Magic needs a monster zone it can equip to (EffectEquipTargetCheck);
+ *  4. a face-down copy in spell/trap zones 5-9 that may be activated: point at it, flip it and add it to the chain;
+ *  5. otherwise select the copy in the hand: gAiState.cardIndex = its hand index and the caller confirms it.
+ * Returns 1 when the card was activated or selected (the callers assume the hand path), 0 if it cannot be played.
+ */
 int AiTryPlaySpellTrap(u16 number)
 {
-    struct CardRef ref;
+    struct ChainEntry ref;
     int hand = FindHandCardByNumber(1, number);
     int ok;
     int z;
-    u32 a;
-    u32 t;
+    u32 zoneBits;
+    u32 cardWord;
     u32 pos;
-    u16 id0;
-    if (CountActivatableSetCards(0, 0x405) != 0) {
-        if (gDuelCtrl.w4 & 1) {
+    u16 cardId;
+
+    if (CountActivatableSetCards(0, CARD_MAGIC_JAMMER) != 0) {
+        if (gDuelCtrl.aiFlags & AI_FLAG_CAREFUL) {
             if ((Random() & 3) != 0)
                 return 0;
         } else {
@@ -254,26 +352,29 @@ int AiTryPlaySpellTrap(u16 number)
                 return 0;
         }
     }
-    id0 = CardNumberToId(number);
-    if (GetSpellSubtype(CARD_STATS(id0)) == 2 && GetFaceUpFieldMagicNumber() == number)
+    cardId = CardNumberToId(number);
+    if (GetSpellSubtype(CARD_STATS(cardId)) == SPELL_FIELD && GetFaceUpFieldMagicNumber() == number)
         return 0;
     switch (number) {
+    /* Equip Magic: Legendary Sword .. Cyber Shield (300-316), Mystical Moon, Malevolent Nuzzler .. Power of Kaishin
+     * (320-327), Magical Labyrinth, Salamandra, Bright Castle, Burning Spear, Gust Fan, Sword of Deep-Seated, Sword
+     * of Dragon's Soul, Graceful Dice and key 1420. */
     case 0x12C: case 0x12D: case 0x12E: case 0x12F: case 0x130: case 0x131: case 0x132: case 0x133:
     case 0x134: case 0x135: case 0x136: case 0x137: case 0x138: case 0x139: case 0x13A: case 0x13B:
     case 0x13C:
-    case 0x13E:
+    case CARD_MYSTICAL_MOON:
     case 0x140: case 0x141: case 0x142: case 0x143: case 0x144: case 0x145: case 0x146: case 0x147:
-    case 0x28B:
-    case 0x28D:
-    case 0x29B:
-    case 0x3F4: case 0x3F5:
-    case 0x412:
-    case 0x49E:
-    case 0x4B3:
-    case 0x58C:
+    case CARD_MAGICAL_LABYRINTH:
+    case CARD_SALAMANDRA:
+    case CARD_BRIGHT_CASTLE:
+    case CARD_BURNING_SPEAR: case CARD_GUST_FAN:
+    case CARD_SWORD_OF_DEEP_SEATED:
+    case CARD_SWORD_OF_DRAGONS_SOUL:
+    case CARD_GRACEFUL_DICE:
+    case CARD_1420:
         ok = 1;
-        for (z = 0; z <= 4; z++) {
-            ref.id = CardNumberToId(number);
+        for (z = ZONE_MONSTER_0; z <= ZONE_MONSTER_4; z++) {
+            ref.card = CardNumberToId(number);
             ref.player = 1;
             pos = PackRefPosition(z);
             if (EffectEquipTargetCheck(&ref, pos >> 16) != 0)
@@ -283,20 +384,22 @@ int AiTryPlaySpellTrap(u16 number)
             return 0;
         break;
     }
-    for (z = 5; z <= 9; z++) {
+    for (z = ZONE_SPELL_0; z <= ZONE_SPELL_4; z++) {
         struct DuelZone *zone;
+
         ref.player = 1;
-        ref.kind = 0;
+        ref.event = 0;
         ref.zone = z;
         zone = &gDuelZones[1].zones[z];
-        ref.id = CARD_ID(zone);
-        if (ref.id != 0 && (((u8 *)zone)[0x91] & 4) && !(zone->flags6 & 2) && CARD_NUMBER(ref.id) == number
+        ref.card = CARD_ID(CARD_WORD(zone->card));
+        /* Matching: byte tests of the zone flags (+0x91 bit 2 is canActivate; the header's u32 container reads a word). */
+        if (ref.card != 0 && (((u8 *)zone)[0x91] & 4) && !zone->isFaceUp && CARD_NUMBER(ref.card) == number
             && CanActivateEffect(&ref, 0, 0) != 0) {
-            DuelCmd_Push(0x8008, 1, (z & 0xFF) << 8, 0);
-            DuelCmd_Push(0x807F, z, 0, 0);
-            a = (z & 0x1F) << 16;
-            t = CARD_ID(zone) | 0x80200000;
-            Chain_AddPending(a | t, 0);
+            DuelCmdPush16(DUEL_CMD_PLAYER | DUEL_CMD_POINT_AT_CARD, 1, (z & 0xFF) << 8, 0);
+            DuelCmdPush16(DUEL_CMD_PLAYER | DUEL_CMD_FLIP_CARD, z, 0, 0);
+            zoneBits = (z & 0x1F) << 16;
+            cardWord = CARD_ID(CARD_WORD(zone->card)) | CPU_CHAIN_KIND(CHAIN_KIND_SPELL_TRAP);
+            Chain_AddPending(zoneBits | cardWord, 0);
             return 1;
         }
     }
@@ -305,96 +408,99 @@ int AiTryPlaySpellTrap(u16 number)
     if (hand < 0)
         return 0;
     ref.player = 1;
-    ref.kind = 0;
-    ref.id = CARD_ID(&gDuelPlayers[1].hand[hand]);
+    ref.event = 0;
+    ref.card = CARD_ID(CARD_WORD(gDuelPlayers[1].hand[hand]));
     if (CanActivateEffect(&ref, 0, 1) == 0)
         return 0;
-    gAiState.bB = hand;
-    gAiState.state = 0xC8;
+    gAiState.cardIndex = hand;
+    gAiState.subState = AI_SPELLS_CONFIRM_HAND_CARD;
     return 1;
 }
-/* Selection widget at 0x0201AE0C (see campaign), only the fields written here. */
-struct SelW {
-    u16 flag0 : 1;
-    u16 active : 1;
-    u16 cursor : 4;
-    u16 rows : 4;
-    u32 mask : 16;
-    u32 state : 8;
-    u32 unk34 : 8;
-    u32 unk42 : 8;
-    u16 timer : 7;
-    u16 player : 1;
-    u32 zone : 7;
-    u32 unk65 : 8;
-    u32 unk73 : 23;
-};
-extern u8 gDuelZonesP1[];
-#define SELW (*(struct SelW *)(gDuelZonesP1 + 0xD9C))
-#define SEL_CARD (*(u16 *)(gDuelZonesP1 + 0xD98))
-extern const u16 gAiEffectMonsters[];
-extern int CountMonsters(int player);
-extern int AiTryPlaySpellTrap(u16 number);
 
-/* AI: scan the four card numbers in `gAiEffectMonsters` against player 1's zones 0-4 (hypothesis). Returns 1 when an activation was queued. */
+/* Byte view of gDuelZonesP1 (0x0201A070 = gDuelPlayers[1].zones). Matching: the ROM reaches player 1's zones, and
+ * the card-menu words of gDuel (0x0201AE08 = gDuelZonesP1 + 0xD98), by byte offset from this one symbol. */
+extern u8 gDuelZonesP1Bytes[] asm("gDuelZonesP1");
+#define ZONE_STRIDE 0x94                /* sizeof(struct DuelZone) */
+/* The card word of the CPU's zone z, read through the byte view. */
+#define ZONE1_WORD(z) (*(u32 *)(gDuelZonesP1Bytes + (z) * ZONE_STRIDE))
+
+/* gDuel.cardMenu.step (u16 container, bits 2-9 at +0x1B30) and gDuel.cardMenu.index (u16 container, bits 1-8 at
+ * +0x1B34), the halfword views the ROM writes the CPU's menu confirmation with. */
+struct CardMenuStepView {
+    u16 lo:2;
+    u16 step:8;
+    u16 hi:6;
+};
+struct CardMenuIndexView {
+    u16 lo:1;
+    u16 index:8;
+    u16 hi:7;
+};
+
+/*
+ * The word of Chain_AddPending for the zone index z: zone << 16.
+ * FAKEMATCH: the 31 mask is built in its own register first, as the ROM does.
+ */
 static inline u32 PackZoneIndex(u32 z)
 {
     u8 mask = 31;
-    /* Keep the mask separate from the still-live zone index. */
     __asm__ __volatile__("" : : "r"(mask));
     return (z & mask) << 16;
 }
 
-struct SelectionCursor {
-    u16 lo : 2;
-    u16 cursor : 8;
-    u16 hi : 6;
-};
-struct SelectionSlot {
-    u16 lo : 1;
-    u16 slot : 8;
-    u16 hi : 7;
-};
+/* The CPU's table of monsters with an activated effect: gAiEffectMonsters (0x0819DD64): Time Wizard, Cannon
+ * Soldier, Relinquished, Barrel Dragon. */
+extern const u16 gAiEffectMonsters[];
 
+/*
+ * Activate the effect of a face-up monster of gAiEffectMonsters on the CPU's field (listIndex walks the table,
+ * zoneIndex the monster zones). Cannon Soldier first tries to play key 1245 (Scapegoat by behaviour, not an EDS
+ * card); if that selects a hand card it confirms it in the card menu and returns 0, so that the tokens arrive before
+ * the effect, else it needs a second monster to tribute. An activation points at the zone and adds the card to the
+ * chain. Returns 1 if an effect was activated, 0 if not (or while a hand card is being confirmed).
+ */
 int AiActivateMonsterEffects(void)
 {
-    struct CardRef ref;
+    struct ChainEntry ref;
     int ok;
     u16 id;
-    u32 a;
-    u32 t;
-    u16 cid;
-    u16 *p;
-    for (gAiState.b7 = 0; gAiState.b7 <= 3; gAiState.b7++) {
-        for (gAiState.b8 = 0; gAiState.b8 <= 4; gAiState.b8++) {
+    u32 zoneBits;
+    u32 cardWord;
+    u16 handCardId;
+    u16 *indexWord;
+
+    for (gAiState.listIndex = 0; gAiState.listIndex <= 3; gAiState.listIndex++) {
+        for (gAiState.zoneIndex = 0; gAiState.zoneIndex <= 4; gAiState.zoneIndex++) {
             ref.player = 1;
-            id = CARD_ID(gDuelZonesP1 + gAiState.b8 * 0x94);
-            ref.id = id;
-            ref.zone = gAiState.b8;
-            ref.kind = 0;
-            if (id != 0 && CARD_NUMBER(id) == gAiEffectMonsters[gAiState.b7]
-                && (((struct DuelZone *)(gDuelZonesP1 + gAiState.b8 * 0x94))->flags6 & 2) != 0
+            id = CARD_ID(ZONE1_WORD(gAiState.zoneIndex));
+            ref.card = id;
+            ref.zone = gAiState.zoneIndex;
+            ref.event = 0;
+            if (id != 0 && CARD_NUMBER(id) == gAiEffectMonsters[gAiState.listIndex]
+                && (((struct DuelZone *)(gDuelZonesP1Bytes + gAiState.zoneIndex * ZONE_STRIDE))->isFaceUp) != 0
                 && CanActivateEffect(&ref, 0, 0) != 0) {
                 ok = 1;
-                if (gAiEffectMonsters[gAiState.b7] == 0x1FF) {
-                    if ((u16)AiTryPlaySpellTrap(0x4DD) != 0) {
-                        ((struct SelectionCursor *)(gDuelZonesP1 + 0xDA0))->cursor = 0;
-                        cid = CARD_ID(&gDuelPlayers[1].hand[gAiState.bB]);
-                        *(u16 *)(gDuelZonesP1 + 0xD98) = cid;
-                        *(u8 *)(gDuelZonesP1 + 0xDA3) |= 2;
-                        p = (u16 *)(gDuelZonesP1 + 0xDA4);
-                        ((struct SelectionSlot *)p)->slot = gAiState.bB;
-                        *(u8 *)(gDuelZonesP1 + 0xD9C) |= 2;
+                if (gAiEffectMonsters[gAiState.listIndex] == CARD_CANNON_SOLDIER) {
+                    if ((u16)AiTryPlaySpellTrap(CARD_1245) != 0) {
+                        /* Confirm hand card cardIndex in the card menu: step = 0, cardMenuCard, player = 1,
+                         * index = cardIndex, confirmed = 1. */
+                        ((struct CardMenuStepView *)(gDuelZonesP1Bytes + 0xDA0))->step = 0;
+                        handCardId = CARD_ID(CARD_WORD(gDuelPlayers[1].hand[gAiState.cardIndex]));
+                        *(u16 *)(gDuelZonesP1Bytes + 0xD98) = handCardId;
+                        *(u8 *)(gDuelZonesP1Bytes + 0xDA3) |= 2;
+                        indexWord = (u16 *)(gDuelZonesP1Bytes + 0xDA4);
+                        ((struct CardMenuIndexView *)indexWord)->index = gAiState.cardIndex;
+                        *(u8 *)(gDuelZonesP1Bytes + 0xD9C) |= 2;
                         return 0;
                     }
                     if (CountMonsters(1) <= 1)
                         ok = 0;
                 }
                 if (ok != 0) {
-                    DuelCmd_Push(0x8008, 1, gAiState.b8 << 8, 0);
-                    a = PackZoneIndex(gAiState.b8);
-                    t = CARD_ID(gDuelZonesP1 + gAiState.b8 * 0x94) | 0x80400000;
-                    Chain_AddPending(a | t, 0);
+                    DuelCmdPush16(DUEL_CMD_PLAYER | DUEL_CMD_POINT_AT_CARD, 1, gAiState.zoneIndex << 8, 0);
+                    zoneBits = PackZoneIndex(gAiState.zoneIndex);
+                    cardWord = CARD_ID(ZONE1_WORD(gAiState.zoneIndex)) | CPU_CHAIN_KIND(CHAIN_KIND_MONSTER);
+                    Chain_AddPending(zoneBits | cardWord, 0);
                     return 1;
                 }
             }
@@ -402,52 +508,68 @@ int AiActivateMonsterEffects(void)
     }
     return 0;
 }
-extern u8 gDuelZonesP1[];
-#define Z1(z) ((struct DuelZone *)((u32)gDuelZonesP1 + (z) * 0x94))
-extern int EffectBackupSoldierPrepare(struct CardRef *ref, int a, int b);
-extern int AiCountExodiaInGraveyard(void);
-extern void FlipFieldCard(int player, int zone, int c);
 
-/* AI step machine for a special summon combo (hypothesis): state 0 waits for a flag, 0x64 checks cards 0x5A7 / 0x47B, 0xC8 acts on the zone. Returns 1 when the step is finished without action. */
+#define ZONE1(z) ((struct DuelZone *)((u32)gDuelZonesP1Bytes + (z) * ZONE_STRIDE))
+
+/* Matching: the ROM calls this prepare handler with the three arguments of the prepare slot (r1 = r2 = 0); the
+ * definition (effect_handlers.h) takes only the link. */
+extern int EffectBackupSoldierPrepare3(struct ChainEntry *card, int chainLink, int fromHand)
+    asm("EffectBackupSoldierPrepare");
+
+/*
+ * Step machine of the Exodia deck's traps (Rare Hunter), on gAiState.subState:
+ *   AI_SPELLS_START           with AI_FLAG_EXODIA go to AI_SPELLS_EXODIA_CLEAR, else the step is done;
+ *   AI_SPELLS_EXODIA_CLEAR    select a usable set key 1447 (a draw trap, not in EDS) or, if Backup Soldier can be
+ *                             played and an Exodia piece is in the graveyard, a usable set Backup Soldier;
+ *   AI_SPELLS_CONFIRM_HAND_CARD  flip the selected zone if it is face down, add it to the chain and restart the main
+ *                             phase.
+ * Returns 1 when there is nothing (more) to do, 0 while it is acting.
+ */
 int AiActivateExodiaTraps(void)
 {
-    struct CardRef ref;
-    switch (gAiState.state) {
-    case 0:
-        if (gDuelCtrl.w4 & 0x200) {
-            gAiState.state = 0x64;
+    struct ChainEntry ref;
+
+    switch (gAiState.subState) {
+    case AI_SPELLS_START:
+        if (gDuelCtrl.aiFlags & AI_FLAG_EXODIA) {
+            gAiState.subState = AI_SPELLS_EXODIA_CLEAR;
             return 0;
         }
         break;
-    case 0x64:
-        if ((u16)AiSelectUsableSpellTrap(0x5A7) != 0)
+    case AI_SPELLS_EXODIA_CLEAR:
+        if ((u16)AiSelectUsableSpellTrap(CARD_1447) != 0)
             return 0;
         ref.player = 1;
-        if (EffectBackupSoldierPrepare(&ref, 0, 0) != 0 && AiCountExodiaInGraveyard() > 0 && (u16)AiSelectUsableSpellTrap(0x47B) != 0)
+        if (EffectBackupSoldierPrepare3(&ref, 0, 0) != 0 && AiCountExodiaInGraveyard() > 0
+            && (u16)AiSelectUsableSpellTrap(CARD_BACKUP_SOLDIER) != 0)
             return 0;
         break;
-    case 0xC8: {
-        u8 z = gAiState.bB;
-        u32 a;
-        u32 t;
-        if (!(Z1(z)->flags6 & 2))
-            FlipFieldCard(1, z, 0);
-        z = gAiState.bB;
-        a = PackZoneIndex(z);
-        t = CARD_ID(Z1(z)) | 0x80200000;
-        Chain_AddPending(a | t, 0);
-        gAiState.bA = 0;
+    case AI_SPELLS_CONFIRM_HAND_CARD: {
+        u8 zone = gAiState.cardIndex;
+        u32 zoneBits;
+        u32 cardWord;
+
+        if (!ZONE1(zone)->isFaceUp)
+            FlipFieldCard(1, zone, 0);
+        zone = gAiState.cardIndex;
+        zoneBits = PackZoneIndex(zone);
+        cardWord = CARD_ID(CARD_WORD(ZONE1(zone)->card)) | CPU_CHAIN_KIND(CHAIN_KIND_SPELL_TRAP);
+        Chain_AddPending(zoneBits | cardWord, 0);
+        gAiState.phase = AI_MAIN_SUMMON;
         return 0;
     }
     }
     return 1;
 }
 
-/* Random gate: if `CountActivatableSetCards(0, x)`, returns 0 with probability 3/4 (1/8 when `gDuelCtrl.w4` bit 0 is clear), else 1. */
-int AiRiskSetCounter(u16 x)
+/*
+ * 1 = go ahead, 0 = hold back. If the human has an activatable set copy of card number `counterNo` the CPU holds back
+ * at random: 3 times in 4 with AI_FLAG_CAREFUL, otherwise 1 time in 8.
+ */
+int AiRiskSetCounter(u16 counterNo)
 {
-    if (CountActivatableSetCards(0, x) != 0) {
-        if (gDuelCtrl.w4 & 1) {
+    if (CountActivatableSetCards(0, counterNo) != 0) {
+        if (gDuelCtrl.aiFlags & AI_FLAG_CAREFUL) {
             if ((Random() & 3) != 0)
                 return 0;
         } else {
@@ -457,179 +579,230 @@ int AiRiskSetCounter(u16 x)
     }
     return 1;
 }
-extern int AiFindStrongestMonster(int a, int b, int c, int d);
-extern int GetZoneCardAtk(int player, int idx);
 
-/* Compares two sums of zone values of the players against the limit at `PLAYER(1)+0` (reads two uninitialised locals, as the original does). */
+/*
+ * 0 only when the human's strongest monster is no danger: its ATK is below the CPU's life points, its lead over the
+ * CPU's strongest ATK is below the CPU's life points, it does not beat the CPU's strongest ATK, and the total ATK of
+ * the human's monsters does not reach the CPU's life points. Otherwise 1.
+ * ROM bug kept: the "== -1" tests read the uninitialised locals a and b instead of the zone indexes x and y, so an
+ * empty field passes zone -1 on to GetZoneCardAtk.
+ */
 int AiIsOpponentThreatening(void)
 {
-    int a;
-    int b;
-    int i;
-    int x = AiFindStrongestMonster(0, -1, 1, 0);
-    int y = AiFindStrongestMonster(1, -1, 1, 0);
-    a = a == -1 ? 0 : GetZoneCardAtk(0, x);
-    b = b == -1 ? 0 : GetZoneCardAtk(1, y);
-    if (a < gDuelPlayers[1].w0 && a - b < gDuelPlayers[1].w0 && a <= b) {
-        a = 0;
-        for (i = 0; i <= 4; i++)
-            a += GetZoneCardAtk(0, i);
-        if (a <= gDuelPlayers[1].w0)
+    int humanAtk;
+    int cpuAtk;
+    int zone;
+    int humanBest = AiFindStrongestMonster(0, -1, 1, 0);
+    int cpuBest = AiFindStrongestMonster(1, -1, 1, 0);
+
+    humanAtk = humanAtk == -1 ? 0 : GetZoneCardAtk(0, humanBest);
+    cpuAtk = cpuAtk == -1 ? 0 : GetZoneCardAtk(1, cpuBest);
+    if (humanAtk < gDuelPlayers[1].lifePoints && humanAtk - cpuAtk < gDuelPlayers[1].lifePoints && humanAtk <= cpuAtk) {
+        humanAtk = 0;
+        for (zone = 0; zone <= 4; zone++)
+            humanAtk += GetZoneCardAtk(0, zone);
+        if (humanAtk <= gDuelPlayers[1].lifePoints)
             return 0;
     }
     return 1;
 }
-extern int IsSpecialSummonOnly(u32 id);
-extern int CountActiveCardsOnFieldExcept(int player, u16 number, int zone);
-extern int CountActiveCardsOnField(int player, u16 number);
-extern int CountMonstersByNumber(int player, u16 number);
-extern int CountMonstersFiltered(int player, u16 a, u16 b);
-extern int CountHandMonsters(int player);
-extern int EffectMonsterRebornPrepare(struct CardRef *ref, int a, int b);
-extern int EffectPrematureBurialPrepare(struct CardRef *ref, int a, u16 flag);
-extern void CardMenu_PlaySpellTrapFromHand(u16 a, u16 b, struct CardRef *ref);
-extern int AiFindHandCardByNumber(int player, u16 number);
-extern int AiCountExodiaOnField(void);
-struct AiSelectionState {
- u8 pad[0x13EC]; struct DuelCard hand[80]; u8 gap[0x1B28-0x152C];
- u16 card; u8 gap2[2]; union { u8 raw; struct { u8 lo:1; u8 active:1; u8 hi:6; } bits; } active;
- u16 cursorLo:2; u16 cursor:8; u16 cursorHi:6;
- u8 byte32; u8 flags33;
- u16 slotLo:1; u16 slot:8; u16 slotHi:7;
+
+struct DuelMenuBytes {
+    u8 unk0[0x1B2C];
+    u8 flags;                       /* +0x1B2C: cardMenu bits 0-7 (bit 1 = confirmed) */
 };
-extern struct AiSelectionState gAiSelectionState asm("gDuel");
+extern struct DuelMenuBytes gDuelMenuBytes asm("gDuel");
 
-extern struct DuelCard gDuelHandP1[];
-extern const u16 gAiGenericSpells[], gAiEquipSpells[];
+/* The Magic cards AiPlaySpells state AI_SPELLS_LISTS plays, in this order (gAiGenericSpells, 0x08086394, 54 card
+ * numbers: Graceful Charity, Pot of Greed, Fusion Sage, Upstart Goblin, Dark-Piercing Light, the Field Magics, the
+ * healing and burn cards, Swords of Revealing Light, Mesmeric Control, Gravekeeper's Servant, Delinquent Duo, Chain
+ * Energy, the Polymerizations and Ritual Magics, and keys 1230, 1426 and 1427) and, when the CPU has a face-up
+ * monster, gAiEquipSpells (0x08086400, 35 numbers: the Equip Magic cards). */
+extern const u16 gAiGenericSpells[];
+extern const u16 gAiEquipSpells[];
+#define AI_GENERIC_SPELL_COUNT 54
+#define AI_EQUIP_SPELL_COUNT 35
 
+/* Tributes a Normal Summon needs by level: levels 1-4 none, 5-6 one monster, 7 and up two. */
+#define LEVEL_MAX_NO_TRIBUTE 4
+#define LEVEL_MAX_ONE_TRIBUTE 6
+
+/*
+ * Level of a card as the AI counts it: 0 for Trap, Magic and Ticket cards, 10 for the Divine-Beasts, else the stars
+ * (stats bits 25-28).
+ */
 static inline u32 AiCardLevel(u16 id)
 {
-    switch ((int)((CARD_STATS(id) & 0x1F00000) >> 20)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    switch ((int)CARD_STATS_TYPE(CARD_STATS(id))) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 10;
     default:
-        return (CARD_STATS(id) & 0x1E000000) >> 25;
+        return CARD_STATS_LEVEL(CARD_STATS(id));
     }
 }
 
+/*
+ * AiCardLevel with the loop-invariant masks as parameters.
+ * FAKEMATCH: the hand scan keeps the 0x7FF and type masks in registers across the loop only when they arrive as
+ * parameters.
+ */
 static inline u32 AiCardLevelMasks(u32 id, u32 mask, u32 typeMask)
 {
-    switch ((int)((((const u32 *)0x08621DE0)[id & mask] & typeMask) >> 20)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    switch ((int)((((const u32 *)0x08621DE0)[id & mask] & typeMask) >> CARD_STATS_TYPE_SHIFT)) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 10;
     default:
-        return (((const u32 *)0x08621DE0)[id & mask] & 0x1E000000) >> 25;
+        return CARD_STATS_LEVEL(((const u32 *)0x08621DE0)[id & mask]);
     }
 }
-/* FAKEMATCH: reload the hand-count address instead of retaining a loop pointer. */
-static inline int AiCountReload(void)
+
+/* gDuelPlayers[1].handCount, read through its address (base 0x020192E4 + 0xD66).
+ * FAKEMATCH: the empty asm makes the address a fresh value at the loop test, so the ROM's reload happens
+ * instead of retaining a loop pointer. */
+static inline int AiCpuHandCountReload(void)
 {
     u32 base = (u32)gDuelPlayers;
     u32 off = 0xD66;
     asm("" : "+r"(base), "+r"(off));
     return *(u8 *)(base + off);
 }
-static inline u16 AiDeckNumber(u32 id)
+
+/* Card number of card ID `id`, with the table address and the byte offset formed separately. */
+static inline u16 AiCardNumberOfId(u32 id)
 {
     u32 base;
     u32 off;
-    off = (id & 0x7FF) * 2;
+
+    off = (id & CARD_ID_MASK) * 2;
     base = (u32)gCardIdToNumber;
     return *(u16 *)(off + base);
 }
-/* FAKEMATCH: preserve the initialized count scratch at the loop test. */
-static inline int AiDeckCountAt(u8 *ptr)
+
+/* gDuelPlayers[1].deckCount read through `ptr` (= base + 0xD67).
+ * FAKEMATCH: the count is initialized into r3 and consumed by the empty asm, so it is still there at the loop test. */
+static inline int AiCpuDeckCountAt(u8 *ptr)
 {
     register int count asm("r3") = *ptr;
     asm("" : : "r"(count));
     return count;
 }
-/* CPU spell/monster selection state machine; usability records set only id/player. */
+
+/*
+ * The CPU's main-phase spell machine, on gAiState.subState (enum AiSpellState). Each call plays at most one card
+ * (AiTryPlaySpellTrap) or advances the state; returns 0 while it is still working and 1 when it is done.
+ *  1  Pot of Greed, Fusion Sage, Dark Hole / Raigeki (when the CPU's field is empty, the human threatens it, it
+ *     holds its own Sangan or Witch of the Black Forest, or the human has no set White Hole / Anti-Raigeki to answer),
+ *     Tribute to the Doomed, Fissure.
+ *  2  Change of Heart (a tribute for a level 5-6 monster, or level 5+ when the CPU has monsters), Monster Reborn,
+ *     Premature Burial.
+ *  3  Graceful Charity (with AI_FLAG_CAREFUL only with a revival card in hand or a key card in the top 3 of its deck).
+ *  4  Card Destruction (key 1221) when Magic Thorn is active or the human holds key cards (the CPU reads the human's
+ *     hand; a ROM bug makes the test true for "not in hand").
+ *  5  the gAiGenericSpells list, then gAiEquipSpells when the CPU has a face-up monster.
+ *  0x64-0x66 (AI_FLAG_EXODIA): Dark Hole to clear its own Sangan or Witch, Graceful Charity or Pot of Greed, Swords
+ *     of Revealing Light.
+ *  0xC8-0xC9 confirm the selected hand card in the card menu and run CardMenu_PlaySpellTrapFromHand until it is
+ *     done; the card is Set instead of activated while Anti-Magic Fragrance is on the field. Then phase = 0.
+ */
 int AiPlaySpells(void)
 {
-    struct CardRef ref;
+    /* Matching: the (u16) casts on the results of AiTryPlaySpellTrap, AiRiskSetCounter and AiIsOpponentThreatening
+     * stay; the ROM reads the returned halfword. */
+    struct ChainEntry ref;
     int i;
+    /* Matching: `found` starts as 1 (the ROM sets r4 = 1 on entry); it later serves as a flag and as the deck index. */
     int found = 1;
-    int state = gAiState.state;
+    int state = gAiState.subState;
     u16 number;
     u16 result;
 
     switch ((u8)state) {
-    case 0:
-        if (gDuelCtrl.w4 & 0x200)
-            gAiState.state = 0x64;
+    case AI_SPELLS_START:
+        if (gDuelCtrl.aiFlags & AI_FLAG_EXODIA)
+            gAiState.subState = AI_SPELLS_EXODIA_CLEAR;
         else
-            gAiState.state = state + 1;
+            gAiState.subState = state + 1;
         return 0;
-    case 1:
-        if ((u16)AiTryPlaySpellTrap(0x3F2)) return 0;
-        if ((u16)AiTryPlaySpellTrap(0x410)) return 0;
-        if (CountMonsters(0) > 0 && CountMonsters(1) == 0 && (u16)AiTryPlaySpellTrap(0x14F)) return 0;
-        if ((u16)AiIsOpponentThreatening() && (u16)AiTryPlaySpellTrap(0x14F)) return 0;
-        if ((CountMonstersByNumber(1, 0x2F) > 0 || CountMonstersByNumber(1, 0x23D) > 0) && (u16)AiTryPlaySpellTrap(0x14F)) return 0;
-        if (CountMonsters(0) > 0 && (u16)AiRiskSetCounter(0x3FB) && (u16)AiTryPlaySpellTrap(0x14F)) return 0;
-        if (CountMonsters(0) > 0 && CountMonsters(1) == 0 && (u16)AiTryPlaySpellTrap(0x150)) return 0;
-        if (CountMonsters(0) > 0 && (u16)AiRiskSetCounter(0x3FE) && (u16)AiTryPlaySpellTrap(0x150)) return 0;
-        if (CountMonstersFiltered(0, 0, 0) > 0 && CountHandMonsters(1) > 0 && (u16)AiTryPlaySpellTrap(0x3FF)) return 0;
-        if (CountMonstersFiltered(0, 1, 0) > 0 && (u16)AiTryPlaySpellTrap(0x3E9)) return 0;
-        gAiState.state++;
+    case AI_SPELLS_DRAW_AND_CLEAR:
+        if ((u16)AiTryPlaySpellTrap(CARD_POT_OF_GREED)) return 0;
+        if ((u16)AiTryPlaySpellTrap(CARD_FUSION_SAGE)) return 0;
+        if (CountMonsters(0) > 0 && CountMonsters(1) == 0 && (u16)AiTryPlaySpellTrap(CARD_DARK_HOLE)) return 0;
+        if ((u16)AiIsOpponentThreatening() && (u16)AiTryPlaySpellTrap(CARD_DARK_HOLE)) return 0;
+        if ((CountMonstersByNumber(1, CARD_SANGAN) > 0 || CountMonstersByNumber(1, CARD_WITCH_OF_THE_BLACK_FOREST) > 0)
+            && (u16)AiTryPlaySpellTrap(CARD_DARK_HOLE)) return 0;
+        if (CountMonsters(0) > 0 && (u16)AiRiskSetCounter(CARD_WHITE_HOLE) && (u16)AiTryPlaySpellTrap(CARD_DARK_HOLE)) return 0;
+        if (CountMonsters(0) > 0 && CountMonsters(1) == 0 && (u16)AiTryPlaySpellTrap(CARD_RAIGEKI)) return 0;
+        if (CountMonsters(0) > 0 && (u16)AiRiskSetCounter(CARD_ANTI_RAIGEKI) && (u16)AiTryPlaySpellTrap(CARD_RAIGEKI)) return 0;
+        if (CountMonstersFiltered(0, 0, 0) > 0 && CountHandMonsters(1) > 0 && (u16)AiTryPlaySpellTrap(CARD_TRIBUTE_TO_THE_DOOMED)) return 0;
+        if (CountMonstersFiltered(0, 1, 0) > 0 && (u16)AiTryPlaySpellTrap(CARD_FISSURE)) return 0;
+        gAiState.subState++;
         return 0;
-    case 2:
+    case AI_SPELLS_TAKE_AND_REVIVE:
         if (CountMonsters(0) > 0) {
             if (CountMonsters(1) == 0) {
+                /* The CPU has no monster: Change of Heart pays for a level 5-6 monster in its hand. */
                 i = 0;
                 if (i < PLAYER(1).handCount) {
                     do {
-                        u16 id = CARD_ID((u8 *)gDuelHandP1 + i * 4);
-                        if (((CARD_STATS(id) & 0x1F00000) >> 20) <= 20 && IsSpecialSummonOnly(id) == 0 && AiCardLevel(id) > 4 && AiCardLevel(id) <= 6 && (u16)AiTryPlaySpellTrap(0x403))
+                        u16 id = CARD_ID(*(u32 *)((u8 *)gDuelHandP1 + i * 4));
+                        if (CARD_STATS_TYPE(CARD_STATS(id)) <= CARD_TYPE_REPTILE && IsSpecialSummonOnly(id) == 0
+                            && AiCardLevel(id) > LEVEL_MAX_NO_TRIBUTE && AiCardLevel(id) <= LEVEL_MAX_ONE_TRIBUTE
+                            && (u16)AiTryPlaySpellTrap(CARD_CHANGE_OF_HEART))
                             return 0;
                         i++;
                     } while (i < PLAYER(1).handCount);
                 }
             }
             if (CountMonsters(1) > 0) {
+                /* The CPU has monsters: any monster of level 5 or more in its hand will do. */
                 i = 0;
                 if (i < PLAYER(1).handCount) {
-                    u32 typeMask = 0x1F00000;
-                    u32 loadMask = 0x7FF;
+                    u32 typeMask = CARD_STATS_TYPE_MASK;
+                    u32 loadMask = CARD_ID_MASK;
                     u32 mask;
-                    /* FAKEMATCH: retain the initialized mask copy before the scan. */
+                    /* FAKEMATCH: the initialized copy of the mask stays live before the scan. */
                     asm("" : : "r"(loadMask));
                     mask = loadMask;
                     do {
-                        u32 id = CARD_ID((u8 *)gDuelHandP1 + i * 4);
-                        if (((((const u32 *)0x08621DE0)[id & mask] & typeMask) >> 20) <= 20 && IsSpecialSummonOnly(id) == 0 && AiCardLevelMasks(id, mask, typeMask) > 4 && (u16)AiTryPlaySpellTrap(0x403))
+                        u32 id = CARD_ID(*(u32 *)((u8 *)gDuelHandP1 + i * 4));
+                        if (((((const u32 *)0x08621DE0)[id & mask] & typeMask) >> CARD_STATS_TYPE_SHIFT) <= CARD_TYPE_REPTILE
+                            && IsSpecialSummonOnly(id) == 0 && AiCardLevelMasks(id, mask, typeMask) > LEVEL_MAX_NO_TRIBUTE
+                            && (u16)AiTryPlaySpellTrap(CARD_CHANGE_OF_HEART))
                             return 0;
                         i++;
-                    } while (i < AiCountReload());
+                    } while (i < AiCpuHandCountReload());
                 }
             }
         }
-        number = 0x3F0;
-        ref.id = CardNumberToId(number);
+        number = CARD_MONSTER_REBORN;
+        ref.card = CardNumberToId(number);
         ref.player = 1;
-        if (EffectMonsterRebornPrepare(&ref, 0, 1) && (u16)AiRiskSetCounter(0x402) && (u16)AiTryPlaySpellTrap(number)) return 0;
-        number = 0x488;
-        ref.id = CardNumberToId(number);
+        if (EffectMonsterRebornPrepare(&ref, 0, 1) && (u16)AiRiskSetCounter(CARD_CALL_OF_THE_DARK) && (u16)AiTryPlaySpellTrap(number)) return 0;
+        number = CARD_PREMATURE_BURIAL;
+        ref.card = CardNumberToId(number);
         ref.player = 1;
         if (EffectPrematureBurialPrepare(&ref, 0, 1) && (u16)AiTryPlaySpellTrap(number)) return 0;
-        gAiState.state++;
+        gAiState.subState++;
         return 0;
-    case 3:
-        if (gDuelCtrl.w4 & found) {
-            if (FindHandCardByNumber(1, 0x3F0) != -1 && (u16)AiTryPlaySpellTrap(0x3C8)) return 0;
-            if (FindHandCardByNumber(1, 0x488) != -1 && (u16)AiTryPlaySpellTrap(0x3C8)) return 0;
+    case AI_SPELLS_GRACEFUL_CHARITY:
+        if (gDuelCtrl.aiFlags & AI_FLAG_CAREFUL) {
+            /* With AI_FLAG_CAREFUL: a revival card in the hand makes the discard worthwhile ... */
+            if (FindHandCardByNumber(1, CARD_MONSTER_REBORN) != -1 && (u16)AiTryPlaySpellTrap(CARD_GRACEFUL_CHARITY)) return 0;
+            if (FindHandCardByNumber(1, CARD_PREMATURE_BURIAL) != -1 && (u16)AiTryPlaySpellTrap(CARD_GRACEFUL_CHARITY)) return 0;
             found = 0;
             {
-                /* FAKEMATCH: initialized terms preserve the deck-count preheader. */
+                /* ... and so does a Dark Hole, Raigeki, Graceful Charity, Monster Reborn or Premature Burial among the
+                 * first three cards of its deck.
+                 * FAKEMATCH: initialized terms preserve the deck-count preheader (the count is read through
+                 * gDuelPlayers + 0xD67 = gDuelPlayers[1].deckCount). */
                 register u32 base asm("r0") = (u32)gDuelPlayers;
                 register u32 off asm("r3") = 0xD67;
                 int count;
@@ -641,86 +814,93 @@ int AiPlaySpells(void)
                     u8 *ptr = first;
                 deckLoop:
                     {
-                        switch (AiDeckNumber(CARD_ID(gDuelDeckP1 + found * 4))) {
-                        case 0x14F:
-                        case 0x150:
-                        case 0x3C8:
-                        case 0x3F0:
-                        case 0x488:
-                            if ((u16)AiTryPlaySpellTrap(0x3C8)) return 0;
+                        switch (AiCardNumberOfId(CARD_ID(*(u32 *)(gDuelDeckP1Bytes + found * 4)))) {
+                        case CARD_DARK_HOLE:
+                        case CARD_RAIGEKI:
+                        case CARD_GRACEFUL_CHARITY:
+                        case CARD_MONSTER_REBORN:
+                        case CARD_PREMATURE_BURIAL:
+                            if ((u16)AiTryPlaySpellTrap(CARD_GRACEFUL_CHARITY)) return 0;
                             break;
                         }
                         found++;
                     }
-                    if (found < 3 && found < AiDeckCountAt(ptr))
+                    if (found < 3 && found < AiCpuDeckCountAt(ptr))
                         goto deckLoop;
                 }
             }
-        } else if ((u16)AiTryPlaySpellTrap(0x3C8)) return 0;
-        gAiState.state++;
+        } else if ((u16)AiTryPlaySpellTrap(CARD_GRACEFUL_CHARITY)) return 0;
+        gAiState.subState++;
         return 0;
-    case 4:
+    case AI_SPELLS_CARD_DESTRUCTION:
+        /* Does the human hold something worth stripping from it? */
         found = 0;
-        if (CountActiveCardsOnFieldExcept(1, 0x40E, -1) > 0) found = 1;
-        if (AiFindHandCardByNumber(0, 0x10)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x11)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x12)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x13)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x14)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x14F)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x150)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x290)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x3F0)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x403)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x420)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x42C)) found = 1;
-        if (AiFindHandCardByNumber(0, 0x488)) found = 1;
-        if (found && (u16)AiTryPlaySpellTrap(0x4C5))
+        if (CountActiveCardsOnFieldExcept(1, CARD_MAGIC_THORN, -1) > 0) found = 1;
+        /* ROM bug: AiFindHandCardByNumber returns -1 for "not in hand", which counts as true here; only index 0
+         * counts as false. */
+        if (AiFindHandCardByNumber(0, CARD_RIGHT_LEG_OF_THE_FORBIDDEN_ONE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_LEFT_LEG_OF_THE_FORBIDDEN_ONE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_RIGHT_ARM_OF_THE_FORBIDDEN_ONE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_LEFT_ARM_OF_THE_FORBIDDEN_ONE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_EXODIA_THE_FORBIDDEN_ONE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_DARK_HOLE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_RAIGEKI)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_MEGAMORPH)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_MONSTER_REBORN)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_CHANGE_OF_HEART)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_MIRROR_FORCE)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_SNATCH_STEAL)) found = 1;
+        if (AiFindHandCardByNumber(0, CARD_PREMATURE_BURIAL)) found = 1;
+        if (found && (u16)AiTryPlaySpellTrap(CARD_1221))
             return 0;
-        gAiState.state++;
-        gAiState.b7 = 0;
-        gAiState.b8 = 0;
-        gAiState.pad9 = 0;
+        gAiState.subState++;
+        gAiState.listIndex = 0;
+        gAiState.zoneIndex = 0;
+        gAiState.unk9 = 0;
         return 0;
-    case 5:
-        for (gAiState.b7 = 0; gAiState.b7 < 54; gAiState.b7++) {
-            result = (u16)AiTryPlaySpellTrap(gAiGenericSpells[gAiState.b7]);
+    case AI_SPELLS_LISTS:
+        for (gAiState.listIndex = 0; gAiState.listIndex < AI_GENERIC_SPELL_COUNT; gAiState.listIndex++) {
+            result = (u16)AiTryPlaySpellTrap(gAiGenericSpells[gAiState.listIndex]);
             if (result) return 0;
         }
         if (CountMonstersFiltered(1, 1, 0) > 0) {
-            for (gAiState.b7 = 0; gAiState.b7 < 35; gAiState.b7++) {
-                if ((u16)AiTryPlaySpellTrap(gAiEquipSpells[gAiState.b7])) return 0;
+            for (gAiState.listIndex = 0; gAiState.listIndex < AI_EQUIP_SPELL_COUNT; gAiState.listIndex++) {
+                if ((u16)AiTryPlaySpellTrap(gAiEquipSpells[gAiState.listIndex])) return 0;
             }
         }
         break;
-    case 0x64:
-        if (!AiCountExodiaOnField() && (CountMonstersByNumber(1, 0x2F) > 0 || CountMonstersByNumber(1, 0x23D) > 0) && (u16)AiTryPlaySpellTrap(0x14F)) return 0;
-        gAiState.state++;
+    case AI_SPELLS_EXODIA_CLEAR:
+        if (!AiCountExodiaOnField() && (CountMonstersByNumber(1, CARD_SANGAN) > 0 || CountMonstersByNumber(1, CARD_WITCH_OF_THE_BLACK_FOREST) > 0)
+            && (u16)AiTryPlaySpellTrap(CARD_DARK_HOLE)) return 0;
+        gAiState.subState++;
         return 0;
-    case 0x65:
-        if (!(u16)AiTryPlaySpellTrap(0x3C8) && !(u16)AiTryPlaySpellTrap(0x3F2)) gAiState.state++;
+    case AI_SPELLS_EXODIA_DRAW:
+        if (!(u16)AiTryPlaySpellTrap(CARD_GRACEFUL_CHARITY) && !(u16)AiTryPlaySpellTrap(CARD_POT_OF_GREED)) gAiState.subState++;
         return 0;
-    case 0x66:
-        if ((AiCountExodiaOnField() || (CountMonstersFiltered(0, 1, 0) > 0 && CountMonsters(1) == 0)) && CountActiveCardsOnFieldExcept(1, 0x15B, -1) == 0 && (u16)AiTryPlaySpellTrap(0x15B)) return 0;
+    case AI_SPELLS_EXODIA_SWORDS:
+        if ((AiCountExodiaOnField() || (CountMonstersFiltered(0, 1, 0) > 0 && CountMonsters(1) == 0))
+            && CountActiveCardsOnFieldExcept(1, CARD_SWORDS_OF_REVEALING_LIGHT, -1) == 0
+            && (u16)AiTryPlaySpellTrap(CARD_SWORDS_OF_REVEALING_LIGHT)) return 0;
         break;
-    case 0xC8:
-        gAiSelectionState.cursor = 0;
-        gAiSelectionState.card = CARD_ID((u8 *)&gAiSelectionState.hand[0] + gAiState.bB * 4);
-        gAiSelectionState.flags33 |= 2;
-        gAiSelectionState.slot = gAiState.bB;
-        gAiSelectionState.active.bits.active = 1;
-        gAiState.state++;
+    case AI_SPELLS_CONFIRM_HAND_CARD:
+        /* Confirm hand card cardIndex in the card menu as if the player had chosen it. */
+        gDuel.cardMenu.step = 0;
+        gDuel.cardMenuCard = CARD_ID(*(u32 *)((u8 *)&gDuel.players[1].hand[0] + gAiState.cardIndex * 4));
+        gDuel.cardMenu.player = 1;
+        gDuel.cardMenu.index = gAiState.cardIndex;
+        gDuel.cardMenu.confirmed = 1;
+        gAiState.subState++;
         /* fall through */
-    case 0xC9:
-        if (CountActiveCardsOnField(0, 0x49C) || CountActiveCardsOnField(1, 0x49C)) CardMenu_PlaySpellTrapFromHand(0, 0, 0);
-        else CardMenu_PlaySpellTrapFromHand(1, 0, 0);
+    case AI_SPELLS_WAIT_PLAY:
+        if (CountActiveCardsOnField(0, CARD_ANTI_MAGIC_FRAGRANCE) || CountActiveCardsOnField(1, CARD_ANTI_MAGIC_FRAGRANCE))
+            CardMenu_PlaySpellTrapFromHand(0, 0, 0);
+        else
+            CardMenu_PlaySpellTrapFromHand(1, 0, 0);
         {
-            u8 active = gAiSelectionState.active.raw & 2;
-            if (!active) gAiState.bA = active;
+            u8 confirmed = gDuelMenuBytes.flags & 2;
+            if (!confirmed) gAiState.phase = confirmed;
         }
         return 0;
     }
     return 1;
 }
-
-

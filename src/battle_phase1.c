@@ -1,280 +1,459 @@
+/*
+ * Battle Phase stages 3-7: declare the attack and pay its costs, the attack-declared response window, reveal a
+ * face-down target, and the damage calculation with the defender's optional answers and the battle scene
+ * (wiki/functions/battle-phase1-c.md).
+ *
+ * BattlePhase_Run calls these through gBattleStageHandlers[gDuel.battleStage] with the attacking player; each
+ * returns 1 when its stage is done. They are step machines on gDuel.battleStep (the step numbers 100-101, 200 and
+ * 10-35 are the card-specific branches). The attacker is (player, gBattle.atkSlot), the target
+ * (1 - player, gBattle.defSlot); defSlot 5 is a direct attack, for which stage 6 is skipped by the caller.
+ */
 #include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, gCardNames */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/duel.h"         /* enum BattleStage, ResponseEventKind, ZoneLinkKind, PromptKind */
+#include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* SE_ERROR */
 
-/* gBattle (0x02018450) flag byte. */
-struct BattleB {
-    u8 attacker : 1;
-    u8 direct : 1;
-    u8 unk2 : 1;
-    u8 f3 : 1;
-    u8 f4 : 1;
-    u8 f5 : 1;
-    u8 unk6 : 2;
-    u8 unk1_0 : 1;
-    u8 defSlot : 3;
-    u8 unk1_4 : 4;
-    u8 pad[0x20];
-};
-extern struct BattleB gBattle;
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
+ * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
+ * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
+ * After H0, replace the block (BEGIN to END) with #include "duel.h" and #include "sound.h". */
+#define GUARD_DUEL_H
 
-struct BattleH {
-    u16 unk0_0 : 6;
-    u16 atkSlot : 3;
-    u16 defSlot : 3;
-    u16 unk0_12 : 4;
-    u8 pad[0x20];
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-#define BTH (*(struct BattleH *)&gBattle)
-struct BattleFull {
-    u16 unk0_0 : 6;
-    u16 atkSlot : 3;
-    u16 defSlot : 3;
-    u16 unk0_12 : 4;
-    u8 pad[0x148 - 2];
-    u16 lp[2];
-    u16 unk4[2];
-    u8 pad2[0x20];
+
+/* Needed by duel_screen.h (DuelScreen.from / .to). */
+struct DuelLoc {
+    u16 player:1;
+    u16 area:4;
+    u16 index:9;
+    u16 isDefense:1;
+    u16 isFaceUp:1;
+    u16 unk2;
 };
-#define BF (*(struct BattleFull *)&gBattle)
-#define BT_U16(off) (*(u16 *)((u8 *)&gBattle + (off)))
+
 struct DuelZone {
-    u32 card;
-    u16 unk4;
-    u8 pad[0x94 - 6];
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04: gDuel.serial when the card was placed (replay check) */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
+    u8 positionLocked:1;            /* +0x07 bit 2 */
+    u8 unk7_3:1;
+    u8 unk7_4:1;
+    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (Sanga, Kazejin, Suijin) */
+    u8 unk7_6:2;
+    u8 unk8[0x91 - 0x8];
+    u8 unk91_0:3;
+    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
+    u8 unk91_4:4;
+    u8 unk92[0x94 - 0x92];
 };
-struct PlayerState {
-    u8 unk0[0x28];
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 unk2[0x28 - 0x2];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    u8 unk684[0xD64 - 0x684];
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B14 - 0x1ACC];
+    u16 unk1B14_0:1;                /* +0x1B14 */
+    u16 interruptActive:1;
+    u16 unk1B14_2:7;
+    u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
+    u16 battleStep:8;               /* +0x1B16 bits 1-8: step inside the stage */
+    u16 battleArg0:8;               /* +0x1B17 bit 1 .. +0x1B18 bit 0: stage scratch (a zone or player) */
+    u16 battleArg1:8;               /* +0x1B18 bit 1 .. +0x1B19 bit 0 */
+    u16 unk1B19_1:7;
+    u8 unk1B1A[0x1B64 - 0x1B1A];
+    u16 promptResult;               /* +0x1B64: the answer of the last duel prompt (a hand slot, a card ID) */
+    u8 unk1B66[0x1B78 - 0x1B66];
+};
+
+struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 0x28 - 11 * 0x94];
+    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
 };
-extern struct PlayerState gDuelPlayers[2];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)&gDuelPlayers[0].zones[0]))
-struct DGCnt { u16 f0 : 1; u16 cnt : 8; u16 rest : 7; u8 pad[0x20]; };
-struct DuelGlobal {
-    u8 unk0[0x1B16];
-    u16 f1B16_0 : 1;
-    u16 cnt : 8;
-    u16 f1B16_9 : 7;
-};
-extern struct DuelGlobal gDuel;
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+
+u32 HasFlipEffect(u16 cardNo, int inBattle);
 int CountMonsters(int player);
-int FindFaceUpCardOnField(int player, u16 number, int a);
-void Chain_AddPending(u32 card, u32 b);
-int Battle_CheckReplay(int player);
-void EventResponse_Request(int player, int a, u32 word);
-extern const u16 gCardNumberToId[];
-int CountActiveCardsOnField(int player, u16 number);
-void ShowCardEffect(int player, u16 id);
-void SendTopDeckCardsToGraveyard(int player, int n, int a);
-void LoseLifePoints(int player, int lp);
+int CountActiveCardsOnField(int player, u16 cardNo);
+int CountFreeMonsterZones(int player);
+int FindFreeMonsterZone(int player);
+int FindFreeSpellTrapZone(int player);
+int CanPlaceSpellTrapCard(int player, u16 cardId);
+int FindFaceUpCardOnField(int player, u16 cardNo, int skipZone);
 
-/* Views relative to the zone base symbol 0x0201930C (as the ROM does in 0x0804B640). */
-extern u8 gDuelZones[];
-#define ZBB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-#define ZBB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-#define CNTB (*(struct DGCnt *)(gDuelZones + 0x1AEA))
-struct DGWord {
-    u32 unk0 : 9;
-    u32 stage : 8;
-    u32 unk17 : 15;
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(u32 seId);
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* AiPickTributeMonster */
+#include "battle.h"                 /* gBattle (struct Battle), CanMonsterAttack, Battle_CheckReplay, ... */
+#include "chain.h"                  /* Chain_AddPending, EventResponse_Request */
+#include "duel_actions.h"           /* TributeMonster, MoveFieldCard, EquipCard, FlipFieldCard, ... */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_flow.h"              /* gDuelCtrl */
+#include "duel_link.h"              /* gLinkState, DuelLink_SendMessage */
+#include "duel_prompt.h"            /* DuelPrompt_Post */
+#include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget */
+#include "effect.h"                 /* TriggerMysteriousPuppeteer */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "util.h"                   /* FormatStr, HalveRoundDown, Random */
+
+/* ROM data used only here. */
+extern const u8 gStrSelectTributeToAttack[];    /* 0x080859E0: "Select a tribute in order to attack with this monster." */
+extern const u8 gStrCoinTossCall[];             /* 0x08085A18: "Coin-toss Selection:\n  Heads\n  Tails" */
+extern const char gStrAskZeroAttackerAtkFmt[];  /* 0x08085A48: "%s has been designated as the attack target. Do you wish
+                                                 * to exercise this creature's effect and reduce the attacking
+                                                 * monster's ATK to 0?" */
+extern const char gStrAskSubstituteTargetFmt[]; /* 0x08085ADC: "... select your opponent's monster to substitute as
+                                                 * the target?" */
+/* Matching: card IDs read through their alias symbol (= &gCardNumberToId[CARD_1243], 0 in EDS). */
+extern const u16 gUnk_086247AA;
+
+/* The card tables through their integer addresses (different literals from gCardIdToNumber / gCardNumberToId). */
+#define CARD_NUMBER_OF(id)  (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])   /* gCardIdToNumber[id] */
+#define CARD_ID_OF(number)  (((const u16 *)0x08623DF4)[(number)])              /* gCardNumberToId[number] */
+/* The name of a card ID as a string (gCardNames, one 64-byte record per card). */
+#define CARD_NAME(id)       (((const char (*)[64])0x0822C720)[id])
+
+/* Text box rectangles: TextBoxOpen takes x | y << 8 and width | height << 8, in cells. */
+#define TEXTBOX_XY(x, y)    ((x) | (y) << 8)
+
+/* The card ID (bits 0-11) of a zone, from the whole card word. */
+#define ZONE_CARD_ID(zone) ((*(u32 *)&(zone)->card << 20) >> 20)
+/* The zone of (player, zone) of gDuelZones: player stride first, then the zone. */
+#define ZONE_AT(player, zone) ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
+
+/* Byte offsets: a zone from gDuelZones (zone * zone size + player * stride). */
+#define ZONE_OFFSET(player, zone) ((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer))
+
+/*
+ * Matching: gBattle through u8 containers (struct Battle keeps its first word in u16 containers): the flags
+ * of the attack in byte 0, the defender slot in byte 1 and the flag byte of each side. Side flags: slot (bits 0-2),
+ * destroyed, defensePos (BattleSide.defensePos; bit 0 of the battle-scene flags).
+ */
+struct BattleSideBytes {
+    u8 slot:3;
+    u8 destroyed:1;
+    u8 defensePos:1;
+    u8 unk0_5:3;
+    u8 unk1;
+    u16 cardId;                     /* +0x2 */
+    u8 unk4[4];                     /* atk, def */
+    u16 battleValue;                /* +0x8 */
+    u16 damage;                     /* +0xA */
 };
-#define STAGEB (*(struct DGWord *)(gDuelZones + 0x1AE8))
-struct Cursor { u8 unk0[0x824]; u32 w824; u32 w828; u32 w82C; };
-extern struct Cursor gDuelScreen;
-struct Unk0201AE60 { u8 unk0[0x14]; u16 h14; u8 pad[0x20]; };
-extern struct Unk0201AE60 gTextBox;
-extern const u16 gCardIdToNumber[];
-#define TBL(id) (*(u16 *)((u8 *)gCardIdToNumber + (((id) & 0x7FF) << 1)))
-extern const u8 gStrSelectTributeToAttack[], gStrCoinTossCall[];
-int CanMonsterAttack(int player, int zone, u16 flag);
-void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
-void MarkMonsterAttacked(int player, int zone);
-int AiPickTributeMonster(int a, int b);
-int TributeMonster(int player, int column);
-void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
-void TextBoxSetMenu(u32 a, u32 b, u32 c);
-u32 DuelCursor_PickTarget(u32 keys);
-void PlaySE(u16 se);
-int Random(void);
-int HalveRoundDown(u16 v);
+struct BattleBytes {
+    u8 attacker:1;                  /* +0x0 */
+    u8 direct:1;
+    u8 flipEffectPending:1;
+    u8 attackDeclared:1;
+    u8 attackCostsPaid:1;
+    u8 zeroAttackerAtk:1;
+    u8 unk0_6:2;
+    u8 unk1_0:1;                    /* +0x1: bit 8 of the first word */
+    u8 defSlot:3;
+    u8 unk1_4:4;
+    u16 flipCardId;                 /* +0x2 */
+    u8 unk4[4];
+    struct BattleSideBytes side[2]; /* +0x8 */
+};
+#define BATTLE_BYTES (*(struct BattleBytes *)&gBattle)
 
-static inline u16 BattleCardNumber(u16 id)
-{
-    return ((const u16 *)0x08622AB4)[id & 0x7FF];
-}
-static inline u16 SnapshotZoneValue(int player, int zone)
-{
-    int p = player & 1;
-    int off = zone * 0x94 + p * 0xD64;
-    u8 *base = gDuelZones;
-    return ((struct DuelZone *)(off + (u32)base))->unk4;
-}
-/* The stage crosses a halfword boundary, but its value has a u16 container. */
-struct BattleDuelStage {
+/*
+ * Matching: gDuel.battleStep and gDuel.battleStage are reached in several forms, the one the ROM uses in each
+ * place: the member of gDuel (gDuel.battleStep), the gDuelZones symbol (= gDuel + 0x2C) as the base with the step as
+ * a halfword view and the stage in a u32 or a u16 container (StepView, StageWordView, StageHalfViaZones), gDuel
+ * through a cast with the stage in a u16 container (StageHalfView), and the alias symbol gUnk_0201ADF6 (= the step).
+ */
+struct StepView {
+    u16 unk0:1;
+    u16 step:8;
+    u16 unk9:7;
+    u8 pad[0x20];
+};
+/* gDuel.battleStage through gDuel itself, with a halfword container (the value crosses a halfword boundary). */
+struct StageHalfView {
     u8 prefix[0x1B14];
-    u32 lo : 9;
-    u16 stage : 8;
-    u32 hi : 15;
+    u32 unk0:9;
+    u16 stage:8;
+    u32 unk17:15;
     u8 pad[8];
 };
-#define STAGEE (*(struct BattleDuelStage *)&gDuel)
+#define STAGE_E (*(struct StageHalfView *)&gDuel)
+/* The same through the gDuelZones symbol (prefix 0x1AE8 = 0x1B14 - 0x2C), with a halfword container. */
+struct StageHalfViaZones {
+    u8 prefix[0x1AE8];
+    u32 unk0:9;
+    u16 stage:8;
+    u32 unk17:15;
+    u8 tail[4];
+};
+#define STAGE_HALF_VIA_ZONES (*(struct StageHalfViaZones *)gDuelZones)
+struct StageWordView {
+    u32 unk0:9;
+    u32 stage:8;                    /* gDuel.battleStage, bits 9-16 of the word at +0x1B14 */
+    u32 unk17:15;
+};
+#define STEP_VIA_ZONES   (*(struct StepView *)((u8 *)gDuelZones + 0x1AEA))        /* gDuel + 0x1B16 */
+#define STAGE_VIA_ZONES  (*(struct StageWordView *)((u8 *)gDuelZones + 0x1AE8))   /* gDuel + 0x1B14 */
+
+/* gDuel.battleStep in BattleStage_DeclareAttack. */
+enum DeclareAttackStep {
+    DECLARE_STEP_CHECK = 0,             /* check the attacker, save the snapshots, pay its own attack cost */
+    DECLARE_STEP_PICK_TRIBUTE = 100,    /* Panther Warrior / Insect Queen, human: pick the tribute (cursor) */
+    DECLARE_STEP_TRIBUTE_PAID = 101,    /* replay check, then on to the target or back to the attacker */
+    DECLARE_STEP_COIN_TOSS = 200        /* Jirai Gumo: toss the coin the human called */
+};
+
+/* DuelZone.serial of (player, zone). The stages save it with the monster counts (gBattle.zoneSerialSnapshot,
+ * monsterCountSnapshot) so that Battle_CheckReplay can tell that the attack changed during a response window. */
+static inline u16 ZoneSerial(int player, int zone)
+{
+    int p = player & 1;
+    int offset = zone * sizeof(struct DuelZone) + p * sizeof(struct DuelPlayer);
+    u8 *base = (u8 *)gDuelZones;
+
+    return ((struct DuelZone *)(offset + (u32)base))->serial;
+}
+
+/*
+ * Stage 3: check that the attacker may still attack, save the replay snapshots and pay the attacker's own cost.
+ *   step 0   already declared (a replay): return 1. If CanMonsterAttack(player, atkSlot, 1) fails: mark the
+ *            attacker (DUEL_CMD_MARK_ATTACKED) and go back to BATTLE_STAGE_SELECT_ATTACKER. Otherwise save the
+ *            snapshots, set attackDeclared, then by card: the Toons lose 500 LP, Dark Elf 1000, Panther Warrior
+ *            and Insect Queen tribute a monster (the CPU picks it through AiPickTributeMonster, and without one
+ *            the attack is given up: battleStage += 8; the human gets step 100), Jirai Gumo opens the coin call
+ *            menu (step 200); anything else returns 1
+ *   100      cursor pick of another own monster, which is tributed
+ *   101      Battle_CheckReplay, then the target stage (or back to the attacker if it cannot attack any more)
+ *   200      DUEL_CMD_TOSS_COIN with the call and Random() & 1; a wrong call costs half the LP
+ * Returns 1 when the stage is done.
+ */
 int BattleStage_DeclareAttack(int player)
 {
-    u32 pl = player & 1;
-    struct DGCnt *c;
+    u32 side = player & 1;
+    struct StepView *step;
     u16 id;
-    id = ZBB2(pl, BTH.atkSlot)->card << 20 >> 20;
-    c = &CNTB;
-    switch (c->cnt) {
-    case 0:
-        if (*(u8 *)&gBattle & 8)
+
+    id = ZONE_CARD_ID(ZONE_AT(side, gBattle.atkSlot));
+    step = &STEP_VIA_ZONES;
+    switch (step->step) {
+    case DECLARE_STEP_CHECK:
+        if (BATTLE_BYTES.attackDeclared)
             return 1;
-        if ((u16)CanMonsterAttack(player, BTH.atkSlot, 1) == 0) {
-            DuelCmd_Push(player ? 0x8035 : 0x35, BTH.atkSlot, 1, 0);
-            STAGEB.stage = 1;
+        if (CanMonsterAttack(player, gBattle.atkSlot, 1) == 0) {
+            DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_MARK_ATTACKED : DUEL_CMD_MARK_ATTACKED,
+                         gBattle.atkSlot, 1, 0);
+            STAGE_VIA_ZONES.stage = BATTLE_STAGE_SELECT_ATTACKER;
             return 0;
         } else {
             int i;
+
             for (i = 0; i < 2; i++) {
                 u32 slot;
+
                 if (i == player)
-                    slot = BTH.atkSlot;
+                    slot = gBattle.atkSlot;
                 else
-                    slot = BTH.defSlot;
-                BF.lp[i] = CountMonsters(i);
-                BF.unk4[i] = SnapshotZoneValue(i, slot);
+                    slot = gBattle.defSlot;
+                gBattle.monsterCountSnapshot[i] = CountMonsters(i);
+                gBattle.zoneSerialSnapshot[i] = ZoneSerial(i, slot);
             }
-            gBattle.f3 = 1;
-            switch (BattleCardNumber(id)) {
-            case 0x2D6:
-            case 0x2D7:
-            case 0x2D8:
-            case 0x2FE:
-                DuelCmd_Push(player ? 0x8043 : 0x43, 500, 1, 0);
+            BATTLE_BYTES.attackDeclared = 1;
+            switch (CARD_NUMBER_OF(id)) {
+            case CARD_MANGA_RYU_RAN:
+            case CARD_TOON_MERMAID:
+            case CARD_TOON_SUMMONED_SKULL:
+            case CARD_BLUE_EYES_TOON_DRAGON:
+                /* The Toons pay 500 LP to attack. */
+                DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_LOSE_LP : DUEL_CMD_LOSE_LP, 500, 1, 0);
                 return 1;
-            case 0x226:
-                DuelCmd_Push(player ? 0x8043 : 0x43, 1000, 1, 0);
+            case CARD_DARK_ELF:
+                DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_LOSE_LP : DUEL_CMD_LOSE_LP, 1000, 1, 0);
                 return 1;
-            case 0x2E8:
-            case 0x2F9:
+            case CARD_PANTHER_WARRIOR:
+            case CARD_INSECT_QUEEN:
+                /* They need a monster to tribute. */
                 if (player != 0) {
-                    int r = AiPickTributeMonster(BTH.atkSlot, 0);
-                    if (r >= 0) {
-                        TributeMonster(player, r);
+                    int tribute = AiPickTributeMonster(gBattle.atkSlot, 0);
+
+                    if (tribute >= 0) {
+                        TributeMonster(player, tribute);
                         return 1;
                     }
-                    MarkMonsterAttacked(player, BTH.atkSlot);
-                    STAGEE.stage = STAGEE.stage + 8;
-                    gDuel.cnt = 0;
+                    MarkMonsterAttacked(player, gBattle.atkSlot);
+                    /* DECLARE_ATTACK + 8 = BATTLE_STAGE_END_ATTACK: no attack. */
+                    STAGE_E.stage = STAGE_E.stage + 8;
+                    gDuel.battleStep = 0;
                     return 0;
                 } else {
-                    TextBoxOpen(0x204, 0x715, 0xB, gStrSelectTributeToAttack);
-                    gDuel.cnt = 100;
+                    TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(21, 7), TEXTBOX_FLAGS_DEFAULT, gStrSelectTributeToAttack);
+                    gDuel.battleStep = DECLARE_STEP_PICK_TRIBUTE;
                     return 0;
                 }
-            case 0x16E:
-                TextBoxOpen(0x206, 0x613, 0xB, gStrCoinTossCall);
-                TextBoxSetMenu(2, 0, 0);
-                CNTB.cnt = 200;
+            case CARD_JIRAI_GUMO:
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 6), TEXTBOX_FLAGS_DEFAULT, gStrCoinTossCall);
+                TextBoxSetMenu(TEXTBOX_MENU_TWO_CHOICE, NULL, NULL);
+                STEP_VIA_ZONES.step = DECLARE_STEP_COIN_TOSS;
                 return 0;
             }
             return 1;
         }
-    case 100:
-        if (DuelCursor_PickTarget(0xF0) != 0) {
-            if (BTH.atkSlot != gDuelScreen.w82C) {
-                DuelCmd_Push(player ? 0x8008 : 8, player, (u8)gDuelScreen.w828 | (u8)gDuelScreen.w82C << 8, 0);
-                TributeMonster(player, gDuelScreen.w82C);
-                c->cnt++;
+    case DECLARE_STEP_PICK_TRIBUTE:
+        if (DuelCursor_PickTarget(PICK_ANY_MONSTER) != 0) {
+            if (gBattle.atkSlot != gDuelScreen.selIndex) {
+                DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_POINT_AT_CARD : DUEL_CMD_POINT_AT_CARD, player,
+                             (u8)gDuelScreen.selArea | (u8)gDuelScreen.selIndex << 8, 0);
+                TributeMonster(player, gDuelScreen.selIndex);
+                step->step++;
             } else {
-                PlaySE(3);
+                PlaySE(SE_ERROR);
             }
         }
         return 0;
-    case 101:
+    case DECLARE_STEP_TRIBUTE_PAID:
         if ((u16)Battle_CheckReplay(player) == 0)
             return 1;
-        if ((u16)CanMonsterAttack(player, BTH.atkSlot, 0) == 0)
-            STAGEB.stage = 1;
+        if (CanMonsterAttack(player, gBattle.atkSlot, 0) == 0)
+            STAGE_VIA_ZONES.stage = BATTLE_STAGE_SELECT_ATTACKER;
         else
-            STAGEB.stage = 2;
+            STAGE_VIA_ZONES.stage = BATTLE_STAGE_SELECT_TARGET;
         return 0;
-    case 200: {
-        u16 x = Random() & 1;
-        DuelCmd_Push(player ? 0x80E0 : 0xE0, gTextBox.h14, x, 0);
-        DuelCmd_Push(player ? 0x8012 : 0x12, 0, 0, 0);
-        if (x != gTextBox.h14)
-            DuelCmd_Push(player ? 0x8043 : 0x43, HalveRoundDown(*(u16 *)(gDuelZones - 0x28 + pl * 0xD64)), 1, 0);
+    case DECLARE_STEP_COIN_TOSS: {
+        u16 toss = Random() & 1;
+
+        DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_TOSS_COIN : DUEL_CMD_TOSS_COIN, gTextBox.result, toss, 0);
+        DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_OPEN_DUEL_SCREEN : DUEL_CMD_OPEN_DUEL_SCREEN, 0, 0, 0);
+        /* A wrong call loses half the LP. */
+        if (toss != gTextBox.result)
+            DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_LOSE_LP : DUEL_CMD_LOSE_LP,
+                         HalveRoundDown(*(u16 *)((u8 *)gDuelZones - OFFSET_OF(struct DuelPlayer, zones)
+                                                 + side * sizeof(struct DuelPlayer))), 1, 0);
         return 1;
     }
     default:
         return 1;
     }
 }
+
+/*
+ * Stage 4: the attack costs of the field, paid once per attack (attackCostsPaid): each Gravekeeper's Servant on
+ * the opponent's field sends the attacker's top deck card to the graveyard, each Toll on either field costs 500 LP.
+ * Always returns 1.
+ */
 int BattleStage_PayAttackCosts(int player)
 {
-    if (!(*(u8 *)&gBattle & 0x10)) {
-        u16 no;
-        int n;
-        gBattle.f4 = 1;
-        n = CountActiveCardsOnField(1 - player, no = 0x427);
-        if (n > 0) {
-            ShowCardEffect(player, ((const u16 *)0x08623DF4)[no]);
-            SendTopDeckCardsToGraveyard(player, n, 1);
+    if (!BATTLE_BYTES.attackCostsPaid) {
+        u16 number;
+        int count;
+
+        BATTLE_BYTES.attackCostsPaid = 1;
+        count = CountActiveCardsOnField(1 - player, number = CARD_GRAVEKEEPERS_SERVANT);
+        if (count > 0) {
+            ShowCardEffect(player, CARD_ID_OF(number));
+            SendTopDeckCardsToGraveyard(player, count, 1);
         }
-        no = 0x42A;
-        n = CountActiveCardsOnField(0, no);
-        n += CountActiveCardsOnField(1, no);
-        if (n > 0) {
-            ShowCardEffect(player, ((const u16 *)0x08623DF4)[no]);
-            LoseLifePoints(player, n * 500);
+        number = CARD_TOLL;
+        count = CountActiveCardsOnField(0, number);
+        count += CountActiveCardsOnField(1, number);
+        if (count > 0) {
+            ShowCardEffect(player, CARD_ID_OF(number));
+            LoseLifePoints(player, count * 500);
         }
     }
     return 1;
 }
-static inline u32 BattleCardEvent(int player, int zone, u16 id, u32 kind)
+
+/* Chain_AddPending trigger word: player << 31 | zone << 16 | kind << 21 | event << 25 | card. `kindEvent20` is the
+ * kind and event part shifted right by 20, (kind << 1 | event << 5): the ROM shifts it back at run time. */
+static inline u32 TriggerWord(int player, int zone, u16 cardId, u32 kindEvent20)
 {
-    return ((u32)(player & 1) << 31) | (((zone & 0x1F) << 16) | (kind << 20)) | id;
+    return ((u32)(player & 1) << 31) | (((zone & 0x1F) << 16) | (kindEvent20 << 20)) | cardId;
 }
+
+/* gDuel.battleStep in BattleStage_RespondToAttack. */
+enum RespondStep {
+    RESPOND_STEP_SNAPSHOT = 0,          /* save the monster counts and zone serials for the replay check */
+    RESPOND_STEP_CHAIN_AUTO = 1,        /* key 1424 face up on the opponent's side is chained at once */
+    RESPOND_STEP_CHECK = 2,             /* Battle_CheckReplay */
+    RESPOND_STEP_REQUEST = 3,           /* open the response window for RESPONSE_ATTACK_DECLARED */
+    RESPOND_STEP_FINAL_CHECK = 4        /* Battle_CheckReplay once more, then done */
+};
+
+/*
+ * Stage 5: the attack-declaration response window.
+ *   0   save the replay snapshots again
+ *   1   key 1424 face up on the opponent's side is chained automatically (Chain_AddPending, RESPONSE_ATTACK_DECLARED)
+ *       and the machine skips to step 4
+ *   2   Battle_CheckReplay (1 sends the battle back to the attacker selection: leave the stage)
+ *   3   EventResponse_Request(opponent, RESPONSE_ATTACK_DECLARED) with the attacker and the target locations
+ *   4   Battle_CheckReplay, then return 1
+ */
 int BattleStage_RespondToAttack(int player)
 {
-    switch (gDuel.cnt) {
-    case 0: {
+    switch (gDuel.battleStep) {
+    case RESPOND_STEP_SNAPSHOT: {
         int i;
+
         for (i = 0; i < 2; i++) {
             u32 slot;
+
             if (i == player)
-                slot = BTH.atkSlot;
+                slot = gBattle.atkSlot;
             else
-                slot = BTH.defSlot;
-            BF.lp[i] = CountMonsters(i);
-            BF.unk4[i] = SnapshotZoneValue(i, slot);
+                slot = gBattle.defSlot;
+            gBattle.monsterCountSnapshot[i] = CountMonsters(i);
+            gBattle.zoneSerialSnapshot[i] = ZoneSerial(i, slot);
         }
-        CNTB.cnt++;
+        STEP_VIA_ZONES.step++;
         return 0;
     }
-    case 1: {
-        int opp = 1 - player;
-        u16 no = 0x590;
-        if (CountActiveCardsOnField(opp, no) != 0) {
-            int x = FindFaceUpCardOnField(opp, no, -1);
-            Chain_AddPending(BattleCardEvent(opp, x, ((const u16 *)0x08623DF4)[no], 0x202), 0);
-            gDuel.cnt = 4;
+    case RESPOND_STEP_CHAIN_AUTO: {
+        int opponent = 1 - player;
+        u16 number = CARD_1424;
+
+        if (CountActiveCardsOnField(opponent, number) != 0) {
+            int zone = FindFaceUpCardOnField(opponent, number, -1);
+
+            Chain_AddPending(TriggerWord(opponent, zone, CARD_ID_OF(number),
+                                         CHAIN_KIND_SPELL_TRAP << 1 | RESPONSE_ATTACK_DECLARED << 5), 0);
+            gDuel.battleStep = RESPOND_STEP_FINAL_CHECK;
         } else {
-            gDuel.cnt++;
+            gDuel.battleStep++;
         }
         return 0;
     }
-    case 2:
+    case RESPOND_STEP_CHECK:
         if ((u16)Battle_CheckReplay(player) != 0)
             return 0;
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
-    case 3:
-        EventResponse_Request(1 - player, 0x10,
-                     ((u8)player | BTH.atkSlot << 8) | ((u8)(1 - player) | BTH.defSlot << 8) << 16);
-        gDuel.cnt++;
+    case RESPOND_STEP_REQUEST:
+        EventResponse_Request(1 - player, RESPONSE_ATTACK_DECLARED,
+                              (u8)player | gBattle.atkSlot << 8 | ((u8)(1 - player) | gBattle.defSlot << 8) << 16);
+        gDuel.battleStep++;
         return 0;
-    case 4:
+    case RESPOND_STEP_FINAL_CHECK:
         if ((u16)Battle_CheckReplay(player) != 0)
             return 0;
         return 1;
@@ -283,417 +462,436 @@ int BattleStage_RespondToAttack(int player)
     }
 }
 
-/* Defender reveal / flip-effect battle step. The public argument remains int. */
-struct DefenderBattleView {
-    u8 flags0 : 2;
-    u8 revealEffect : 1;
-    u8 flags3 : 5;
-    u8 bit8 : 1;
-    u8 defender : 3;
-    u8 flags12 : 4;
-    u16 cardId;
-    u8 pad4[4];
-    u8 flags8lo : 3;
-    u8 flags8bit3 : 1;
-    u8 flags8hi : 4;
-    u8 pad9[9];
-    u16 damageA;
-    u8 flags14lo : 3;
-    u8 flags14bit3 : 1;
-    u8 flags14hi : 4;
-    u8 pad15[9];
-    u16 damageB;
-    u8 tail[4];
+/* Matching: the alias symbol of gDuel.battleStep (0x0201ADF6 = gDuel + 0x1B16), used by BattleStage_RevealDefender. */
+extern struct StepView gUnk_0201ADF6;
+
+/* gDuel.battleStep in BattleStage_RevealDefender. */
+enum RevealStep {
+    REVEAL_STEP_FLIP = 0,               /* flip a face-down target face up */
+    REVEAL_STEP_FLIP_EFFECT = 1,        /* note its flip effect; Blast Sphere / Kiseitai equip themselves */
+    REVEAL_STEP_REQUEST = 2             /* open the response window for RESPONSE_DAMAGE_STEP */
 };
-#define DB (*(struct DefenderBattleView *)&gBattle)
-extern struct DGCnt gUnk_0201ADF6;
-struct DefenderStageView {
-    u8 prefix[0x1AE8];
-    u32 lo : 9;
-    u16 stage : 8;
-    u32 hi : 15;
-    u8 tail[4];
-};
-#define DEF_STAGE (*(struct DefenderStageView *)gDuelZones)
-u32 HasFlipEffect(u16 number, u16 flag);
-int FindFreeSpellTrapZone(int player);
-int CanPlaceSpellTrapCard(int player, u16 id);
-void FlipFieldCard(int player, int zone, u16 arg);
-void ShowRevealedCard(int player, u16 id);
-void TriggerMysteriousPuppeteer(int player);
-void sub_080197C0(int player, u16 id);
-void MoveFieldCard(int player, u16 from, u16 to);
-void EquipCard(int player, u16 from, u16 to);
-void CalcBattle(int player, u16 noAtk);
-static inline u16 DefenderCardNumber(u16 id)
-{
-    return ((const u16 *)0x08622AB4)[id & 0x7FF];
-}
+
+/* The target's zone: (1 - player, gBattle.defSlot), formed from gDuelZones with the zone first. */
 static inline struct DuelZone *DefenderZone(int player)
 {
     int p = player & 1;
-    int zone = BTH.defSlot;
-    int off = zone * 0x94 + p * 0xD64;
-    u8 *base = gDuelZones;
-    return (struct DuelZone *)(off + (u32)base);
-}
-#define DEF_ZONE_FLAGS(p) (((u8 *)DefenderZone(p))[6])
-#define DEF_ZONE_ID(p) ((DefenderZone(p)->card << 20) >> 20)
+    int zone = gBattle.defSlot;
+    int offset = ZONE_OFFSET(p, zone);
+    u8 *base = (u8 *)gDuelZones;
 
+    return (struct DuelZone *)(offset + (u32)base);
+}
+/* Byte +6 of the zone: isDefense (bit 0), isFaceUp (bit 1). */
+#define DEFENDER_FLAGS(player)  (((u8 *)DefenderZone(player))[6])
+#define DEFENDER_ID(player)     ZONE_CARD_ID(DefenderZone(player))
+
+/*
+ * Stage 6 (skipped by the caller for a direct attack): reveal the target.
+ *   step 0   a face-down target is flipped face up (FlipFieldCard, ShowRevealedCard, TriggerMysteriousPuppeteer
+ *            for its owner); a face-up one gets flipCardId = 0 and skips step 1 (the step is advanced twice)
+ *   step 1   flipCardId = the target's card and flipEffectPending = HasFlipEffect(number, 1) (not while key 1530
+ *            is on a field). A flipped Blast Sphere or Kiseitai in defense position with a free spell/trap
+ *            zone instead moves there and equips itself to the attacker (MoveFieldCard, EquipCard), the attacker
+ *            is marked, CalcBattle runs with the destroyed flags and the damage cleared, and the stage jumps +4
+ *            to BATTLE_STAGE_DESTROY
+ *   step 2   EventResponse_Request(opponent, RESPONSE_DAMAGE_STEP) with the attacker and the target locations
+ * Returns 1 when done (also at once for a direct attack).
+ */
 int BattleStage_RevealDefender(int player)
 {
     /* FAKEMATCH: keep the duel base in ip through the opening state dispatch. */
     register u8 *e asm("r12");
-    if (*(u8 *)&gBattle & 2)
+
+    if (BATTLE_BYTES.direct)
         return 1;
     e = (u8 *)&gDuel;
-    switch (gUnk_0201ADF6.cnt) {
-    case 0: {
-        int opp = 1 - player;
-        if (!(DEF_ZONE_FLAGS(opp) & 2)) {
+    switch (gUnk_0201ADF6.step) {
+    case REVEAL_STEP_FLIP: {
+        int opponent = 1 - player;
+
+        if (!(DEFENDER_FLAGS(opponent) & 2)) {
             /* FAKEMATCH: retain the initialized base until the defender slot is spilled. */
             asm("" : : "r"(e));
-            FlipFieldCard(opp, BTH.defSlot, 0);
-            ShowRevealedCard(player, DEF_ZONE_ID(opp));
-            TriggerMysteriousPuppeteer(opp);
+            FlipFieldCard(opponent, gBattle.defSlot, 0);
+            ShowRevealedCard(player, DEFENDER_ID(opponent));
+            TriggerMysteriousPuppeteer(opponent);
         } else {
-            DB.cardId = 0;
-            gUnk_0201ADF6.cnt++;
+            BATTLE_BYTES.flipCardId = 0;
+            gUnk_0201ADF6.step++;
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
     }
-    case 1: {
+    case REVEAL_STEP_FLIP_EFFECT: {
         u16 id;
         u16 number;
-        int pl = (1 - player) & 1;
-        int off = BTH.defSlot * 0x94 + pl * 0xD64;
-        u8 *base = e + 0x2C;
-        id = (((struct DuelZone *)(off + (u32)base))->card << 20) >> 20;
-        DB.cardId = id;
-        DB.revealEffect = HasFlipEffect(DefenderCardNumber(id), 1);
-        if (CountActiveCardsOnField(0, 0x5FA) != 0 || CountActiveCardsOnField(1, 0x5FA) != 0)
-            DB.revealEffect = 0;
-        number = DefenderCardNumber(DB.cardId);
-        if (number == 0x2DF || number == 0x492) {
-            int opp = 1 - player;
+        int p = (1 - player) & 1;
+        int offset = ZONE_OFFSET(p, gBattle.defSlot);
+        u8 *zones = e + OFFSET_OF(struct DuelState, players[0].zones);
+
+        id = ZONE_CARD_ID((struct DuelZone *)(offset + (u32)zones));
+        BATTLE_BYTES.flipCardId = id;
+        BATTLE_BYTES.flipEffectPending = HasFlipEffect(CARD_NUMBER_OF(id), 1);
+        if (CountActiveCardsOnField(0, CARD_1530) != 0 || CountActiveCardsOnField(1, CARD_1530) != 0)
+            BATTLE_BYTES.flipEffectPending = 0;
+        number = CARD_NUMBER_OF(BATTLE_BYTES.flipCardId);
+        if (number == CARD_BLAST_SPHERE || number == CARD_KISEITAI) {
+            int opponent = 1 - player;
             int absent;
-            if ((DEF_ZONE_FLAGS(opp) & 1)
-                && CountActiveCardsOnField(0, 0x5FA) == 0
-                && (absent = CountActiveCardsOnField(1, 0x5FA)) == 0
-                && CanPlaceSpellTrapCard(opp, DEF_ZONE_ID(opp)) != 0) {
-                int zone = FindFreeSpellTrapZone(opp);
+
+            /* Defense position, key 1530 not on a field and somewhere to put the card. */
+            if ((DEFENDER_FLAGS(opponent) & 1)
+                && CountActiveCardsOnField(0, CARD_1530) == 0
+                && (absent = CountActiveCardsOnField(1, CARD_1530)) == 0
+                && CanPlaceSpellTrapCard(opponent, DEFENDER_ID(opponent)) != 0) {
+                int zone = FindFreeSpellTrapZone(opponent);
                 u16 source, destination;
-                sub_080197C0(player, DB.cardId);
-                source = (u8)(1 - player) | BTH.defSlot << 8;
+
+                sub_080197C0(player, BATTLE_BYTES.flipCardId);
+                source = (u8)(1 - player) | gBattle.defSlot << 8;
                 destination = (u8)(1 - player) | (u8)zone << 8;
-                MoveFieldCard(opp, source, destination);
-                EquipCard(opp, destination, (u8)player | BTH.atkSlot << 8);
-                DuelCmd_Push(player ? 0x8035 : 0x35, BTH.atkSlot, 1, 0);
+                MoveFieldCard(opponent, source, destination);
+                EquipCard(opponent, destination, (u8)player | gBattle.atkSlot << 8);
+                DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_MARK_ATTACKED : DUEL_CMD_MARK_ATTACKED,
+                             gBattle.atkSlot, 1, 0);
                 CalcBattle(player, 0);
-                DB.flags8bit3 = 0;
-                DB.flags14bit3 = 0;
-                DB.damageA = absent;
-                DB.damageB = absent;
-                DB.revealEffect = 0;
-                DEF_STAGE.stage += 4;
-                CNTB.cnt = 0;
+                BATTLE_BYTES.side[0].destroyed = 0;
+                BATTLE_BYTES.side[1].destroyed = 0;
+                BATTLE_BYTES.side[0].damage = absent;
+                BATTLE_BYTES.side[1].damage = absent;
+                BATTLE_BYTES.flipEffectPending = 0;
+                /* REVEAL_DEFENDER + 4 = BATTLE_STAGE_DESTROY. */
+                STAGE_HALF_VIA_ZONES.stage += 4;
+                STEP_VIA_ZONES.step = 0;
                 return 0;
             }
-            DB.revealEffect = 0;
+            BATTLE_BYTES.flipEffectPending = 0;
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
     }
-    case 2:
-        EventResponse_Request(1 - player, 0x11,
-                     ((u8)player | BTH.atkSlot << 8) | ((u8)(1 - player) | BTH.defSlot << 8) << 16);
-        gUnk_0201ADF6.cnt++;
+    case REVEAL_STEP_REQUEST:
+        EventResponse_Request(1 - player, RESPONSE_DAMAGE_STEP,
+                              (u8)player | gBattle.atkSlot << 8 | ((u8)(1 - player) | gBattle.defSlot << 8) << 16);
+        gUnk_0201ADF6.step++;
         return 0;
     default:
         return 1;
     }
 }
-/* Battle damage presentation and defender responses (original int ABI). */
-extern u8 gDuelCtrl[];
-extern u8 gLinkState[];
-extern const char gStrAskZeroAttackerAtkFmt[], gStrAskSubstituteTargetFmt[], gCardNames[];
-extern const u16 gUnk_086247AA;
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-void QueueAddZoneLink(int player, u16 id, u16 pos, u16 kind);
-void FlipFieldCard(int player, int zone, u16 arg);
-void ShowRevealedCard(int player, u16 id);
-void TriggerMysteriousPuppeteer(int player);
-void sub_080197C0(int player, u16 id);
-void MoveFieldCard(int player, u16 from, u16 to);
-void CalcBattle(int player, u16 noAtk);
-void DuelPrompt_Post(int player, int kind, u16 arg, u16 value);
-u16 DuelLink_SendMessage(u16 command, u16 a, u16 b, u16 c);
-void FormatStr(char *dst, const char *fmt, const char *arg);
-u32 HasFlipEffect(u16 number, u16 flag);
-struct FinishReply { u8 prefix[0x450]; u8 lo : 1; u8 ready : 1; u8 hi : 6; };
-struct FinishSide {
-    u8 zone : 3;
-    u8 destroyed : 1;
-    u8 marked : 1;
-    u8 reserved : 3;
-    u8 pad1;
-    u16 cardId;
-    u8 pad4[4];
-    u16 power;
-    u16 damage;
-};
-struct FinishBattle {
-    u8 flags0 : 2;
-    u8 reveal : 1;
-    u8 flags3 : 5;
-    u8 bit8 : 1;
-    u8 defender : 3;
-    u8 flags12 : 4;
-    u16 cardId;
-    u8 pad4[4];
-    struct FinishSide side[2];
-};
-#define FINISH_BATTLE (*(struct FinishBattle *)&gBattle)
-struct FinishStage {
-    u8 prefix[0x1B14];
-    u32 lo : 9;
-    u16 stage : 8;
-    u32 hi : 15;
-};
-#define FINISH_STEP(e) (((struct DuelGlobal *)(e))->cnt)
-#define FINISH_PICK(e) (*((u8 *)(e) + 0x1B64))
-#define FINISH_STAGE(e) (((struct FinishStage *)(e))->stage)
-static inline u16 FinishCardNumber(u16 id)
-{
-    return ((const u16 *)0x08622AB4)[id & 0x7FF];
-}
-static inline struct DuelZone *FinishAttackerZone(int player)
-{
-    int p = player & 1;
-    int zone = BTH.atkSlot;
-    int off = zone * 0x94 + p * 0xD64;
-    u8 *base = gDuelZones;
-    return (struct DuelZone *)(off + (u32)base);
-}
-static inline struct DuelZone *FinishDefenderZone(int player)
-{
-    int p = player & 1;
-    int zone = BTH.defSlot;
-    int off = zone * 0x94 + p * 0xD64;
-    u8 *base = gDuelZones;
-    return (struct DuelZone *)(off + (u32)base);
-}
-#define FINISH_FLAGS6(z) (((u8 *)(z))[6])
-#define FINISH_FLAGS7(z) (((u8 *)(z))[7])
-#define FINISH_ID(z) (((z)->card << 20) >> 20)
 
-static inline u16 FinishPosition(u8 first, u8 second)
+/* gDuel.battleStep, battleStage and the prompt result through a base pointer e = (u8 *)&gDuel: the ROM keeps the
+ * base of gDuel in a register in BattleStage_DamageCalc. */
+struct StepAtBase {
+    u8 prefix[0x1B16];
+    u16 unk0:1;
+    u16 step:8;
+    u16 unk9:7;
+};
+#define STEP_AT(e)          (((struct StepAtBase *)(e))->step)
+#define STAGE_AT(e)         (((struct StageHalfView *)(e))->stage)
+#define PROMPT_PICK_AT(e)   (*((u8 *)(e) + 0x1B64))     /* the low byte of gDuel.promptResult: the zone picked */
+
+
+/* The zone of the attacker (player, atkSlot), formed like DefenderZone. */
+static inline struct DuelZone *AttackerZone(int player)
 {
-    return first | second << 8;
+    int p = player & 1;
+    int zone = gBattle.atkSlot;
+    int offset = ZONE_OFFSET(p, zone);
+    u8 *base = (u8 *)gDuelZones;
+
+    return (struct DuelZone *)(offset + (u32)base);
 }
-static inline u32 FinishCardNumberWide(u32 id)
+/* Byte +7 of a zone: effectUnused is bit 5 (0x20). */
+#define ATTACKER_FLAGS7(player)     (((u8 *)AttackerZone(player))[7])
+#define DEFENDER_FLAGS7(player)     (((u8 *)DefenderZone(player))[7])
+#define DefenderFlags(player)       DEFENDER_FLAGS(player)
+/* The zone of (player, zone) with the zone first, through the gDuelZones symbol. */
+#define ZONE_VIA_ZONES(player, zone) ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer) + (u32)gDuelZones))
+
+/* DUEL_LOC with the operands in the order the ROM evaluates them: the player (as a byte) first. */
+#define LOC(player, zone) (((u8)(player)) | (zone) << 8)
+
+/* A location with both bytes narrowed first (the u8 parameters), as the ROM builds the Mirror Wall's link target. */
+static inline u16 PackLoc(u8 player, u8 zone)
 {
-    return ((const u16 *)0x08622AB4)[id & 0x7FF];
+    return player | zone << 8;
 }
-static inline u16 FinishDestination(u8 player, u8 low, u8 high)
+
+/* gDuel.battleArg0 (+0x1B17 bit 1 .. +0x1B18 bit 0) assembled and split by hand. */
+struct BattleArgHigh {
+    u8 prefix[0x1B18];
+    u8 value:1;
+};
+static inline u16 ArgDestination(u8 player, u8 low, u8 high)
 {
     int lower = low >> 1;
     int upper = (high & 1) << 7;
+
     return player | (upper | lower) << 8;
 }
-struct FinishHigh {
-    u8 prefix[0x1B18];
-    u8 value : 1;
+
+/* gDuel.battleStep in BattleStage_DamageCalc. */
+enum DamageCalcStep {
+    DAMAGE_STEP_MARK_ATTACKER = 0,      /* mark the attacker, link the Mirror Walls to it */
+    DAMAGE_STEP_CALC = 1,               /* CalcBattle, then the defender's answers */
+    DAMAGE_STEP_START_SCENE = 2,        /* DUEL_CMD_START_BATTLE_SCENE */
+    DAMAGE_STEP_PLAY_SCENE = 3,         /* DUEL_CMD_PLAY_BATTLE_SCENE */
+    DAMAGE_STEP_CLEAR_ZONES = 4,        /* clear the zones of the destroyed monsters */
+    DAMAGE_STEP_ASK_ZERO_ATK = 10,      /* Sanga / Kazejin / Suijin: "reduce the attacker's ATK to 0?" */
+    DAMAGE_STEP_WAIT_ZERO_ATK = 11,
+    DAMAGE_STEP_APPLY_ZERO_ATK = 12,
+    DAMAGE_STEP_REPLACE_OWN = 20,       /* key 1522: pick another own monster as the target */
+    DAMAGE_STEP_REPLACED_OWN = 21,
+    DAMAGE_STEP_ASK_SUBSTITUTE = 30,    /* key 1243: "take an opponent's monster as the target?" */
+    DAMAGE_STEP_WAIT_SUBSTITUTE = 31,
+    DAMAGE_STEP_PICK_SUBSTITUTE = 32,
+    DAMAGE_STEP_MOVE_SUBSTITUTE = 33,
+    DAMAGE_STEP_FLIP_SUBSTITUTE = 34,
+    DAMAGE_STEP_SUBSTITUTE_DONE = 35
 };
+
+/* The monster's number in a zone, as a u32 (the ROM does not narrow it). */
+static inline u32 CardNumberWide(u32 id)
+{
+    return ((const u16 *)0x08622AB4)[id & 0x7FF];
+}
+
+/* Matching: byte view of gLinkState; byte +0x450 holds cardPromptPending (bit 0) and cardPromptAnswered
+ * (bit 1), duel_link.h's u32 container would load a word. The answer is the halfword at +0x45A. */
+extern u8 gLinkStateBytes[] asm("gLinkState");
+struct LinkCardPromptByte {
+    u8 unk0[0x450];
+    u8 pending:1;
+    u8 answered:1;
+    u8 unk450_2:6;
+};
+#define LINK_CARD_PROMPT ((struct LinkCardPromptByte *)gLinkStateBytes)
+
+/*
+ * Stage 7: the damage calculation and the defender's optional answers, then the battle scene.
+ *   0       mark the attacker (DUEL_CMD_MARK_ATTACKED; key 1336 with its extra attack unused and key 1344 push
+ *           DUEL_CMD_SET_EFFECT_UNUSED instead) and link every face-up, enabled Mirror Wall of the opponent to it
+ *   1       CalcBattle; a face-up target may answer: Sanga of the Thunder / Kazejin / Suijin with effectUnused go to
+ *           step 10, key 1522 to step 20, key 1243 (when it is the card that was flipped) to step 30. Falls into 2
+ *   2       DUEL_CMD_START_BATTLE_SCENE with both card IDs
+ *   3       DUEL_CMD_PLAY_BATTLE_SCENE with both battle values and the packed per-side flags
+ *   4       DUEL_CMD_CLEAR_ZONE_CARD for each destroyed side, DUEL_CMD_OPEN_DUEL_SCREEN; return 1
+ *   10-12   ask the defender "reduce the attacking monster's ATK to 0?" (the CPU says yes, the link partner is
+ *           asked with LINKMSG_CARD_PROMPT); yes: the effect is used up (DUEL_CMD_SET_EFFECT_UNUSED), the attacker's
+ *           ATK counts as 0 (DUEL_CMD_ZERO_ATTACKER_ATK) and CalcBattle runs again (step 2 follows)
+ *   20-21   key 1522: DuelPrompt_Post(PROMPT_SELECT_OWN_REPLACEMENT_TARGET), the picked zone becomes the target
+ *           (DUEL_CMD_SET_ATTACK_TARGET) and the stage goes back to BATTLE_STAGE_REVEAL_DEFENDER
+ *   30-35   key 1243: ask, DuelPrompt_Post(PROMPT_SELECT_OPPONENT_REPLACEMENT_TARGET), move the picked monster of
+ *           the attacker into a free zone of the defender, make it the target, flip it, CalcBattle
+ */
 int BattleStage_DamageCalc(int player)
 {
-    char revealText[256];
-    char changeText[256];
+    char askText[256];
+    char substituteText[256];
     u8 *e;
-    u32 state = gDuel.cnt;
+    u32 state = gDuel.battleStep;
+
     e = (u8 *)&gDuel;
     switch (state) {
-    case 0: {
+    case DAMAGE_STEP_MARK_ATTACKER: {
         int handled = 0;
         int i;
-        int opp;
-        switch (FinishCardNumber(FINISH_ID(FinishAttackerZone(player)))) {
-        case 0x538:
-            if (FINISH_FLAGS7(FinishAttackerZone(player)) & 0x20) {
-                DuelCmd_Push(player ? 0x8092 : 0x92, BTH.atkSlot, 0, 0);
+        int opponent;
+
+        switch (CardNumberWide(ZONE_CARD_ID(AttackerZone(player)))) {
+        case CARD_1336:
+            /* Its extra attack: while it is unused, attacking uses it up instead of marking the monster. */
+            if (ATTACKER_FLAGS7(player) & 0x20) {
+                DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_SET_EFFECT_UNUSED : DUEL_CMD_SET_EFFECT_UNUSED,
+                             gBattle.atkSlot, 0, 0);
                 handled = 1;
             }
             break;
-        case 0x540:
-            DuelCmd_Push(player ? 0x8092 : 0x92, BTH.atkSlot, 0, 0);
+        case CARD_1344:
+            DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_SET_EFFECT_UNUSED : DUEL_CMD_SET_EFFECT_UNUSED,
+                         gBattle.atkSlot, 0, 0);
             break;
         }
         if (!handled)
-            DuelCmd_Push(player ? 0x8035 : 0x35, BTH.atkSlot, 1, 0);
-        i = 5;
-        opp = 1 - player;
-        for (; i <= 9; i++) {
-            u8 *zone = (u8 *)ZBB(opp & 1, i);
+            DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_MARK_ATTACKED : DUEL_CMD_MARK_ATTACKED,
+                         gBattle.atkSlot, 1, 0);
+        i = ZONE_SPELL_0;
+        opponent = 1 - player;
+        /* Every face-up, enabled Mirror Wall of the opponent gets a link to the attacker. */
+        for (; i <= ZONE_SPELL_4; i++) {
+            u8 *zone = (u8 *)ZONE_VIA_ZONES(opponent & 1, i);
             u16 id = (*(u32 *)zone << 20) >> 20;
-            if (id != 0 && (zone[6] & 2) && !(zone[0x91] & 8)
-                && FinishCardNumberWide(id) == 0x44B)
-                QueueAddZoneLink(opp, FinishPosition(opp, i),
-                             (u8)player | BTH.atkSlot << 8, 2);
+
+            if (id != 0 && (zone[6] & 2) && !(zone[0x91] & 8) && CardNumberWide(id) == CARD_MIRROR_WALL)
+                QueueAddZoneLink(opponent, PackLoc(opponent, i), LOC(player, gBattle.atkSlot), ZONE_LINK_CONTINUOUS);
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
     }
-    case 1: {
-        int opp;
+    case DAMAGE_STEP_CALC: {
+        int opponent;
         u16 number;
+
         CalcBattle(player, 0);
-        if (!(*(u8 *)&gBattle & 2)) {
-            opp = 1 - player;
-            if (FINISH_FLAGS6(FinishDefenderZone(opp)) & 2) {
+        if (!BATTLE_BYTES.direct) {
+            opponent = 1 - player;
+            if (DefenderFlags(opponent) & 2) {
                 {
-                    u16 id = FINISH_ID(FinishDefenderZone(opp));
-                    number = FinishCardNumberWide(id);
+                    u16 id = ZONE_CARD_ID(DefenderZone(opponent));
+
+                    number = CardNumberWide(id);
                 }
                 switch (number) {
-                case 0x172:
-                case 0x173:
-                case 0x174:
-                    if (FINISH_FLAGS7(FinishDefenderZone(opp)) & 0x20) {
-                        CNTB.cnt = 10;
+                case CARD_SANGA_OF_THE_THUNDER:
+                case CARD_KAZEJIN:
+                case CARD_SUIJIN:
+                    if (DEFENDER_FLAGS7(opponent) & 0x20) {
+                        STEP_VIA_ZONES.step = DAMAGE_STEP_ASK_ZERO_ATK;
                         return 0;
                     }
                     break;
-                case 0x4DB:
-                    if (FinishCardNumber(FINISH_BATTLE.cardId) == number
-                        && CountFreeMonsterZones(opp) > 0 && CountMonsters(player) > 1) {
-                        CNTB.cnt = 30;
+                case CARD_1243:
+                    if (CARD_NUMBER_OF(BATTLE_BYTES.flipCardId) == number
+                        && CountFreeMonsterZones(opponent) > 0 && CountMonsters(player) > 1) {
+                        STEP_VIA_ZONES.step = DAMAGE_STEP_ASK_SUBSTITUTE;
                         return 0;
                     }
                     break;
-                case 0x5F2:
-                    if (CountMonsters(opp) > 1) {
-                        CNTB.cnt = 20;
+                case CARD_1522:
+                    if (CountMonsters(opponent) > 1) {
+                        STEP_VIA_ZONES.step = DAMAGE_STEP_REPLACE_OWN;
                         return 0;
                     }
                     break;
                 }
             }
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         /* The normal path immediately performs step 2 as well. */
     }
-    case 2:
-        DuelCmd_Push(player ? 0x8030 : 0x30, FINISH_BATTLE.side[0].cardId, FINISH_BATTLE.side[1].cardId, 0);
-        gDuel.cnt++;
+    case DAMAGE_STEP_START_SCENE:
+        DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_START_BATTLE_SCENE : DUEL_CMD_START_BATTLE_SCENE,
+                     BATTLE_BYTES.side[0].cardId, BATTLE_BYTES.side[1].cardId, 0);
+        gDuel.battleStep++;
         return 0;
-    case 3: {
-        u16 message = 0x31;
+    case DAMAGE_STEP_PLAY_SCENE: {
+        u16 message = DUEL_CMD_PLAY_BATTLE_SCENE;
+
         if (player)
-            message = 0x8031;
-        { u16 attack = FINISH_BATTLE.side[0].power;
-        u16 defense = FINISH_BATTLE.side[1].power;
-        u8 *battle = (u8 *)&gBattle;
-        int defender = FINISH_BATTLE.side[1].marked | FINISH_BATTLE.side[1].destroyed << 1;
-        int attacker = FINISH_BATTLE.side[0].marked | FINISH_BATTLE.side[0].destroyed << 1;
-        int combined; u16 packed;
-        if (FINISH_BATTLE.side[0].damage != 0)
-            combined = 4 | attacker;
+            message = DUEL_CMD_PLAYER | DUEL_CMD_PLAY_BATTLE_SCENE;
+        { u16 attack = BATTLE_BYTES.side[0].battleValue;
+        u16 defense = BATTLE_BYTES.side[1].battleValue;
+        /* BattleSideFlags of each side: defensePos | destroyed << 1 (| BATTLE_SIDE_DAMAGE when it takes damage). */
+        int defender = BATTLE_BYTES.side[1].defensePos | BATTLE_BYTES.side[1].destroyed << 1;
+        int attacker = BATTLE_BYTES.side[0].defensePos | BATTLE_BYTES.side[0].destroyed << 1;
+        int combined;
+        u16 packed;
+
+        if (BATTLE_BYTES.side[0].damage != 0)
+            combined = BATTLE_SIDE_DAMAGE | attacker;
         else
             combined = attacker;
-        if (FINISH_BATTLE.side[1].damage != 0)
-            packed = combined | ((defender | 4) << 8);
+        if (BATTLE_BYTES.side[1].damage != 0)
+            packed = combined | ((defender | BATTLE_SIDE_DAMAGE) << 8);
         else
             packed = combined | (defender << 8);
         DuelCmd_Push(message, attack, defense, packed);
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
     }
     }
-    case 4: {
+    case DAMAGE_STEP_CLEAR_ZONES: {
         int i = 0;
         u8 *side = (u8 *)&gBattle;
-        for (; i <= 1; side += 12, i++) {
+
+        for (; i <= 1; side += sizeof(struct BattleSide), i++) {
             u8 flags = side[8];
-            if ((s32)((u32)flags << 28) < 0)
-                DuelCmd_Push(i ? 0x8078 : 0x78, ((struct FinishSide *)(side + 8))->zone, 0, 0);
+
+            if ((s32)((u32)flags << 28) < 0)       /* destroyed */
+                DuelCmd_Push(i ? DUEL_CMD_PLAYER | DUEL_CMD_CLEAR_ZONE_CARD : DUEL_CMD_CLEAR_ZONE_CARD,
+                             ((struct BattleSideBytes *)(side + 8))->slot, 0, 0);
         }
-        DuelCmd_Push(player ? 0x8012 : 0x12, 0, 0, 0);
+        DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_OPEN_DUEL_SCREEN : DUEL_CMD_OPEN_DUEL_SCREEN, 0, 0, 0);
         return 1;
     }
-    case 10:
+    case DAMAGE_STEP_ASK_ZERO_ATK:
         if (player != 0) {
-            FormatStr(revealText, gStrAskZeroAttackerAtkFmt,
-                          ((const char (*)[64])0x0822C720)[FINISH_ID(FinishDefenderZone(1 - player))]);
-            TextBoxOpen(0x204, 0xB16, 11, revealText);
-            TextBoxSetMenu(1, 0, 0);
-            CNTB.cnt++;
-        } else if (!(gDuelCtrl[1] & 1)) {
-            gTextBox.h14 = 1;
-            gDuel.cnt++;
+            /* The defender is the human. */
+            FormatStr(askText, gStrAskZeroAttackerAtkFmt, CARD_NAME(ZONE_CARD_ID(DefenderZone(1 - player))));
+            TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(22, 11), TEXTBOX_FLAGS_DEFAULT, (u8 *)askText);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            STEP_VIA_ZONES.step++;
+        } else if (!(gDuelCtrl.isLinkDuel)) {
+            /* The CPU always uses the effect. */
+            gTextBox.result = 1;
+            gDuel.battleStep++;
         } else {
-            DuelLink_SendMessage(0xF057, FINISH_ID(FinishDefenderZone(1)), 0, 0);
-            ((struct FinishReply *)gLinkState)->ready = 0;
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, ZONE_CARD_ID(DefenderZone(1)), 0, 0);
+            LINK_CARD_PROMPT->answered = 0;
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
-    case 11:
-        if ((s32)((u32)gLinkState[0x450] << 30) < 0) {
-            gTextBox.h14 = *(u16 *)(gLinkState + 0x45A);
-            FINISH_STEP(e)++;
+    case DAMAGE_STEP_WAIT_ZERO_ATK:
+        if ((s32)((u32)gLinkStateBytes[0x450] << 30) < 0) {     /* cardPromptAnswered */
+            gTextBox.result = *(u16 *)(gLinkStateBytes + 0x45A);   /* cardPromptAnswer */
+            STEP_AT(e)++;
         }
         return 0;
-    case 12:
-        if (gTextBox.h14 != 0) {
-            sub_080197C0(1 - player, FINISH_ID(FinishDefenderZone(1 - player)));
-            DuelCmd_Push(player != 1 ? 0x8092 : 0x92, BTH.defSlot, 0, 0);
-            DuelCmd_Push(player ? 0x803A : 0x3A, 0, 0, 0);
+    case DAMAGE_STEP_APPLY_ZERO_ATK:
+        if (gTextBox.result != 0) {
+            sub_080197C0(1 - player, ZONE_CARD_ID(DefenderZone(1 - player)));
+            DuelCmd_Push(player != 1 ? DUEL_CMD_PLAYER | DUEL_CMD_SET_EFFECT_UNUSED : DUEL_CMD_SET_EFFECT_UNUSED,
+                         gBattle.defSlot, 0, 0);
+            DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_ZERO_ATTACKER_ATK : DUEL_CMD_ZERO_ATTACKER_ATK, 0, 0, 0);
             CalcBattle(player, 1);
         }
-        gDuel.cnt = 2;
+        gDuel.battleStep = DAMAGE_STEP_START_SCENE;
         return 0;
-    case 20:
-        DuelPrompt_Post(1 - player, 0x14, BTH.defSlot, 0);
-        gDuel.cnt++;
+    case DAMAGE_STEP_REPLACE_OWN:
+        DuelPrompt_Post(1 - player, PROMPT_SELECT_OWN_REPLACEMENT_TARGET, gBattle.defSlot, 0);
+        gDuel.battleStep++;
         return 0;
-    case 21:
-        DuelCmd_Push(player != 1 ? 0x8008 : 8, (u16)(1 - player), FINISH_PICK(e) << 8, 0);
-        DuelCmd_Push(player != 1 ? 0x8038 : 0x38, (u8)(1 - player) | FINISH_PICK(e) << 8, 0, 0);
-        FINISH_STAGE(e)--;
-        FINISH_STEP(e) = 0;
+    case DAMAGE_STEP_REPLACED_OWN:
+        DuelCmd_Push(player != 1 ? DUEL_CMD_PLAYER | DUEL_CMD_POINT_AT_CARD : DUEL_CMD_POINT_AT_CARD,
+                     (u16)(1 - player), PROMPT_PICK_AT(e) << 8, 0);
+        DuelCmd_Push(player != 1 ? DUEL_CMD_PLAYER | DUEL_CMD_SET_ATTACK_TARGET : DUEL_CMD_SET_ATTACK_TARGET,
+                     (u8)(1 - player) | PROMPT_PICK_AT(e) << 8, 0, 0);
+        STAGE_AT(e)--;
+        STEP_AT(e) = 0;
         return 0;
-    case 30:
+    case DAMAGE_STEP_ASK_SUBSTITUTE:
         if (player != 0) {
-            FormatStr(changeText, gStrAskSubstituteTargetFmt,
-                          ((const char (*)[64])0x0822C720)[FINISH_ID(FinishDefenderZone(1 - player))]);
-            TextBoxOpen(0x206, 0x713, 11, changeText);
-            TextBoxSetMenu(1, 0, 0);
-            CNTB.cnt++;
-        } else if (!(gDuelCtrl[1] & 1)) {
-            gTextBox.h14 = 1;
-            gDuel.cnt++;
+            FormatStr(substituteText, gStrAskSubstituteTargetFmt, CARD_NAME(ZONE_CARD_ID(DefenderZone(1 - player))));
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 7), TEXTBOX_FLAGS_DEFAULT, (u8 *)substituteText);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            STEP_VIA_ZONES.step++;
+        } else if (!(gDuelCtrl.isLinkDuel)) {
+            gTextBox.result = 1;
+            gDuel.battleStep++;
         } else {
-            DuelLink_SendMessage(0xF057, FINISH_ID(FinishDefenderZone(1)), 0, 0);
-            ((struct FinishReply *)gLinkState)->ready = 0;
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, ZONE_CARD_ID(DefenderZone(1)), 0, 0);
+            LINK_CARD_PROMPT->answered = 0;
         }
-        gDuel.cnt++;
+        gDuel.battleStep++;
         return 0;
-    case 31:
-        if ((s32)((u32)gLinkState[0x450] << 30) < 0) {
-            gTextBox.h14 = *(u16 *)(gLinkState + 0x45A);
-            FINISH_STEP(e)++;
+    case DAMAGE_STEP_WAIT_SUBSTITUTE:
+        if ((s32)((u32)gLinkStateBytes[0x450] << 30) < 0) {
+            gTextBox.result = *(u16 *)(gLinkStateBytes + 0x45A);
+            STEP_AT(e)++;
         }
         return 0;
-    case 32:
-        if (gTextBox.h14 == 0) {
-            FINISH_STEP(e) = 2;
+    case DAMAGE_STEP_PICK_SUBSTITUTE:
+        if (gTextBox.result == 0) {
+            STEP_AT(e) = DAMAGE_STEP_START_SCENE;
             return 0;
         }
-        DuelPrompt_Post(1 - player, 0x10, BTH.atkSlot, 0);
-        gDuel.cnt++;
+        DuelPrompt_Post(1 - player, PROMPT_SELECT_OPPONENT_REPLACEMENT_TARGET, gBattle.atkSlot, 0);
+        gDuel.battleStep++;
         return 0;
-    case 33: {
+    case DAMAGE_STEP_MOVE_SUBSTITUTE: {
         u16 zone;
         u32 freshOne;
         u32 low;
@@ -701,7 +899,9 @@ int BattleStage_DamageCalc(int player)
         /* FAKEMATCH: reuse r1 for the mask and loaded byte, leaving the zone in r2. */
         register u32 mask asm("r1");
         u8 *lowPtr;
-        DuelCmd_Push(player ? 0x8008 : 8, (u16)player, FINISH_PICK(e) << 8, 0);
+
+        DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_POINT_AT_CARD : DUEL_CMD_POINT_AT_CARD, (u16)player,
+                     PROMPT_PICK_AT(e) << 8, 0);
         zone = FindFreeMonsterZone(1 - player);
         /* FAKEMATCH: preserve the initialized halfword before splitting its bits. */
         asm("" : : "r"(zone));
@@ -719,37 +919,40 @@ int BattleStage_DamageCalc(int player)
         /* FAKEMATCH: the tied input initializes freshOne to 1; consuming the
          * high bits here schedules that constant before the high-byte pointer. */
         asm("" : "=r"(freshOne) : "0"(1), "r"(zone >> 7));
-        ((struct FinishHigh *)e)->value = zone >> 7;
-        MoveFieldCard(1 - player, (u8)player | FINISH_PICK(e) << 8,
-                     FinishDestination(freshOne - player, low, e[0x1B18]));
+        ((struct BattleArgHigh *)e)->value = zone >> 7;
+        MoveFieldCard(1 - player, (u8)player | PROMPT_PICK_AT(e) << 8,
+                      ArgDestination(freshOne - player, low, e[0x1B18]));
         {
-            struct FinishBattle *battle = (struct FinishBattle *)&gBattle;
+            struct BattleBytes *battle = (struct BattleBytes *)&gBattle;
             int low = e[0x1B17] >> 1;
-            battle->defender = ((e[0x1B18] & 1) << 7) | low;
+
+            battle->defSlot = ((e[0x1B18] & 1) << 7) | low;
         }
-        FINISH_STEP(e)++;
+        STEP_AT(e)++;
         return 0;
     }
-    case 34: {
-        int opp = 1 - player;
-        if (!(FINISH_FLAGS6(FinishDefenderZone(opp)) & 2)) {
-            FlipFieldCard(opp, BTH.defSlot, 0);
-            ShowRevealedCard(player, FINISH_ID(FinishDefenderZone(opp)));
-            TriggerMysteriousPuppeteer(opp);
+    case DAMAGE_STEP_FLIP_SUBSTITUTE: {
+        int opponent = 1 - player;
+
+        if (!(DefenderFlags(opponent) & 2)) {
+            FlipFieldCard(opponent, gBattle.defSlot, 0);
+            ShowRevealedCard(player, ZONE_CARD_ID(DefenderZone(opponent)));
+            TriggerMysteriousPuppeteer(opponent);
         }
-        CNTB.cnt++;
+        STEP_VIA_ZONES.step++;
         return 0;
     }
-    case 35: {
-        struct FinishBattle *battle = (struct FinishBattle *)&gBattle;
-        u16 id = FINISH_ID(FinishDefenderZone(1 - player));
-        battle->cardId = id;
-        battle->reveal = HasFlipEffect(FinishCardNumber(id), 1);
-        if (CountActiveCardsOnField(0, 0x5FA) != 0 || CountActiveCardsOnField(1, 0x5FA) != 0)
-            battle->reveal = 0;
-        QueueAddZoneLink(1 - player, gUnk_086247AA, (u8)(1 - player) | BTH.defSlot << 8, 3);
+    case DAMAGE_STEP_SUBSTITUTE_DONE: {
+        struct BattleBytes *battle = (struct BattleBytes *)&gBattle;
+        u16 id = ZONE_CARD_ID(DefenderZone(1 - player));
+
+        battle->flipCardId = id;
+        battle->flipEffectPending = HasFlipEffect(CARD_NUMBER_OF(id), 1);
+        if (CountActiveCardsOnField(0, CARD_1530) != 0 || CountActiveCardsOnField(1, CARD_1530) != 0)
+            battle->flipEffectPending = 0;
+        QueueAddZoneLink(1 - player, gUnk_086247AA, LOC(1 - player, gBattle.defSlot), ZONE_LINK_CARD_EFFECT);
         CalcBattle(player, 0);
-        gDuel.cnt = 2;
+        gDuel.battleStep = DAMAGE_STEP_START_SCENE;
         return 0;
     }
     default:

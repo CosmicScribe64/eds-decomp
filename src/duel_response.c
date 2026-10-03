@@ -1,941 +1,1115 @@
+/*
+ * duel_response (0x08041F9C-0x080431E3): event response windows and the link partner's activation query
+ * (wiki/functions/duel-response-c.md).
+ *
+ * After a game event (summon, attack, damage, a card destroyed, ...) EventResponse_Request opens a response
+ * window in gChain (responseEvent, responseEventArg, askPlayer). DuelMainStep calls EventResponse_Update every
+ * frame, which runs the step machine EventResponse_Run (enum EventResponseStep): it asks each player in turn
+ * whether to activate a Quick-Play Magic or a Trap ('You Summoned a monster. Do you wish to activate ...?').
+ *   - The human gets a Yes/No box and picks the card with the field cursor and the card menu.
+ *   - The CPU searches its set Magic/Trap zones (AiShouldActivateSetCard).
+ *   - In a link duel the question goes to the partner (LINKMSG_ACTIVATE_QUERY) and the partner's
+ *     DuelLink_AnswerActivateQuery answers it.
+ * A chosen card is queued with Chain_AddPending (and flipped face-up first); CanActivateHandCard (here) and
+ * CanActivateFieldCard (effect_targets4.c) decide which cards may answer. DuelLink_AnswerActivateQuery is
+ * also the partner's side of Chain_AskResponse: it answers a chain-link query (LINKMSG_CHAIN_QUERY) the same
+ * way, runs the chosen card's chainA / chainB handlers here and sends the card back.
+ *
+ * Players: 0 is the human, 1 the CPU or the link partner. A response is a card of spell speed 2 or more.
+ */
 #include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, CARD_NAME_SIZE, CARD_STATS_*, gCardNames */
+#include "constants/card_stats.h"   /* enum CardType */
+#include "constants/duel.h"         /* enum ResponseEventKind, DuelArea, CardMenuCommandMask, PHASE_*, FieldPickMask */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_FLIP_CARD, DUEL_CMD_CHAIN_BANNER, DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* struct Main gMain, newKeys */
 
-struct CardRef {
-    u16 id;             /* +0x00 */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 kind : 6;
-    u8 unk4_0 : 2;
-    u8 skip4 : 1;
-    u8 unk4_3 : 5;
-    u8 unk5;
-    u16 pos;
-    u16 unk8;
-    u8 numTargets : 3;  /* +0x0A bits 0-2 */
-    u8 unkA_3 : 5;
-    u8 unkB;
-    u16 targets[3];     /* +0x0C */
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
+ * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
+ * guard so that chain.h, duel_link.h, card_list_view.h and duel_screen.h do not pull in the legacy header.
+ * After H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
+ * (build/readability/issues/duel_response.md). */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-struct DuelCard { u32 id : 12; u32 unk12 : 20; };
+
+/* Needed by duel_screen.h (DuelScreen.from / .to). */
+struct DuelLoc {
+    u16 player:1;                   /* bit 0: side of the field */
+    u16 area:4;                     /* bits 1-4: enum DuelArea */
+    u16 index:9;                    /* bits 5-13 */
+    u16 isDefense:1;                /* bit 14 */
+    u16 isFaceUp:1;                 /* bit 15 */
+    u16 unk2;
+};
+
 struct DuelZone {
-    struct DuelCard card;   /* +0x00 */
-    u8 unk4;
-    u8 unk5;
-    u8 flags6;
-    u8 unk7[0x94 - 7];
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u8 unk6_6:2;
+    u8 unk7[0x94 - 0x7];
 };
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 unk3[0x7 - 0x3];
+    u8 unk7_0:6;
+    u8 magicTrapLockTurns:2;        /* +0x007 bits 6-7: nonzero blocks Magic/Trap activation */
+    u8 unk8[0x28 - 0x8];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    u8 unk7C4[0xD64 - 0x7C4];
+};
+
+/* The card command menu (gDuel.cardMenu, 0xC bytes): the human's card pick in a response window. */
+struct CardMenu {
+    u16 open:1;                     /* bit 0: menu open, the caller runs CardMenu_Update */
+    u16 confirmed:1;                /* bit 1: a command was chosen */
+    u16 command:4;                  /* bits 2-5: enum CardMenuCommand */
+    u16 slide:4;                    /* bits 6-9: slide/zoom animation step 0-8 */
+    u32 available:16;               /* bits 10-25: enum CardMenuCommandMask bits */
+    u32 state:8;                    /* bits 26-33: CardMenu_Update state */
+    u32 step:8;                     /* bits 34-41: step of the command handler */
+    u8 summonSeq:4;                 /* bits 42-45 */
+    u32 tributeSources:4;           /* bits 46-49 */
+    u16 timer:7;                    /* bits 50-56: pulse timer of the selected icon */
+    u16 player:1;                   /* bit 57: player of the confirmed command */
+    u32 area:7;                     /* bits 58-64: enum DuelArea of the cursor at confirm */
+    u32 index:8;                    /* bits 65-72: zone index (field) or hand index (hand) */
+    u32 placeZone:8;                /* bits 73-80 */
+    u32 unk0A_1:15;
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 linkError:1;                 /* +0x1B12 bit 5 */
+    u8 result:2;                    /* +0x1B12 bits 6-7 */
+    u8 unk1B13[0x1B28 - 0x1B13];
+    u16 cardMenuCard;               /* +0x1B28: card ID under the cursor when the command was confirmed */
+    u16 summonTributes;             /* +0x1B2A */
+    struct CardMenu cardMenu;       /* +0x1B2C */
+    u8 unk1B38[0x1B78 - 0x1B38];
+};
+
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 11 * 0x94];
+    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
 };
-extern struct DuelZonesPlayer gDuelZones[2];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-struct DuelFlags { u8 bit0 : 1; u8 bit1 : 1; u8 rest : 6; u8 filler1[4]; };
-#define DUEL_FLAGS (*(struct DuelFlags *)((u8 *)0x020192E4 + 0x1B0E))
-struct DuelPlayerB { u8 unk0[2]; u8 handCount; u8 unk3[4]; u8 b7; u8 pad[0xD64 - 8]; };
-extern struct CardRef gEventResponseEntry;
-extern u8 gDuel[];
-extern struct DuelPlayerB gDuelPlayers[2];
-struct DuelHand { u32 h[0x1B4 / 4]; u8 pad[0xD64 - 0x1B4]; };
-extern struct DuelHand gDuelHands[2];
-int CanPlaceSpellTrapCard(int player, u16 id);
-int GetCardSpellSpeed(u16 id);
-int CanActivateEffect(struct CardRef *ref, int a, int b);
-extern const u8 gStrEventYouSummoned[], gStrEventOpponentSummoned[], gStrEventYouFlipSummoned[], gStrEventOpponentFlipSummoned[], gStrEventYouSpecialSummoned[], gStrEventOpponentSpecialSummoned[], gStrEventYouSet[], gStrEventOpponentSet[], gStrEventAttackTargetFmt[];
-extern const u8 gStrEventPositionChanged[], gStrEventFlippedFaceUp[], gStrEventControlSwitched[], gStrEventBattleFlipEffect[], gStrEventYouDeclaredBattle[], gStrEventOpponentDeclaredBattle[], gStrEventBattleDestroyed[], gStrEventYouTookBattleDamage[], gStrEventYouDealtBattleDamage[];
-extern const u8 gStrEventYouTookDeflectedDamage[], gStrEventOpponentTookDeflectedDamage[], gStrEventYouTookDamage[], gStrEventYouDealtDamage[], gStrEventMagicDestroyed[], gStrEventTrapDestroyed[], gStrEventContinuousTrapPlayed[], gStrEventContinuousMagicPlayed[], gStrEventFieldMagicPlayed[];
-extern const u8 gStrEventEquipped[], gStrEventCardDrawn[], gStrEventMonsterReturnedToHand[], gStrEventDeckToGraveyard[], gStrEventYouDiscarded[], gStrEventOpponentDiscarded[], gStrEventMonsterSentToGraveyard[], gStrEventSeparator[], gStrAskActivateQuickPlayOrTrap[];
-extern const u8 gAlias_080851E8[];
-extern const char gCardNames[][0x40];
-void StrCopy(u8 *dst, const u8 *src);
-void StrCat(u8 *dst, const u8 *src);
-void FormatStr(char *dst, const char *fmt, ...);
-void FormatInt(char *dst, char *a, char *b);
-void GetZoneCardStats(u32 player, u32 slot, void *out);
-extern u8 gChain[];
-int EventResponse_Run();
-struct F491 { u8 lo : 4; u8 b4 : 1; u8 b5 : 1; u8 f6 : 1; u8 f7 : 1; };
-struct G5EE8 { u8 unk0; u8 b1; };
-extern struct G5EE8 gDuelCtrl;
-void DuelLink_SendMessageData(u32 a, void *b, int c);
-int CanActivateFieldCard(struct CardRef *ref, int player, int idx);
-int CanActivateHandCard(struct CardRef *ref, int player, int idx);
 
+/* Effective stats of the card in a zone (GetZoneCardStats). */
+struct ZoneCardStats {
+    u16 id;                         /* +0x0: card ID */
+    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
+    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
+    u8 unk3;
+    s32 atk;                        /* +0x4 */
+    s32 def;                        /* +0x8 */
+};
 
-/* Takes (ref, player, hand index). Can this hand card be used as the effect's
- * card? Fills ref->id. */
-int CanActivateHandCard(struct CardRef *ref, int player, int idx)
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
+
+int CanPlaceSpellTrapCard(int player, u16 cardId);
+void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
+
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(u32 seId);
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* AiShouldActivateSetCard */
+#include "card_list_view.h"         /* CardListView_Open */
+#include "card_menu.h"              /* CardMenu_Update, CardMenu_PlaySpellTrapFromHand */
+#include "chain.h"                  /* struct ChainEntry, gChain, the functions defined here */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_flow.h"              /* gDuelCtrl */
+#include "duel_link.h"              /* gLinkState, DuelLink_SendMessage / SendMessageData, LINKMSG_* */
+#include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget / GetCardId */
+#include "effect.h"                 /* GetCardSpellSpeed, CanActivateEffect, FindCardEffect, gCardEffects */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "util.h"                   /* StrCopy, StrCat, FormatStr, FormatInt */
+
+/* ---- Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view") ---- */
+
+/* Matching: this unit calls DuelCmd_Push through u16 parameters (the operands are narrowed at the call). */
+extern void DuelCmd_PushU16(u16 cmd, u16 arg2, u16 arg4, u16 arg6) asm("DuelCmd_Push");
+/* Matching: the CPU search passes a second argument; the definition (ai.h) takes only the entry. */
+extern int AiShouldActivateSetCard2(struct ChainEntry *entry, int unused) asm("AiShouldActivateSetCard");
+
+/*
+ * Matching: the card menu and the cards around it in gDuel as the two step machines read them. Same layout
+ * as struct DuelState up to +0x1B38, but `index` is a u16 bitfield (struct CardMenu has it in a u32
+ * container): the ROM recomputes `index + area` from the shifted halfword. Only the alias symbols below use it.
+ */
+struct CardMenuView {
+    u16 open:1;                     /* bit 0 */
+    u16 confirmed:1;                /* bit 1 */
+    u16 command:4;                  /* bits 2-5 */
+    u16 slide:4;                    /* bits 6-9 */
+    u32 available:16;               /* bits 10-25 */
+    u32 state:8;                    /* bits 26-33 */
+    u32 step:8;                     /* bits 34-41 */
+    u32 unk42:8;                    /* bits 42-49: summonSeq, tributeSources */
+    u16 timer:7;                    /* bits 50-56 */
+    u16 player:1;                   /* bit 57 */
+    u32 area:7;                     /* bits 58-64 */
+    u16 index:8;                    /* bits 65-72 */
+    u16 unk73:7;                    /* bits 73-79: placeZone */
+};
+
+struct DuelStateMenuView {
+    u8 unk0[0x1B12];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 linkError:1;                 /* +0x1B12 bit 5 */
+    u8 result:2;                    /* +0x1B12 bits 6-7 */
+    u8 unk1B13[0x1B28 - 0x1B13];
+    u16 cardMenuCard;               /* +0x1B28 */
+    u8 unk1B2A[2];
+    struct CardMenuView cardMenu;   /* +0x1B2C */
+};
+
+/*
+ * Alias symbols: second names for gChain, gDuel, gTextBox, gMain, gDuelScreen, gLinkState and gCardEffects
+ * (the address is the suffix). The ROM loads each of these from its own literal-pool entry in the two step
+ * machines, so the matched code keeps one set of aliases per function.
+ */
+/* EventResponse_Run */
+extern struct ChainState gAliasB_02017A40;      /* = gChain */
+extern struct DuelStateMenuView gAliasB_020192E0;   /* = gDuel */
+extern struct TextBox gAliasB_0201AE60;         /* = gTextBox */
+extern struct Main gAliasB_03000040;            /* = gMain */
+extern struct DuelScreen gAliasB_0201CFB0;      /* = gDuelScreen */
+extern struct LinkState gAliasB_02017FB0;       /* = gLinkState */
+#define gRunChain       gAliasB_02017A40
+#define gRunDuel        gAliasB_020192E0
+#define gRunTextBox     gAliasB_0201AE60
+#define gRunMain        gAliasB_03000040
+#define gRunScreen      gAliasB_0201CFB0
+#define gRunLinkState   gAliasB_02017FB0
+/* DuelLink_AnswerActivateQuery */
+extern struct ChainState gAlias_02017A40;       /* = gChain */
+extern struct DuelStateMenuView gAlias_020192E0;    /* = gDuel */
+extern struct TextBox gAlias_0201AE60;          /* = gTextBox */
+extern struct Main gAlias_03000040;             /* = gMain */
+extern struct DuelScreen gAlias_0201CFB0;       /* = gDuelScreen */
+extern const struct CardEffect gAlias_0819A9D4[];   /* = gCardEffects */
+#define gAnswerChain    gAlias_02017A40
+#define gAnswerDuel     gAlias_020192E0
+#define gAnswerTextBox  gAlias_0201AE60
+#define gAnswerMain     gAlias_03000040
+#define gAnswerScreen   gAlias_0201CFB0
+#define gAnswerEffects  gAlias_0819A9D4
+
+/* Prompts of the response window (ROM; only this unit uses them). Event texts, by ResponseEventKind;
+ * the @n colour codes of the strings are left out of the comments. */
+extern const char gStrEventYouSummoned[];               /* 0x08084D6C 'You Summoned a monster.' */
+extern const char gStrEventOpponentSummoned[];          /* 0x08084D88 */
+extern const char gStrEventYouFlipSummoned[];           /* 0x08084DB0 */
+extern const char gStrEventOpponentFlipSummoned[];      /* 0x08084DD4 */
+extern const char gStrEventYouSpecialSummoned[];        /* 0x08084E00 */
+extern const char gStrEventOpponentSpecialSummoned[];   /* 0x08084E24 */
+extern const char gStrEventYouSet[];                    /* 0x08084E54 'You Set a monster.' */
+extern const char gStrEventOpponentSet[];               /* 0x08084E6C */
+extern const char gStrEventAttackTargetFmt[];           /* 0x08084E90 'The target for attack is ...' */
+extern const char gStrEventPositionChanged[];           /* 0x08084ECC */
+extern const char gStrEventFlippedFaceUp[];             /* 0x08084EF4 */
+extern const char gStrEventControlSwitched[];           /* 0x08084F18 */
+extern const char gStrEventBattleFlipEffect[];          /* 0x08084F44 */
+extern const char gStrEventYouDeclaredBattle[];         /* 0x08084F78 'You have declared battle.' */
+extern const char gStrEventOpponentDeclaredBattle[];    /* 0x08084F94 */
+extern const char gStrEventBattleDestroyed[];           /* 0x08084FB8 */
+extern const char gStrEventYouTookBattleDamage[];       /* 0x08084FE4 */
+extern const char gStrEventYouDealtBattleDamage[];      /* 0x08085014 */
+extern const char gStrEventYouTookDeflectedDamage[];    /* 0x08085058 */
+extern const char gStrEventOpponentTookDeflectedDamage[]; /* 0x08085094 */
+extern const char gStrEventYouTookDamage[];             /* 0x080850D8 'You have received damage.' */
+extern const char gStrEventYouDealtDamage[];            /* 0x080850F4 */
+extern const char gStrEventMagicDestroyed[];            /* 0x08085114 */
+extern const char gStrEventTrapDestroyed[];             /* 0x0808512C */
+extern const char gStrEventContinuousTrapPlayed[];      /* 0x08085144 */
+extern const char gStrEventContinuousMagicPlayed[];     /* 0x0808516C */
+extern const char gStrEventFieldMagicPlayed[];          /* 0x08085198 */
+extern const char gStrEventEquipped[];                  /* 0x080851B8 */
+extern const char gStrEventCardDrawn[];                 /* 0x080851E8 'A player drew a card.' */
+extern const char gStrEventMonsterReturnedToHand[];     /* 0x08085200 */
+extern const char gStrEventDeckToGraveyard[];           /* 0x08085238 */
+extern const char gStrEventYouDiscarded[];              /* 0x08085278 */
+extern const char gStrEventOpponentDiscarded[];         /* 0x0808528C */
+extern const char gStrEventMonsterSentToGraveyard[];    /* 0x080852AC */
+extern const char gStrEventSeparator[];                 /* 0x080852E4 ' ' */
+extern const char gStrAskActivateQuickPlayOrTrap[];     /* 0x080852E8 'Do you wish to activate a Quick-play ...?' */
+/* FAKEMATCH: gStrEventCardDrawn under a second name. Event 26 shows the same text for both players; the
+ * second name keeps the compiler from merging the two identical switch arms. */
+extern const char gAlias_080851E8[];                    /* = gStrEventCardDrawn */
+/* Prompts of the link partner's answer. */
+extern const char gStrLinkChainPromptEffect[];          /* 0x08085330 '%s's effect is activated. Resolve it ...' */
+extern const char gStrLinkChainPromptCard[];            /* 0x08085374 '%s is activated. Resolve it ...' */
+extern const u8 gStrSelectSpellTrapForChain[];          /* 0x080853AC 'Please select a Magic or Trap ... Chain.' */
+extern const u8 gStrSelectSpellTrapToActivate[];        /* 0x080853F8 'Please select a Magic or Trap ... activated.' */
+
+/* Type of gChain.chainA / chainB (struct ChainState). */
+typedef u16 (*ChainHandler)(struct ChainEntry *link, struct ChainEntry *chainedTo);
+
+/* The flag byte of the response window in gChain (+0x491): aiZone, askPlayer, firstAskPlayer, requestPending
+ * and responseAdded, reached through a pointer into gChain. Matching: EventResponse_Request forms the pointer
+ * before it stores the flags. */
+#define RESPONSE_FLAGS_OFFSET 0x491
+struct ResponseFlagsView {
+    u8 aiZone:4;
+    u8 askPlayer:1;
+    u8 firstAskPlayer:1;
+    u8 requestPending:1;
+    u8 responseAdded:1;
+};
+
+/* Text boxes: the question of a response window (cell (4, 2), 22 x 9) and the card prompt (cell (6, 2), 18 x 7). */
+#define QUESTION_BOX_POS 0x204
+#define QUESTION_BOX_SIZE 0x916
+#define PROMPT_BOX_POS 0x206
+#define PROMPT_BOX_SIZE 0x712
+
+/* Pick masks (enum FieldPickMask): any Magic or Trap card, face up or set (0xE); a face-up monster in either
+ * position (0xE0). The masks here name player 0's positions only. */
+#define PICK_ANY_SPELL_TRAP (PICK_FACE_DOWN_SPELL_TRAP | PICK_FACE_UP_MAGIC | PICK_FACE_UP_TRAP)
+#define PICK_FACE_UP_MONSTER_ANY (PICK_FACE_UP_MONSTER | PICK_ATTACK_POSITION | PICK_DEFENSE_POSITION)
+
+/* &gDuelZones[player].zones[zone] as the ROM adds it: the player term first, from the gDuel alias symbol
+ * (gDuelZones = gDuel + 0x2C). Matching: the zone base must use the same symbol as the card-menu struct, so
+ * that CSE turns it into base + 0x2C. player must be 0 or 1. */
+#define DUEL_ZONES_OFFSET   (OFFSET_OF(struct DuelState, players) + OFFSET_OF(struct DuelPlayer, zones))   /* 0x2C */
+#define ALIAS_ZONE_AT(duel, player, zone) \
+    ((struct DuelZone *)((player) * sizeof(struct DuelZonesPlayer) + (zone) * sizeof(struct DuelZone) \
+                         + (u32)((u8 *)&(duel) + DUEL_ZONES_OFFSET)))
+#define RUN_ZONE(player, zone)      ALIAS_ZONE_AT(gRunDuel, player, zone)
+#define ANSWER_ZONE(player, zone)   ALIAS_ZONE_AT(gAnswerDuel, player, zone)
+/* &gDuelZones[player].zones[zone] by byte arithmetic; player must be 0 or 1. Matching: the two forms add the
+ * zone and player terms in the orders the ROM uses (ZONE_AT: zone term first, ZONE_AT_PZ: player term first;
+ * array indexing gives yet another order). */
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelZonesPlayer) \
+                         + (u32)gDuelZones))
+#define ZONE_AT_PZ(player, zone) \
+    ((struct DuelZone *)((player) * sizeof(struct DuelZonesPlayer) + (zone) * sizeof(struct DuelZone) \
+                         + (u32)gDuelZones))
+
+/* The card word of a zone or hand entry as one u32 (ldr) and its card ID: 12 bits (lsl #20; lsr #20).
+ * Matching: a bitfield read of .id loads a halfword. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+#define CARD_ID(word) (((word) << 20) >> 20)
+
+/* Card tables through integer-constant addresses: gCardStats (0x08621DE0) and gCardNames (0x0822C720).
+ * Matching: the symbol forms (card_data.h) load other literals. */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id) CARD_STATS_TYPE(CARD_STATS(id))       /* enum CardType */
+#define CARD_NAME(id) (((const char (*)[CARD_NAME_SIZE])0x0822C720)[id])
+
+/* Hand card of a player as the ROM adds it: (gDuelHands + index * 4) + player * 0xD64. */
+#define HAND_CARD_WORD(player, index) \
+    (*(u32 *)((u8 *)gDuelHands + (index) * sizeof(struct DuelCard) + (1 & (player)) * sizeof(struct DuelPlayer)))
+
+/* Turn flags byte of gDuel (+0x1B12): bit 1 turnPlayer, bits 2-4 phase (enum DuelPhase). CanActivateHandCard
+ * reads it through gDuelHands + 0x148A (the same address, 0x0201ADF2). The shift extractions are matched forms. */
+#define TURN_FLAGS_OFFSET 0x1B12
+#define TURN_FLAGS_VIA_HANDS \
+    (((u8 *)gDuelHands)[TURN_FLAGS_OFFSET - OFFSET_OF(struct DuelState, players) - OFFSET_OF(struct DuelPlayer, hand)])
+#define TURN_FLAGS_PLAYER(flags) (((flags) << 30) >> 31)
+#define TURN_FLAGS_PHASE(flags) (((flags) << 27) >> 29)
+
+/*
+ * Can hand card handIdx of player (a Magic card) be activated now, outside a chain? Needs
+ * CanPlaceSpellTrapCard, type Magic, and then spell speed 2 or more, or the Main Phase 1/2 of the turn player.
+ * Fills ref->card; refuses a Magic or Trap card while the player's magicTrapLockTurns is nonzero; returns
+ * CanActivateEffect(ref, NULL, 1) narrowed to u16.
+ */
+int CanActivateHandCard(struct ChainEntry *ref, int player, int handIdx)
 {
-    u16 id = (*(u32 *)((u8 *)gDuelHands + idx * 4 + (1 & player) * 0xD64) << 20) >> 20;
-    u32 n = 0x7FF & id;
-    if (CanPlaceSpellTrapCard(player, id) != 0 && (((((const u32 *)0x08621DE0)[n] & 0x1F00000) >> 20) == 0x16)) {
-        if (GetCardSpellSpeed(id) > 1)
-            goto store;
+    u16 id = CARD_ID(HAND_CARD_WORD(player, handIdx));
+    u32 n = CARD_ID_MASK & id;
+    if (CanPlaceSpellTrapCard(player, id) != 0
+        && CARD_STATS_TYPE(((const u32 *)0x08621DE0)[n]) == CARD_TYPE_MAGIC) {
+        if (GetCardSpellSpeed(id) > SPELL_SPEED_1)
+            goto activate;
         {
-            u32 f = *((u8 *)gDuelHands + 0x148A);
-            u32 m = (f << 27) >> 29;
-            if (m == 2 || m == 4) {
-                if (((f << 30) >> 31) == player)
-                    goto store;
+            u32 flags = TURN_FLAGS_VIA_HANDS;
+            u32 phase = TURN_FLAGS_PHASE(flags);
+            if (phase == PHASE_MAIN1 || phase == PHASE_MAIN2) {
+                if (TURN_FLAGS_PLAYER(flags) == player)
+                    goto activate;
             }
         }
     }
-fail:
+refuse:
     return 0;
-store:
+activate:
     {
-        int t;
-        ref->id = id;
-        t = CARD_TYPE(id);
-        switch (t) {
-        case 0x15:
-        case 0x16:
-            if (gDuelPlayers[1 & player].b7 >> 6 != 0)
-                goto fail;
+        int type;
+        ref->card = id;
+        type = CARD_TYPE(id);
+        switch (type) {
+        case CARD_TYPE_TRAP:
+        case CARD_TYPE_MAGIC:
+            if (gDuelPlayers[1 & player].magicTrapLockTurns != 0)
+                goto refuse;
         }
         return (u16)CanActivateEffect(ref, 0, 1);
     }
 }
-/* Takes (ref, player, kind 5 | 0xB, index). Returns 0x41 when the hand/field
- * card is usable for the effect, else 1. */
-int EventResponse_GetCommands(struct CardRef *ref, int player, int kind, int idx)
+
+/*
+ * Card-menu command mask for the card under the cursor in a response window: area DUEL_AREA_HAND (11) asks
+ * CanActivateHandCard(ref, player, index), area DUEL_AREA_SPELL_TRAP (5) asks CanActivateFieldCard(ref,
+ * player, zone index + 5). 0x41 (Card View + Activate) when it allows activation, else 1 (Card View only).
+ */
+int EventResponse_GetCommands(struct ChainEntry *ref, int player, int area, int index)
 {
-    int r = 1;
-    switch (kind) {
-    case 0xB:
-        if ((u16)CanActivateHandCard(ref, player, idx))
-            r = 0x41;
+    int mask = CARDMENU_MASK_CARD_VIEW;
+    switch (area) {
+    case DUEL_AREA_HAND:
+        if ((u16)CanActivateHandCard(ref, player, index))
+            mask = CARDMENU_MASK_CARD_VIEW | CARDMENU_MASK_ACTIVATE;
         break;
-    case 5:
-        if ((u16)CanActivateFieldCard(ref, player, idx + 5))
-            r = 0x41;
+    case DUEL_AREA_SPELL_TRAP:
+        if ((u16)CanActivateFieldCard(ref, player, index + ZONE_SPELL_0))
+            mask = CARDMENU_MASK_CARD_VIEW | CARDMENU_MASK_ACTIVATE;
         break;
     }
-    return r;
+    return mask;
 }
-/* The player array at gDuel + 4, wrapped so the hand-loop test loads
- * the constant base first (an ARRAY_REF, not pointer arithmetic). */
-struct PL2_080420A4 { struct DuelPlayerB p[2]; };
-/* Is any spell/trap zone (5-9) or hand card of the player usable right now? */
+
+/* Matching: the player array at gDuel + 4, wrapped so the hand-loop test loads the constant base first (an
+ * ARRAY_REF, not pointer arithmetic). */
+struct DuelPlayersView {
+    struct DuelPlayer p[2];
+};
+
+/*
+ * Does the player hold a card that can answer the open event? 1 when a Magic/Trap zone 5-9 card has spell
+ * speed 2 or more and CanActivateFieldCard accepts it; else, only when player is the turn player, when a hand
+ * card has spell speed 2 or more and CanActivateHandCard accepts it. Uses gEventResponseEntry as the scratch
+ * ref the tests fill.
+ */
 int EventResponse_CanPlayerRespond(int player)
 {
     int i;
-    u8 *e;
-    for (i = 5; i <= 9; i++) {
-        u32 id = (*(u32 *)ZB2(1 & player, i) << 20) >> 20;
+    for (i = ZONE_SPELL_0; i <= ZONE_SPELL_4; i++) {
+        u32 id = CARD_ID(CARD_WORD(ZONE_AT_PZ(1 & player, i)->card));
         if (id != 0) {
-            int n = GetCardSpellSpeed(id);
-            int ok = (u16)CanActivateFieldCard(&gEventResponseEntry, player, i);
-            if (n > 1 && ok != 0)
+            int speed = GetCardSpellSpeed(id);
+            int canActivate = (u16)CanActivateFieldCard(&gEventResponseEntry, player, i);
+            if (speed > SPELL_SPEED_1 && canActivate != 0)
                 goto found;
         }
     }
-    e = gDuel;
-    if (((struct DuelFlags *)(e + 0x1B12))->bit1 == player)
-        goto hand;
+    if (gDuel.turnPlayer == player)
+        goto check_hand;
     return 0;
 found:
     return 1;
-hand:
-    for (i = 0; i < ((struct PL2_080420A4 *)(gDuel + 4))->p[1 & player].handCount; i++) {
-        u32 id = (*(u32 *)((u8 *)gDuelHands + i * 4 + (1 & player) * 0xD64) << 20) >> 20;
+check_hand:
+    for (i = 0; i < ((struct DuelPlayersView *)((u8 *)&gDuel + 4))->p[1 & player].handCount; i++) {
+        u32 id = CARD_ID(HAND_CARD_WORD(player, i));
         if (id != 0) {
-            int n = GetCardSpellSpeed(id);
-            int ok = (u16)CanActivateHandCard(&gEventResponseEntry, player, i);
-            if (n > 1 && ok != 0)
+            int speed = GetCardSpellSpeed(id);
+            int canActivate = (u16)CanActivateHandCard(&gEventResponseEntry, player, i);
+            if (speed > SPELL_SPEED_1 && canActivate != 0)
                 goto found;
         }
     }
     return 0;
 }
-/* Build the description text of a queued effect into buf, chosen by ref->kind (5-30) and its small arguments. */
-void EventResponse_BuildPromptText(struct CardRef *ref, u8 *buf)
+
+/*
+ * Write the description of the event in `ev` into buf: the text of event ev->event ('You Summoned a monster.',
+ * 'Your opponent has declared battle.', ...) chosen by the acting player (the low byte of loc0), by the
+ * selector in loc1 (events 13-15, 26, 29), or, for RESPONSE_DAMAGE_STEP, 'The target for attack is '%s'
+ * (ATK:%d/DEF:%d)' for the face-up monster at loc1 (player | zone << 8). Then append a space and 'Do you wish
+ * to activate a Quick-play Magic or Trap card?'. An event with no text (or a selector that is not 0 or 1)
+ * leaves buf holding only the question.
+ */
+void EventResponse_BuildPromptText(struct ChainEntry *ev, u8 *buf)
 {
-    char *t[3];
+    struct ZoneCardStats stats;
     char tmp[0x100];
-    const u8 *txt;
-    switch (ref->kind) {
-    case 5:
-        switch ((u8)ref->pos) {
+    const char *text;
+    switch (ev->event) {
+    case RESPONSE_SUMMONED:
+        switch ((u8)ev->loc0) {
         case 0:
-            txt = gStrEventYouSummoned;
+            text = gStrEventYouSummoned;
             break;
         case 1:
-            txt = gStrEventOpponentSummoned;
+            text = gStrEventOpponentSummoned;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 6:
-        switch ((u8)ref->pos) {
+        goto copy_text;
+    case RESPONSE_FLIP_SUMMONED:
+        switch ((u8)ev->loc0) {
         case 0:
-            txt = gStrEventYouFlipSummoned;
+            text = gStrEventYouFlipSummoned;
             break;
         case 1:
-            txt = gStrEventOpponentFlipSummoned;
+            text = gStrEventOpponentFlipSummoned;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 7:
-        switch ((u8)ref->pos) {
+        goto copy_text;
+    case RESPONSE_SPECIAL_SUMMONED:
+        switch ((u8)ev->loc0) {
         case 0:
-            txt = gStrEventYouSpecialSummoned;
+            text = gStrEventYouSpecialSummoned;
             break;
         case 1:
-            txt = gStrEventOpponentSpecialSummoned;
+            text = gStrEventOpponentSpecialSummoned;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 8:
-        switch ((u8)ref->pos) {
+        goto copy_text;
+    case RESPONSE_SET:
+        switch ((u8)ev->loc0) {
         case 0:
-            txt = gStrEventYouSet;
+            text = gStrEventYouSet;
             break;
         case 1:
-            txt = gStrEventOpponentSet;
+            text = gStrEventOpponentSet;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 17: {
-        u8 pb;
-        u16 w;
-        int zz;
-        int p;
-        struct DuelZone *zn;
+        goto copy_text;
+    case RESPONSE_DAMAGE_STEP: {
+        u8 player;
+        u16 target;
+        int zone;
+        int side;
+        struct DuelZone *z;
         u32 id;
         *(u16 *)buf = 0;
-        pb = (u8)ref->unk8;
-        w = ref->unk8;
-        zz = w >> 8;
-        p = 1 & pb;
-        zn = ZB(p, zz);
-        id = (*(u32 *)zn << 20) >> 20;
-        if (id != 0 && (zn->flags6 & 2)) {
-            GetZoneCardStats(pb, zz, t);
-            FormatStr((char *)buf, (const char *)gStrEventAttackTargetFmt, gCardNames[id]);
-            FormatInt(tmp, (char *)buf, t[1]);
-            FormatInt((char *)buf, tmp, t[2]);
+        player = (u8)ev->loc1;
+        target = ev->loc1;
+        zone = target >> 8;
+        side = 1 & player;
+        z = ZONE_AT(side, zone);
+        id = CARD_ID(CARD_WORD(z->card));
+        if (id != 0 && z->isFaceUp) {
+            GetZoneCardStats(player, zone, &stats);
+            FormatStr((char *)buf, gStrEventAttackTargetFmt, (const char *)gCardNames + id * CARD_NAME_SIZE);
+            FormatInt(tmp, (char *)buf, stats.atk);
+            FormatInt((char *)buf, tmp, stats.def);
         }
-        goto out;
+        goto append_question;
     }
-    case 10:
-        txt = gStrEventPositionChanged;
-        goto call;
-    case 11:
-        txt = gStrEventFlippedFaceUp;
-        goto call;
-    case 12:
-        txt = gStrEventControlSwitched;
-        goto call;
-    case 18:
-        txt = gStrEventBattleFlipEffect;
-        goto call;
-    case 16:
-        switch ((u8)ref->pos) {
+    case RESPONSE_POSITION_CHANGED:
+        text = gStrEventPositionChanged;
+        goto copy_text;
+    case RESPONSE_FLIPPED:
+        text = gStrEventFlippedFaceUp;
+        goto copy_text;
+    case RESPONSE_CONTROL_SWITCHED:
+        text = gStrEventControlSwitched;
+        goto copy_text;
+    case RESPONSE_BATTLE_FLIP_EFFECT:
+        text = gStrEventBattleFlipEffect;
+        goto copy_text;
+    case RESPONSE_ATTACK_DECLARED:
+        switch ((u8)ev->loc0) {
         case 0:
-            txt = gStrEventYouDeclaredBattle;
+            text = gStrEventYouDeclaredBattle;
             break;
         case 1:
-            txt = gStrEventOpponentDeclaredBattle;
+            text = gStrEventOpponentDeclaredBattle;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 19:
-        txt = gStrEventBattleDestroyed;
-        goto call;
-    case 13:
-        switch (((u8)ref->unk8 & 0xF)) {
+        goto copy_text;
+    case RESPONSE_BATTLE_DESTROYED:
+        text = gStrEventBattleDestroyed;
+        goto copy_text;
+    case RESPONSE_BATTLE_DAMAGE:
+        switch (((u8)ev->loc1 & 0xF)) {
         case 0:
-            txt = gStrEventYouTookBattleDamage;
+            text = gStrEventYouTookBattleDamage;
             break;
         case 1:
-            txt = gStrEventYouDealtBattleDamage;
+            text = gStrEventYouDealtBattleDamage;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 14:
-        switch (((u8)ref->unk8 & 0xF)) {
+        goto copy_text;
+    case RESPONSE_BATTLE_DEFLECTED_DAMAGE:
+        switch (((u8)ev->loc1 & 0xF)) {
         case 0:
-            txt = gStrEventYouTookDeflectedDamage;
+            text = gStrEventYouTookDeflectedDamage;
             break;
         case 1:
-            txt = gStrEventOpponentTookDeflectedDamage;
+            text = gStrEventOpponentTookDeflectedDamage;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 15:
-        switch (ref->unk8) {
+        goto copy_text;
+    case RESPONSE_LP_CHANGE:
+        switch (ev->loc1) {
         case 0:
-            txt = gStrEventYouTookDamage;
+            text = gStrEventYouTookDamage;
             break;
         case 1:
-            txt = gStrEventYouDealtDamage;
+            text = gStrEventYouDealtDamage;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 20:
-        txt = gStrEventMagicDestroyed;
-        goto call;
-    case 21:
-        txt = gStrEventTrapDestroyed;
-        goto call;
-    case 22:
-        txt = gStrEventContinuousTrapPlayed;
-        goto call;
-    case 23:
-        txt = gStrEventContinuousMagicPlayed;
-        goto call;
-    case 24:
-        txt = gStrEventFieldMagicPlayed;
-        goto call;
-    case 25:
-        txt = gStrEventEquipped;
-        goto call;
-    case 26:
-        switch (ref->unk8) {
+        goto copy_text;
+    case RESPONSE_MAGIC_TO_GRAVE:
+        text = gStrEventMagicDestroyed;
+        goto copy_text;
+    case RESPONSE_TRAP_TO_GRAVE:
+        text = gStrEventTrapDestroyed;
+        goto copy_text;
+    case RESPONSE_CONTINUOUS_TRAP_PLAYED:
+        text = gStrEventContinuousTrapPlayed;
+        goto copy_text;
+    case RESPONSE_CONTINUOUS_MAGIC_PLAYED:
+        text = gStrEventContinuousMagicPlayed;
+        goto copy_text;
+    case RESPONSE_FIELD_MAGIC_PLAYED:
+        text = gStrEventFieldMagicPlayed;
+        goto copy_text;
+    case RESPONSE_EQUIP:
+        text = gStrEventEquipped;
+        goto copy_text;
+    case RESPONSE_DREW:
+        switch (ev->loc1) {
         case 0:
-            txt = gStrEventCardDrawn;
+            text = gStrEventCardDrawn;
             break;
         case 1:
-            txt = gAlias_080851E8;
+            text = gAlias_080851E8;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 27:
-        txt = gStrEventMonsterReturnedToHand;
-        goto call;
-    case 28:
-        txt = gStrEventDeckToGraveyard;
-        goto call;
-    case 29:
-        switch (ref->unk8) {
+        goto copy_text;
+    case RESPONSE_MONSTER_TO_HAND:
+        text = gStrEventMonsterReturnedToHand;
+        goto copy_text;
+    case RESPONSE_DECK_TO_GRAVE:
+        text = gStrEventDeckToGraveyard;
+        goto copy_text;
+    case RESPONSE_DISCARDED:
+        switch (ev->loc1) {
         case 0:
-            txt = gStrEventYouDiscarded;
+            text = gStrEventYouDiscarded;
             break;
         case 1:
-            txt = gStrEventOpponentDiscarded;
+            text = gStrEventOpponentDiscarded;
             break;
         default:
-            goto out;
+            goto append_question;
         }
-        goto call;
-    case 30:
-        goto last;
+        goto copy_text;
+    case RESPONSE_MONSTER_TO_GRAVE:
+        goto monster_to_grave;
     }
-    goto out;
-call:
-    StrCopy(buf, txt);
-    goto out;
-last:
-    StrCopy(buf, gStrEventMonsterSentToGraveyard);
-out:
-    StrCat(buf, gStrEventSeparator);
-    StrCat(buf, gStrAskActivateQuickPlayOrTrap);
+    goto append_question;
+copy_text:
+    StrCopy((char *)buf, text);
+    goto append_question;
+monster_to_grave:
+    StrCopy((char *)buf, gStrEventMonsterSentToGraveyard);
+append_question:
+    StrCat((char *)buf, gStrEventSeparator);
+    StrCat((char *)buf, gStrAskActivateQuickPlayOrTrap);
 }
-/* Widths below follow the ROM's ldrb/ldrh/ldr accesses. These views
- * deliberately overlap because the selection flags are also updated as a u32. */
-typedef int (*EffectCallback)(struct CardRef *, u8 *);
-extern u8 gLinkState[], gTextBox[], gDuelScreen[], gMain[];
-extern const u8 gStrLinkChainPromptEffect[], gStrLinkChainPromptCard[], gStrSelectSpellTrapForChain[], gStrSelectSpellTrapToActivate[];
-extern const u32 gCardEffects[], gCardStats[];
-void CardMenu_Update(void);
-void DuelCmd_Push(u16 cmd, u16 a, u16 b, u16 c);
-void Chain_AddPending(u32 a, u32 b);
-u32 Chain_GetResponseCommands(void *entry, int player, int kind, int index);
-u16 DuelLink_SendMessage(u16 cmd, u16 a, u16 b, u16 c);
-void CardListView_Open(int player, int area, int a, int b);
-int EventResponse_CanPlayerRespond(int player);
-void CardMenu_PlaySpellTrapFromHand(int a, int b, struct CardRef *ref);
-int FindCardEffect(u32 card);
-int DuelCursor_PickTarget(u32 keys);
-int AiShouldActivateSetCard(struct CardRef *ref, int a);
-u32 DuelCursor_GetCardId(void);
-void TextBoxOpen(u16 a, u16 b, u16 c, const u8 *text);
-void TextBoxSetMenu(u16 mode, void (*cb1)(void), u16 (*cb2)(void));
-void PlaySE(u32 sound);
 
-/* Local aliases retain the addresses and explicit access widths. */
-union EffectCardRef {
-    struct CardRef ref;
-    struct { u16 id; union { u16 word; u8 byte[2]; } __attribute__((packed, aligned(2))) flags; u8 rest[0x10]; } raw;
-};
-union EffectHalf { u16 word; u8 byte[2]; } __attribute__((packed, aligned(2)));
-struct EffectStateView {
-    u8 unk0[0x3E4];
-    u8 targetPhase, targetStep;
-    u8 unk3E6[0x480 - 0x3E6];
-    EffectCallback phase4, phase5;
-    u8 unk488[2];
-    union EffectHalf requestedZone;
-    u32 requestedArg;
-    u8 requestStep, requestFlags, selectionPhase, selectionMode;
-    u8 unk494[0x4A8 - 0x494];
-    union EffectCardRef queuedRef, selectedRef;
-    u16 activeCard;
-};
-struct DuelSelectionView {
-    u8 unk0[0x1B12];
-    u8 turnFlags;
-    u8 unk1B13[0x1B28 - 0x1B13];
-    u16 cardId;
-    u8 unk1B2A[2];
-    union { u32 word; u8 byte[4]; } flags;
-    u8 auxiliaryFlags;
-    u8 unk1B31[2];
-    u8 playerAndArea;
-    union EffectHalf index;
-};
-struct EffectWaitView { u8 unk0[0x14]; u16 pending; };
-struct EffectCursorView { u8 unk0[0x824]; s32 player, area, index; };
-struct EffectKeysView { u8 unk0[6]; u16 pressed; };
-extern struct EffectStateView gEffectState asm("gChain");
-extern struct DuelSelectionView gDuelSelection asm("gDuel");
-extern struct EffectWaitView gEffectWait asm("gTextBox");
-extern struct EffectCursorView gEffectCursor asm("gDuelScreen");
-extern struct EffectKeysView gEffectKeys asm("gMain");
-typedef char effect_ref_size_check[sizeof(union EffectCardRef) == 0x14 ? 1 : -1];
-typedef char effect_ref_offset_check[(u32)&((struct EffectStateView *)0)->selectedRef == 0x4BC ? 1 : -1];
-typedef char effect_cursor_flags_check[(u32)&((struct DuelSelectionView *)0)->flags == 0x1B2C ? 1 : -1];
-
-
-struct Sel44C {
-    u16 flag0 : 1;
-    u16 active : 1;
-    u16 cursor : 4;
-    u16 rows : 4;
-    u32 mask : 16;
-    u32 state : 8;
-    u32 unk34 : 8;
-    u32 unk42 : 8;
-    u16 timer : 7;
-    u16 player : 1;
-    u32 zone : 7;
-    u16 index : 8;
-    u16 unk73 : 7;
-};
-struct D44C {
-    u8 unk0[0x1B12];
-    u8 turnFlags;
-    u8 unk1B13[0x1B28 - 0x1B13];
-    u16 cardId;
-    u8 unk1B2A[2];
-    struct Sel44C sel;
-};
-extern struct D44C gAliasB_020192E0;
-#define gD44C gAliasB_020192E0
-#define SEL44 gD44C.sel
-struct Z44C { u32 card; u8 unk4, unk5, flags6; u8 unk7[0x94 - 7]; };
-#define ZN44(p, z) ((struct Z44C *)((p) * 0xD64 + (z) * 0x94 + (u32)((u8 *)&gD44C + 0x2C)))
-struct E44C {
-    u8 unk0[0x48A];
-    u16 zone;           /* 0x48A */
-    u32 arg;            /* 0x48C */
-    u8 step;            /* 0x490 */
-    u8 lo : 4;          /* 0x491 */
-    u8 b4 : 1;
-    u8 b5 : 1;
-    u8 f6 : 1;
-    u8 f7 : 1;
-    u8 unk492[0x4A8 - 0x492];
-    struct CardRef ref; /* 0x4A8 */
-};
-extern struct E44C gAliasB_02017A40;
-#define gE44C gAliasB_02017A40
-struct W44C { u8 unk0[0x14]; u16 h14; };
-extern struct W44C gAliasB_0201AE60;
-struct K44C { u8 unk0[6]; u16 h6; };
-extern struct K44C gAliasB_03000040;
-struct C44C { u8 unk0[0x824]; u32 w824, w828, w82C; };
-extern struct C44C gAliasB_0201CFB0;
-struct F44C { u8 unk0[0x307]; u8 lo3 : 3; u8 b3 : 1; u8 hi : 4; };
-extern struct F44C gAliasB_02017FB0;
-void CardMenu_Update(void);
-void DuelCmd_Push(u16 cmd, u16 a, u16 b, u16 c);
-void Chain_AddPending(u32 a, u32 b);
-void CardListView_Open(int player, int area, int a, int b);
-void CardMenu_PlaySpellTrapFromHand(int a, int b, struct CardRef *ref);
-int DuelCursor_PickTarget(u32 keys);
-int AiShouldActivateSetCard(struct CardRef *ref, int a);
-u32 DuelCursor_GetCardId(void);
-void TextBoxOpen(u16 a, u16 b, u16 c, const u8 *text);
-void TextBoxSetMenu(u16 mode, void (*cb1)(void), u16 (*cb2)(void));
-void PlaySE(u32 sound);
-
-/* Effect-request step machine on 0x02017A40+0x490: queue the request (step 0), describe it and
- * wait for the link reply (1/2), let the player pick a zone or hand card (10/11, widget at
- * 0x020192E0+0x1B2C), or search spell/trap zones 5-9 for a usable card (200/201); 100/101 send
- * and await the link message, 240 flips the player bit. Returns 1 when the request is finished. */
+/*
+ * One step of the open response window, on gChain.askStep (enum EventResponseStep; the cases are decimal in
+ * the ROM). Returns 1 when the window is finished (responseAdded tells whether a card was queued), else 0.
+ *   EVRESP_START (0): fill gEventResponseEntry from responseEvent / responseEventArg for askPlayer; if
+ *     nobody of that player can answer (EventResponse_CanPlayerRespond), skip to EVRESP_NEXT_PLAYER.
+ *   EVRESP_ASK (1): player 1 goes to the link query (link duel) or the CPU search; player 0 gets a Yes/No
+ *     box with the event text (EventResponse_BuildPromptText).
+ *   EVRESP_WAIT_ANSWER (2): No -> EVRESP_NEXT_PLAYER; Yes -> close the card menu and pick a card.
+ *   EVRESP_PICK_CARD (10): the field cursor (spell/trap cards, and the hand on the human's own turn) and the
+ *     card menu with EventResponse_GetCommands; B goes back to EVRESP_ASK. Cards of the piles open the card
+ *     list viewer.
+ *   EVRESP_ACTIVATE_PICKED (11): a hand card is played through the card menu (CardMenu_PlaySpellTrapFromHand);
+ *     a Magic/Trap zone card is flipped face-up and queued with Chain_AddPending. Finished with a response.
+ *   EVRESP_LINK_QUERY / EVRESP_LINK_WAIT (100, 101): send LINKMSG_ACTIVATE_QUERY and wait for the partner's
+ *     reply (gLinkState.queryReplyReceived): a card came back (responseAdded) or none did.
+ *   EVRESP_CPU_SEARCH / EVRESP_CPU_ACTIVATE (200, 201): the CPU looks at its zones 5-9 for a card of spell
+ *     speed 2 or more that CanActivateFieldCard and AiShouldActivateSetCard accept (it remembers the zone in
+ *     aiZone), then flips and queues it.
+ *   EVRESP_NEXT_PLAYER (240): switch askPlayer; back to EVRESP_START for the other player, finished when it is
+ *     back at firstAskPlayer.
+ */
 int EventResponse_Run(void)
 {
     u8 text[0x100];
     int slot;
-    int st = gE44C.step;
+    int step = gRunChain.askStep;
 
-    switch ((u8)st) {
-    case 0:
-        gE44C.f7 = 0;
-        gE44C.ref.id = 0;
-        gE44C.ref.player = gE44C.b4;
-        gE44C.ref.kind = gE44C.zone;
-        gE44C.ref.pos = gE44C.arg;
-        gE44C.ref.unk8 = gE44C.arg >> 16;
-        if ((u16)EventResponse_CanPlayerRespond(gE44C.b4) == 0) {
-            gE44C.step = 0xF0;
+    switch ((u8)step) {
+    case EVRESP_START:
+        gRunChain.responseAdded = 0;
+        gRunChain.responseEntry.card = 0;
+        gRunChain.responseEntry.player = gRunChain.askPlayer;
+        gRunChain.responseEntry.event = gRunChain.responseEvent;
+        gRunChain.responseEntry.loc0 = gRunChain.responseEventArg;
+        gRunChain.responseEntry.loc1 = gRunChain.responseEventArg >> 16;
+        if ((u16)EventResponse_CanPlayerRespond(gRunChain.askPlayer) == 0) {
+            gRunChain.askStep = EVRESP_NEXT_PLAYER;
             return 0;
         }
-        gE44C.step++;
-    case 1:
-        if (gE44C.b4) {
-            u8 s;
-            if (gDuelCtrl.b1 & 1)
-                s = 0x64;
+        gRunChain.askStep++;
+        /* falls through to EVRESP_ASK */
+    case EVRESP_ASK:
+        if (gRunChain.askPlayer) {
+            u8 next;
+            if (gDuelCtrl.isLinkDuel)
+                next = EVRESP_LINK_QUERY;
             else
-                s = 0xC8;
-            gE44C.step = s;
+                next = EVRESP_CPU_SEARCH;
+            gRunChain.askStep = next;
         } else {
-            EventResponse_BuildPromptText(&gE44C.ref, text);
-            TextBoxOpen(0x204, 0x916, 0xB, text);
-            TextBoxSetMenu(1, NULL, NULL);
-            gE44C.step++;
+            EventResponse_BuildPromptText(&gRunChain.responseEntry, text);
+            TextBoxOpen(QUESTION_BOX_POS, QUESTION_BOX_SIZE, TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            gRunChain.askStep++;
         }
         return 0;
-    case 2:
-        if (gAliasB_0201AE60.h14 == 0) {
-            gE44C.step = 0xF0;
+    case EVRESP_WAIT_ANSWER:
+        if (gRunTextBox.result == 0) {
+            gRunChain.askStep = EVRESP_NEXT_PLAYER;
             return 0;
         }
-        gE44C.step = 0xA;
-        SEL44.flag0 = 0;
-        SEL44.active = 0;
+        gRunChain.askStep = EVRESP_PICK_CARD;
+        gRunDuel.cardMenu.open = 0;
+        gRunDuel.cardMenu.confirmed = 0;
         return 0;
-    case 0xA:
-        if (SEL44.flag0) {
+    case EVRESP_PICK_CARD:
+        if (gRunDuel.cardMenu.open) {
             CardMenu_Update();
             return 0;
         }
-        if (SEL44.active) {
-            gE44C.step++;
+        if (gRunDuel.cardMenu.confirmed) {
+            gRunChain.askStep++;
             return 0;
         }
-        if (gAliasB_03000040.h6 & 2) {
-            gE44C.step = 1;
+        if (gRunMain.newKeys & B_BUTTON) {
+            gRunChain.askStep = EVRESP_ASK;
             return 0;
         }
         {
-            u32 keys = 0xE;
-            if (!(gD44C.turnFlags & 2))
-                keys = 0xF;
-            if (DuelCursor_PickTarget(keys) == 0)
+            /* The human's own Magic/Trap cards; the hand too on the human's own turn (turnPlayer 0). */
+            u32 mask = PICK_ANY_SPELL_TRAP;
+            if (!(gRunDuel.turnPlayer))
+                mask = PICK_HAND | PICK_ANY_SPELL_TRAP;
+            if (DuelCursor_PickTarget(mask) == 0)
                 return 0;
         }
         {
-            u32 p = gAliasB_0201CFB0.w824;
-            u32 area = gAliasB_0201CFB0.w828;
-            u32 idx = gAliasB_0201CFB0.w82C;
-            u16 choice = DuelCursor_GetCardId();
+            u32 player = gRunScreen.selPlayer;
+            u32 area = gRunScreen.selArea;
+            u32 index = gRunScreen.selIndex;
+            u16 card = DuelCursor_GetCardId();
             switch (area) {
-            case 0:
-            case 5:
-            case 10:
-            case 11:
-                if (choice != 0) {
-                    SEL44.flag0 = 1;
-                    SEL44.state = 0;
-                    SEL44.mask = (u16)EventResponse_GetCommands(&gEventResponseEntry, p, area, idx);
+            case DUEL_AREA_MONSTER:
+            case DUEL_AREA_SPELL_TRAP:
+            case DUEL_AREA_FIELD:
+            case DUEL_AREA_HAND:
+                if (card != 0) {
+                    gRunDuel.cardMenu.open = 1;
+                    gRunDuel.cardMenu.state = 0;
+                    gRunDuel.cardMenu.available =
+                        (u16)EventResponse_GetCommands(&gEventResponseEntry, player, area, index);
                     return 0;
                 }
-                PlaySE(3);
+                PlaySE(SE_ERROR);
                 return 0;
-            case 13:
-                PlaySE(3);
+            case DUEL_AREA_DECK:
+                PlaySE(SE_ERROR);
                 return 0;
-            case 12:
-            case 14:
-            case 15:
-                CardListView_Open(p, area, 0, 0);
-                PlaySE(1);
+            case DUEL_AREA_FUSION_DECK:
+            case DUEL_AREA_GRAVEYARD:
+            case DUEL_AREA_BANISHED:
+                CardListView_Open(player, area, 0, 0);
+                PlaySE(SE_CONFIRM);
                 return 0;
             }
         }
         return 0;
-    case 0xB:
-        switch (SEL44.zone) {
-        case 0xB:
-            CardMenu_PlaySpellTrapFromHand(1, 0, &gE44C.ref);
-            if (SEL44.active)
+    case EVRESP_ACTIVATE_PICKED:
+        switch (gRunDuel.cardMenu.area) {
+        case DUEL_AREA_HAND:
+            CardMenu_PlaySpellTrapFromHand(1, 0, &gRunChain.responseEntry);
+            if (gRunDuel.cardMenu.confirmed)
                 return 0;
             break;
-        case 5:
-            SEL44.active = 0;
+        case DUEL_AREA_SPELL_TRAP:
+            gRunDuel.cardMenu.confirmed = 0;
             {
-                u32 p = 1 & SEL44.player;
-                if (!(ZN44(p, SEL44.index + SEL44.zone)->flags6 & 2)) {
-                    u16 msg;
-                    if (SEL44.player)
-                        msg = 0x807F;
+                /* Flip the set card face-up (DUEL_CMD_FLIP_CARD; the player bit marks player 1). */
+                u32 player = 1 & gRunDuel.cardMenu.player;
+                if (!(RUN_ZONE(player, gRunDuel.cardMenu.index + gRunDuel.cardMenu.area)->isFaceUp)) {
+                    u16 cmd;
+                    if (gRunDuel.cardMenu.player)
+                        cmd = DUEL_CMD_FLIP_CARD | DUEL_CMD_PLAYER;
                     else
-                        msg = 0x7F;
-                    DuelCmd_Push(msg, SEL44.index + SEL44.zone, 0, 0);
+                        cmd = DUEL_CMD_FLIP_CARD;
+                    DuelCmd_PushU16(cmd, gRunDuel.cardMenu.index + gRunDuel.cardMenu.area, 0, 0);
                 }
             }
             {
-                /* hi/z temporaries stop fold from moving the 0x200000 constant out of the zone term */
-                u32 hi = ((1 & SEL44.player) << 31) | (gE44C.ref.kind << 25);
-                u32 z = (((SEL44.index + SEL44.zone) & 0x1F) << 16) | 0x200000;
-                Chain_AddPending(hi | z | gD44C.cardId, gE44C.ref.pos | (gE44C.ref.unk8 << 16));
+                /* Queue the activation: card | zone << 16 | kind << 21 | event << 25 | player << 31, and
+                 * the event's locations. Matching: the hi / z temporaries keep fold from moving the
+                 * 0x200000 constant out of the zone term. */
+                u32 hi = ((1 & gRunDuel.cardMenu.player) << 31) | (gRunChain.responseEntry.event << 25);
+                u32 z = (((gRunDuel.cardMenu.index + gRunDuel.cardMenu.area) & 0x1F) << 16)   /* 5-bit zone */
+                        | (CHAIN_KIND_SPELL_TRAP << 21);
+                Chain_AddPending(hi | z | gRunDuel.cardMenuCard,
+                                 gRunChain.responseEntry.loc0 | (gRunChain.responseEntry.loc1 << 16));
             }
             break;
         }
-        gE44C.f7 = 1;
-        gE44C.f6 = 0;
+        gRunChain.responseAdded = 1;
+        gRunChain.requestPending = 0;
         return 1;
-    case 0x64:
-        DuelLink_SendMessageData(0xF051, &gE44C.ref, 0x14);
-        gE44C.f7 = 0;
-        gAliasB_02017FB0.b3 = 0;
-        gE44C.step++;
+    case EVRESP_LINK_QUERY:
+        DuelLink_SendMessageData(LINKMSG_ACTIVATE_QUERY, &gRunChain.responseEntry, sizeof(struct ChainEntry));
+        gRunChain.responseAdded = 0;
+        gRunLinkState.queryReplyReceived = 0;
+        gRunChain.askStep++;
         return 0;
-    case 0x65:
-        /* FAKEMATCH: "& 1" keeps fold from turning the bitfield test into a mask test (ROM tests via lsl #28) */
-        if (!(gAliasB_02017FB0.b3 & 1))
+    case EVRESP_LINK_WAIT:
+        /* FAKEMATCH: "& 1" keeps fold from turning the bitfield test into a mask test (the ROM tests it with
+         * lsl #28). */
+        if (!(gRunLinkState.queryReplyReceived & 1))
             return 0;
-        if (!gE44C.f7) {
-            gE44C.step = 0xF0;
+        if (!gRunChain.responseAdded) {
+            gRunChain.askStep = EVRESP_NEXT_PLAYER;
             return 0;
         }
-        gE44C.f6 = 0;
+        gRunChain.requestPending = 0;
         return 1;
-    case 0xC8:
-        for (slot = 5; slot <= 9; slot++) {
-            u32 id = ZN44(1 & gE44C.b4, slot)->card << 20 >> 20;
+    case EVRESP_CPU_SEARCH:
+        for (slot = ZONE_SPELL_0; slot <= ZONE_SPELL_4; slot++) {
+            u32 id = CARD_ID(CARD_WORD(RUN_ZONE(1 & gRunChain.askPlayer, slot)->card));
             if (id != 0) {
-                int n = GetCardSpellSpeed(id);
-                int ok = (u16)CanActivateFieldCard(&gE44C.ref, gE44C.b4, slot);
-                if (n > 1 && ok != 0 && AiShouldActivateSetCard(&gE44C.ref, 0) != 0)
+                int speed = GetCardSpellSpeed(id);
+                int canActivate = (u16)CanActivateFieldCard(&gRunChain.responseEntry, gRunChain.askPlayer, slot);
+                if (speed > SPELL_SPEED_1 && canActivate != 0
+                    && AiShouldActivateSetCard2(&gRunChain.responseEntry, 0) != 0)
                     goto found;
             }
         }
-        gE44C.step = 0xF0;
+        gRunChain.askStep = EVRESP_NEXT_PLAYER;
         return 0;
-    case 0xC9:
-        if (!(ZN44(gE44C.b4, gE44C.lo)->flags6 & 2)) {
-            u16 msg;
-            if (gE44C.b4)
-                msg = 0x807F;
+    case EVRESP_CPU_ACTIVATE:
+        if (!(RUN_ZONE(gRunChain.askPlayer, gRunChain.aiZone)->isFaceUp)) {
+            u16 cmd;
+            if (gRunChain.askPlayer)
+                cmd = DUEL_CMD_FLIP_CARD | DUEL_CMD_PLAYER;
             else
-                msg = 0x7F;
-            DuelCmd_Push(msg, gE44C.lo, 0, 0);
+                cmd = DUEL_CMD_FLIP_CARD;
+            DuelCmd_PushU16(cmd, gRunChain.aiZone, 0, 0);
         }
         {
-            u32 hi = (gE44C.b4 << 31) | (gE44C.ref.kind << 25);
-            u32 z = (gE44C.lo << 16) | 0x200000;
-            Chain_AddPending(hi | z | (ZN44(gE44C.b4, gE44C.lo)->card << 20 >> 20),
-                         gE44C.ref.pos | (gE44C.ref.unk8 << 16));
+            u32 hi = (gRunChain.askPlayer << 31) | (gRunChain.responseEntry.event << 25);
+            u32 z = (gRunChain.aiZone << 16) | (CHAIN_KIND_SPELL_TRAP << 21);
+            Chain_AddPending(hi | z | CARD_ID(CARD_WORD(RUN_ZONE(gRunChain.askPlayer, gRunChain.aiZone)->card)),
+                             gRunChain.responseEntry.loc0 | (gRunChain.responseEntry.loc1 << 16));
         }
-        gE44C.f7 = 1;
-        gE44C.f6 = 0;
+        gRunChain.responseAdded = 1;
+        gRunChain.requestPending = 0;
         return 1;
-    case 0xF0:
+    case EVRESP_NEXT_PLAYER:
         {
-            /* FAKEMATCH: the int temporary keeps combine from turning (1 - b4) & 1 into an eor */
-            int t = 1 - gE44C.b4;
-            gE44C.b4 = t;
+            /* FAKEMATCH: the int temporary keeps combine from turning (1 - askPlayer) & 1 into an eor. */
+            int other = 1 - gRunChain.askPlayer;
+            gRunChain.askPlayer = other;
         }
-        if (gE44C.b4 != gE44C.b5) {
-            gE44C.step = 0;
+        if (gRunChain.askPlayer != gRunChain.firstAskPlayer) {
+            gRunChain.askStep = EVRESP_START;
             return 0;
         }
         return 1;
     found:
-        gE44C.lo = slot;
-        gE44C.step++;
+        gRunChain.aiZone = slot;
+        gRunChain.askStep++;
         return 0;
     default:
-        gE44C.f6 = 0;
+        gRunChain.requestPending = 0;
         return 1;
     }
 }
-/* Queue a request (player, zone, 32-bit arg): sent as a message when the link flags allow, else stored in the 0x02017A40 request block. */
-void EventResponse_Request(int player, u16 zone, u32 arg)
+
+/*
+ * Open a response window for a game event (enum ResponseEventKind; arg = loc0 | loc1 << 16): ask `player`
+ * first, then the other player. In a link duel, during player 1's turn (the partner's), the request is
+ * forwarded instead as LINKMSG_TRIGGER_EVENT {1 - player, event, arg low half, arg high half}, and the
+ * partner opens the window. Otherwise it stores responseEvent / responseEventArg and starts the window:
+ * askPlayer = firstAskPlayer = player & 1, askStep = EVRESP_START, aiZone = 0, requestPending = 1,
+ * responseAdded = 0.
+ */
+void EventResponse_Request(int player, u16 event, u32 arg)
 {
-    if (1 & gDuelCtrl.b1) {
-        u8 *e = gDuel;
-        if (2 & *(e + 0x1B12)) {
-            u16 buf[4];
-            buf[0] = 1 - player;
-            buf[1] = zone;
-            buf[2] = arg;
-            buf[3] = arg >> 16;
-            DuelLink_SendMessageData(0xF059, buf, 0xA);
+    if (gDuelCtrl.isLinkDuel) {
+        if (gDuel.turnPlayer) {
+            u16 message[4];
+            message[0] = 1 - player;
+            message[1] = event;
+            message[2] = arg;
+            message[3] = arg >> 16;
+            /* The block is 0xA bytes although message holds 8: two stray bytes go along; the receiver reads
+             * the four halfwords. */
+            DuelLink_SendMessageData(LINKMSG_TRIGGER_EVENT, message, 0xA);
             return;
         }
     }
     {
-        u8 *es = gChain;
-        struct F491 *f;
-        u8 z;
-        u16 *hp = (u16 *)(es + 0x48A);
-        z = 0;
-        *hp = zone;
-        *(u32 *)(es + 0x48C) = arg;
-        f = (struct F491 *)(es + 0x491);
-        f->b4 = 1 & player;
-        f->b5 = 1 & player;
-        es[0x490] = z;
-        f->lo = 0;
-        f->f6 = 1;
-        f->f7 = 0;
+        struct ResponseFlagsView *flags;
+        u8 zero;
+        zero = 0;
+        gChain.responseEvent = event;
+        gChain.responseEventArg = arg;
+        flags = (struct ResponseFlagsView *)((u8 *)&gChain + RESPONSE_FLAGS_OFFSET);
+        flags->askPlayer = 1 & player;
+        flags->firstAskPlayer = 1 & player;
+        gChain.askStep = zero;
+        flags->aiZone = 0;
+        flags->requestPending = 1;
+        flags->responseAdded = 0;
     }
 }
 
-/* If the pending flag (bit 6 of 0x02017A40+0x491) is set, run EventResponse_Run and clear it once that finishes; returns 1 while the flag was set. */
+/*
+ * Per-frame driver called by DuelMainStep: while a response window is open (gChain.requestPending), run
+ * EventResponse_Run and close the window when it finishes. Returns 1 while a window was open (the duel step
+ * waits), else 0.
+ */
 int EventResponse_Update(void)
 {
-    u8 *es = gChain;
-    u8 *p = es + 0x491;
-    if (*p & 0x40) {
+    if (gChain.requestPending) {
         if ((u16)EventResponse_Run() != 0)
-            ((struct F491 *)p)->f6 = 0;
+            gChain.requestPending = 0;
         return 1;
     }
     return 0;
 }
-struct RefEnt { u8 player : 1; u8 unk1 : 3; u16 zone : 6; u16 kind : 6; u8 pad[0x10]; };
 
-/* Is there a queued reference with the given player and zone in the list at `list`? (count at +0x140, 0x14-byte entries from +2) */
+/*
+ * Dead code (no callers): is one of the entries of the chain list `list` (a struct ChainList: 16 entries and
+ * a count at +0x140) at (player, zone)?
+ */
 int IsZoneInChainList(u8 *list, int player, int zone)
 {
     int i;
-    for (i = 0; i < *(u16 *)(list + 0x140); i++) {
-        struct RefEnt *e = (struct RefEnt *)(list + 2 + i * 0x14);
-        if (e->player == player && e->zone == zone)
+    for (i = 0; i < ((struct ChainList *)list)->count; i++) {
+        struct ChainEntry *entry = &((struct ChainList *)list)->entries[i];
+        if (entry->player == player && entry->zone == zone)
             return 1;
     }
     return 0;
 }
-typedef u16 (*Cb42BE0)(struct CardRef *, u16 *);
-struct E42BE0 {
-    u8 unk0[0x3E4];
-    u8 b3E4;
-    u8 b3E5;
-    u8 unk3E6[0x480 - 0x3E6];
-    Cb42BE0 cb4;          /* 0x480 */
-    Cb42BE0 cb5;          /* 0x484 */
-    u8 unk488[0x492 - 0x488];
-    u8 b0 : 1;            /* 0x492 */
-    u8 phase : 7;
-    u8 mode : 1;          /* 0x493 */
-    u8 modeRest : 7;
-    u8 unk494[0x4BC - 0x494];
-    struct CardRef ref;   /* 0x4BC */
-    u16 activeCard;       /* 0x4D0 */
-};
-extern struct E42BE0 gAlias_02017A40;
-#define gE42BE0 gAlias_02017A40
-/* Selection widget at 0x020192E0+0x1B2C (same layout as card_menu_input). */
-struct Sel42BE0 {
-    u16 flag0 : 1;
-    u16 active : 1;
-    u16 cursor : 4;
-    u16 rows : 4;
-    u32 mask : 16;
-    u32 state : 8;
-    u32 unk34 : 8;
-    u32 unk42 : 8;
-    u16 timer : 7;
-    u16 player : 1;
-    u32 zone : 7;
-    u16 index : 8;
-    u16 unk73 : 7;
-};
-struct D42BE0 { u8 unk0[0x1B2C]; struct Sel42BE0 sel; };
-extern struct D42BE0 gAlias_020192E0;
-#define gD42BE0 gAlias_020192E0
-#define SEL42 gD42BE0.sel
-struct Z42BE0 { u32 card; u8 unk4, unk5, flags6; u8 unk7[0x94 - 7]; };
-#define ZN42(p, z) ((struct Z42BE0 *)((p) * 0xD64 + (z) * 0x94 + (u32)((u8 *)&gD42BE0 + 0x2C)))
-struct Ent42BE0 { u8 pad[0x10]; Cb42BE0 a; Cb42BE0 b; };
-extern struct Ent42BE0 gAlias_0819A9D4[];
-#define gEnt42BE0 gAlias_0819A9D4
-struct W42BE0 { u8 unk0[0x14]; u16 h14; };
-extern struct W42BE0 gAlias_0201AE60;
-#define gW42BE0 gAlias_0201AE60
-struct K42BE0 { u8 unk0[6]; u16 h6; };
-extern struct K42BE0 gAlias_03000040;
-#define gK42BE0 gAlias_03000040
-struct C42BE0 { u8 unk0[0x824]; u32 w824, w828, w82C; };
-extern struct C42BE0 gAlias_0201CFB0;
-#define gC42BE0 gAlias_0201CFB0
 
-/* Selection/callback state machine on the phase bits of 0x02017A40+0x492: describe the
- * active card or effect, wait for the cursor selection, fill the reference at +0x4BC and look
- * up its two effect callbacks (0x18-byte entries at 0x0819A9D4, +0x10/+0x14), then run them
- * until each returns nonzero. Returns 1 when the link message was sent.
- * Matching notes: every early exit is an explicit `return 0` (cross-jumping keeps the copy after
- * CardMenu_Update); the zone base must use the same symbol as the selection struct so CSE turns it
- * into base+0x2C; `index` is a u16:8 field (its extraction is recomputed from the shifted halfword);
- * msg is an if/else (jump.c hoists the 0x7F set before the compare). */
-int DuelLink_AnswerActivateQuery(void) {
-    u8 text[0x100];
+/*
+ * Answer the link partner's query "do you respond?" (gLinkState.activateQueryPending): the question is an
+ * event (queryIsChainLink 0, LINKMSG_ACTIVATE_QUERY; the partner's event is in gChain.queryEntry) or a chain
+ * link (queryIsChainLink 1, LINKMSG_CHAIN_QUERY; the partner's link is in gChain.queryLink). The step machine
+ * runs on gChain.queryStep (enum LinkQueryStep); it returns 1 when the answer has been sent.
+ *   LINKQUERY_ASK (0): the Yes/No box: for a chain link '<name>'s effect is activated. Resolve it as part of
+ *     a Chain?' (an effect text for a monster, a card text otherwise), for an event the event text
+ *     (EventResponse_BuildPromptText).
+ *   LINKQUERY_WAIT_ANSWER (1): No -> LINKMSG_QUERY_DECLINED and finished. Yes -> 'Please select a Magic or
+ *     Trap card ...'; close the card menu.
+ *   LINKQUERY_PICK_CARD (2): the field cursor (mask 0xEE: the player's own Magic and Trap cards, set or face
+ *     up, and face-up monsters; not the hand) and the card menu; commands from Chain_GetResponseCommands
+ *     (chain query) or EventResponse_GetCommands (event query); the Field Magic zone and the hand only
+ *     offer Card View; B asks again.
+ *   LINKQUERY_SETUP_HANDLERS (3): flip the card face-up (a chain query also shows the 'Chain' banner), fill
+ *     queryEntry (card, zone, player 0), look up the card's chainA / chainB in gCardEffects (FindCardEffect;
+ *     none for a card without an effect) and clear costStep and targetStep.
+ *   LINKQUERY_RUN_CHAIN_A / RUN_CHAIN_B (4, 5): call the handler every frame until it returns nonzero (a
+ *     missing handler counts as done). They get queryEntry and queryLink.
+ *   LINKQUERY_SEND_RESULT (6 and above): send the card back, LINKMSG_CHAIN_CARD (chain query) or
+ *     LINKMSG_ACTIVATE_CARD (event query), with queryEntry; return 1.
+ * Matching: every early exit is an explicit `return 0` (cross-jumping keeps the copy after CardMenu_Update);
+ * the zone base uses the same symbol as the card-menu struct so that CSE turns it into base + 0x2C; the menu's
+ * `index` is a u16:8 field (its extraction is recomputed from the shifted halfword); the flip command is an
+ * if/else (jump.c hoists the 0x7F set before the compare).
+ */
+int DuelLink_AnswerActivateQuery(void)
+{
+    char text[0x100];
 
-    switch (gE42BE0.phase) {
-    case 0:
-        if (gE42BE0.mode) {
-            u16 id = gE42BE0.activeCard;
-            if (((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20) <= 0x14)
-                FormatStr((char *)text, (const char *)gStrLinkChainPromptEffect, ((const char (*)[0x40])0x0822C720)[id]);
+    switch (gAnswerChain.queryStep) {
+    case LINKQUERY_ASK:
+        if (gAnswerChain.queryIsChainLink) {
+            u16 card = gAnswerChain.queryLink.card;
+            if (CARD_TYPE(card) <= CARD_TYPE_REPTILE)
+                FormatStr(text, gStrLinkChainPromptEffect, CARD_NAME(card));
             else
-                FormatStr((char *)text, (const char *)gStrLinkChainPromptCard, ((const char (*)[0x40])0x0822C720)[id]);
+                FormatStr(text, gStrLinkChainPromptCard, CARD_NAME(card));
         } else {
-            EventResponse_BuildPromptText(&gE42BE0.ref, text);
+            EventResponse_BuildPromptText(&gAnswerChain.queryEntry, (u8 *)text);
         }
-        TextBoxOpen(0x204, 0x916, 0xB, text);
-        TextBoxSetMenu(1, NULL, NULL);
-        gE42BE0.phase++;
+        TextBoxOpen(QUESTION_BOX_POS, QUESTION_BOX_SIZE, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
+        TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+        gAnswerChain.queryStep++;
         return 0;
-    case 1:
-        if (gW42BE0.h14 == 0) {
-            DuelLink_SendMessage(0xF055, 0, 0, 0);
+    case LINKQUERY_WAIT_ANSWER:
+        if (gAnswerTextBox.result == 0) {
+            DuelLink_SendMessage(LINKMSG_QUERY_DECLINED, 0, 0, 0);
             return 1;
         }
-        if (gE42BE0.mode)
-            TextBoxOpen(0x206, 0x712, 0xB, gStrSelectSpellTrapForChain);
+        if (gAnswerChain.queryIsChainLink)
+            TextBoxOpen(PROMPT_BOX_POS, PROMPT_BOX_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectSpellTrapForChain);
         else
-            TextBoxOpen(0x206, 0x712, 0xB, gStrSelectSpellTrapToActivate);
-        gE42BE0.phase++;
-        SEL42.flag0 = 0;
-        SEL42.active = 0;
+            TextBoxOpen(PROMPT_BOX_POS, PROMPT_BOX_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectSpellTrapToActivate);
+        gAnswerChain.queryStep++;
+        gAnswerDuel.cardMenu.open = 0;
+        gAnswerDuel.cardMenu.confirmed = 0;
         return 0;
-    case 2:
-        if (SEL42.flag0) {
+    case LINKQUERY_PICK_CARD:
+        if (gAnswerDuel.cardMenu.open) {
             CardMenu_Update();
             return 0;
         }
-        if (SEL42.active) {
-            gE42BE0.phase++;
+        if (gAnswerDuel.cardMenu.confirmed) {
+            gAnswerChain.queryStep++;
             return 0;
         }
-        if (gK42BE0.h6 & 2) {
-            gE42BE0.phase = 0;
+        if (gAnswerMain.newKeys & B_BUTTON) {
+            gAnswerChain.queryStep = LINKQUERY_ASK;
             return 0;
         }
-        if (DuelCursor_PickTarget(0xEE) == 0)
+        if (DuelCursor_PickTarget(PICK_ANY_SPELL_TRAP | PICK_FACE_UP_MONSTER_ANY) == 0)
             return 0;
         {
-            u32 p = gC42BE0.w824;
-            u32 area = gC42BE0.w828;
-            u32 idx = gC42BE0.w82C;
-            u16 choice = DuelCursor_GetCardId();
+            u32 player = gAnswerScreen.selPlayer;
+            u32 area = gAnswerScreen.selArea;
+            u32 index = gAnswerScreen.selIndex;
+            u16 card = DuelCursor_GetCardId();
             switch (area) {
-            case 0:
-            case 5:
-                if (choice != 0) {
-                    SEL42.flag0 = 1;
-                    SEL42.state = 0;
-                    if (gE42BE0.mode)
-                        SEL42.mask = (u16)Chain_GetResponseCommands(&gE42BE0.activeCard, p, area, idx);
+            case DUEL_AREA_MONSTER:
+            case DUEL_AREA_SPELL_TRAP:
+                if (card != 0) {
+                    gAnswerDuel.cardMenu.open = 1;
+                    gAnswerDuel.cardMenu.state = 0;
+                    if (gAnswerChain.queryIsChainLink)
+                        gAnswerDuel.cardMenu.available =
+                            (u16)Chain_GetResponseCommands(&gAnswerChain.queryLink, player, area, index);
                     else
-                        SEL42.mask = (u16)EventResponse_GetCommands(&gE42BE0.ref, p, area, idx);
+                        gAnswerDuel.cardMenu.available =
+                            (u16)EventResponse_GetCommands(&gAnswerChain.queryEntry, player, area, index);
                     return 0;
                 }
-                PlaySE(3);
+                PlaySE(SE_ERROR);
                 return 0;
-            case 10:
-            case 11:
-                if (choice != 0) {
-                    SEL42.flag0 = 1;
-                    SEL42.state = 0;
-                    SEL42.mask = 1;
+            case DUEL_AREA_FIELD:
+            case DUEL_AREA_HAND:
+                if (card != 0) {
+                    gAnswerDuel.cardMenu.open = 1;
+                    gAnswerDuel.cardMenu.state = 0;
+                    gAnswerDuel.cardMenu.available = CARDMENU_MASK_CARD_VIEW;
                     return 0;
                 }
-                PlaySE(3);
+                PlaySE(SE_ERROR);
                 return 0;
-            case 13:
-                PlaySE(3);
+            case DUEL_AREA_DECK:
+                PlaySE(SE_ERROR);
                 return 0;
-            case 12:
-            case 14:
-            case 15:
-                CardListView_Open(p, area, 0, 0);
-                PlaySE(1);
+            case DUEL_AREA_FUSION_DECK:
+            case DUEL_AREA_GRAVEYARD:
+            case DUEL_AREA_BANISHED:
+                CardListView_Open(player, area, 0, 0);
+                PlaySE(SE_CONFIRM);
                 return 0;
             }
         }
         return 0;
-    case 3:
-        SEL42.active = 0;
-        if (gE42BE0.mode)
-            DuelCmd_Push(7, 0, 0, 0);
+    case LINKQUERY_SETUP_HANDLERS:
+        gAnswerDuel.cardMenu.confirmed = 0;
+        if (gAnswerChain.queryIsChainLink)
+            DuelCmd_PushU16(DUEL_CMD_CHAIN_BANNER, 0, 0, 0);
         {
-            u32 p = 1 & SEL42.player;
-            if (!(ZN42(p, SEL42.index + SEL42.zone)->flags6 & 2)) {
-                u16 msg;
-                if (SEL42.player)
-                    msg = 0x807F;
+            u32 player = 1 & gAnswerDuel.cardMenu.player;
+            if (!(ANSWER_ZONE(player, gAnswerDuel.cardMenu.index + gAnswerDuel.cardMenu.area)->isFaceUp)) {
+                u16 cmd;
+                if (gAnswerDuel.cardMenu.player)
+                    cmd = DUEL_CMD_FLIP_CARD | DUEL_CMD_PLAYER;
                 else
-                    msg = 0x7F;
-                DuelCmd_Push(msg, SEL42.index + SEL42.zone, 0, 0);
+                    cmd = DUEL_CMD_FLIP_CARD;
+                DuelCmd_PushU16(cmd, gAnswerDuel.cardMenu.index + gAnswerDuel.cardMenu.area, 0, 0);
             }
         }
-        gE42BE0.ref.zone = SEL42.zone + SEL42.index;
-        gE42BE0.ref.id = (ZN42(1 & SEL42.player, gE42BE0.ref.zone)->card << 20) >> 20;
-        gE42BE0.ref.player = 0;
+        gAnswerChain.queryEntry.zone = gAnswerDuel.cardMenu.area + gAnswerDuel.cardMenu.index;
+        gAnswerChain.queryEntry.card =
+            CARD_ID(CARD_WORD(ANSWER_ZONE(1 & gAnswerDuel.cardMenu.player, gAnswerChain.queryEntry.zone)->card));
+        gAnswerChain.queryEntry.player = 0;
         {
-            int n = FindCardEffect(gE42BE0.ref.id);
+            int n = FindCardEffect(gAnswerChain.queryEntry.card);
             if (n == -1) {
-                gE42BE0.cb4 = NULL;
-                gE42BE0.cb5 = NULL;
+                gAnswerChain.chainA = NULL;
+                gAnswerChain.chainB = NULL;
             } else {
-                gE42BE0.cb4 = gEnt42BE0[n].a;
-                gE42BE0.cb5 = gEnt42BE0[n].b;
+                /* struct CardEffect declares the handlers int-returning, struct ChainState u16-returning. */
+                gAnswerChain.chainA = (ChainHandler)gAnswerEffects[n].chainA;
+                gAnswerChain.chainB = (ChainHandler)gAnswerEffects[n].chainB;
             }
         }
-        gE42BE0.b3E4 = 0;
-        gE42BE0.b3E5 = 0;
-        gE42BE0.phase++;
+        gAnswerChain.costStep = 0;
+        gAnswerChain.targetStep = 0;
+        gAnswerChain.queryStep++;
         return 0;
-    case 4:
-        if (gE42BE0.cb4 != NULL) {
-            if (gE42BE0.cb4(&gE42BE0.ref, &gE42BE0.activeCard) != 0)
-                gE42BE0.phase++;
+    case LINKQUERY_RUN_CHAIN_A:
+        if (gAnswerChain.chainA != NULL) {
+            if (gAnswerChain.chainA(&gAnswerChain.queryEntry, &gAnswerChain.queryLink) != 0)
+                gAnswerChain.queryStep++;
         } else {
-            gE42BE0.phase++;
+            gAnswerChain.queryStep++;
         }
         return 0;
-    case 5:
-        if (gE42BE0.cb5 != NULL) {
-            if (gE42BE0.cb5(&gE42BE0.ref, &gE42BE0.activeCard) != 0)
-                gE42BE0.phase++;
+    case LINKQUERY_RUN_CHAIN_B:
+        if (gAnswerChain.chainB != NULL) {
+            if (gAnswerChain.chainB(&gAnswerChain.queryEntry, &gAnswerChain.queryLink) != 0)
+                gAnswerChain.queryStep++;
         } else {
-            gE42BE0.phase++;
+            gAnswerChain.queryStep++;
         }
         return 0;
     default:
-        if (gE42BE0.mode)
-            DuelLink_SendMessageData(0xF056, &gE42BE0.ref, 0x14);
+        if (gAnswerChain.queryIsChainLink)
+            DuelLink_SendMessageData(LINKMSG_CHAIN_CARD, &gAnswerChain.queryEntry, sizeof(struct ChainEntry));
         else
-            DuelLink_SendMessageData(0xF053, &gE42BE0.ref, 0x14);
+            DuelLink_SendMessageData(LINKMSG_ACTIVATE_CARD, &gAnswerChain.queryEntry, sizeof(struct ChainEntry));
         return 1;
     }
 }

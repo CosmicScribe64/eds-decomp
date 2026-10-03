@@ -1,525 +1,730 @@
+/*
+ * effect_targets2 (0x0803EDC4-0x0803FE6F): card effect target selection, part 2
+ * (wiki/functions/effect-targets2-c.md; part 1 is effect_targets1.c, which describes the protocol).
+ *
+ * Twelve more ChainB handlers of gCardEffects (struct CardEffect, include/effect.h): Patrol Robo, Greenkappa,
+ * Penguin Soldier, the take-control Magic cards (Invader of the Throne, Change of Heart, Snatch Steal), Kunai
+ * with Chain, Acid Trap Hole, Bell of Destruction, Magical Hats, 7 Completed, Magic-Arm Shield, Remove Trap and
+ * Two-Pronged Attack. Chain_Build calls a link's ChainB handler every frame until it returns 1; then
+ * link->targets[0..numTargets-1] holds the chosen targets, and 0 means "call me again next frame".
+ *
+ * A target is a board position player | zone << 8 (DUEL_LOC; zones 0-4 monsters, 5-9 spells and traps).
+ * Greenkappa, Penguin Soldier, the take-control cards, Bell of Destruction and Magic-Arm Shield choose for
+ * the CPU (player 1) at once, by scanning the field or with the AI helpers. The human (player 0) gets a text
+ * box prompt, then moves the field cursor, which only stops on positions that match a FieldPickMask
+ * (DuelCursor_PickTarget returns 1 when A is pressed); B goes back to step 0. The human's steps are counted
+ * in gChain.targetStep, which Chain_Build clears before the first call. The other seven handlers have no CPU
+ * branch (the CPU presumably never activates those cards; not verified).
+ */
 #include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/duel.h"         /* enum DuelZoneIndex, FieldPickMask, DUEL_LOC */
+#include "constants/sound.h"        /* SE_ERROR */
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
 
-/* Duel target pickers, continued from effect_targets1 (see wiki/functions/code-0803dd7c.md). */
-struct CardRef {
-    u16 id;             /* +0x00 */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 kind : 6;
-    u8 unk4_0 : 2;
-    u8 skip4 : 1;
-    u8 unk4_3 : 5;
-    u8 unk5;
-    u16 pos;
-    u16 unk8;
-    u8 numTargets : 3;  /* +0x0A bits 0-2 */
-    u8 unkA_3 : 5;
-    u8 unkB;
-    u16 targets[3];     /* +0x0C */
-};
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
+ * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
+ * guard so that chain.h and duel_screen.h do not pull in the legacy header. After H0, replace the block
+ * (BEGIN to END) with #include "duel.h" and #include "sound.h" (build/readability/issues/effect_targets2.md). */
+#define GUARD_DUEL_H
 
-void PlaySE(int a);
-u16 TryAddEffectTarget(struct CardRef *ref, int player, int zone);
-void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
-u32 DuelCursor_PickTarget(u32 keys);
-extern u8 gChain[];
-extern const u8 gStrDesignateOpponentFaceDownCard[];
-extern const u8 gStrAskReturnMonsterToHand[];
-extern const u8 gStrDesignateMonsterToReturnToHand[];
-extern const u8 gStrAskReturnAnotherMonster[];
-int CanActivateEffect(struct CardRef *ref, int a, int b);
-int CountMonsters(int player);
-struct G5EE8 { u8 unk0[4]; u32 w4; };
-extern struct G5EE8 gDuelCtrl;
-extern const u8 gStrDesignateMonsterToSwitchControl[];
-extern const u8 gStrDesignateMonsterToControl[];
-extern const u8 gStrDesignateFaceUpMonsterToControl[];
-extern const u8 gStrDesignateOpponentMonsterTarget[];
-int AiFindStrongestMonster(int a, int b, int c, int d);
-int CanCardTargetZone(u16 id, int a, int b);
-extern const u8 gStrDesignateFirstOwnMonster[];
-extern const u8 gStrDesignateSecondOwnMonster[];
-extern const u8 gStrDesignateOpponentMonsterToDestroy[];
-extern const u8 gStrDesignateOneMonsterToDestroy[];
-extern const u8 gStrDesignateOneMonster[];
-int GetZoneCardAtk(int player, int zone);
-extern const u8 gStrDesignateMonsterToEquip[];
-extern const u8 gStrAskSevenCompletedStat[];
-extern const u8 gStrSelectNewAttackTarget[];
-int EffectEquipTargetCheck(struct CardRef *ref, u16 pos);
-int EffectMagicArmShieldCheck(struct CardRef *ref, u16 pos);
-void TextBoxSetMenu(u32 a, u32 b, u32 c);
-void AddEffectTarget(struct CardRef *ref, u16 v);
-struct AE60 { u8 unk0[0x14]; u16 flag14; };
-extern struct AE60 gTextBox;
-extern const u8 gStrDesignateFirstCardToDestroy[];
-extern const u8 gStrDesignateSecondCardToDestroy[];
-int EffectGreenkappaPrepare(struct CardRef *ref);
 struct DuelCard {
-    u32 id : 12;
-    u32 unk12 : 20;
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
+
+/* Needed by duel_screen.h (DuelScreen.from / .to). */
+struct DuelLoc {
+    u16 player:1;                   /* bit 0: side of the field */
+    u16 area:4;                     /* bits 1-4: enum DuelArea */
+    u16 index:9;                    /* bits 5-13 */
+    u16 isDefense:1;                /* bit 14 */
+    u16 isFaceUp:1;                 /* bit 15 */
+    u16 unk2;
+};
+
 struct DuelZone {
-    struct DuelCard card;   /* +0x00 */
-    u8 unk4;
-    u8 unk5;
-    u8 flags6;
-    u8 unk7[0x94 - 7];
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u8 unk6_6:2;
+    u8 unk7[0x94 - 0x7];
 };
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 unk2[0x28 - 0x2];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    u8 unk684[0xD64 - 0x684];
+};
+
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 11 * 0x94];
+    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
 };
-extern struct DuelZonesPlayer gDuelZones[2];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-extern const u8 gStrDesignateOneOwnMonster[];
-extern const u8 gStrDesignateOwnMonsterToRecall[];
-extern const u8 gStrDesignateOwnMonsterToBanish[];
-extern const u8 gStrDesignateOwnMonsterToEquip[];
-extern const u8 gStrDesignateFaceDownDefenseMonster[];
-extern const u8 gStrSelectFaceUpTrapToDestroy[];
-int CountMonstersFiltered(int player, int a, int b);
-/* Step byte of the current target picker is gChain[0x3E5]. */
-struct MainView { u8 unk0[6]; u16 h6; };
-extern struct MainView gMain;
-struct DuelScreenView { u8 unk0[0x824]; u32 w824; u32 w828; u32 w82C; };
-extern struct DuelScreenView gDuelScreen;
 
-/* Prompt, wait for keys 0xD2 << 16, add the cursor position as a target. */
-int EffectPatrolRoboChainB(struct CardRef *ref)
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+
+int CountMonsters(int player);
+int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
+u32 GetZoneCardAtk(u32 player, u32 slot);
+
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(u32 seId);
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* AiFindStrongestMonster, AI_FLAG_EXODIA */
+#include "chain.h"                  /* struct ChainEntry, struct ChainState, gChain */
+#include "duel_flow.h"              /* gDuelCtrl */
+#include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget */
+#include "effect.h"                 /* AddEffectTarget, TryAddEffectTarget, CanActivateEffect, shared prompt texts */
+#include "effect_handlers.h"        /* the handlers defined here and the Check/Prepare handlers they call */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+
+/* Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view"). */
+/* Matching: CanCardTargetZone is defined with a u16 return; this unit tests the result as an int (cmp r0, #0
+ * with no lsl #16). */
+extern int CanCardTargetZoneInt(u16 cardId, int player, int zone) asm("CanCardTargetZone");
+/* Matching: EffectGreenkappaPrepare is a condition callback that ignores its arguments, so the header gives it
+ * only the link. Greenkappa's ChainB passes it the second argument it received (the ROM leaves that in r1
+ * from entry to the call). */
+extern int EffectGreenkappaPrepare2(struct ChainEntry *card, int prevLink) asm("EffectGreenkappaPrepare");
+
+/* Prompts (ROM; only this unit uses them) */
+extern const u8 gStrDesignateOpponentFaceDownCard[];    /* 0x0808405C: Patrol Robo */
+extern const u8 gStrDesignateFirstCardToDestroy[];      /* 0x080840A4: Greenkappa */
+extern const u8 gStrDesignateSecondCardToDestroy[];     /* 0x080840D8: Greenkappa */
+extern const u8 gStrAskReturnMonsterToHand[];           /* 0x0808410C: Penguin Soldier (Yes/No) */
+extern const u8 gStrDesignateMonsterToReturnToHand[];   /* 0x0808413C: Penguin Soldier */
+extern const u8 gStrAskReturnAnotherMonster[];          /* 0x08084178: Penguin Soldier (Yes/No) */
+extern const u8 gStrDesignateMonsterToSwitchControl[];  /* 0x080841AC: Invader of the Throne */
+extern const u8 gStrDesignateMonsterToControl[];        /* 0x08084200: Change of Heart */
+extern const u8 gStrDesignateFaceUpMonsterToControl[];  /* 0x08084244: Snatch Steal, key 1514 */
+extern const u8 gStrDesignateOwnMonsterToEquip[];       /* 0x08084290: Kunai with Chain */
+extern const u8 gStrDesignateFaceDownDefenseMonster[];  /* 0x080842CC: Acid Trap Hole */
+extern const u8 gStrDesignateOneMonsterToDestroy[];     /* 0x08084318: Bell of Destruction, key 1451 */
+extern const u8 gStrDesignateOneOwnMonster[];           /* 0x08084348: Magical Hats */
+extern const u8 gStrDesignateOwnMonsterToRecall[];      /* 0x08084368: key 1316 */
+extern const u8 gStrDesignateOwnMonsterToBanish[];      /* 0x080843A0: key 1319 */
+extern const u8 gStrAskSevenCompletedStat[];            /* 0x080843E4: 7 Completed ('Which do you wish to
+                                                         * increase?', menu lines 'ATK+700' / 'DEF+700') */
+extern const u8 gStrSelectNewAttackTarget[];            /* 0x08084420: Magic-Arm Shield */
+extern const u8 gStrSelectFaceUpTrapToDestroy[];        /* 0x08084470: Remove Trap */
+extern const u8 gStrDesignateFirstOwnMonster[];         /* 0x0808449C: Two-Pronged Attack */
+extern const u8 gStrDesignateSecondOwnMonster[];        /* 0x080844C0: Two-Pronged Attack */
+
+/* Text box of the target prompts: cell (6, 2), 18 x 7 cells. */
+#define TARGET_PROMPT_POS 0x206
+#define TARGET_PROMPT_SIZE 0x712
+/* The box of 7 Completed's ATK/DEF menu: cell (6, 2), 19 x 6 cells. */
+#define STAT_MENU_SIZE 0x613
+
+/* Pick masks: the same positions on both sides, a face-up monster in either position, and a face-down card
+ * (a face-down monster in either position, or a set Magic/Trap card). */
+#define PICK_BOTH_SIDES(mask) ((mask) | PICK_PLAYER1(mask))
+#define PICK_FACE_UP_MONSTER_ANY (PICK_FACE_UP_MONSTER | PICK_ATTACK_POSITION | PICK_DEFENSE_POSITION)
+#define PICK_FACE_DOWN_CARD (PICK_FACE_DOWN_SPELL_TRAP | PICK_FACE_DOWN_MONSTER | PICK_ATTACK_POSITION \
+                             | PICK_DEFENSE_POSITION)
+
+/* gChain.targetStep (+0x3E5) through a byte pointer to gChain. Matching: where the ROM forms the address as
+ * gChain + 0x3E5 from two literals (ldr =gChain; ldr =0x3E5; add), the code writes chain + TARGET_STEP with
+ * chain = CHAIN_BYTES; the member gChain.targetStep folds into one literal. */
+#define CHAIN_BYTES ((u8 *)&gChain)
+#define TARGET_STEP OFFSET_OF(struct ChainState, targetStep)
+
+/* The cursor selection words of gDuelScreen through a byte pointer (screen = (u8 *)&gDuelScreen). Matching:
+ * the ROM adds the offsets to the base at run time (ldr =0x824; add; then #4 / #8); the members fold into
+ * one literal each. */
+#define SEL_WORD(screen, field) (*(u32 *)((screen) + OFFSET_OF(struct DuelScreen, field)))
+
+/* The player bit of a chain link read as the raw byte at +0x02 (ldrb; and #1). Matching: Greenkappa, Take
+ * Control and Bell of Destruction keep the flag in a variable (isCpu) and need this form there; where it is
+ * only tested (Penguin Soldier, Magic-Arm Shield) the bitfield read link->player gives the same code. */
+#define LINK_PLAYER_BYTE(link) (1 & ((u8 *)(link))[2])
+
+/* &gDuelZones[player].zones[zone] by byte arithmetic. Matching: the ROM adds the zone term, then the player
+ * term, then the gDuelZones literal. player must be 0 or 1. */
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer) + (u32)gDuelZones))
+/* The same with the player term first. Matching: the ROM's address order in EffectTakeControlChainB's
+ * face-up test. */
+#define ZONE_AT_PLAYER_FIRST(player, zone) \
+    ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
+/* The card word of a zone as one u32 (ldr), and its card ID (lsl #20; lsr #20). Matching: a read of the
+ * bitfield card.id generates other code. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+#define CARD_ID(word) (((word) << 20) >> 20)
+#define ZONE_CARD_ID(zone) CARD_ID(CARD_WORD((zone)->card))
+/* 1 if the zone holds a card (ID != 0), tested with a single lsl #20. */
+#define HAS_CARD(card) (CARD_WORD(card) << 20 != 0)
+/* The card word's 11 bits that the card tables index with (CARD_ID_MASK), as lsl #21; lsr #21. */
+#define CARD_ID11(word) (((word) << 21) >> 21)
+
+/* gCardIdToNumber (0x08622AB4) through its integer-constant address. Matching: the symbol form
+ * gCardIdToNumber[...] gives other code (it changes the literal pool). */
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[CARD_ID_MASK & (id)])
+/* The same for a card word, indexed with the shift pair (lsl #21; lsr #21) that the Exodia scan of
+ * EffectPenguinSoldierChainB uses. */
+#define CARD_NUMBER_OF_WORD(word) (((const u16 *)0x08622AB4)[CARD_ID11(word)])
+
+/* Card number 1351 is no EDS card (gCardIdToNumber has no ID with it), so constants/cards.h has no name
+ * for it (build/readability/issues/effect_targets2.md). */
+#define UNUSED_CARD_NUMBER_1351 1351
+
+/*
+ * ChainB of Patrol Robo: pick one of the opponent's face-down cards (a monster or a set Magic/Trap). No CPU
+ * branch.
+ *   Step 0: prompt.
+ *   Then: a pick among the opponent's face-down cards; a refused pick plays SE_ERROR; B goes back to step 0.
+ */
+int EffectPatrolRoboChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    if (*st == 0) {
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOpponentFaceDownCard);
-        ref->numTargets = 0;
-        (*st)++;
-    } else if (gMain.h6 & 2) {
-        u8 z = 0;
-        *st = z;
-        return z;
-    } else if (DuelCursor_PickTarget(0xD2 << 16) != 0) {
-        if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0)
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    if (*step == 0) {
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrDesignateOpponentFaceDownCard);
+        link->numTargets = 0;
+        (*step)++;
+    } else if (gMain.newKeys & B_BUTTON) {
+        /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail (mov r0, #0; strb; the same
+         * register is the return value). */
+        u8 zero = 0;
+        *step = zero;
+        return zero;
+    } else if (DuelCursor_PickTarget(PICK_PLAYER1(PICK_FACE_DOWN_CARD)) != 0) {
+        if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0)
             return 1;
-        PlaySE(3);
+        PlaySE(SE_ERROR);
     }
     return 0;
 }
 
-/* EffectGreenkappaPrepare is a condition callback that ignores its arguments; this caller
- * passes its own second argument through to it (the ROM leaves it in r1 from
- * entry to the call). The unit's prototype only names ref. */
-typedef int (*CondFunc_0803EE6C)(struct CardRef *ref, int arg);
+/* gChain.targetStep of the human's Greenkappa prompts. */
+enum GreenkappaStep {
+    GREENKAPPA_STEP_PROMPT_FIRST = 0,   /* gate on EffectGreenkappaPrepare; prompt for the 1st card */
+    GREENKAPPA_STEP_PICK_FIRST = 1,
+    GREENKAPPA_STEP_PROMPT_SECOND = 2,
+    GREENKAPPA_STEP_PICK_SECOND = 3     /* the pick must differ from targets[0] */
+};
 
-/* (ref, arg): AI: add the first two occupied, unflagged spell/trap zones (5-9); player 0: gate on EffectGreenkappaPrepare(ref, arg), then a two-step pick where the second target must differ from the first. */
-int EffectGreenkappaChainB(struct CardRef *ref, int arg)
+/*
+ * ChainB of Greenkappa (destroy 2 set Magic/Trap cards). prevLink is the link this one answers; it only
+ * goes to EffectGreenkappaPrepare, which ignores it.
+ *   CPU: the first two occupied face-down cards in zones 5-9 (player 0 first); returns 1. A card counts
+ *        toward the two even if TryAddEffectTarget refuses it.
+ *   Step 0: no target unless EffectGreenkappaPrepare allows it (two set Magic/Trap cards on the field),
+ *           else the prompt for the 1st card.
+ *   Step 1: pick a set Magic/Trap card of either side.
+ *   Step 2: prompt for the 2nd card.
+ *   Step 3: pick a second, different set card; done. A refused pick plays SE_ERROR; B goes back to step 0.
+ */
+int EffectGreenkappaChainB(struct ChainEntry *link, int prevLink)
 {
-    u8 *es;
-    u8 *st;
-    int pl = 1 & ((u8 *)ref)[2];
-    if (pl) {
-        int n = 0;
-        int i;
-        ref->numTargets = 0;
-        for (i = 0; i <= 1; i++) {
-            int j;
-            for (j = 5; j <= 9; j++) {
-                struct DuelZone *z = ZB(1 & i, j);
-                if ((*(u32 *)z << 20) != 0 && !(z->flags6 & 2)) {
-                    TryAddEffectTarget(ref, i, j);
-                    n++;
-                    if (n == 2)
+    u8 *chain;
+    u8 *step;
+    int isCpu = LINK_PLAYER_BYTE(link);
+
+    if (isCpu) {
+        int found = 0;
+        int player;
+        link->numTargets = 0;
+        for (player = 0; player <= 1; player++) {
+            int zone;
+            for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
+                struct DuelZone *z = ZONE_AT(1 & player, zone);    /* Matching: the redundant & 1 is the ROM's */
+                if (HAS_CARD(z->card) && !z->isFaceUp) {
+                    TryAddEffectTarget(link, player, zone);
+                    found++;
+                    if (found == 2)
                         return 1;
                 }
             }
         }
         return 1;
     }
-    es = gChain;
-    st = es + 0x3E5;
-    switch (*st) {
-    case 0:
-        ref->numTargets = 0;
-        if (((CondFunc_0803EE6C)EffectGreenkappaPrepare)(ref, arg) == 0)
+    chain = CHAIN_BYTES;
+    step = chain + TARGET_STEP;
+    switch (*step) {
+    case GREENKAPPA_STEP_PROMPT_FIRST:
+        link->numTargets = 0;
+        if (EffectGreenkappaPrepare2(link, prevLink) == 0)
             return 1;
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateFirstCardToDestroy);
-        (*st)++;
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrDesignateFirstCardToDestroy);
+        (*step)++;
         return 0;
-    case 1:
-        if (gMain.h6 & 2) {
+    case GREENKAPPA_STEP_PICK_FIRST:
+        if (gMain.newKeys & B_BUTTON) {
         reset:
-            *st = pl;
+            /* FAKEMATCH: isCpu is 0 on this path; storing it reuses the ROM's zero register (a plain 0 gives
+             * another mov). */
+            *step = isCpu;
             return 0;
         }
-        if (DuelCursor_PickTarget(0x20002) != 0) {
-            if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0) {
-                (*st)++;
+        if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_DOWN_SPELL_TRAP)) != 0) {
+            if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0) {
+                (*step)++;
                 return 0;
             }
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
         return 0;
-    case 2:
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateSecondCardToDestroy);
-        (*st)++;
+    case GREENKAPPA_STEP_PROMPT_SECOND:
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrDesignateSecondCardToDestroy);
+        (*step)++;
         return 0;
-    case 3:
-        if (gMain.h6 & 2)
+    case GREENKAPPA_STEP_PICK_SECOND:
+        if (gMain.newKeys & B_BUTTON)
             goto reset;
-        if (DuelCursor_PickTarget(0x20002) != 0) {
-            u8 *base = (u8 *)&gDuelScreen;
-            u32 *pa = (u32 *)(base + 0x824);
-            int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-            int p = *pa;
-            int pos = (u8)z << 8 | *(u8 *)pa;
-            if (ref->targets[0] != pos && TryAddEffectTarget(ref, p, z) != 0)
+        if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_DOWN_SPELL_TRAP)) != 0) {
+            u8 *screen = (u8 *)&gDuelScreen;
+            u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+            int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+            int player = *selPlayer;
+            int pos = DUEL_LOC(*(u8 *)selPlayer, (u8)zone);
+            if (link->targets[0] != pos && TryAddEffectTarget(link, player, zone) != 0)
                 return 1;
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
         return 0;
     default:
         return 0;
     }
 }
-/* (ref, arg): AI picks up to two player-1 zones (card numbers 0x10-0x14) or falls back to AiFindStrongestMonster; player 0: 6-step prompt machine. */
-int EffectPenguinSoldierChainB(struct CardRef *ref, int arg)
+
+/* gChain.targetStep of the human's Penguin Soldier prompts. */
+enum PenguinSoldierStep {
+    PENGUIN_STEP_ASK_FIRST = 0,         /* gate; Yes/No 'return a monster to your hand?' */
+    PENGUIN_STEP_ANSWER_FIRST = 1,      /* No: done without a target; Yes: the pick prompt */
+    PENGUIN_STEP_PICK_FIRST = 2,        /* cursor pick; done if it was the only monster on the field */
+    PENGUIN_STEP_ASK_SECOND = 3,        /* Yes/No 'return another monster?' */
+    PENGUIN_STEP_ANSWER_SECOND = 4,     /* shares step 1's code: No: done with one target */
+    PENGUIN_STEP_PICK_SECOND = 5        /* cursor pick of a different monster; done */
+};
+
+/*
+ * ChainB of Penguin Soldier (return up to 2 monsters to the hand). prevLink is the link this one answers
+ * (Chain_Build passes the pointer; defined as int) and only goes to CanActivateEffect.
+ *   CPU: no target unless CanActivateEffect allows it and player 0 has a monster. Two passes, each choosing
+ *        one target (a position, 0xFFFF = none): with AI_FLAG_EXODIA, one of its own Exodia cards (card
+ *        numbers 16-20: the four limbs and Exodia itself; presumably to get them back into its hand, a
+ *        hypothesis), else the human's strongest monster (AiFindStrongestMonster; the second pass skips
+ *        zone 0, not the zone of the first pick). The second pass may not repeat the first target. Stops at
+ *        the first pass without a candidate.
+ *   Human, 6 steps (see enum PenguinSoldierStep): Yes/No, pick, Yes/No, pick.
+ */
+int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
 {
-    if (1 & ((u8 *)ref)[2]) {
-        int i;
-        ref->numTargets = 0;
-        if (CanActivateEffect(ref, arg, 0) == 0)
+    if (link->player) {
+        int pass;
+        link->numTargets = 0;
+        if (CanActivateEffect(link, (struct ChainEntry *)prevLink, 0) == 0)
             return 1;
         if (CountMonsters(0) <= 0)
             return 1;
-        for (i = 0; i <= 1; i++) {
-            int none = 0xFFFF; /* compared against; loop.c hoists it to sl */
-            u16 cand = 0xFFFF;
-            if (gDuelCtrl.w4 & 0x200) {
-                int j;
-                for (j = 0; j <= 4; j++) {
-                    if ((*(u32 *)ZB(1, i) << 20 >> 20) != 0) {
-                        switch (((const u16 *)0x08622AB4)[*(u32 *)ZB(1, j) << 21 >> 21]) {
-                        case 0x10 ... 0x14: /* range: `cmp #0x14; bgt` then `cmp #0x10; blt` */
-                            if (i != 0) {
-                                if (ref->targets[0] == (u16)((u8)j << 8 | 1))
+        for (pass = 0; pass <= 1; pass++) {
+            /* Matching: the 'no candidate' marker in a variable; the ROM keeps it in sl for the compares. */
+            int none = 0xFFFF;
+            u16 candidate = 0xFFFF; /* position player | zone << 8, or none */
+            if (gDuelCtrl.aiFlags & AI_FLAG_EXODIA) {
+                int zone;
+                for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                    /* Quirk kept from the ROM: this tests zone `pass` (0 or 1) of the CPU's side for a card, not
+                     * zone `zone`; the test does not depend on the loop, so the ROM computes it before the loop. */
+                    if (ZONE_CARD_ID(ZONE_AT(1, pass)) != 0) {
+                        switch (CARD_NUMBER_OF_WORD(CARD_WORD(ZONE_AT(1, zone)->card))) {
+                        case CARD_RIGHT_LEG_OF_THE_FORBIDDEN_ONE ... CARD_EXODIA_THE_FORBIDDEN_ONE:
+                            /* Matching: a range case gives the ROM's `cmp #0x14; bgt` then `cmp #0x10; blt`. */
+                            if (pass != 0) {
+                                if (link->targets[0] == (u16)DUEL_LOC(1, (u8)zone))
                                     continue;
                             }
-                            cand = (u8)j << 8 | 1;
-                            j = 5;
+                            candidate = DUEL_LOC(1, (u8)zone);
+                            zone = MONSTER_ZONE_COUNT;    /* leave the scan: the first card found wins */
                         }
                     }
                 }
             }
-            if (cand == none) {
-                int m = -1;
-                int r;
-                if (i > 0)
-                    m = 0;
-                r = AiFindStrongestMonster(0, m, 1, 1);
-                if (r >= 0)
-                    cand = (u8)r << 8;
+            if (candidate == none) {
+                int skipZone = -1;
+                int found;
+                if (pass > 0)
+                    skipZone = 0;
+                found = AiFindStrongestMonster(0, skipZone, 1, 1);
+                if (found >= 0)
+                    candidate = DUEL_LOC(0, (u8)found);
             }
-            if (i > 0 && cand == ref->targets[0])
-                cand = 0xFFFF;
-            if (cand == none)
+            if (pass > 0 && candidate == link->targets[0])
+                candidate = 0xFFFF;
+            if (candidate == none)
                 return 1;
-            TryAddEffectTarget(ref, (u8)cand, (u8)(cand >> 8));
+            TryAddEffectTarget(link, (u8)candidate, (u8)(candidate >> 8));
         }
-        /* Shares case 5's `return 1` (the ROM keeps a single r0=1 block after case 5). */
-        goto ret1;
+        /* Shares step 5's `return 1` (the ROM keeps a single r0 = 1 block after case 5). */
+        goto done;
     } else {
-        u8 *es = gChain;
-        int s = es[0x3E5];
-        u8 *e2 = es;
-        switch (s) {
-        case 0:
-            ref->numTargets = 0;
-            if (CanActivateEffect(ref, arg, 0) == 0)
+        u8 *chain = CHAIN_BYTES;
+        int state = chain[TARGET_STEP];
+        /* FAKEMATCH: a second copy of the gChain base, from which the shared reset forms the step pointer
+         * (the ROM keeps it in its own register). */
+        u8 *chainCopy = chain;
+        switch (state) {
+        case PENGUIN_STEP_ASK_FIRST:
+            link->numTargets = 0;
+            if (CanActivateEffect(link, (struct ChainEntry *)prevLink, 0) == 0)
                 return 1;
             if (CountMonsters(0) + CountMonsters(1) == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrAskReturnMonsterToHand);
-            TextBoxSetMenu(1, 0, 0);
-            { u8 *e = gChain; e[0x3E5]++; }
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrAskReturnMonsterToHand);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            gChain.targetStep++;
             return 0;
-        case 1:
-        case 4:
-            if (gTextBox.flag14 == 0)
+        case PENGUIN_STEP_ANSWER_FIRST:
+        case PENGUIN_STEP_ANSWER_SECOND:
+            if (gTextBox.result == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateMonsterToReturnToHand);
-            { u8 *e = gChain; e[0x3E5]++; }
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateMonsterToReturnToHand);
+            gChain.targetStep++;
             return 0;
-        case 2:
-            if (gMain.h6 & 2)
+        case PENGUIN_STEP_PICK_FIRST:
+            if (gMain.newKeys & B_BUTTON)
                 goto reset;
-            if (DuelCursor_PickTarget(0xF000F0) == 0)
+            if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_ANY_MONSTER)) == 0)
                 return 0;
-            if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0) {
-                int n = CountMonsters(0);
-                n += CountMonsters(1);
-                if (n == 1)
+            if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0) {
+                int monsters = CountMonsters(0);
+                monsters += CountMonsters(1);
+                if (monsters == 1)
                     return 1;
-                { u8 *e = gChain; e[0x3E5]++; }
+                gChain.targetStep++;
             }
-            PlaySE(3);
+            /* Also reached after a good pick: the ROM plays the error sound here too, which is not heard
+             * (PlaySE plays one sound per frame and TryAddEffectTarget's SE_CONFIRM came first). */
+            PlaySE(SE_ERROR);
             return 0;
-        case 3:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrAskReturnAnotherMonster);
-            TextBoxSetMenu(1, 0, 0);
-            { u8 *e = gChain; e[0x3E5]++; }
+        case PENGUIN_STEP_ASK_SECOND:
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrAskReturnAnotherMonster);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            gChain.targetStep++;
             return 0;
-        case 5:
-            if (gMain.h6 & 2) {
+        case PENGUIN_STEP_PICK_SECOND:
+            if (gMain.newKeys & B_BUTTON) {
             reset:
                 {
-                    u8 *q = e2 + 0x3E5;
-                    u8 zz = 0;
-                    *q = zz;
-                    return zz;
+                    u8 *resetStep = chainCopy + TARGET_STEP;
+                    /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+                    u8 zero = 0;
+                    *resetStep = zero;
+                    return zero;
                 }
             }
-            if (DuelCursor_PickTarget(0xF000F0) == 0)
+            if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_ANY_MONSTER)) == 0)
                 return 0;
             {
-                u8 *base = (u8 *)&gDuelScreen;
-                u32 *pa = (u32 *)(base + 0x824);
-                int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-                int p = *pa;
-                int pos = (u8)z << 8 | *(u8 *)pa;
-                if (ref->targets[0] == pos || TryAddEffectTarget(ref, p, z) == 0) {
-                    u32 se = 3;
-                    /* FAKEMATCH: keeps this sound call from being cross-jumped
-                     * into case 2's identical one (the ROM has both). Emits no code. */
-                    asm("" : "+r"(se));
-                    PlaySE(se);
+                u8 *screen = (u8 *)&gDuelScreen;
+                u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+                int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+                int player = *selPlayer;
+                int pos = DUEL_LOC(*(u8 *)selPlayer, (u8)zone);
+                if (link->targets[0] == pos || TryAddEffectTarget(link, player, zone) == 0) {
+                    u32 sound = SE_ERROR;
+                    /* FAKEMATCH: keeps this sound call from being cross-jumped into the identical one of
+                     * PENGUIN_STEP_PICK_FIRST (the ROM has both). Emits no code. */
+                    asm("" : "+r"(sound));
+                    PlaySE(sound);
                     return 0;
                 }
             }
-        ret1:
+        done:
             return 1;
         default:
             return 0;
         }
     }
 }
-/* AI: AiFindStrongestMonster(0, -1, 1, 1) result becomes target 0; player 0: per-card prompt (only if CountMonstersFiltered allows), then the pick is validated per card number (0x42C: not 0x547, 0x42C/0x4DC: face-down flag 2). */
-int EffectTakeControlChainB(struct CardRef *ref)
+
+/*
+ * ChainB of Invader of the Throne, Change of Heart, Snatch Steal and keys 1244 and 1514: pick an opponent's
+ * monster to take control of. Invader and Change of Heart take any monster; Snatch Steal and the keys need
+ * a face-up one.
+ *   CPU: the human's strongest monster (AiFindStrongestMonster); returns 1.
+ *   Step 0: no target (return 1) if the opponent has no such monster, else the card's prompt.
+ *   Then: a pick; it must pass CanCardTargetZone, and Snatch Steal refuses card number 1351 (dead: no EDS card
+ *         has it); Snatch Steal and key 1244 also refuse a face-down card (SE_ERROR).
+ * No B handling.
+ */
+int EffectTakeControlChainB(struct ChainEntry *link)
 {
     int one;
-    int pl;
-    u32 keys;
-    pl = 1 & ((u8 *)ref)[2];
+    int isCpu;
+    u32 mask;
+    u8 *chain;
+
+    isCpu = LINK_PLAYER_BYTE(link);
+    /* Matching: the constant 1 in a variable; the ROM keeps it in one register for the opponent's side
+     * (one - link->player, in the first two prompts) and for AiFindStrongestMonster's useDef argument. */
     one = 1;
-    if (pl) {
-        int m;
-        int r;
-        ref->numTargets = 0;
-        m = -1;
-        r = AiFindStrongestMonster(0, m, 1, one);
-        if (r > m)
-            TryAddEffectTarget(ref, 0, r);
+    if (isCpu) {
+        int noZone;
+        int zone;
+        link->numTargets = 0;
+        noZone = -1;    /* Matching: the sentinel in a variable (one register for the call and the test) */
+        zone = AiFindStrongestMonster(0, noZone, 1, one);
+        if (zone > noZone)
+            TryAddEffectTarget(link, 0, zone);
         return 1;
     }
-    if (gChain[0x3E5] == 0) {
-        ref->numTargets = 0;
-        switch (((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
-        case 0x280:
-            if (CountMonstersFiltered(one - ref->player, 0, 0) == 0)
+    chain = CHAIN_BYTES;
+    if (chain[TARGET_STEP] == 0) {
+        link->numTargets = 0;
+        switch (CARD_NUMBER(link->card)) {
+        case CARD_INVADER_OF_THE_THRONE:
+            if (CountMonstersFiltered(one - link->player, 0, 0) == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateMonsterToSwitchControl);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateMonsterToSwitchControl);
             break;
-        case 0x403:
-            if (CountMonstersFiltered(one - ref->player, 0, 0) == 0)
+        case CARD_CHANGE_OF_HEART:
+            if (CountMonstersFiltered(one - link->player, 0, 0) == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateMonsterToControl);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateMonsterToControl);
             break;
-        case 0x42C:
-        case 0x5EA:
-            if (CountMonstersFiltered(1 - ref->player, 1, 0) == 0)
+        case CARD_SNATCH_STEAL:
+        case CARD_1514:
+            if (CountMonstersFiltered(1 - link->player, 1, 0) == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateFaceUpMonsterToControl);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateFaceUpMonsterToControl);
             break;
         default:
-            if (CountMonstersFiltered(1 - ref->player, 0, 0) == 0)
+            if (CountMonstersFiltered(1 - link->player, 0, 0) == 0)
                 return 1;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOpponentMonsterTarget);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateOpponentMonsterTarget);
             break;
         }
-        { u8 *e = gChain; e[0x3E5]++; }
+        gChain.targetStep++;
         return 0;
     }
-    switch (((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
-    case 0x280:
-    case 0x403:
-        keys = 0xF0 << 16;
+    /* Matching: no default, as in the ROM (the compiler warns that mask might be uninitialized). Every row of
+     * gCardEffects that uses this handler is one of these five numbers, so the mask is always set. */
+    switch (CARD_NUMBER(link->card)) {
+    case CARD_INVADER_OF_THE_THRONE:
+    case CARD_CHANGE_OF_HEART:
+        mask = PICK_PLAYER1(PICK_ANY_MONSTER);
         break;
-    case 0x42C:
-    case 0x4DC:
-    case 0x5EA:
-        keys = 0xE0 << 16;
+    case CARD_SNATCH_STEAL:
+    case CARD_1244:
+    case CARD_1514:
+        mask = PICK_PLAYER1(PICK_FACE_UP_MONSTER_ANY);
         break;
     }
-    if (DuelCursor_PickTarget(keys) != 0) {
-        u8 *base = (u8 *)&gDuelScreen;
-        u32 *pa = (u32 *)(base + 0x824);
-        int p = *pa;
-        int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-        int pp = 1 & p;
-        struct DuelZone *zn = ZB(pp, z);
-        u16 id = (*(u32 *)zn << 20) >> 20;
-        if (CanCardTargetZone(ref->id, p, z) != 0) {
-            switch (((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
-            case 0x42C:
-                if (((const u16 *)0x08622AB4)[0x7FF & id] == 0x547) {
-                snd:
-                    PlaySE(3);
+    if (DuelCursor_PickTarget(mask) != 0) {
+        u8 *screen = (u8 *)&gDuelScreen;
+        u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+        int player = *selPlayer;
+        int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+        int side = 1 & player;
+        struct DuelZone *target = ZONE_AT(side, zone);
+        u16 targetId = ZONE_CARD_ID(target);
+        if (CanCardTargetZoneInt(link->card, player, zone) != 0) {
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_SNATCH_STEAL:
+                if (CARD_NUMBER(targetId) == UNUSED_CARD_NUMBER_1351) {
+                refuse:
+                    PlaySE(SE_ERROR);
                     return 0;
                 }
-            case 0x4DC:
+                /* fall through: Snatch Steal and key 1244 both need a face-up card */
+            case CARD_1244:
                 {
-                    int pq = 1 & p;
-                    if (!(ZB2(pq, z)->flags6 & 2))
-                        goto snd;
+                    int side2 = 1 & player;
+                    if (!ZONE_AT_PLAYER_FIRST(side2, zone)->isFaceUp)
+                        goto refuse;
                 }
                 break;
             }
-            TryAddEffectTarget(ref, p, z);
+            TryAddEffectTarget(link, player, zone);
             return 1;
         }
-        PlaySE(3);
+        PlaySE(SE_ERROR);
     }
     return 0;
 }
 
-/* Prompt only if CountMonstersFiltered(p, 1, 0) allows it (else done at once), keys 0xE0. */
-int EffectKunaiWithChainChainB(struct CardRef *ref)
+/*
+ * ChainB of Kunai with Chain: pick one of your face-up monsters to equip. No CPU branch.
+ *   Step 0: no target (return 1) if you have no face-up monster, else the prompt.
+ *   Then: a pick among your face-up monsters; done if TryAddEffectTarget accepts it. B goes back to step 0.
+ */
+int EffectKunaiWithChainChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    if (*st == 0) {
-        ref->numTargets = 0;
-        if (CountMonstersFiltered(ref->player, 1, 0) == 0)
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    if (*step == 0) {
+        link->numTargets = 0;
+        if (CountMonstersFiltered(link->player, 1, 0) == 0)
             return 1;
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOwnMonsterToEquip);
-        (*st)++;
-    } else if (gMain.h6 & 2) {
-        u8 z = 0;
-        *st = z;
-        return z;
-    } else if (DuelCursor_PickTarget(0xE0) != 0) {
-        if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0)
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateOwnMonsterToEquip);
+        (*step)++;
+    } else if (gMain.newKeys & B_BUTTON) {
+        /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+        u8 zero = 0;
+        *step = zero;
+        return zero;
+    } else if (DuelCursor_PickTarget(PICK_FACE_UP_MONSTER_ANY) != 0) {
+        if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0)
             return 1;
     }
     return 0;
 }
 
-/* Prompt (gStrDesignateFaceDownDefenseMonster), then keys 0x900090 add the cursor position unconditionally. */
-int EffectAcidTrapHoleChainB(struct CardRef *ref)
+/*
+ * ChainB of Acid Trap Hole: pick a face-down defense-position monster of either side. No CPU branch.
+ *   Step 0: prompt.
+ *   Then: a pick; the result of TryAddEffectTarget is ignored, so the pick always finishes. B goes back to
+ *         step 0.
+ */
+int EffectAcidTrapHoleChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    if (*st == 0) {
-        ref->numTargets = 0;
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateFaceDownDefenseMonster);
-        (*st)++;
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    if (*step == 0) {
+        link->numTargets = 0;
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrDesignateFaceDownDefenseMonster);
+        (*step)++;
         return 0;
     }
-    if (gMain.h6 & 2) {
-        u8 z = 0;
-        *st = z;
-        return z;
+    if (gMain.newKeys & B_BUTTON) {
+        /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+        u8 zero = 0;
+        *step = zero;
+        return zero;
     }
-    if (DuelCursor_PickTarget(0x900090) != 0) {
-        TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C);
+    if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_DOWN_MONSTER | PICK_DEFENSE_POSITION)) != 0) {
+        TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex);
         return 1;
     }
     return 0;
 }
 
-/* AI: per side, the face-down (flag 2) zone with the highest GetZoneCardAtk value; player 0: per-card prompt (0x3AB / 0x5AB), keys 0xE000E0. */
-int EffectTargetableFaceUpMonsterChainB(struct CardRef *ref)
+/*
+ * ChainB of Bell of Destruction and keys 1330, 1451 and 1527: pick a face-up monster.
+ *   CPU: for player 0, then player 1: the face-up monster with the highest ATK (GetZoneCardAtk); the first
+ *        side whose best monster TryAddEffectTarget accepts gives the only target. Returns 1.
+ *   Step 0: the prompt (Bell of Destruction and key 1451 say 'destroy'; the others 'Designate 1 monster.').
+ *   Then: a pick among the face-up monsters of both sides; done if TryAddEffectTarget accepts it. B goes
+ *         back to step 0.
+ */
+int EffectTargetableFaceUpMonsterChainB(struct ChainEntry *link)
 {
-    u8 *es;
-    u8 *st;
-    int pl = 1 & ((u8 *)ref)[2];
-    if (pl) {
-        int i;
-        ref->numTargets = 0;
-        for (i = 0; i <= 1; i++) {
-            int best = -1;
-            int bestZ = -1;
-            int j;
-            for (j = 0; j <= 4; j++) {
-                struct DuelZone *z = ZB(1 & i, j);
-                if ((*(u32 *)z << 20) != 0 && (z->flags6 & 2)) {
-                    int v = GetZoneCardAtk(i, j);
-                    if (v > best) {
-                        best = v;
-                        bestZ = j;
+    u8 *chain;
+    u8 *step;
+    int isCpu = LINK_PLAYER_BYTE(link);
+
+    if (isCpu) {
+        int player;
+        link->numTargets = 0;
+        for (player = 0; player <= 1; player++) {
+            int bestAtk = -1;
+            int bestZone = -1;
+            int zone;
+            for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                struct DuelZone *z = ZONE_AT(1 & player, zone);    /* Matching: the redundant & 1 is the ROM's */
+                if (HAS_CARD(z->card) && z->isFaceUp) {
+                    int atk = GetZoneCardAtk(player, zone);
+                    if (atk > bestAtk) {
+                        bestAtk = atk;
+                        bestZone = zone;
                     }
                 }
             }
-            if (bestZ >= 0) {
-                if (TryAddEffectTarget(ref, i, bestZ) != 0)
+            if (bestZone >= 0) {
+                if (TryAddEffectTarget(link, player, bestZone) != 0)
                     return 1;
             }
         }
         return 1;
     }
-    es = gChain;
-    st = es + 0x3E5;
-    if (*st == 0) {
-        ref->numTargets = 0;
-        switch (((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
-        case 0x3AB:
-        case 0x5AB:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOneMonsterToDestroy);
+    chain = CHAIN_BYTES;
+    step = chain + TARGET_STEP;
+    if (*step == 0) {
+        link->numTargets = 0;
+        switch (CARD_NUMBER(link->card)) {
+        case CARD_BELL_OF_DESTRUCTION:
+        case CARD_1451:
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateOneMonsterToDestroy);
             break;
         default:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOneMonster);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateOneMonster);
             break;
         }
-        { u8 *e = gChain; e[0x3E5]++; }
-    } else if (gMain.h6 & 2) {
-        *st = pl;
-    } else if (DuelCursor_PickTarget(0xE000E0) != 0) {
-        if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0)
+        gChain.targetStep++;
+    } else if (gMain.newKeys & B_BUTTON) {
+        *step = 0;
+    } else if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_UP_MONSTER_ANY)) != 0) {
+        if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0)
             return 1;
     }
     return 0;
 }
 
-/* Per-card prompt (numbers 0x3B1, 0x524, 0x527), then keys 0xF0 add the cursor position unconditionally. */
-int EffectOwnMonsterTargetChainB(struct CardRef *ref)
+/*
+ * ChainB of Magical Hats and keys 1316 and 1319: pick one of your own monsters. No CPU branch.
+ *   Step 0: the card's prompt (Magical Hats: 'one of your monsters'; 1316: 'recall'; 1319: 'remove from
+ *           play').
+ *   Step 1: a pick among your monsters; the result of TryAddEffectTarget is ignored, so the pick always
+ *           finishes. B goes back to step 0.
+ */
+int EffectOwnMonsterTargetChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    switch (*st) {
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    switch (*step) {
     case 0:
-        ref->numTargets = 0;
-        switch (((const u16 *)0x08622AB4)[0x7FF & ref->id]) {
-        case 0x3B1:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOneOwnMonster);
+        link->numTargets = 0;
+        switch (CARD_NUMBER(link->card)) {
+        case CARD_MAGICAL_HATS:
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateOneOwnMonster);
             break;
-        case 0x524:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOwnMonsterToRecall);
+        case CARD_1316:
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateOwnMonsterToRecall);
             break;
-        case 0x527:
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOwnMonsterToBanish);
+        case CARD_1319:
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                        gStrDesignateOwnMonsterToBanish);
             break;
         }
-        { u8 *e = gChain; e[0x3E5]++; }
+        gChain.targetStep++;
         break;
     case 1:
-        if (gMain.h6 & 2) {
-            u8 z = 0;
-            *st = z;
-            return z;
+        if (gMain.newKeys & B_BUTTON) {
+            /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+            u8 zero = 0;
+            *step = zero;
+            return zero;
         }
-        if (DuelCursor_PickTarget(0xF0) != 0) {
-            TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C);
+        if (DuelCursor_PickTarget(PICK_ANY_MONSTER) != 0) {
+            TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex);
             return 1;
         }
         break;
@@ -527,190 +732,244 @@ int EffectOwnMonsterTargetChainB(struct CardRef *ref)
     return 0;
 }
 
-/* Prompt, cursor pick accepted by EffectEquipTargetCheck, then a second prompt (0x613), and finally the value 0x0201AE60+0x14 + 1 as a target. */
-int EffectSevenCompletedChainB(struct CardRef *ref)
+/* gChain.targetStep of 7 Completed's prompts. */
+enum SevenCompletedStep {
+    SEVEN_STEP_PROMPT_MONSTER = 0,
+    SEVEN_STEP_PICK_MONSTER = 1,
+    SEVEN_STEP_PROMPT_STAT = 2,         /* 'Which do you wish to increase?' menu */
+    SEVEN_STEP_ADD_STAT = 3
+};
+
+/*
+ * ChainB of 7 Completed: two targets, the monster to equip and the stat to raise. No CPU branch.
+ *   Step 0: prompt.
+ *   Step 1: a pick among the face-up monsters of both sides that EffectEquipTargetCheck accepts (else
+ *           SE_ERROR); B goes back to step 0.
+ *   Step 2: menu 'Which do you wish to increase?' (ATK+700 / DEF+700).
+ *   Step 3: the answer plus 1 is the second target (SEVEN_COMPLETED_ATK or SEVEN_COMPLETED_DEF); done.
+ */
+int EffectSevenCompletedChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    switch (*st) {
-    case 0:
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateMonsterToEquip);
-        ref->numTargets = 0;
-        (*st)++;
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    switch (*step) {
+    case SEVEN_STEP_PROMPT_MONSTER:
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateMonsterToEquip);
+        link->numTargets = 0;
+        (*step)++;
         return 0;
-    case 1:
-        if (gMain.h6 & 2) {
-            u8 z = 0;
-            *st = z;
-            return z;
+    case SEVEN_STEP_PICK_MONSTER:
+        if (gMain.newKeys & B_BUTTON) {
+            /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+            u8 zero = 0;
+            *step = zero;
+            return zero;
         }
-        if (DuelCursor_PickTarget(0xE000E0) != 0) {
-            u8 *base = (u8 *)&gDuelScreen;
-            u32 *pa = (u32 *)(base + 0x824);
-            int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-            int p = *pa;
-            if (EffectEquipTargetCheck(ref, (u8)z << 8 | *(u8 *)pa) != 0) {
-                TryAddEffectTarget(ref, p, z);
-                (*st)++;
+        if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_UP_MONSTER_ANY)) != 0) {
+            u8 *screen = (u8 *)&gDuelScreen;
+            u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+            int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+            int player = *selPlayer;
+            if (EffectEquipTargetCheck(link, DUEL_LOC(*(u8 *)selPlayer, (u8)zone)) != 0) {
+                TryAddEffectTarget(link, player, zone);
+                (*step)++;
                 return 0;
             }
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
         break;
-    case 2:
-        TextBoxOpen(0x206, 0x613, 0xB, gStrAskSevenCompletedStat);
-        TextBoxSetMenu(2, 0, 0);
-        (*st)++;
+    case SEVEN_STEP_PROMPT_STAT:
+        TextBoxOpen(TARGET_PROMPT_POS, STAT_MENU_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrAskSevenCompletedStat);
+        TextBoxSetMenu(TEXTBOX_MENU_TWO_CHOICE, NULL, NULL);
+        (*step)++;
         return 0;
-    case 3:
-        AddEffectTarget(ref, gTextBox.flag14 + 1);
+    case SEVEN_STEP_ADD_STAT:
+        /* The menu answer is the line chosen (0 = ATK+700, 1 = DEF+700); +1 gives SEVEN_COMPLETED_ATK or
+         * SEVEN_COMPLETED_DEF, which EffectEquipResolve stores as the zone's declared value. */
+        AddEffectTarget(link, gTextBox.result + 1);
         return 1;
     }
     return 0;
 }
 
-/* AI: first zone 0-4 of the opponent side accepted by EffectMagicArmShieldCheck; player 0: prompt (gStrSelectNewAttackTarget), keys 0xE0 << 16, pick must be accepted (opponent side). */
-int EffectMagicArmShieldChainB(struct CardRef *ref)
+/*
+ * ChainB of Magic-Arm Shield: pick the opponent's monster that becomes the new attack target.
+ *   CPU (in step 0): the first monster zone of the human's side that EffectMagicArmShieldCheck accepts;
+ *        returns 1.
+ *   Step 0: prompt.
+ *   Then: a pick among the opponent's face-up monsters, accepted by EffectMagicArmShieldCheck (else
+ *         SE_ERROR). No B handling.
+ */
+int EffectMagicArmShieldChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    if (*st == 0) {
-        ref->numTargets = 0;
-        if (1 & ((u8 *)ref)[2]) {
-            int i;
-            for (i = 0; i <= 4; i++) {
-                if (EffectMagicArmShieldCheck(ref, (u8)(1 - ref->player) | (u8)i << 8) != 0) {
-                    TryAddEffectTarget(ref, 1 - ref->player, i);
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    if (*step == 0) {
+        link->numTargets = 0;
+        if (link->player) {
+            int zone;
+            for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                if (EffectMagicArmShieldCheck(link, (u8)(1 - link->player) | (u8)zone << 8) != 0) {
+                    TryAddEffectTarget(link, 1 - link->player, zone);
                     return 1;
                 }
             }
             return 1;
         }
-        TextBoxOpen(0x206, 0x712, 0xB, gStrSelectNewAttackTarget);
-        (*st)++;
-    } else if (DuelCursor_PickTarget(0xE0 << 16) != 0) {
-        u8 *base = (u8 *)&gDuelScreen;
-        u32 *pa = (u32 *)(base + 0x824);
-        int p = *pa;
-        int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-        if (EffectMagicArmShieldCheck(ref, (u8)(1 - ref->player) | (u8)*(u32 *)(base + 0x82C) << 8) != 0) {
-            TryAddEffectTarget(ref, p, z);
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectNewAttackTarget);
+        (*step)++;
+    } else if (DuelCursor_PickTarget(PICK_PLAYER1(PICK_FACE_UP_MONSTER_ANY)) != 0) {
+        u8 *screen = (u8 *)&gDuelScreen;
+        u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+        int player = *selPlayer;
+        int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+        /* The check gets the opponent's side and selIndex alone as the zone: the cursor is on a monster, so
+         * selArea is 0. */
+        if (EffectMagicArmShieldCheck(link, (u8)(1 - link->player) | (u8)SEL_WORD(screen, selIndex) << 8) != 0) {
+            TryAddEffectTarget(link, player, zone);
             return 1;
         }
-        PlaySE(3);
+        PlaySE(SE_ERROR);
     }
     return 0;
 }
 
-/* Prompt (gStrSelectFaceUpTrapToDestroy), then keys 0x80008 add the cursor position unconditionally. */
-int EffectRemoveTrapChainB(struct CardRef *ref)
+/*
+ * ChainB of Remove Trap: pick a face-up Trap card of either side. No CPU branch.
+ *   Step 0: prompt.
+ *   Then: a pick; the result of TryAddEffectTarget is ignored, so the pick always finishes. B goes back to
+ *         step 0.
+ */
+int EffectRemoveTrapChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    u8 *st = es + 0x3E5;
-    if (*st == 0) {
-        TextBoxOpen(0x206, 0x712, 0xB, gStrSelectFaceUpTrapToDestroy);
-        ref->numTargets = 0;
-        (*st)++;
+    u8 *chain = CHAIN_BYTES;
+    u8 *step = chain + TARGET_STEP;
+
+    if (*step == 0) {
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrSelectFaceUpTrapToDestroy);
+        link->numTargets = 0;
+        (*step)++;
         return 0;
     }
-    if (gMain.h6 & 2) {
-        u8 z = 0;
-        *st = z;
-        return z;
+    if (gMain.newKeys & B_BUTTON) {
+        /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+        u8 zero = 0;
+        *step = zero;
+        return zero;
     }
-    if (DuelCursor_PickTarget(0x80008) != 0) {
-        TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C);
+    if (DuelCursor_PickTarget(PICK_BOTH_SIDES(PICK_FACE_UP_TRAP)) != 0) {
+        TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex);
         return 1;
     }
     return 0;
 }
 
-/* 6-step picker: three cursor picks with prompts between them; the third
- * pick (keys 0xF0 << 16) must succeed to finish. */
-int EffectTwoProngedAttackChainB(struct CardRef *ref)
+/* gChain.targetStep of Two-Pronged Attack's prompts. */
+enum TwoProngedStep {
+    TWO_PRONGED_STEP_PROMPT_FIRST = 0,
+    TWO_PRONGED_STEP_PICK_FIRST = 1,
+    TWO_PRONGED_STEP_PROMPT_SECOND = 2,
+    TWO_PRONGED_STEP_PICK_SECOND = 3,   /* must differ from targets[0] */
+    TWO_PRONGED_STEP_PROMPT_OPPONENT = 4,
+    TWO_PRONGED_STEP_PICK_OPPONENT = 5
+};
+
+/*
+ * ChainB of Two-Pronged Attack (destroy 2 of your monsters and 1 of the opponent's), 6 steps. No CPU branch
+ * and no early exit: the card's Prepare already guarantees two own monsters and one opponent monster. B goes
+ * back to step 0 in every picking step.
+ *   Step 0: prompt for the 1st own monster.
+ *   Step 1: pick it.
+ *   Step 2: prompt for the 2nd own monster.
+ *   Step 3: pick a different one (SE_ERROR if it is the 1st monster again).
+ *   Step 4: prompt for the opponent's monster.
+ *   Step 5: pick it; done once TryAddEffectTarget accepts. A step above 5 also returns 1.
+ */
+int EffectTwoProngedAttackChainB(struct ChainEntry *link)
 {
-    u8 *es = gChain;
-    int s = es[0x3E5];
-    u8 *e2 = es;
-    switch (s) {
-    case 0:
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateFirstOwnMonster);
-        ref->numTargets = 0;
-        goto inc;
-    case 1:
-        if (gMain.h6 & 2)
+    u8 *chain = CHAIN_BYTES;
+    int state = chain[TARGET_STEP];
+    /* FAKEMATCH: a second copy of the gChain base, from which the shared reset forms the step pointer (the
+     * ROM keeps it in its own register). */
+    u8 *chainCopy = chain;
+
+    switch (state) {
+    case TWO_PRONGED_STEP_PROMPT_FIRST:
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateFirstOwnMonster);
+        link->numTargets = 0;
+        goto next_step;
+    case TWO_PRONGED_STEP_PICK_FIRST:
+        if (gMain.newKeys & B_BUTTON)
             goto reset;
-        if (DuelCursor_PickTarget(0xF0) == 0)
-            goto ret0;
-        if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) == 0)
-            goto ret0;
-        goto inc;
-    case 2:
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateSecondOwnMonster);
+        if (DuelCursor_PickTarget(PICK_ANY_MONSTER) == 0)
+            goto wait;
+        if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) == 0)
+            goto wait;
+        goto next_step;
+    case TWO_PRONGED_STEP_PROMPT_SECOND:
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateSecondOwnMonster);
         {
-            u8 *e = gChain;
-            register int off __asm__("r2") = 0x3E5;
+            u8 *e = CHAIN_BYTES;
+            register int offset __asm__("r2") = TARGET_STEP;
             u8 *p;
-            /* FAKEMATCH: retain this initialized offset in r2 so this arm
-             * keeps its address setup. The signed subtraction is e + off;
-             * it preserves the ROM's ADD operand order. No instruction is
+            /* FAKEMATCH: retain this initialized offset in r2 so this arm keeps its address setup. The
+             * signed subtraction is e + offset; it preserves the ROM's ADD operand order. No instruction is
              * emitted by the empty constraint. */
-            __asm__("" : "+r"(off));
-            p = e - (-off);
+            __asm__("" : "+r"(offset));
+            p = e - (-offset);
             (*p)++;
         }
-        goto ret0;
-    case 3:
-        if (gMain.h6 & 2)
+        goto wait;
+    case TWO_PRONGED_STEP_PICK_SECOND:
+        if (gMain.newKeys & B_BUTTON)
             goto reset;
-        if (DuelCursor_PickTarget(0xF0) != 0) {
-            u8 *base = (u8 *)&gDuelScreen;
-            u32 *pa = (u32 *)(base + 0x824);
-            int z = *(u32 *)(base + 0x828) + *(u32 *)(base + 0x82C);
-            int p = *pa;
-            int pos = (u8)z << 8 | *(u8 *)pa;
-            if (ref->targets[0] != pos) {
-                if (TryAddEffectTarget(ref, p, z) != 0) {
-                    u8 *e = gChain;
-                    int off = 0x3E5;
-                    u8 *next = e + off;
-                    (*next)++;
-                }
+        if (DuelCursor_PickTarget(PICK_ANY_MONSTER) != 0) {
+            u8 *screen = (u8 *)&gDuelScreen;
+            u32 *selPlayer = &SEL_WORD(screen, selPlayer);
+            int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
+            int player = *selPlayer;
+            int pos = DUEL_LOC(*(u8 *)selPlayer, (u8)zone);
+            if (link->targets[0] != pos) {
+                if (TryAddEffectTarget(link, player, zone) != 0)
+                    gChain.targetStep++;
             } else {
-                u32 se = 3;
-                /* FAKEMATCH: retain the initialized sound id separately
-                 * from case 5's call, preserving this call's branch tail.
-                 * The empty constraint emits no instruction. */
-                __asm__("" : "+r"(se));
-                PlaySE(se);
+                u32 sound = SE_ERROR;
+                /* FAKEMATCH: retain the initialized sound id separately from the call in
+                 * TWO_PRONGED_STEP_PICK_OPPONENT, preserving this call's branch tail. The empty constraint
+                 * emits no instruction. */
+                __asm__("" : "+r"(sound));
+                PlaySE(sound);
             }
         }
-        goto ret0;
-    case 4:
-        TextBoxOpen(0x206, 0x712, 0xB, gStrDesignateOpponentMonsterToDestroy);
-    inc:
-        { u8 *e = gChain; e[0x3E5]++; }
-    ret0:
+        goto wait;
+    case TWO_PRONGED_STEP_PROMPT_OPPONENT:
+        TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                    gStrDesignateOpponentMonsterToDestroy);
+    next_step:
+        gChain.targetStep++;
+    wait:
         return 0;
-    case 5:
-        if (gMain.h6 & 2) {
+    case TWO_PRONGED_STEP_PICK_OPPONENT:
+        if (gMain.newKeys & B_BUTTON) {
         reset:
             {
-                u8 *q = e2 + 0x3E5;
-                u8 zz = 0;
-                *q = zz;
-                return zz;
+                u8 *resetStep = chainCopy + TARGET_STEP;
+                /* FAKEMATCH: the zero in a u8 variable keeps the ROM's own reset tail. */
+                u8 zero = 0;
+                *resetStep = zero;
+                return zero;
             }
         }
-        if (DuelCursor_PickTarget(0xF0 << 16) != 0) {
-            if (TryAddEffectTarget(ref, gDuelScreen.w824, gDuelScreen.w828 + gDuelScreen.w82C) != 0)
+        if (DuelCursor_PickTarget(PICK_PLAYER1(PICK_ANY_MONSTER)) != 0) {
+            if (TryAddEffectTarget(link, gDuelScreen.selPlayer, gDuelScreen.selArea + gDuelScreen.selIndex) != 0)
                 return 1;
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
-        goto ret0;
+        goto wait;
     default:
         return 1;
     }
 }
-
-

@@ -55,7 +55,7 @@ python3 tools/xref.py func MainLoop                     # AgbMain's main loop (p
 python3 tools/xref.py global gMain --offset 0x4859      # who uses the sequencer byte seqIndex1
 python3 tools/xref.py strings 'rare card'               # who starts this dialogue line or prints this string
 python3 tools/xref.py graph LZSSDecompress --up --depth 3 # how the LZSS decoder is reached
-python3 tools/xref.py unit code_08006878
+python3 tools/xref.py unit card_detail
 python3 tools/xref.py subsystems -v | less
 python3 tools/xref.py what 0x020192E4                   # players[0].lifePoints and its 226 users
 python3 tools/xref.py selftest

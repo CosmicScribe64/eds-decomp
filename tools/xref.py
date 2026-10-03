@@ -488,6 +488,10 @@ def is_ptr(v):
     return isinstance(v, int) and region(v) in PTR_REGIONS
 
 
+def _is_game_unit(u):
+    return not (u.startswith(('sound', 'sdk/', 'rodata_')) or u in ('crt0', 'veneer'))
+
+
 def decode_function(ctx, md_t, md_a, start, size, mode):
     """-> list of insns (addr, size, mnem, ops, cc, writeback) for the code parts of [start, start+size)."""
     import capstone
@@ -2264,7 +2268,7 @@ def func_card(db, f, args):
     a = f['addr']
     out = []
     flag = {'c': 'C', 'asm': 'asm', 'lib': 'library'}.get(f['src'], f['src'])
-    if f['src'] == 'asm' and f['unit'].startswith('code_'):
+    if f['src'] == 'asm' and _is_game_unit(f['unit']):
         flag = 'INCLUDE_ASM (not matched)'
     out.append(f"{f['name']}  {hx(a)}-{hx(a + f['size'])} (0x{f['size']:X} bytes, "
                f"{'Thumb' if f['mode'] == 't' else 'ARM'}, {f['ninsn']} insns)  unit {f['unit']}  [{flag}]")
@@ -2723,7 +2727,7 @@ def cmd_unit(db, args):
         main, _, _ = wiki_links(db, f['addr'], unit)
         if main:
             note.append('[[' + main[0] + ']]')
-        if f['src'] == 'asm' and unit.startswith('code_'):
+        if f['src'] == 'asm' and _is_game_unit(unit):
             note.append('ASM')
         s1 = (f['strings'][0][1] if f['strings'] else '')
         rows.append((f, len(ins), len(outs), note, s1))
@@ -2824,7 +2828,7 @@ LABEL_DIRS = ('game', 'functions', 'data', 'rom')
 
 
 def subsystem_graph(db, args):
-    fs = [f for f in db.by_addr.values() if f['unit'].startswith('code_') or f['unit'].startswith('sound')]
+    fs = [f for f in db.by_addr.values() if _is_game_unit(f['unit']) or f['unit'].startswith('sound')]
     nodes = [f['addr'] for f in sorted(fs, key=lambda f: f['addr'])]
     nodeset = set(nodes)
     indeg = collections.Counter()

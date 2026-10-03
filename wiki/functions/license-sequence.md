@@ -16,7 +16,7 @@ updated: 2026-10-01
 | step 2 | `0x08004CBC` | 0xA0 | `License_ShowKonamiLogo` |
 | step 3 | `0x08004D60` | 0x12E | `License_ShowKcejLogoThenTitle` |
 
-Mode: Thumb. Unit: `asm/code_080044E4.s`. Match: nonmatching.
+Mode: Thumb. Unit: `asm/title_screen.s`. Match: nonmatching.
 
 ## Purpose (verified)
 This is the first scene. `GameInit` installs it, and the debug table calls it "License". The runner reads the step table at `0x0819879C`, indexed by `gMain+0x4878`, with the sub-state at `+0x4858`.

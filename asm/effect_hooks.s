@@ -1,0 +1,28 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/effect_hooks/ApplyPumpkingBoost.s"
+	.include "asm/nonmatching/effect_hooks/TriggerMysteriousPuppeteer.s"
+	.include "asm/nonmatching/effect_hooks/ApplyDragonCaptureJar.s"
+	.include "asm/nonmatching/effect_hooks/SinisterSerpentStandbyStep.s"
+	.include "asm/nonmatching/effect_hooks/DisableFaceUpTraps.s"
+	.include "asm/nonmatching/effect_hooks/PayChainEnergyCost.s"
+	.include "asm/nonmatching/effect_hooks/ApplyKotodama.s"
+	.include "asm/nonmatching/effect_hooks/ApplyKotodamaToZone.s"
+	.include "asm/nonmatching/effect_hooks/TriggerAppropriate.s"
+	.include "asm/nonmatching/effect_hooks/TriggerForcedRequisition.s"
+	.include "asm/nonmatching/effect_hooks/LoseLpOnSendToGraveyard.s"
+	.include "asm/nonmatching/effect_hooks/ResolvePendingGraveyardEquip.s"
+	.include "asm/nonmatching/effect_hooks/OnCardDestroyedByEffect.s"
+	.include "asm/nonmatching/effect_hooks/PlaceNextSpiritMessage.s"
+	.include "asm/nonmatching/effect_hooks/DamageOpponentPerBanishedMonster.s"
+	.include "asm/nonmatching/effect_hooks/RollDieDestroyMonstersByLevel.s"
+	.include "asm/nonmatching/effect_hooks/EffectNopResolve.s"
+	.include "asm/nonmatching/effect_hooks/EffectSpiritMessagePrepare.s"
+	.include "asm/nonmatching/effect_hooks/FindCardEffect.s"
+	.include "asm/nonmatching/effect_hooks/CanEffectTargetZone.s"
+	.include "asm/nonmatching/effect_hooks/CanNormalSummon.s"
+	.include "asm/nonmatching/effect_hooks/CanSpecialSummon.s"
+	.include "asm/nonmatching/effect_hooks/CardMenu_SummonMonster.s"

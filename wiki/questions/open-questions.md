@@ -16,7 +16,7 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [ ] Were the ARM sound mixer (`0x0807EAD0`) and the Konami link-cable library written in asm or C (`agbcc_arm`)? See [[sound-mixer]].
 - [ ] Where are the real translation-unit boundaries? The current units are 4 KiB chunks. Hints: rodata grouping, and static functions called from only one place. The Japanese build links the shared code in a different order, so the breaks between the 428 runs both builds keep in order are further evidence ([[rom-versions]], `build/jp/blocks.tsv`).
 - [ ] Which compiler and flags built the Japanese build's Mobile Adapter GB library (195 functions at JP `0x0807D2E4`) and its ARM HBlank routine (JP `0x0805CA00`)? See [[rom-versions]].
-- [ ] Were some functions built without GCSE? `CanRedirectEffectToZone`, `EffectBigEyeResolve` and `EffectBanishGraveToDestroyPrepare` match more naturally with `-fno-gcse`, but that flag breaks most other functions. That would suggest per-file flags or the original's TU boundaries. See [[code-0802fb64]], [[compiler-flags]].
+- [ ] Were some functions built without GCSE? `CanRedirectEffectToZone`, `EffectBigEyeResolve` and `EffectBanishGraveToDestroyPrepare` match more naturally with `-fno-gcse`, but that flag breaks most other functions. That would suggest per-file flags or the original's TU boundaries. See [[effect-prepare3-c]], [[compiler-flags]].
 
 ## ROM structure
 - [x] ~~Where does code end and data begin?~~ `.text` ends at `0x08080A20`, after the 8-byte linker veneer. See [[rom-map]].
@@ -40,7 +40,7 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [ ] Which duel phase is which in the 10-entry table at `0x08198F80`?
 - [ ] Is the link code Nintendo's MultiSio sample (sync word `0xFEFE`)? A byte-for-byte comparison would settle it.
 - [ ] Where does `gMain` end (about `0x030048CC`), and what is the struct at `0x030049D0`? See [[ram-map]].
-- [ ] Do the deck-edit 20-byte panel cells at `0x0201DB20` start at `+0x1724` (flag bytes at cell +2/+3) or at `+0x1726`? The matched C view has to start at the 4-aligned `+0x1724` because agbcc aligns structs to 4; the ROM accesses alone do not decide the original layout. See [[code-0806704c]].
+- [ ] Do the deck-edit 20-byte panel cells at `0x0201DB20` start at `+0x1724` (flag bytes at cell +2/+3) or at `+0x1726`? The matched C view has to start at the 4-aligned `+0x1724` because agbcc aligns structs to 4; the ROM accesses alone do not decide the original layout. See [[deck-edit-list-c]].
 
 ## Game data
 - [x] ~~Where are the card stats?~~ `0x08621DE0`. See [[card-table]].
@@ -55,5 +55,5 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [ ] Are the 13- and 26-card lists really AI priority lists? What is the 60-card list for? See [[special-card-lists]].
 - [ ] What do the attribute bits hold for non-monsters? Are the Gods and Tickets unplayable story items?
 - [ ] What do the text codes `$c`, `$p`, `$h` and `$k` do, and which colours are `@2`/`@3`? See [[text-system]].
-- [ ] Is special booster-pack type 21 Trap and 22 Magic ([[booster-packs]]), or the reverse ([[code-08006878]])? The pages may use different encodings; compare the pack code with the stat-word `type` field ([[card-table]]: 21 Trap, 22 Magic).
+- [ ] Is special booster-pack type 21 Trap and 22 Magic ([[booster-packs]]), or the reverse ([[card-detail-c]])? The pages may use different encodings; compare the pack code with the stat-word `type` field ([[card-table]]: 21 Trap, 22 Magic).
 

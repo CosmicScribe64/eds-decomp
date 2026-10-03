@@ -38,7 +38,7 @@ An overview of the duel's data and control structures, as established while deco
 - Many duel routines are dispatched through function-pointer tables; see [[function-pointer-tables]]. For example,
   a 40-entry table at `0x08198E7C` is used by `CB_LinkBattle`, and a 39-entry table at `0x0819A6B0` by `TurnOrder_RpsMain`.
 - Card effects: see [[cards]] and the effect table described there. The largest function in the game,
-  [[code-08044224]], appears to be a card-condition search used by the list views (hypothesis).
+  [[effect-target-collect-c]], appears to be a card-condition search used by the list views (hypothesis).
 
 ## Open
-The turn structure, the phases and the CPU AI are still open (units around `code_08057EE0` to `code_0805C508`; see their unit pages).
+The turn structure, the phases and the CPU AI are still open (units around `ai_summon` to `ai_strategy`; see their unit pages).

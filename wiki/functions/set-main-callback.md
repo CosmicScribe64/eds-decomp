@@ -13,7 +13,7 @@ updated: 2026-10-01
 | Address | `0x080754F8` |
 | Size | 0x90 (code to `0x08075588`, then the pool) |
 | Mode | Thumb |
-| Unit | `asm/code_080750E0.s` |
+| Unit | `asm/main.s` |
 | Match | nonmatching (not attempted) |
 
 ## Purpose (verified)

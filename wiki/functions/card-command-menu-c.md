@@ -1,0 +1,77 @@
+---
+title: Unit card_command_menu (duel effect request steps and usability flags)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit card_command_menu
+
+`0x08048FE0`-`0x0804A008` (exclusive), Thumb, `old_agbcc -O2`. Source: `src/card_command_menu.c`. Follows [[effect-hooks-c]]. Works on the pending-request bit flags at `0x020192E0 + 0x1B2C..0x1B34` (the same block [[duel-response-c]] uses) and the zone table at `0x0201930C`.
+
+Unit status: `unit bytes MATCH`, **5/8 functions in C** after workflow waves 2-3 (2026-10-01: `0x08049450`, `0x08049B74` in wave 2); 3 stay `INCLUDE_ASM` (`0x08049048`, `0x08049514`, `0x08049880`), each with a C draft parked under `#if 0` directly above it. Before wave 2: 3/8 with 5 `INCLUDE_ASM` (historical description: "the three drafts are near misses that differ only in register allocation, literal CSE or the ROM's per-block reloads; a background permuter picks them up").
+
+> [!warning] Contradiction: the unit is now 8/8
+> The count above (5/8) predates later matches. `src/card_command_menu.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 8 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses about role) |
+|---|---|---|---|
+| `0x08048FE0` | 0x68 | matching | resolve the pending request: `QueueFlipSummon(player, zone)`, set bit 2 of zone byte `+7`, clear bit 1 of `0x020192E0+0x1B2C` |
+| `0x08049048` | 0x388 | nonmatching (asm, draft parked) | request step driver on the counter at `0x020192E0+0x1B30` bits 2-9: step 0 (`(u16)`) picks a free spell/trap zone (`FindFreeSpellTrapZone`) into a **second** zone field (`0x1B34` bits 9-16), handles trap subtype 2 (`DestroyFieldCard`/`gDuelFieldZone+0x1540`), emits `DuelCmd_Push(msg, card, packed, 0)` and advances; step 1 calls `DuelCursor_Select(player, 0, zone)` and advances; other steps test the request zone's card word bit 18 / bit 12 (calling `ShowCardEffect`/`LoseLifePoints` on mismatch) then build an event word from `arg2` for `Chain_AddLink`/`Chain_AddPending` (or, when `arg0 == 0`, only the shared tail); ends by setting bit 5 of player byte `+9` when state bits 2-4 > 1 and clearing flag bit 1 of `0x1B2C` |
+| `0x080493D0` | 0x80 | matching | `(u16 step)`: for step 1 or 2 run `ChangeBattlePosition(player, zone, 0, 0)` first, then the same tail as `CardMenu_FlipSummon` |
+| `0x08049450` | 0xC4 | **matching** (wave 2, 2026-10-01) | two-step driver on the 8-bit counter at `0x020192E0+0x1B30` bits 2-9: step 0 stores 0x80 at `0x02017A40+0x3E0` and advances; step 1 runs the picker `EffectPolymerizationResolve` on a fresh `CardRef` (`id = gUnk_08624A0A[0]`, player/skip bits cleared) and advances when it returns 0; other steps clear the request flag. See Wave 2 matches below (historical: only the register/CSE pattern of the counter increment differed) |
+| `0x08049514` | 0x36C | nonmatching (asm, draft parked) | usability flags for card `id` (only when state bits 2-4 are 2 or 4): `switch` on card type. Trap (0x16): `CanPlaceSpellTrapCard`/`CanActivateEffectOfCard`, OR 0x10, card number 0x520 tests player bytes `+9`/`+8` (`&= ~0x40`), range 0x605-0x608 (`&= ~0x10`); Magic (0x15): set 0x10 when `CanPlaceSpellTrapCard`; other types: `CanSummonFromHand`/`IsSpecialSummonOnly`, `CanSpecialSummon`/`08047114` masks, card numbers 0x17A/0x5F0/0x546 special cases; then card number 0x47/0x1A8 add 0x40; shared tail adds 0x40 for trap subtype 5, masks via `CountActiveCardsOnField(·,0x49C)`, and clears bits 4/6 for types 0x15/0x16 when player byte `+7 >> 6 != 0` |
+| `0x08049880` | 0x2F4 | nonmatching (asm, draft parked) | card-number `switch` returning a usability flag / `CanActivateEffectInZone(player,zone,kind)` / `CountTributableMonsters(player,±1)` result: many numbers `return CanActivateEffectInZone(...,0)`; 0x1A0/0x243/0x2DB `return (...,2)` when `0x020192E0[0x1B12] & 0x1C == 4`; 0x2DA/0x536 loop `CanCardTargetZone(id, 1-player, i)` and return zone byte `+7` bit 5; 0x51/0x186 first require `CountZoneLinksFromCard(player,zone,0x291)` then scan the deck (`PLAYER+0x7C4`) for card numbers 0x2E5/0x187 (returning 1 only if neither side has 0x58A); 0x5E9 returns 1 when a `PLAYER+0x904` list card is a monster (type <= 0x14); initialises an unused `struct CardRef` |
+| `0x08049B74` | 0x27C | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `u16 f(u16 id, player, zone)`: usability-flag mask (bits 1, 2, 3, 6, 7) for the card in zone `zone` of player 0 (returns 0 for player 1; the zone index is used directly, hypothesis: a monster zone, since [[card-menu-input-c]]'s `CardMenu_GetAvailableCommands` calls it for cursor row 0 and `CardMenu_GetSpellTrapCommands` with `zone + 5` for row 5), by the 3-bit field at `0x020192E0+0x1B12` bits 2-4. Value 1: face-down card number 0x1A0/0x243/0x2DB and `CanActivateEffectInZone(p, zone, 2)` give 0x40. Values 2/4: unless zone byte `+7` bit 2, player byte `+7` bit 5, `CountZoneLinksFromCard(.., 0x15C)` / `(.., 0x4DC)`, or (zone face-down, `GetZoneCardType(0, zone) == 1` and card 0x148 on the field), set 4 or 2 when face-down (by flag bit 0), else 8 plus 2 when flag bit 0 is clear (8 dropped when `CanNormalSummon(0) == 0`), mask `0xFFF1` when card 0x536 is on the field and this is not it; then 0x40 when face-down and `CanActivateMonsterEffect` agrees. Value 3: 0x80 when `CanMonsterAttack(p, zone, 1)` and bit `zone` of the player's `+0x2A` halfword is clear. (Was listed as "not attempted", but a draft scoring 52 was parked before wave 2.) |
+| `0x08049DF0` | 0x218 | **matching** (ordinary C) | `int (u16 id, player, zone)`: usability flags (bit 6 = 0x40 "can activate") of card `id` set in spell/trap zone `zone + 5` of player 0 (returns 0 for player 1). Type 0x16 (trap): needs zone byte `+0x91 & 4`, face-up, `CanActivateEffectOfCard`; state bits at `0x020192E0+0x1B12` value 4 with card-number tests 0x489 (`CanActivateEffectInZone(1-p, zone+5, 3)`) and 0x428 (`CanActivateEffectInZone(p, zone+5, 2)`); type 0x15: `CanActivateEffectInZone(p, zone+5, 0)` unless the card number is 0x3F9/0x52C/0x594/0x5FC and face-down; finally clears bit 6 for types 0x15/0x16 when `gDuelPlayers[p].byte7 >> 6 != 0`. Matches except that the ROM ties the three `& 2` tests to a copy of the constant 2 (4 bytes) |
+
+## Structures (hypotheses)
+- `0x020192E0 + 0x1B2C` byte: bit 1 = "request pending"; `+0x1B30` halfword: bits 2-9 step counter; `+0x1B33` byte bit 1 = request player; `+0x1B34` halfword bits 1-8 = request zone (`CardMenu_FlipSummon`/`CardMenu_ChangePosition`).
+- `0x020192E0 + 0x1B34` is written and read as a **u32**: `CardMenu_PlaySpellTrapFromHand` step 0 stores `(freeZone & 0xFF) << 9` (mask `0xFFFE01FF`) and all its readers take bits 9-16. This is a *second* zone field, distinct from the halfword bits 1-8 above.
+- Zone (0x94 bytes): byte `+6` bit 1 face-down; byte `+7` bit 2 set by the request; byte `+0x91` bit 2 flag.
+
+## Matching tricks
+- **`(e + 0x2C)`-style base must stay a separate term** (`CardMenu_FlipSummon`, `CardMenu_ChangePosition`, and the `e + 0x310` path of `CardMenu_GetSpellTrapCommands`): compute `int s1 = zone * 0x94 + p * 0xD64; u8 *zb = e + 0x2C; z = (T *)(s1 + (int)zb);` as three statements, because a single expression gets reassociated to `(s1 + e) + 0x2C`. Use `u32` for player/zone loaded from bitfields (`u32 p, zi;`), not the bitfield expressions inline.
+- **`switch (t)` with cases written in the order the ROM lays out the bodies**: `case 0x16:` first then `case 0x15:` gives `cmp #0x15; bne; b far` (compare chain sorted, bodies in source order).
+- **Shared tail after several calls** comes for free from cross-jumping: write the identical `if (call() != 0) flags = (u16)(flags | 0x40);` in each arm instead of using `goto`.
+- **Table lookups**: use the cast-literal form `((const u32 *)0x08621DE0)[n]`; the symbol form changes the `add` operand order and the register pressure (`n` moved from r4 to r2).
+- A `switch (u16)` over four constants gives the same compare tree as the ROM's `0x3F9/0x52C/0x594/0x5FC` test.
+- **Local `u8 *e = sym;` reloaded in each block** (`e1` for the first block, a fresh `e` after): each block gets its own `ldr =sym` and register.
+- **A local aggregate must be big enough to stay in memory**: `CanActivateMonsterEffect`/`CardMenu_GetHandCardCommands` allocate a 0x14-byte frame (`sub sp, #20`) because the source has a `struct CardRef`. A 4-byte local gets register-promoted and dead-store-eliminated (its stores vanish and no frame is emitted); a 0x14-byte one keeps the RMW bitfield stores (`ldrb/and/orr/strb`) and even an entirely *unused* `struct CardRef` still reserves the frame. Use `struct CardRef` (the unit's 20-byte type) for these.
+- The ROM does not CSE `0x020192E0` across the many calls in `CardMenu_GetHandCardCommands`/`CardMenu_PlaySpellTrapFromHand`. It reloads the base and the card tables in every block, so those targets are much longer than a build that keeps `e` and the tables in registers. The three parked drafts here are all short or long only because of that.
+- **Bitfields at `0x1B34` are read differently per access width**: `CardMenu_PlaySpellTrapFromHand` reads `(u16)word >> 1 & 0xF` (halfword) and `word >> 9 & 0xF` (u32) for the same packed event byte, so write `(*(u16 *)p >> 1) & 0xF` and `(*p >> 9) & 0xF` separately.
+
+
+## Corrected parked-draft flag (2026-09-30)
+
+> [!warning] Earlier draft and description used the wrong bit
+> The `CanActivateMonsterEffect` prologue loads zone byte +7, shifts left by 26, then right by 31: it tests **bit 5**, not bit 2. The old parked `ZONE7` macro used `>> 2`; it is corrected to `>> 5`. This macro is only used by the disabled draft, so the active assembly is unchanged. The ROM instruction sequence resolves the contradiction with the earlier description above.
+
+Private inline card-number/type and zone-address helper experiments improved parts of the instruction shape but have not matched `CanActivateMonsterEffect`. `CardMenu_GetSpellTrapCommands` flag-width and Boolean helper experiments also retained mismatches; neither function was enabled. Evidence: `build/bigguns-duel48/card_command_menu/usability_helpers.log`, `usability_flagfix.log`, and `df0_flags.log`.
+
+## `CardMenu_GetSpellTrapCommands` matched (2026-10-01)
+
+The ROM's `movs r0,#2; ands r0,r1` (the constant register is the destination) is the code gcc emits for **bitfield tests**, not for explicit `b & 0x1C` / `2 & b` masks. Both reads of the duel flags byte at `0x020192E0 + 0x1B12` now go through a local view, `struct Flags1B12 { u8 f0:1; u8 bit1:1; u8 phase:3; u8 rest:3; }`. The tests are `phase == 2 || phase == 4` with `bit1 == 0`, and `phase == 1` then `bit1`. These are the same fields as `DuelState.linkSkip` / `phase1B12` in `include/duel.h`. This is ordinary C with no hints.
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/CardMenu_FusionSummon/NOTES.md`, `build/wf/CardMenu_GetMonsterCommands/NOTES.md`.
+
+### `CardMenu_FusionSummon` (0xC4, start score 81; ordinary C)
+
+- The old draft read the step counter as `s16 w` with explicit `<< 22 >> 24` shifts and `(w & 0xFC03) | ...` stores: the read became `ldrsh`, CSE folded case 0's increment to `| 4` (the switch value is known to be 0 on that edge), and the second increment did not reload the base.
+- Real bitfield access through the existing padded `struct ReqStep { u16 lo:2; u16 cnt:8; u16 hi:6; u8 pad[6]; }`: `switch (((struct ReqStep *)(e + 0x1B30))->cnt)` and `->cnt++`. The bitfield increment re-extracts `(r2 >> 24) + 1` from the shared `r3 << 22`, so nothing folds (score 57). Without the padding the struct is read with a word `ldr` and the address folds.
+- `u8 *e = gDuel` for the first part (base and offset load separately, `e + 0x1B30` lands in r4) and a fresh `u8 *e2 = gDuel` for the second increment after the call. Reusing `e` kept it live across the call (push r4, r5); `gDuel + 0x1B30` written directly folded into one `0x0201AE10` literal (score 6). Compare the "local reloaded in each block" trick above.
+- `u16 id = gUnk_08624A0A[0]; ref.id = id;`: the temporary puts the `ldrh` before `mov r0, sp`; `ref.id = gUnk_08624A0A[0]`, `*(u16 *)&ref = ...` and `ref.id = *gUnk_08624A0A` compute `sp` into r1 first (score 0, after 8 experiments).
+
+### `CardMenu_GetMonsterCommands` (0x27C, start score 52; FAKEMATCH)
+
+Score 52 at prep, 33 when the final session started.
+1. **`f6 & 1` operand order (33 to 2).** The draft cached `u8 f6 = z->b6;` and tested `f6 & 2` and `f6 & 1`. Since `f6` is a user variable that dies at `f6 & 1`, regmove rewrote that AND as `f6 = f6 & one` (`ands r1, r6`). The ROM reads `z->b6` in every test (`adds r0, r6, #0; ands r0, r1`): CSE merges the reads into a non-user pseudo, which regmove leaves alone. Fix: write `z->b6` in each test.
+2. **Case 3 `adds r0, r6, r0` (base first, 2 to 0).** `*(u16 *)(e + t*0xD64 + 0x2A)` and every byte-pointer or integer-cast form expand as `(plus (mult ..) e)`. The struct-array form `((struct WfDuel49B74 *)e)->p[t].f2A` (ARRAY_REF inside COMPONENT_REF) expands as `(plus e offset)`, but CSE's `fold_rtx` swaps it back because it knows `e` equals the symbol on the followed jump path (canonical order puts a known constant second). FAKEMATCH: `asm("" : "+r"(e));` at the top of case 3 hides that value from CSE, together with the struct-array form. Placed before the switch instead, the asm shortens `e`'s live length (66 to 35), `e` outranks `arg1` in global alloc and r5/r6 swap (68).
+- Failed: `do { } while (0)` around case 3 (68); casting the global directly in case 3 (still `(plus mult sym)`, 2); `e + 0x2A + t*0xD64`, `(t*0xD64) + e + 0x2A`, `(u16 *)` indexing and integer casts (all 2).
+- Open idea for a form without asm (hypothesis): in the original, CSE probably did not follow a jump into case 3's label (a LOOP_END note before the label, or a second use of the label).

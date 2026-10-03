@@ -11,7 +11,7 @@ updated: 2026-10-02
 Every deck is stored as a **sorted `u16[]` of card numbers** (not card IDs; see [[card-id-map]]), with a separate `{pointer, count}` header table. The card lists are packed back-to-back in `0x0819D34C`–`0x0819DC6C`, with no terminators.
 
 ```c
-struct DeckRef {                 /* 8 bytes; `struct DeckList` in src/code_080590E4.c */
+struct DeckRef {                 /* 8 bytes; `struct DeckList` in src/ai_deck.c */
     const u16 *cards;            /* card numbers, ascending */
     u16 count;                   /* 40..42 */
     u16 pad;                     /* always 0 */
@@ -19,7 +19,7 @@ struct DeckRef {                 /* 8 bytes; `struct DeckList` in src/code_08059
 ```
 
 > [!warning] Contradiction
-> This page declared `u32 count`. The matched source `src/code_080590E4.c` declares `struct DeckList { const u16 *ids; u16 n; u16 pad; }`, and the deck converter writes that layout back byte-identical. A ROM check on 2026-10-02 found every pad halfword zero in both header tables, which is why the old `u32` reading gave the same counts. Resolved in favour of the matched source.
+> This page declared `u32 count`. The matched source `src/ai_deck.c` declares `struct DeckList { const u16 *ids; u16 n; u16 pad; }`, and the deck converter writes that layout back byte-identical. A ROM check on 2026-10-02 found every pad halfword zero in both header tables, which is why the old `u32` reading gave the same counts. Resolved in favour of the matched source.
 
 **Editing.** The deck lists extract to `tables/deck_lists.json` ([[assets]]), with one `[number, "name"]` list per deck. The build re-packs the lists back to back in ROM order and rewrites both header tables. Decks may grow or shrink as long as all 31 lists fit in the 0x920-byte region (1,168 cards, all used by the original data). The number of header entries (25 and 6) is fixed. The ROM lists are sorted, but the game doesn't seem to need that, and the build does not sort.
 

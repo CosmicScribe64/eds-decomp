@@ -1,0 +1,138 @@
+---
+title: card_canvas (duel card-art frame/picture blits, zone pixel positions, card-class offsets) decompilation status
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# card_canvas: card picture/frame loaders, zone pixel coordinates and card-class helpers (`0x080619E8`-`0x080629F4`)
+
+`src/card_canvas.c` (14 functions, 0x1008 bytes). **13/14 functions in C** after workflow waves 2-3 (2026-10-02: `0x080624A4` in wave 2, `0x08061D24` and `0x08061A1C` in wave 3); 1 stays `INCLUDE_ASM` (`0x08062604`, best attempt under `#if 0 /* NONMATCHING */`). Before wave 2: 10/14. The unit links to the exact target bytes. Compiler `old_agbcc -O2` ([[compiler-flags]]). It follows the duel board screen layer [[duel-field-screen-c]] (which contains `BlitTilePixels` `0x080618C4`, used here) and precedes the pack generator `GeneratePackCards` ([[booster-packs]]). Names are proposals; code keeps `sub_08XXXXXX`.
+
+> [!warning] Contradiction: the unit is now 14/14
+> The count above (13/14) predates later matches. `src/card_canvas.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 14 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x080619E8` | 0x34 | **matching** | `DuelObjOff` | `gDuelScreen` bit 1 cleared, `DISPCNT &= ~0x40` (hides the OBJ layer... hypothesis), clears `0x06010000` (0x10000 bytes) with `MemClear16` |
+| `0x08061A1C` | 0x308 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `LoadCardFrame(id)` | picks the frame graphic table by card type (`0x15` Trap -> `0x08631558`, `0x16` Magic -> `0x0862EEC0`, `0x17` Ticket -> `0x08633BF0`) or by card class 1/2/3/other (`0x08627AF8`, `0x0862A190`, `0x0862C828`, `0x08625460`); table = `{u16 n; ...; pal at +8 (0x40 bytes); pixels at +0x10 + n*2}`; copies the palette to `0x05000220` and blits 32-halfword tiles into OBJ memory `0x06010000` in four loop nests (rows 0-3 x cols 0-12, rows 4-0xD cols 0-1 then 11-12, rows 0xE-0x11 cols 0-12), adding `0x1000` to a halfword with a non-zero high byte and `0x10` with a non-zero low byte (palette offset) |
+| `0x08061D24` | 0x130 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `LoadCardPicture(id)` | copies the 64-colour palette `0x08608360 + id*0x80` to `0x05000260`, then unpacks the 6-bit-per-pixel picture at `0x082A6500 + id*0x10E0` (8 pixels per 6 bytes -> four halfwords of two 6-bit pixels each) into OBJ tile memory for rows 4-0xD x cols 2-0xA (the inside of the frame), finally adds `0x30` to every pixel byte |
+| `0x08061E54` | 0x2EC | **matching** | `DrawCardInfo(id)` | info panel for a card: attribute/type icon (`DrawCardImageIcon16(0x6004E, 0x70, ...)`: Trap/Magic/monster-by-attr tables `0x0819897C`/`0x08198950`), then for monsters (type <= 0x14) level stars (8 px apart, or squeezed `0x4E*i/level` when level > 9), ATK and DEF digits (ATK*10 / DEF*10 via `% 10` and `/ 10`, 4-px spacing) with labels; for Magic/Trap the spell/trap subtype icon (stats bits 17-19) |
+| `0x08062140` | 0x12C | **matching** | `GetCardArtOffset(id)` | `0x140` for card number 1910, `0xC0` for 1911-1912, `0x180/0x1C0/0x80` for types Magic/Trap/Ticket, else by class 0..3: `0x80/0xC0/0x100/0x140` (falls out as the class for 7-9) |
+| `0x0806226C` | 0xE8 | **matching** | `GetCardFrameOffset(id)` | `0x1F0` Trap, `0x1B0` Magic, else by class 0..3: `0xB0/0xF0/0x130/0x170` |
+| `0x08062354` | 0x18 | **matching** | `ZoneRowGroup(row)` | 5..9 -> 5, 10 -> 10, else 0 |
+| `0x0806236C` | 0x40 | **matching** | `HandSlotX(player, n, count)` | `gDuelZonePositions[player][11].x` +/- `n*32` (spread as `n*160/count` when `count > 5`); player 0 adds, player 1 subtracts |
+| `0x080623AC` | 0x40 | **matching** | `ZoneX(player, row, col)` | x pixel of `gDuelZonePositions[player][row+col]`; for row `0xB` (hand) `HandSlotX(player, col, hand size at PlayerState+2)` |
+| `0x080623EC` | 0x34 | **matching** | `ZoneY(player, row, col)` | y pixel `gDuelZonePositions[player][row].y - gDuelScreen.b4` (row 0 first mapped through `ZoneRowGroup(col)`) |
+| `0x08062420` | 0x3C | **matching** | `CycleBorderColor` | `*(u16 *)0x0500001E = gPackSceneRasterColors[(VCOUNT + (w11A >> 1)) & 7]` (palette entry 15 of BG0 animated from an 8-entry table) |
+| `0x0806245C` | 0x48 | **matching** | `TickCounters` | copies `0x02015160+0x116` / `+0x118` (post-incremented) to `gMain+0x442E` / `+0x4426`, decrements `+0x11A` |
+| `0x080624A4` | 0x160 | **matching** (wave 2, 2026-10-01) | `DrawSlotSprites` | for slots i = 0..4: kind `b10C[i]` (<= 0x17: attribute word `gCardFlipAnimTiles[kind]`; if bit 0x1000 is set the card id from number `w102[i]` via `gCardNumberToId` plus `GetCardArtOffset`); draws with `AddSpriteXY(-4, i*0x20, 0x80, tile)` |
+| `0x08062604` | 0x3EC | nonmatching (`#if 0`, register allocation) | `DrawCardDetailLayout(slot, id)` | `(a, id)`: palette via `TextDrawString(2, 6, 7 or 0xF (when `0x02015160+0x112` equals the card number) \| 0xA00, 0x0822C720 + id*0x40)`, clears `0x06004800 + a*0x600`, fills two 24-entry rows of the BG map `gMain.bgMap[0][(a*4+i)*32+3]` with consecutive tiles, then by card type: Trap/Magic -> icon `LoadBgImage4bpp(...)` (`0x08636CD8` / `0x08636DA0`) + spell/trap subtype icon (`0x081989D0[sub]`); monster -> attr/type/label icons (`0x081989A8[attr]`, `0x081989EC[type]`, `0x0863CA1C`), ATK/DEF numbers with `DrawBgDecimal`, level stars with `SetBgMapEntry`; Divine -> nothing |
+
+## Structures and globals
+
+- `0x0201CFB0` duel screen flags: byte 0 bit 1/2, `+4` byte (y scroll offset subtracted in `ZoneY`).
+- `gDuelZonePositions` = `struct { s32 x, y; }[2][16]`: pixel position of each duel zone per player (shared with [[duel-field-screen-c]]).
+- `0x020192E4` `PlayerState` stride 0xD64; `+2` = hand size.
+- `0x02015160` panel state: `+0x102` u16 `w102[5]` card numbers, `+0x10C` u8 `b10C[5]` slot kinds, `+0x116/+0x118/+0x11A` u16 counters.
+- Card tables: stats `0x08621DE0`, card number `0x08622AB4` ([[card-table]], [[card-id-map]]), number -> id `0x08623DF4`.
+- "Card class" (inline `GetCardSubtype`, same as [[card-detail-c]]): number 1910 -> 3, 1911-1912 -> 1, type 22/21/23 -> 7/8/9, else stats bits 18-19 (monster kind 0 normal / 1 effect / 2 fusion / 3 ritual).
+
+## Matching tricks (old_agbcc)
+
+- **`GetCardSubtype` as `static inline` with `switch (CARD_NUMBER(id))`** is required: a hand-written `if (n == 0x776) ... else if (n >= 0x776 && n <= 0x778)` folds into an unsigned range test and CSEs the stats load; the inline switch yields the ROM's `cmp; blt; cmp; bgt` and a fresh table read in each default arm (`0x08062140`, `0x0806226C`).
+- **Result variable vs direct returns**: `switch (c) { case 0: c = 0x80; break; ... } return c;` (assign, fall to a single return) produced the ROM's non-merged `mov r0,#0xA0; lsl` blocks; direct `return 0x140` arms got cross-jumped (`0x08062140`). The case-label *source order* (0x15 before 0x16) decides the order of emitted blocks.
+- **Signed `int` parameters** in `GetAreaX(int a, int b, int c)` give `(b+c)*8` before `a*128` (u32 params swap the order).
+- **`d = b*32; e = d; if (c > 5) { d = b*128 + e; d = d / c; }`** with a separate `e` reproduces `GetHandCardX`; `d += b*128` or a single `d = (b*128+d)/c` swap the commutative operands or the register numbers.
+- **Post-increments into a `struct Main *m = &gMain` local** and reading `REG_VCOUNT` first (before the panel field) fix the load order in `0x08062420` / `0x0806245C`.
+- Table addresses used twice in a loop body: a `#define` to a constant address (`(const u16 *)0x0808659C`) is not hoisted, an `extern` symbol is (see `0x080624A4`). The symbol form was the wave 2 fix for `0x080624A4`: its hoist in loop.c's first pass changes which later constants are hoisted (see below).
+- Thumb never emits `ldr` for `0x1000`: constants that are shifted 8-bit values are built as `mov` + `lsl`. In `0x08061A1C` the ROM builds `0x1000` per loop nest as `0x10 << 8` from the register holding `0x10` (wave 3, see below).
+
+## Nonmatching notes
+
+Original trick sweep (2026-09-30): all five then-pending functions were re-tried with the hoisting/LICM/CSE tricks from
+[[decomp-permuter]] (read a field per use; `unsigned long long` temp to stop constant/address CSE;
+goto loop to stop loop-invariant motion; cache a value in a top local; declaration/first-use order).
+That original sweep reached no byte match; later results and residual differences are recorded below.
+
+> [!warning] Contradiction
+> The next note (original sweep, 2026-09-30) presents caching three loop constants in function-wide locals (`maskHi=0xFF00`, `addHi=0x1000`, `addLo=0x10`) as the closest form for `0x08061A1C`. The wave 3 match (2026-10-01, `build/wf/LoadCardFrame/NOTES.md`) found that this draft scored 166 and was the wrong model: the ROM builds `0x1000` as `0x10 << 8` per loop nest and rematerialises the `0xFF` mask. It matched with one `u16 pal = 0x10` read as `(u8)pal << 8` and `(u8)pal`, plus an empty input barrier. Resolved in favour of the matched source.
+
+- Historical (matched in wave 3): `0x08061A1C`: **closest.** Caching the three loop constants in locals assigned before the blit loops
+  (`maskHi=0xFF00`, `addHi=0x1000`, `addLo=0x10`) reproduces the ROM's `sl=0xFF00`, `r8=0x1000`,
+  `r9=0x10` and makes the whole type/class switch + palette blit match. gcc then also hoists the
+  `0xFF` low-byte mask into `ip`, so `(y+2)<<5` is spilled instead of living in `ip`. Plain literals
+  only hoist `0xFF00`; `u16`/`u32`/`!= 0`/`(u8)v`/`% 0x100` forms and a 64-bit temp did not change it;
+  a goto pixel loop suppresses the `0xFF` hoist but moves the `src`/`dst` registers (`r4`/`r5` swap).
+
+> [!warning] Contradiction
+> The next note (2026-09-30) says a goto x loop worsened the stack frame of `0x08061D24`. The wave 3 match (2026-10-01, `build/wf/LoadCardPicture/NOTES.md`) uses a goto x loop (FAKEMATCH), combined with a `do { } while (0)` around the pixel unpack, explicit `s`/`d` copies and rematerialised mask locals; the goto alone was not enough. Resolved in favour of the matched source.
+
+- Historical (matched in wave 3): `0x08061D24`: the pixel unpack and loop shape agree; the ROM keeps only `0x3F` hoisted (r8), the
+  source pointer in r5/r9 with `next = s + 0x30` precomputed, and the fix-up pointer in `ip`; built
+  hoists `(y+2)<<5` out of the x loop and `0xFC0` out of the pixel loop. A goto x loop and a 64-bit
+  temp for `0xFC0` both worsened the stack frame; `src`/`s`/`dst`/`p` splits (7 variants) did not help.
+- `0x08061E54` matches (0x2EC / 748 bytes). The level inline reuses the stats value already loaded for the monster test and reloads stats only in its default arm, as ROM does. Staged level/ATK/DEF return values recover the original result moves. The star loop has a real zero-level guard and explicit fixed origin (0x54) and row (0x140000) values before its changing x coordinate. A signed subtype switch preserves the original comparisons. The fully assigned inline level result and spell/trap subtype result are bound to r0 and r2 respectively; no assembly instructions or empty-asm hints are used. `build/bigguns-card-ui/card_canvas-accepted.txt` records all 14 functions / 0x1008 bytes matching, including every prior C function.
+- `0x08062604`: first half matches except register numbers. The ROM keeps the id in a stack slot and
+  `a` in `sl` and hoists the BG-map base `0x0300045C` (ip), `a*4` (r9) and `a*0x30` (r8) out of the
+  fill loop; built keeps `a` in r9 / id in sl and allocates the frame differently. Declaration order /
+  local reuse (tricks 4/6) did not swap `a`/`id`. Helper inlines with `switch ((int)type)` give the
+  ROM's signed `cmp/bgt/cmp/blt` (a `&&` of two compares folds into an unsigned range test).
+
+> [!warning] Contradiction
+> The next note (2026-09-30) says explicit induction locals (`i2 += 2`, `y += 0x20`) reproduce the ROM registers of `0x080624A4`, leaving only the `0x7CF` hoist. The wave 2 match (2026-10-01, `build/wf/GetPack_DrawCardSprites/NOTES.md`) found the opposite: the 2i and 32i registers are loop.c strength-reduction givs, and plain `i * 32` / `w102[i]` were needed (79 -> 59); the `0x7CF` hoist was then fixed through the table symbol. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2): `0x080624A4`: **close.** Explicit induction locals (`i2 += 2` for the `w102` byte offset, `y += 0x20`)
+  reproduce the ROM's `r6=i`, `r8=2i`, `r7=32i`, `r9=-4`, `sl=0xFFFF`, `r5=else y copy`; the only
+  remaining diff is that gcc hoists the `0x7CF` compare (the ROM reloads it). A 64-bit `lim=0x7CF`
+  un-hoists it but emits a dead double-word `ldr`; a goto loop with manual IVs loses the base/`0xFFFF`
+  hoists. The old note was: target keeps only `0xFFFF` hoisted (sl) and `-4` (r9) / `y` (r5) live
+  over the nested call in the else arm; built also hoists `0x7CF`.
+
+## Follow-up evidence
+
+The private larger-helper pass also corrected the diagnosis for `GetPack_DrawCardRow`: the ROM evaluates the spell/trap subtype again for the table index after testing it, while the parked source reuses its first result. Restoring that second inline query produces 0x3DA against target 0x3EC, instead of the prior 0x35E. The default row is narrowed before shifting in the ROM: `(u16)(a * 4 + 2) << 5`, not a u16 result after the shift. These private experiments are in `build/bigguns-card-ui/GetPack_DrawCardRow/queries-True-u32/`; they are not exact or behavior-validated and have not replaced the source draft. The original allocation-only note above should not be read as a complete diagnosis.
+
+Related: [[duel-field-screen-c]], [[deck-edit-cards-c]], [[card-detail-c]], [[card-table]], [[decomp-workflow]], [[compiler-flags]].
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/GetPack_DrawCardSprites/NOTES.md`.
+
+### `GetPack_DrawCardSprites` (0x160, start score 79; ordinary C)
+
+1. The parked draft's explicit induction locals (`i2 += 2`, `y += 0x20`) were wrong. The ROM prologue order (`i = 0`, base, `r8 = r6`, `r7 = 0`, then `sl = 0xFFFF`) shows that the 2i and 32i registers are loop.c strength-reduction givs, whose inits come after the pass-1 movables; `mov r8, r6` is reload's `find_equiv_reg` reusing i's zero. Plain `i * 32` and `w102[i]`: 79 -> 59.
+2. sl held `0x7CF` instead of `0xFFFF`. Both compares in the `CardNumberToId` inline are HImode chains (savings 4, life 4). loop.c's threshold starts at 13 and drops by 3 per moved insn: pass 1 moved the base and then the `0xFFFF` chain, pass 2 moved `0x7CF`, and `0x7CF` won sl with its shorter live range. Fix: index the attribute table through the symbol `extern const u16 gCardFlipAnimTiles[]` instead of the cast-address macro. Its pool load (a long-lived pass-1 movable) lowers the threshold first, so `0xFFFF` moves in pass 2 after the giv inits and `0x7CF` is never hoisted; the hoisted table pseudo then loses the register contest and is rematerialised per use, as in the ROM (59 -> 26).
+3. Drop the `u8 kind` local and write `gPackOpenWork.b10C[i]` at each use; this fixes the first block's low registers (kind in r2, not r0) (26 -> 0).
+- Failed: an `int`/`u32`/`u16`/`s32` kind local (26-28); a `u16 lim = 0x7CF` inside the inline (stops that hoist, but `0xFFFF` is still hoisted in pass 1); lim set at the loop top and passed in (right order, but reload's move2add turns the `0x7FF` load into `adds r2,#48`, 88).
+- The cast-address macro `gCardFlipAnimTiles` at the top of the unit is now unused (the function region `#undef`s it); it can be removed in a cleanup pass.
+
+## Wave 3 matches (2026-10-01/02)
+
+Both use FAKEMATCH forms. Working notes: `build/wf/LoadCardFrame/NOTES.md`, `build/wf/LoadCardPicture/NOTES.md`.
+
+### `LoadCardFrame` (0x308, start score 166; FAKEMATCH)
+
+1. One function-wide `u16 pal = 0x10;`, with the pixel step written `v += (u8)pal << 8; v += (u8)pal;` (166 -> 42). The literal masks stay literals. `pal` loses global allocation and reload rematerialises it from its REG_EQUIV; the `(u8)pal` copy and `copy << 8` are hoisted per nest, giving the ROM's `mov #0x10; mov rX; lsl rY, #8`. The `0xFF00` mask is an HImode constant pair (savings 2), so loop.c hoists it, while the `0xFF` mask is a single SImode constant (savings 1) and stays in the loop: the ROM's hoist pattern.
+2. Second column loop: `(u16)((x << 1) + 0x16)`, not `(u16)((x + 0xB) << 1)` (42 -> 32).
+3. FAKEMATCH: `__asm__ __volatile__("" : : "r"(w));` after `u16 w = *src; u16 v = w;` (the same barrier as `LoadBgImage` and `DuelAnim_UpdateChangePosition`) keeps the load in r0 and the copy in r1 (32 -> 16).
+4. Move `pal = 0x10` from the top of the function to after the palette copy (16 -> 0); the placement changes the global-allocation order of the first nest's high registers (ip, sl, r9, r8).
+- Failed: an inline tile/pixel helper with a constant `pal` argument (integrate folds it to `0x1000`); per-nest `pal` variables (`pal << 8` with life 1 / savings 1 is not hoisted); `u8`/`u32` `pal` or no `(u8)` cast (270-358); a single-variable load or a `*src` re-read instead of the barrier; `register`/`const` `w`.
+
+### `LoadCardPicture` (0x130, start score 109; FAKEMATCH)
+
+The pixel unpack is the same as the matched `BattleScene_LoadCardArt` ([[duel-card-anim-c]]).
+1. The pixel-loop body copied from `BattleScene_LoadCardArt` (`u16 s0`, `u32 s1`, `u32 s2`, `u16 t, xx`, `m6`/`m12` locals, `(s1 & 0xFC) * 64`). `m12 = 0xFC0` loses global allocation and is rematerialised by reload into r7 (inherited for the second use), the ROM's in-loop `movs/lsls`.
+2. The fix-up constant `0x3030` is `(u8)c30 << 8 | (u8)c30` with a local `c30 = 0x30` (rematerialised as `movs r6,#0x30; lsls; orrs`), the idiom found in `LoadCardFrame`.
+3. `int k` counting 0..7; loop.c reverses it to the ROM's 7..0 `bge` count, with k spilled.
+4. Explicit copies `s = src; d = dst;` before the pixel loop, `s += 3; d += 4` inside it, `src += 24` after it. GCSE/PRE then computes `src + 48` before the pixel loop (r9 = next) and regmove rewrites it to use `s`, giving the ROM's `adds r6,r5,#0; ... adds r7,r7,r6`. One `dst` variable serves as palette destination and tile start (ip).
+5. FAKEMATCH: the x loop is a goto loop, so loop.c has no loop notes for it and does not hoist `(u16)(y + 2) << 5` out of it. The unpack is wrapped in `do { } while (0)` so the pixel loop keeps nesting depth 4: flow weights refs by loop depth, and at depth 3 local-alloc swapped s0/s1 into r3/r2.
+6. `y = 4; m6 = 0x3F; for (; y <= 0xD; y++)` gives the ROM's `movs r0,#4` before the `0x3F` load.
+7. `src += 24` after the `do { } while (0)` (depth 2) lowers next's refs from 6 to 5, so `m6` (13 refs / live 172) outranks next (2*5/47) in global allocation: m6 = r8, next = r9.
+- Failed: k-indexed `src[k][i]` / `dst[k*4+i]` (the dst givs split into two reduced registers); post-increment `*src++` (the post-increments survive); an inline TileAddr helper (no change to the x-loop insn count); `do { } while (0)` only around the k loop (81).

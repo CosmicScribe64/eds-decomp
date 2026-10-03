@@ -1,0 +1,54 @@
+---
+title: Unit duel_cmd_piles (duel command handlers, card lists)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-09-30
+---
+# Unit duel_cmd_piles
+
+`0x0800FB10`–`0x08010BDB`, Thumb, `old_agbcc -O2`. Source: `src/duel_cmd_piles.c`.
+Duel "script command" handlers, continued in [[duel-cmd-hand-c]] and [[duel-cmd-status-c]]. Most move a card between the hand (area 11), the lists `list684` / `list904` of the per-player duel state, and areas 12–15 of the card-move animation `DuelAnim_MoveCard(id, &from, &to)`. They run the usual three-step state machine on `gDuelCmd.step`.
+
+Unit status: `unit bytes MATCH`, **20/20 functions in C**; no `INCLUDE_ASM` remains. Verified with `tools/dr python3 tools/check.py duel_cmd_piles` (0x10CC bytes).
+
+## Functions
+
+| Address | Size | Status | Purpose |
+|---|---|---|---|
+| `0x0800FB10` | 0x38 | matching | `AddCardToDeckTop(owner, &card)`, card = arg2 \| arg4 << 16 |
+| `0x0800FB48` | 0x38 | matching | `AddCardToDeckBottom(owner, &card)` |
+| `0x0800FB80` | 0x48 | matching | player +0x0B bits 0–2 = arg2 |
+| `0x0800FBC8` | 0x38 | matching | `RemoveCardFromFusionDeck(player, &card)` |
+| `0x0800FC00` | 0x1D0 | matching | Card word from area 14 to the hand, or area 12 when its category (`GetCardSubtype`) is 2 (hypothesis: fusion deck); then `ClearCardStatusFlags`, `AddCardToHand`, `DuelCursor_Select(player, 11, 0)` |
+| `0x0800FDD0` | 0x134 | matching | `GetGraveyardCardById(player, arg2, card)` (stop if 0), area 14 → 13, then `ClearCardStatusFlags` + `AddCardToDeckTop`, `DuelCursor_Select(player, 13, 0)` |
+| `0x0800FF04` | 0x134 | matching | Same with `AddCardToDeckBottom` |
+| `0x08010038` | 0xEC | matching | Card word area 14 → 15 (`RemoveCardFromGraveyard`), then `AddCardToBanished`, `DuelCursor_Select(player, 15, 0)` |
+| `0x08010124` | 0x3C | matching | `RemoveCardFromGraveyard(owner, &card)` |
+| `0x08010160` | 0x150 | matching | Loop: while list904 is not empty, take entry 0 (`TakeGraveyardCardAt`), area 14 → 13, commit; step 10 ends |
+| `0x080102B0` | 0x12C | matching | Take entry arg2 of the opponent's area 14 list (`GetGraveyardCardById` / `RemoveGraveyardCardById`) into the acting player's hand; card bit 18 set; `AddCardToHand` |
+| `0x080103DC` | 0xDC | matching | Card word, owner's area 15 → 14 (`RemoveCardFromBanished`), then `AddCardToGraveyard` |
+| `0x080104B8` | 0x34 | matching | `AddCardToGraveyard(&(arg2 \| arg4 << 16))` |
+| `0x080104EC` | 0x4C | matching | list904[arg2].flag24 = 0 |
+| `0x08010538` | 0x184 | matching | Area-14 entry arg2 → a spell/trap zone of the opponent chosen by `FindFreeSpellTrapZone` (kept in `+0x80A` bits 7–13); `PlaceSpellTrapCard`, `AddZoneLink` |
+| `0x080106BC` | 0x4C | matching | list904[arg2].flag28 = 0 |
+| `0x08010708` | 0x8C | matching | Set flag23 on the list904 entry equal to the card word |
+| `0x08010794` | 0x168 | matching | hand[arg2] → owner's area 14, `AddCardToGraveyard` |
+| `0x080108FC` | 0x160 | matching | hand[arg2] → owner's area 15, `AddCardToBanished` |
+| `0x08010A5C` | 0x180 | matching | hand[arg2] → owner's area 13, then `CompactHand` and `AddCardToDeckTop` (arg4) or `AddCardToDeckBottom` |
+
+## Data
+
+- `gDuelCmd` +0x80A: `u16 step:7; u16 slot:7` (bits 7–13 hold a zone number, see `0x08010538`). The switch reads `step` with `ldrb` and `slot` with `ldrh`.
+- Card word (`struct DuelCard`): id 0–11, owner 12, bit 18 (set by `0x080102B0`), flag23, flag24 (face-down? cleared when set on the field), bits 25–27 (passed to `AddZoneLink`), flag28.
+- Per player (`0x020192E4 + p*0xD64`): +0x02 hand count, +0x04 list904 count, +0x0B bits 0–2, +0x684 hand, +0x904 list904 (area 14, hypothesis: graveyard).
+
+## Matching tricks
+
+- The simple handlers written before the switch to `old_agbcc` stopped matching (literal-load order). `struct DuelCmd *cmd = &gDuelCmd;` and a `player` temporary computed first fix them.
+- **The access form picks the load width.** `CMD_CARD->id` through a pointer `(struct DuelCard *)((u8 *)&gDuelCmd + 0x814)` loads the whole word (`ldr; lsl #20`). `gDuelCmd.card.id` (member) loads a halfword. `(&gDuelCmd.card)->id` uses the literal `0x02018DD4`, which CSE then reuses for the step address (`r4 - 0xA`) in `0x0800FC00`.
+- `struct CardLoc` needs `u16` bitfields (`to.player = 1 - player` keeps a `lsl #16; lsr #16`).
+- `0x0800FC00` only matches with integer-constant table pointers (`((const u16 *)0x08622AB4)[id & 0x7FF]`) in `GetCardSubtype`, the same as [[card-data-functions]] units.
+- `AddZoneLink((u8)(1 - player) | (card.unk25 << 8), ...)`: operand order decides which is computed first.
+- `0x0800FDD0` / `0x0800FF04`: read `player` through a command pointer, then use `asm volatile ("" : "+r"(cmd) : "r"(player))` before loading `cmd->arg2`. This empty barrier makes the second address depend on consumption of the first value, preserving the ROM's `cmd → player → arg2` load order without emitting instructions or changing either value. All subsequent command and saved-card accesses use the same pointer; mixing it with the global access form adds a base reload or changes register allocation. Both complete 0x134-byte functions and the complete unit match the ROM.

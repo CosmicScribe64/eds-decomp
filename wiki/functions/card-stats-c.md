@@ -1,0 +1,255 @@
+---
+title: Unit card_stats (effective duel card stats)
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit card_stats
+
+Thumb, `old_agbcc -O2`, `0x0800AB08`–`0x0800C893`. Source: `src/card_stats.c`.
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x0800AB08` | 0x64 | matching C | CountMonstersWithCardLink (hyp.) | Count occupied face-up monster zones 0–4 for which `CountZoneLinksFromCard(player, slot, number)` is nonzero |
+| `0x0800AB6C` | 0x5C | matching C | FindMonsterWithCardLink (hyp.) | First such zone, or -1 |
+| `0x0800ABC8` | 0x1CCC | **matching** (giants loop, 2026-10-02; FAKEMATCH) | GetEffectiveZoneCardStats (hyp.) | Fill card ID, type, attribute, effective ATK and DEF; apply links, card-specific effects, attribute auras and field modifiers |
+
+Final status: **3/3 functions in C**, the whole unit (2026-10-02). `GetZoneCardStats`, the 7.4 KB effective-stats function, matched in the giants loop after the workflow waves; see [Giant match](#giant-match-2026-10-02). `tools/dr python3 tools/check.py card_stats` reports 3/3 functions match, `unit bytes MATCH`, 0x1D8C bytes. Before that match: 2/3 in C, with the 3/3 byte match relying on the assembly fallback.
+
+## Shared headers
+
+The unit includes `include/duel.h` (which pulls in `global.h`) and uses its canonical layouts instead of
+local copies (2026-09-30 migration, `unit bytes MATCH` before and after):
+
+- `struct DuelCard` replaces the local `struct ZoneWord` (zone +0x00 card word; only `id` is used).
+- `struct DuelZone` and `struct DuelPlayer` replace the local copies (`serial`, `links`, `linkKinds`,
+  `numLinks`, `graveCount`, `graveyard`, `lifePoints`).
+- `gDuelZones`, `gDuelPlayers` and `gDuel` come from the header
+  (`struct DuelZonesPlayer[2]`, `struct DuelPlayer[2]`, `struct DuelState`).
+
+Removed locally: 3 struct definitions (`ZoneWord`, `DuelZone`, `DuelPlayer`) and 3 extern declarations.
+
+Three unit-local views are kept because the canonical headers split those bytes differently:
+
+| Local view | Offset | Why kept |
+|---|---|---|
+| `struct ZoneFlags` | zone +0x06 | `DuelZone` splits +6 into `flag6_0`/`flag6_1`/`counter6`; the matching functions read the whole byte (`ldrb [zone,#6]`) and test bit 1, so `flag6_1 & 2` would be trivially zero and change codegen. A byte view preserves the match. |
+| `struct ZoneCardBits` | zone +0x00 bit 17 | no canonical field (`DuelCard.unk13` is bits 13–19); used only by the `#if 0` draft. |
+| `struct ZoneAuxBits` | zone +0x90 bits 13–17 | no canonical field (`DuelZone.unk8C[8]` is byte-only); used only by the `#if 0` draft. |
+
+`struct ZoneCardInfo` (the 12-byte function output) has no canonical equivalent and stays local. In the
+`#if 0` draft, global +0x1B12 accesses use canonical fields: bit 1 is `linkSkip` and bits 2–4 are
+`phase1B12`. The newer frontier reads +0x1ACD and +0x1ACC through byte/halfword views, matching
+the ROM access widths without the canonical 15-bit `unk1ACC_0` extraction.
+
+## Layout and matching
+
+- Zones: `0x0201930C + (player & 1)*0xD64 + slot*0x94`, as in [[duel-piles-c]]. Card ID is word bits 0–11; +6 bit 1 gates face-up effects (meaning inferred).
+- The small functions require separate views of the same address: a four-byte `u32` bitfield struct for the card word, and a larger byte struct for +6. This produces `ldr; lsl #20` and `ldrb [zone,#6]` while letting the compiler share the zone pointer.
+- Output of `GetZoneCardStats`: +0 `u16 id`, +2 type bits 0–4 and attribute bits 5–7, +4 signed ATK, +8 signed DEF (12 bytes). [[duel-stat-queries-c]] exposes +4/+8 through wrappers.
+- Base stats read [[card-table]] with ID masked by `0x7FF`: types 21–23 have zero ATK/DEF, type 24 has 4000/4000.
+- Local `bl` targets within `GetZoneCardStats` are compiler far branches, not calls.
+
+## Effective-stat calculation (`GetZoneCardStats`)
+
+The C source records every branch and card-number case in the assembly. Since 2026-10-02 it is byte-identical to the ROM, so the steps below describe the matched code. The names and meanings of the effects remain hypotheses.
+
+1. Clear output, copy zone ID and fetch base type, attribute, ATK and DEF. Empty zones return immediately. Slots above 4 and zones without +6 bit 1 return base stats.
+2. Card number 0x458 doubles base ATK unless +7 bit 5 is set; 0x4E6 adds 500 to both stats under the same condition. Cards 0x52E/0x531 set a spell-immunity gate when `GetFaceUpFieldMagicNumber() == 0x14D` (meaning of this gate is a hypothesis).
+3. Scan monster slots 0–4 on the acting player's side and spell/trap slots 5–9 on both sides. Qualifying 0x2FA changes type to 10; 0x479 takes its type from zone +0x90 bits 13–17. The greatest zone +4 `u16` stamp wins (hypothesis: effect timestamp).
+4. Walk all zone links. Accumulate separate equip, other-link and general ATK/DEF adjustments; count ATK/DEF doubling and halving effects independently. Link kind 1 has the large equip-card switch, including LP-dependent base ATK replacement, type/attribute changes and boosts depending on field counts.
+5. Apply the monster's own card-number effects. These use hand count, list904 card types/numbers, monster types on the field, equip count, zone counter and turn/phase flags.
+6. Apply plant support (type 13, card 0x4E4) and attribute auras on both sides. LIGHT/DARK use 0x1EB/0x273; WATER/FIRE use 0x20B/0x255; EARTH/WIND use 0x20E/0x260. Matching attribute adds 500 ATK, opposite subtracts 400 ATK. WATER also loses 500 per 0x58E.
+7. Unless global +0x1ACD bit 2 or the immunity gate suppresses them, apply both players' field-zone modifiers. Card numbers 329–334 index the type table; 1125–1130 index the attribute table; 1069 adds 500 DEF when the target zone +6 bit 0 is set.
+8. Apply turn/phase-dependent 0x5EB penalty and `CountAquaChorusBoosts(player, slot)*500` to both stats. Global halfword +0x1ACC reverses additive modifiers when `(flags & 0x2080) == 0x2000`.
+9. Clamp each stat to zero, add the target zone +0x8C bit 5 ATK-halving effect, cancel opposite scale counts, then repeatedly double or halve. `HalveRoundUp(v)` computes signed `(v*5 + 5)/10`, so halves round upward for nonnegative input. Finally swap ATK/DEF when `(flags & 0x4040) == 0x4000` and immunity is clear.
+
+### Link kinds
+
+| Kind | Meaning in this function |
+|---|---|
+| 1 | Equip linked zone; skip its effect if +0x91 bit 3, either side has card 0x601, global `0x0201930C+0x1AA1` low two bits are set, or immunity blocks a Magic card. Count each nonempty linked card even when its effect is skipped |
+| 2 | Linked monster effect: 0x52 adds `(value+1)*200` ATK/DEF; 0x4DC subtracts 700 ATK; opponent's 0x44B adds one ATK halving |
+| 3 | Link contains a card ID directly; card-number switch adjusts stats/scaling, gated by immunity for Magic |
+| 4 | Add link's raw `u16` value to base ATK unless immune |
+| 5 | For target 0x2DA/0x536, reset ATK/DEF to zero, then copy linked card's base stats if its zone +6 bit 1 is set |
+| 6, 7 | No effect |
+| 8 | Add base ATK/DEF of card ID in link |
+| 9 | Subtract `(value+1)*500` ATK/DEF |
+| 10 | Add 200 equip ATK |
+| 11 | Add `value*300` equip ATK |
+| 12 | Subtract `value*200` general ATK |
+| 13 | Add `value*100` general ATK/DEF |
+
+Here `value` is the high byte of the kind halfword. Low byte selects the kind; link low/high bytes select player/slot except for direct-ID/value kinds. In the source, kind-3 card number 0x5FE reuses the outer link-loop index for its list904 monster scan. The reconstruction deliberately preserves that reuse.
+
+## Additional data
+
+| Address / offset | Read by this unit |
+|---|---|
+| Player `0x020192E4 + (p&1)*0xD64` | +0 life points (meaning inferred from equip comparison), +2 hand count, +4 list904 count, +0x904 array of four-byte card words |
+| Zone +0x00 bit 17 | Qualifies card 0x2FA's type-changing effect |
+| Zone +0x04 | `u16` ordering stamp; compared unsigned |
+| Zone +0x06 | Bit 0 selects 1069 DEF boost; bit 1 gates active effects; bits 2–5 hold the counter used by equips and card 0x267 |
+| Zone +0x0A / +0x4A / +0x8A | `u16 links[32]`, `u16 kinds[32]`, `u16 numLinks` |
+| Zone +0x8C bit 5 | Adds one ATK-halving effect |
+| Zone +0x90 bits 13–17 | Five-bit effect parameter used for type, attribute and equip mode |
+| Zone +0x91 bit 3 | Linked/field card effect disabled (interpretation inferred) |
+| `0x080815A8` | Signed halfword type-modifier rows, 0x30 bytes per field card; both ATK and DEF use the same entry |
+| `0x080816C8` | Signed halfword attribute-modifier rows, 0x10 bytes per field card; entry multiplied by +500 ATK and -400 DEF |
+| Global `0x020192E0+0x1ACC` | Halfword flags controlling additive reversal and ATK/DEF swap |
+| Global +0x1ACD bit 2 | Suppresses field-card modifiers |
+| Global +0x1B12 | Bit 1 compared with player; bits 2–4 equal to 3 gate several turn/phase-dependent effects |
+
+## Matching history (before the match)
+
+Historical (matched in the giants loop, 2026-10-02): the sections below record the parked-draft work of 2026-09-30 and 2026-10-01. They no longer describe the active source. The match itself is in [Giant match](#giant-match-2026-10-02).
+
+### Card-stat frontier (2026-09-30)
+
+No additional matching C was accepted in the 2026-09-30 pass. The active unit still uses assembly for
+`GetZoneCardStats`, and its 3/3 unit byte match includes that fallback. The existing two C functions
+cover 0xC0 bytes; the remaining function is 0x1CCC bytes (7,372 bytes).
+
+The checked starting draft emitted 0x1BAC bytes with a 0x58-byte frame, rather than the older
+0x54-frame estimate. The reviewed replacement under `#if 0` emits 0x1CD0 bytes with a
+0x54-byte frame, versus the target's 0x1CCC / 0x50. Being four bytes over is only a layout diagnostic.
+Register allocation, loads, pointer arithmetic and branch addresses still differ throughout.
+
+Reproduce privately, without changing the active source or shared build:
+
+```
+tools/dr python3 build/bigguns-cardstats/reproduce_frontier.py
+tools/dr python3 tools/check.py card_stats
+```
+
+The first command compiles the current parked draft with `old_agbcc -O2`, links at 0x0800ABC8 and
+compares the resulting bytes against the ROM. It writes assembly, binary, diff and results beneath
+`build/bigguns-cardstats/frontier/`. The second checks the active fallback unit; it reports
+`unit bytes MATCH, 0x1D8C / 0x1D8C`, preserving the two previously matched C bodies. The pre-pass
+C extraction is retained at `build/bigguns-cardstats/previous-draft.c`; its initial compiled result is
+in `build/bigguns-cardstats/GetZoneCardStats/`.
+
+Validation is limited to compilation, output-layout assertions and source/disassembly review.
+Assertions verify output size 12, ATK offset 4 and DEF offset 8. The source review compared the changed
+address expressions and field views with the ROM and checked that the existing card cases and
+arithmetic remain present. **No emulator or executed differential cases have established behavioral
+equivalence of the full C draft.** The exact fallback unit check does not validate the parked C.
+
+Useful source changes retained:
+
+- `GetCardType(u16)` and `GetCardNumber(u16)` preserve a narrow ID boundary; their callers pass
+  halfword or 12-bit IDs. This restores repeated ID/table reads lost with all-macro expressions.
+- The initial zone pointer is formed through masked player, player offset, base and slot offset. Its
+  later live use is zone +0x8C; the field phase recomputes its target-zone address.
+- The preliminary spell pass uses base 0x020195F0 (= 0x0201930C + 5*0x94), with a distinct inner
+  pointer. Both its serial and auxiliary value use that inner pointer. A temporary private experiment
+  accidentally used the outer pointer for the auxiliary value; it was discarded and never activated.
+- Link-kind high-byte/value is read before link data, and low bytes use byte views. Removing the
+  unconditional long-lived linked-zone pointer lets the compiler keep more link fields in registers;
+  individual cases recompute that zone when needed.
+- Byte views test zone +6 bit 1 and global +0x1ACD bit 2; a halfword view reads +0x1ACC. These avoid
+  wider canonical bitfield extraction while preserving the tested bits.
+- The attribute helper currently uses an experimental volatile word read to retain the ROM's
+  full-word stats access. This is an access-width constraint in an inactive candidate, not a claim
+  that the original ROM table declaration was volatile.
+
+Target stack/lifetime evidence:
+
+| Stack slot | Meaning |
+|---|---|
+| +0 / +4 / +8 | player, slot, shared outer/link-loop index |
+| +0x0C / +0x10 / +0x14 / +0x18 | ATK halves/doubles, DEF halves/doubles |
+| +0x1C / +0x20 | equip DEF, equip count; equip ATK is in `sl` |
+| +0x24 / +0x28 / +0x2C / +0x30 | other ATK/DEF, general ATK/DEF |
+| +0x34 / +0x38 | newest serial, immunity gate |
+| +0x3C / +0x40 / +0x44 | preliminary player offset, linked ID, equip-case player offset |
+| +0x48 / +0x4C | field-phase target zone, retained target zone +0x8C |
+
+The draft's extra +0x50 slot holds the next outer-loop index during the preliminary spell scan.
+The target retains that index in `r6`, its 0xD64 stride in `ip`, and its output mask in `r8`; the draft
+hoists spell-base/mask constants into competing registers. Fixing only the arithmetic order did not
+remove the spill. The target also reloads each qualifying serial after comparison and retains a
+redundant five-bit mask on the auxiliary value. The ordinary draft forwards the first serial read
+and removes that mask. Later, the target builds link pointers by adding +0x0A/+0x4A before the link
+index; the draft still combines those additions differently. These are the next concrete lifetime
+and view boundaries to reconstruct, along with the initial attribute-mask/store sequence.
+
+Bounded experiments retained privately under `build/bigguns-cardstats/`: output field widths,
+packed stats views, typed helper return widths, scoped zone lifetimes, raw flag views, volatile or
+mixed-width serial reads, literal versus named spell bases, signed attribute extraction, and staged
+link pointers. None produced an exact body. Some `u32` output-bitfield views changed frame allocation
+but did not improve the overall match; the parked frontier keeps the original `u8` output fields.
+Do not rerun the old grids unchanged or treat normalized instruction similarity as matching coverage.
+
+### Structure pass (2026-10-01)
+
+The active assembly fallback still gives `unit bytes MATCH`. The parked draft's equip dispatch
+already has the target's balanced comparison tree and ascending case order; it is not a jump table.
+The outer link-kind switch has the expected 13-entry jump table and body order.
+
+Disassembly review found and corrected these draft differences:
+
+- Equip 656 now clears `addAtk` and `otherAtk` before its break; those assignments were unreachable.
+- Kind-3 cards 0x105 and 0x433 have separate identical bodies, as in the target.
+- Intrinsic 0x2F7 uses a full-width card number and a four-case switch; the old `u8` discarded
+  three card numbers and the OR chain did not reproduce the comparison tree.
+- Equip suppression reads the target byte at zone base +0x1AA1.
+- Intrinsic 0x203 and the final `CountAquaChorusBoosts` pair update ATK before DEF.
+- The field card number is unsigned, and scaling loops use ascending indices with the difference
+  in their conditions; old_agbcc reverses them and preserves the target's positive-bound checks.
+
+Scratch experiment records are in `build/codex-scratch/codex-card_stats/`. Every candidate is checked through
+`tools/check.py`, then immediately parked again and the active whole unit rechecked. The reviewed
+structure candidate is still nonmatching (unit size 0x1DD4 versus 0x1D8C; frame 0x54 versus 0x50).
+Plain normalized diff line counts can jump when `difflib` chooses a different alignment; they are
+diagnostics, never matching coverage. No behavior fixtures are used; acceptance remains exact bytes.
+
+Further source/disassembly corrections retained: unsigned link coordinates; `int` return prototypes
+for `CountMonstersFiltered`/`CountSpellTrapsFiltered` (confirmed against their matching definitions); standalone four-byte
+graveyard card views; unsigned type bounds; outer-player/inner-card indices for 0x2F7; ATK-before-DEF
+zero stores; explicit kind-2 value reload; byte/halfword flag structs; field addresses derived from
+the duel-state base; and a full linked-zone pointer in the equip case. `GetCardNumber` now accepts
+an `int` and returns `u16`, while the preliminary auxiliary getter returns `u16`.
+
+> [!warning] Contradiction
+> The structure pass (2026-10-01) below says a `FAKEMATCH` label had to share kind-3 card 0x1AC's doubling branch with 0x522, because direct duplicated increments produced a separate body. The match (2026-10-02, `build/wf/GetZoneCardStats/NOTES.md`, `src/card_stats.c`) has no label or `goto`: case 0x1AC and case 0x522 each keep their own `atkDoubles++`, and the `+300/+300` equip cases are plain `if` bodies. The shared tails come from cross-jumping alone once the reload registers inside the bodies agree. Resolved in favour of the matched source.
+
+Historical: the retained `FAKEMATCH` is a label sharing kind-3 card 0x1AC's doubling branch with 0x522. Direct
+duplicated increments produced a separate body. No instruction assembly is used. Trials binding
+the preliminary successor to r6, stride to r12, or initial zone to r5 made the draft worse and were
+discarded. Pointer barriers, a separate attribute setter, and wider newest-serial types were also
+tested without a retained improvement.
+
+This state emits 0x1CD0 bytes for the remaining function (four bytes over), a 0x4C frame
+(target 0x50), and 1,286 normalized +/- lines, down from the checked starting 2,082. A second
+diagnostic strips registers and aligns compiler assembly with `autojunk=False`: differing operations
+fell from 477 to 204. Neither metric is a byte-match claim. A single 30-minute permuter run with two workers
+was started from this state; its results are not yet recorded here.
+
+## Giant match (2026-10-02)
+
+`GetZoneCardStats` (0x1CCC bytes, 7,372) matched on 2026-10-02 at 00:18 and was applied with `tools/wf.py apply`. It was one of the four "giants" left after the workflow waves (with [[effect-hooks-c]]'s `CardMenu_SummonMonster`, [[effect-target-collect-c]] and `DuelPhase_Standby` in [[duel-phases-c]]). `check.py card_stats`: 3/3 functions match, `unit bytes MATCH`; the unit is now entirely C.
+
+Working notes: `build/fable/GetZoneCardStats/NOTES.md` (a fable pass that diagnosed the link-loop head) and `build/wf/GetZoneCardStats/NOTES.md` (the wf round that finished it). The wf queue score (normalised diff lines) started at 676 and was 62 when the fable pass parked the draft. In the wf round it went 574 -> 484 -> 482 -> 118 -> 70 -> 66 -> 62 -> 0.
+
+**Method: work strictly top-down.** Reload hands out spill registers round-robin (see [[matching-tricks#Register allocation priority and reload rotation]]). Most of the later differences were therefore consequences of the first wrong block, here the head of the link loop, and not independent bugs. The fable pass established that everything before the loop head at +0x336 was already exact. Each later fix was judged only after the block above it matched. The greg dump (`dump.sh`, condensed by `rtl.py`) shows every case body before jump2's cross-jumping, so it is the place to read the reload rotation.
+
+What made it match, in order:
+
+1. **Link-loop head:** read the arrays by direct dereference, `u16 link = ZB(p, s)->links[i]; u8 kind = ZB(p, s)->linkKinds[i]; int value = ZB(p, s)->linkKinds[i] >> 8;`. Every address-taking form gave the wrong zone shape (`0x94` first, then `s*0x94 + (p*0xD64 + base)`, then `zone + (i*2 + 0xA)`), with or without a register pin: `&ZB()->links[i]`, `ZB()->links + i`, a byte-offset cast, or a `struct DuelZone *z` local. The direct forms give the ROM's `(zone + 0xA) + i*2`. `i*2` is shared across all case bodies because it has an immediate operand, while the `player & 1` / `slot * 0x94` recomputations stay in every case.
+2. **Equip switch:** the switch value and the 0x115, 61/0x4E1 and 0x53B checks read the number table through the extern symbol, `*(gCardIdToNumber + (id & 0x7FF))` (`GetCardNumberSym`). This keeps one table pseudo (r2) live across the case bodies. Everywhere else the cast-constant `GetCardNumber` reloads the address, as the ROM does. In the pointer-plus form the table load comes after the `lsls`; the array form loads it before.
+3. **Shared tails from cross-jumping alone:** every `+300/+300` equip case is a plain `if (out->type == N) { equipAtk += 300; equipDef += 300; }`. jump2 merges bodies whose reload registers are identical, and it takes the first match scanning backward from the last jump to the label. Once the bodies above were right, the tails fell into place without labels.
+4. Case 656: `out->atk = BaseAttack(out->id) * 2`, with no extra pointer.
+5. Case 1448: `((struct ZoneAux *)ZB(lp & 1, ls))->value` gives the zone pointer and then a separate `+0x90`.
+6. Case 1550: `ZB(lp % 2, ls)`, not `lp & 1`. The byte-wide AND is narrowed to QImode, and CSE then reuses its constant 1 for the later `out->type = 1` store.
+7. Link kind 8: `int t = BaseAttack(link) + addAtk; addAtk = t;`. The fresh temporary keeps the call result as the first operand (`add r1, r0, r1`, as in the ROM). With `addAtk` itself as the target, `expand_binop` swaps the operands so that the target comes first.
+8. `switch (out->type) { case 13: ... }` gives the ROM's `lsl/lsr #27` field extraction, where an `if (out->type == 13)` gives `and #31`.
+9. Field card 1069: `((struct ZoneFlags *)&gDuel.players[player & 1].zones[slot])->flags & 1`. loop.c then hoists the whole target-zone address before the field loop.
+
+**FAKEMATCH (two forms left):** `asm("" : "+m"(out->id));` after the base-stat initialisation keeps the card-ID reload, and `GetCardAttribute` reads the stats word through `const volatile u32 *` so the ROM's full-word load is not narrowed to a byte. Removing either breaks the prologue allocation (tested). The earlier type/attribute asm barriers, a `0x105` `asm`, a `replacementOut` pointer and the 0x1AC/0x522 label were all removed during the round. No register pins remain.
+
+**Tools left in the work directory:** `rd.py` (region diff with pools resolved and branch targets normalised), `tv.py` / `apply_var.py` (try and apply sets of `(old, new)` source replacements), `rtl.py` and `dump.sh` (RTL dumps).
+

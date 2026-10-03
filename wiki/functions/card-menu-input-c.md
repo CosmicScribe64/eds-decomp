@@ -1,0 +1,96 @@
+---
+title: Unit card_menu_input (duel battle-step / effect-select helpers)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit card_menu_input
+
+`0x0804A008`-`0x0804B63F`, Thumb, `old_agbcc -O2`. Source: `src/card_menu_input.c`. Comes after the target-selection units ([[duel-ritual-c]]). It works on the *battle state* `gBattle` (`0x02018450`, see [[campaign-c]]), the per-player duel state `0x020192E4` (+0x24 `lp`-related word, `+0x26` mask of used zones) and the "selection widget" `0x020192E0+0x1B2C` (`struct SelMask`, [[campaign-c]]). A step counter `cnt` lives in bits 1-8 of the halfword at `0x020192E0+0x1B16`; a second field `stage` at bits 9-16 of the word `0x020192E0+0x1B14`.
+
+Unit status: `unit bytes MATCH`, **11/13 functions in C** (count of 2026-10-02) after workflow waves 2-3 (2026-10-01: `0x0804A008`, `0x0804A848` in wave 2) and a later match of `0x0804A1C8` (2026-10-02, commit `e7b7996`, not yet written up here); 2 stay `INCLUDE_ASM` (`0x0804A99C` with a draft under `#if 0`, `0x0804AE64`). After wave 1: 8/13 (2026-10-01, `0x0804AC18` added); before wave 1: 7/13, covering 0x5A4 (1,444) bytes. Historical: a permutation search of declaration orders / loop shapes for `0x0804A848` (144 variants) and of declarations for `0x0804A528` (48 variants) found no match; both have matched since (`0x0804A528` on 2026-09-30, `0x0804A848` in wave 2).
+
+> [!warning] Contradiction: the unit is now 13/13
+> The count above (11/13) predates later matches. `src/card_menu_input.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 13 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses) |
+|---|---|---|---|
+| `0x0804A008` | 0x1C0 | **matching** (wave 2, 2026-10-01) | `u16 f(void)`: builds a bit mask of the choices offered for the selected card `DuelCursor_GetCardId()` from the cursor row `0x0201CFB0+0x828`: rows 0/5/10/11/12/13 call `CardMenu_GetMonsterCommands` / `CardMenu_GetSpellTrapCommands` / `CardMenu_GetHandCardCommands`, row 13 gives 0x200 or 0x100 by `0x020192E0+0x1B12` bits 2-4, row 12 gives 0x400 for card 0x60B (`GetFaceUpFieldMagicNumber`) when `EffectPolymerizationPrepare` accepts; when `+0x1B12` bit 1 is set only row 5 counts. See Wave 2 matches below (historical: only the cross-jumping of the shared `CardMenu_GetSpellTrapCommands` call differed) |
+| `0x0804A1C8` | 0x1D4 | **matching** (2026-10-02, commit `e7b7996`; write-up pending) | selection-widget input step: if `sel.flag0` -> `CardMenu_Update`, if `sel.active` -> `CardMenu_Execute`, else on a button press by row (0/5/10, 11, 12/13: pick, 14/15: `CardListView_Open`) sets `sel.flag0`, clears `sel.state`, `sel.mask = CardMenu_GetAvailableCommands()`; failure = sound 3 (`PlaySE`). Historical draft note: structure identical, ROM keeps the three `flag0 = 1` stores separate |
+| `0x0804A39C` | 0x3C | matching | `(player, zone)`: set bit 2 of the zone byte `+7` and bit `zone` in `ps[player].w26` |
+| `0x0804A3D8` | 0xA4 | matching | `(player, zone) -> int`: table `gCardIdToNumber[card id]` (card number) in {0x182, 0x18C, 0x18D, 0x1A5, 0x1E7, 0x27A} -> 1; in {0x2D6-0x2D8, 0x2FE} -> `HasFaceUpToonMonster(1-p) == 0`; 0x32C -> `HasNoFaceUpLightDarkWindMonster(1-p)`; else 0 |
+| `0x0804A47C` | 0xAC | matching | `u16 f(u16 v)`: is there a face-down card of number 0x47A in spell/trap zones 5-9 of either player, without flag `+0x91` bit 3, whose `+0x90` bits 5-9 equal `v` (a zone "attribute"?) |
+| `0x0804A528` | 0x320 | matching C | `u16 f(player, zone, u16 flag)`: can the card in that zone be chosen (long list of card-number based exclusions: `CountZoneLinksFromCard`/`CountActiveZoneLinksFromCard` status checks 0x15C, 0x4DC, 0x60C, 0x417, 0x2D9, 0x534, 0x58B; `CountActiveCardsOnField` field cards 0x46B, 0x52B, 0x548, 0x536; life-point thresholds 0x3E7 / 0x1F3 for cards 0x226 / 0x2D6-0x2D8, 0x2FE; card 0x31C ignores the face-down flag). Narrow ID local and inline number lookup reproduce the original register allocation |
+| `0x0804A848` | 0xE4 | **matching** (wave 2, 2026-10-01) | `(ps, player, a, u16 flag)`: builds the mask `ps[player].w24` of zones 0-4 that pass `CanMonsterAttack(player, i, 1)`; first clears `w24`; requires the life-points word `ps[p].lp >= 500 * (n0x42A(0) + n0x42A(1))`, no card 0x15B on the opponent's side and no 0x4CE on either side; skips zones whose bit in `gDuelPlayers[p].w26` is set unless `flag` (which also clears `w26`). See Wave 2 matches below (historical: register allocation differed, the ROM copies me/g into fresh registers at the loop head) |
+| `0x0804A92C` | 0x6C | matching | `(player)`: if `0x020192E0+0x1B10 != 0` and not (byte `+9` bit 4 and not byte `+8` bit 6) -> run `BuildAttackableMask(gDuelPlayers, player, 0, 1)` and return `ps[player].w24 != 0` |
+| `0x0804A998` | 0x4 | matching | `return 0` |
+| `0x0804A99C` | 0x1F4 | nonmatching (asm), draft in `#if 0` | `(player)`: decides whether the pending battle step may end: attacker slot ok via `CanMonsterAttack(p, atkSlot, 0)`; card 0x538 special case clears zone byte `+7` bit 5, otherwise `MarkMonsterAttacked`; compares life totals `CountMonsters` with `gBattle+0x148/0x14C`; on success clears `gBattle` bit 1, `cnt = 0`, `stage = 1` and sets bits 3/4 |
+| `0x0804AB90` | 0x88 | matching | `(player)`: if `cnt == 0` send message `0x32` (`\|0x8000` for player 1) via `DuelCmd_Push`, `cnt++`, return 0; else run `BuildAttackableMask(e+4, player, 0, 1)`, send `0x53`/`0x8053` (by `+0x1B12` bit 1), return 1 |
+| `0x0804AC18` | 0x24C | **matching** (wave 1, 2026-10-01) | battle-step state machine on `cnt` (0: prepare, clear `gBattle` bits 1, 2, 5; 1: wait for A/B or CPU choice; 10: read `0x0201AE60+0x14`; default: send message 8/0x8008 with the defender slot, clear bits 3/4, return 1). Matched by steering cross-jumping (see below) |
+| `0x0804AE64` | 0x7DC | nonmatching (asm), not attempted | large function |
+
+## Structs and globals
+- `struct DuelZone` (0x94): `+0` card word (11-bit id in `<<21>>20` form for the number table, 12-bit in the zone), `+6` bit 0 / bit 1 flags, `+7` flags (bit 2, 4, 5), `+0x8C` byte (mask 0x18), `+0x90` word (bits 5-9 attribute), `+0x91` flag byte.
+- `0x020192E4 + p*0xD64`: `+0` u16 (life-point-like value, compared with 500 * n), `+8` byte (bit 6), `+9` byte (bit 4), `+0x24` u16 mask of selectable zones, `+0x26` u16 mask of used zones, zones from `+0x28`.
+- `gBattle` `0x02018450`: byte 0 bit 1 (direct), bit 2, bit 3/4 (step flags), bit 5, `atkSlot` bits 6-8, `defSlot` bits 9-11 of the halfword; `+0x148` / `+0x14C` u16[2] per-player values.
+- `0x020192E0 +0x1B10` u16, `+0x1B12` byte, `+0x1B14` word (`stage` bits 9-16), `+0x1B16` halfword (`cnt` bits 1-8), `+0x1B26` bit 0, `+0x1B2C` `SelMask`.
+
+## Matching tricks
+- **Bitfield read via a struct with padding**: `struct X { u16 a:6; u16 z:3; ... }` accessed through a bare 2-byte global compiles to `ldr` (word) + shifts; adding `u8 pad[0x20]` (struct larger than the access) gives the ROM's `ldrh; lsl 23; lsr 29`.
+- **`x->cnt++` on a u16 bitfield** gives `lsl 23; lsr 24; add 1; and 0xFF; lsl 1; and mask; orr` exactly like the ROM; `x->cnt = x->cnt + 1` does not.
+- **Local `struct DuelGlobal *e = &gDuel;`** (used more than once) gives the unfolded `ldr sym; ldr =0x1B12; add`; `(u8 *)e + 4` after the call keeps `adds r2, #4` in front of the multiply when written as `ps0 = (..)((u8 *)e + 4); ps = ps0 + (player & 1);`.
+- **`(b << 27) < 0`** for a bit-4 test of a byte gives `lsl 27; cmp 0; bge` (the ROM form) where a bitfield or `& 0x10` would not.
+- **`u32 pl = player & 1;` declared before `ZB(pl, zone)`** gives the ROM's early `and` and z-first multiply.
+- **`ZB(...)` in place of a `zn` variable** and a `const u16 *` table access written as `*(u16 *)((u8 *)tbl + ((word << 21) >> 20))` reproduce the table load (the loop-hoisting of the table base differs otherwise, `0x0804A47C`).
+- **Byte RMW after a raw test** (found in [[battle-phase1-c]]): `if (!(*(u8 *)&gBattle & 0x10)) { gBattle.f4 = 1; ..}` reuses the tested byte and gives `mov r0,#0x10; orr r0,r1`.
+- **Bitfield clear of one flag** (`x.f5 = 0`) gives the ROM's `mov r0,#n; neg r0,r0; and` (int mask); `b & ~1` on a `u8` gives `mov r0,#0xFE`.
+- **Cross-jumping is hard to control from C**: whether the ROM merges call sequences and which block of two identical tails survives (first versus last) decided `0x0804A008`, `0x0804A1C8`, `0x0804AC18`.
+
+> [!warning] Contradiction
+> This bullet originally said cross-jumping "is not controllable from C". Wave 1 (2026-10-01, `build/wf/BattleStage_SelectAttacker/NOTES.md`) matched `0x0804AC18` by predicting jump.c's survivor rule and writing the returns accordingly (see [the wave 1 section](#battle-step-matched-wave-1-2026-10-01)). Resolved: it is controllable when the survivor rule is applied; `0x0804A008` and `0x0804A1C8` remain open.
+> Historical update (2026-10-02): `0x0804A008` matched in wave 2 by the same jump.c analysis (see [the wave 2 section](#wave-2-matches-2026-10-01)), and `0x0804A1C8` matched on 2026-10-02.
+- **`fd = id = 0`** is optimised away; register choice for such dead copies is not controllable.
+
+## Open problems
+`0x0804A99C`: ROM re-derives `(lsr 29)` from a cached `(lsl 23)` for each zone access. `0x0804AE64` (0x7DC) has no draft.
+
+Historical (matched since): `0x0804A008` (wave 2) and `0x0804AC18` (wave 1): cross-jumping (the ROM shares only the call, the tail sits in the last case; ours kept the first block). `0x0804A848` (wave 2): allocation of player/zero/g among r8/r9/sl. `0x0804A1C8` (2026-10-02): separate `flag0 = 1` stores per case.
+
+## Ordinary C selection-check match (2026-09-30)
+
+`CanMonsterAttack` now matches without assembly constraints. The required combination is a `u16` local card ID and a `u16` argument to the inlined `DuelCardNumber` helper, which uses the literal table pointer `((const u16 *)0x08622AB4)`. Narrowing the local alone left the original ten differing bytes; narrowing the helper alone made allocation worse. Together they reproduce the ROM's table-base registers, flag reload, and final zero assignment. The card ID comes from a 12-bit extraction, so narrowing is lossless. The public `u16 (int player, int zone, u16 flag)` ABI remains unchanged.
+
+The accepted function extent is 0x320 (800) bytes, including the two-byte alignment after its 0x31E-byte body. `tools/dr python3 tools/check.py card_menu_input` verifies 13/13 function slices and all 0x1638 unit bytes. Evidence: `build/bigguns-duel48/card_menu_input/a528_shapes.log`, `CanMonsterAttack.EXACT.c`, and `accepted-check1.txt`. The other six functions remain assembly fallbacks.
+
+## Battle step matched (wave 1, 2026-10-01)
+
+`BattleStage_SelectAttacker` (0x24C, start score 33) matches in ordinary C; the unit check reports 13/13 including fallbacks, bytes exact. Working notes and cross-jump dump scripts: `build/wf/BattleStage_SelectAttacker/` (`dump.sh` with `old_agbcc -dg -dJ`, `rtl.py`).
+
+1. The default path declared `u8 msg, a1`; the ROM passes `player ? 0x8008 : 8` and a `(u16)player`, so both are u16.
+2. Cross-jumping: the draft used `goto ret0` / `goto clear`, which shares too little. The ROM came from a plain `return 0;` / `return 1;` in **every** arm (each gives `mov r0,#0; b Lret`, so the `strh`/`strb` tails match on two insns and merge), plus one structural detail: the case-1 player==0 arm is `if (A1C8()) return 0; if (h6 & 2) { ...; cnt = 10; } return 0;`, one shared return after the if, not `if (!(h6&2)) return 0; ...; return 0;`.
+
+Why (agbcc `jump.c`, the post-reload cross-jump pass): `find_cross_jump` lowers `minimum` by one when i1 hits a CODE_LABEL, and likewise on a mismatch where i1 is a conditional jump around e1. Candidates are tried latest-first. A copy that has already received a merge gets a label before its `mov r0,#0` and later merges into the latest other copy; a plain copy (preceded by a unique insn such as `strh r0,[r2]`) never merges away and becomes the survivor. With a separate h6 `return 0`, the conditional-jump copies merged into each other and the `strh` copy survived; the shared post-if return is labelled, merges away, and the survivor moves back to the first `if (A1C8()) return 0`. See [[matching-tricks#Switches, branches and shared tails]].
+
+## Wave 2 matches (2026-10-01)
+
+Both match in ordinary C. Working notes: `build/wf/CardMenu_GetAvailableCommands/NOTES.md`, `build/wf/BuildAttackableMask/NOTES.md`.
+
+### `CardMenu_GetAvailableCommands` (0x1C0, start score 78)
+
+- The difference was cross-jumping of the shared `bl; orr; lsl; lsr; b end` tails. In the ROM case 10's tail survives: the first branch and case 5 jump to its `bl CardMenu_GetSpellTrapCommands`, cases 11 and 0 to its `orr`. The draft kept the tail in the first branch.
+- Why (read from `-dg`/`-dJ` dumps with `build/wf/BattleStage_SelectAttacker/rtl.py`): the draft's first branch had its own `return flags;`. In jump2 its `r0 = r5; b Lret` cross-jumped first into the function's final `r0 = r5` (the failure label before it lowers `minimum`), and its jump was redirected to the after-switch label. `redirect_jump` pushes a redirected jump to the **front** of the new label's `jump_chain`, so the first branch became the first ("latest") candidate that every later case was tried against, and it survived.
+- Fix: no separate return in the first branch. The function is `if (b1B12 & 2) { ... } else { switch ... }` followed by one `return flags;`; the first branch's jump then sits in program order in the chain, and the latest copy (case 10) survives.
+- Second fix (score 4 to 0): case 13 is `if (field == 0) flags = 0x100; else flags = 0x200;`. `flags = 0x200; if (!field) flags = 0x100;` hoists `mov r5,#0x200` above the load; `if (field) ... else ...` costs 8 and the ternary 132.
+- Failed: `s16 zn = cur->w82C` (`ldrsh`, 78); passing the cursor field as a plain argument with a separate return (117).
+
+### `BuildAttackableMask` (0xE4, start score 52)
+
+Score 20 when the final session started. The two remaining diffs, `adds r7, r5, r4` instead of `adds r7, r4, r5` for `ps + off` and the loop counter `i` and the `m` copy swapped between r4/r5, had one cause:
+- `ps[player & 1].field = 0` used directly as an address expands in EXPAND_SUM mode to the canonical `(plus (mult ..) ps)`, i.e. `(plus off ps)`. Assigned to a variable (`me = &ps[player & 1]`), it expands through `expand_binop` as `(plus ps off)`.
+- With `ps` (local-allocated to r4) as the first operand, global.c's `set_preference` gives `me` a preference for r4. `me` conflicts with `i` and has lower priority, so r4 lands in `regs_someone_prefers[i]` and `find_reg` pass 0 skips r4 for `i`: `i` gets r5 and the loop's `m` copy r4, as in the ROM.
+- Final shape: `struct PlayerState *me = &ps[player & 1];` at the top (for `w24 = 0` and `w26 = zero`), plus loop-scoped `m = &ps[player & 1]` and `g = &gDuelPlayers[player & 1]`, which GCSE turns into the copies at the loop head.

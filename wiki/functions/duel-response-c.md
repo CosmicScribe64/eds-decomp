@@ -1,0 +1,80 @@
+---
+title: Unit duel_response (duel effect request queue and hand/zone usability tests)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit duel_response
+
+`0x08041F9C`-`0x080431E3`, Thumb, `old_agbcc -O2`. Source: `src/duel_response.c`. Follows [[effect-targets4-c]] (target pickers, step byte `0x02017A40+0x3E5`). Unlike the pickers, this unit is the effect-request layer. A block at `0x02017A40 + 0x48A..0x4AE` holds a queued request, byte `0x02017A40+0x491` holds its state flags, and a step machine at `0x02017A40+0x490` drives it (`EventResponse_Run`).
+
+Unit status: `unit bytes MATCH`, 7/9 functions in C after workflow wave 1 (2026-10-01, `EventResponse_CanPlayerRespond` added); two retain `INCLUDE_ASM`, each with a parked C draft. The complete `0x1248` unit passes the ROM-byte check. The two state-machine drafts compile in isolation but have not been behaviorally verified and contribute no matching progress.
+
+> [!warning] Contradiction: the unit is now 9/9
+> The count above (7/9) predates later matches. `src/duel_response.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 9 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
+|---|---|---|---|
+| `0x08041F9C` | 0xDC | matching | `u16 f(ref, player, handIndex)`: hand card `0x02019968 + p*0xD64 + idx*4` usable as the effect card? Needs `CanPlaceSpellTrapCard(player, id)`, card type 0x16 (Trap), and (`GetCardSpellSpeed(id) > 1` or the state bits of `0x020192E0+0x1B12` are 2/4 with bit1 == player); then `ref->id = id`, rejects types 0x15/0x16 while `player[7] >> 6 != 0`, returns the low 16 bits of `CanActivateEffect(ref, 0, 1)`. A shared fail label reproduces the ROM block order |
+| `0x08042078` | 0x2C | matching | `f(ref, player, kind, idx)`: kind 5 -> `CanActivateFieldCard(ref, player, idx + 5)` (zone test), kind 0xB -> `CanActivateHandCard(ref, player, idx)`; 0x41 if it accepted, else 1 |
+| `0x080420A4` | 0xE8 | **matching** (wave 1, 2026-10-01) | is any spell/trap zone 5-9 or (when the duel flag bit1 == player) any hand card usable? Uses `GetCardSpellSpeed(id) > 1` and `CanActivateFieldCard` / `CanActivateHandCard` on the global ref `0x02017EE8`. Matched through a struct-array view of `gDuel + 4` (see below) |
+| `0x0804218C` | 0x2C0 | matching | `(ref, buf)`: builds the description text of a queued effect into `buf` by `ref->kind` (5-30), `(u8)ref->pos`, `unk8` sub-arguments (`StrCopy` sets text, `FormatStr` formats, `FormatInt` concatenates), then appends `gStrEventSeparator` / `gStrAskActivateQuickPlayOrTrap` with `StrCat` |
+| `0x0804244C` | 0x664 | **nonmatching (asm, compiling draft)** | the request state machine: steps 0 / 1 / 2 / 10 / 11 / 100 / 101 / 200 / 201 / 240 at `0x02017A40+0x490`, uses `0x020192E0+0x1B2C..0x1B34` bit flags, `EventResponse_GetCommands`, `EventResponse_BuildPromptText`, `EventResponse_CanPlayerRespond`; candidate 0x638, with layout/extraction/allocation differences |
+| `0x08042AB0` | 0xB0 | matching | `(player, zone, arg)`: queue a request: if `0x02015EE8+1 & 1` and `0x020192E0+0x1B12 & 2` (link play, hypothesis) sends message `0xF059` (`DuelLink_SendMessageData`) with `{1-player, zone, arg lo, arg hi}`, else stores `zone` at `0x02017A40+0x48A`, `arg` at `+0x48C` and sets the state bits at `+0x491` (b4 = b5 = player, bit6 = 1) |
+| `0x08042B60` | 0x3C | matching | if bit 6 of `0x02017A40+0x491` is set: run `EventResponse_Run`, clear the bit when it returns nonzero; returns 1 while the request is pending |
+| `0x08042B9C` | 0x44 | matching | `(list, player, zone)`: is there an entry (`0x14`-byte, from `list+2`, count `u16` at `list+0x140`) with that player bit and zone? |
+| `0x08042BE0` | 0x604 | **nonmatching (asm, compiling draft)** | selection/callback state machine: phase in bits 1-7 at `0x02017A40+0x492`, mode bit at +0x493; describes an active card or effect reference, waits for selection, fills the reference at +0x4BC, looks up two callbacks from 0x18-byte effect entries, and runs them until their low-halfword result is nonzero; candidate 0x5D8 |
+
+## State-machine draft review
+
+The two related routines now share local, compiler-checked views of the request
+and selection blocks. Halfword views use packed two-byte-aligned unions: this
+compiler otherwise rounds their union size to four bytes. Assertions check the
+0x14-byte reference stride, selected-reference offset +0x4BC, and selection-word
+offset +0x1B2C. The existing matched functions retain their original declarations.
+
+ROM inspection establishes that +0x1B2C is updated through both byte and word
+accesses; +0x1B34 through both byte and halfword accesses. The text buffer occupies
+0x100 stack bytes. The generated m2c output's extra formatting argument was an
+incidental live r3 value and was removed; the ROM passes only buffer, format and
+name there. Both callback addresses come from effect-table offsets +0x10/+0x14
+with stride 0x18. These access/call facts are verified from disassembly. Full C
+behavior and exact compiler layout remain unverified; both fallbacks remain active.
+
+## Matching tricks
+- `CanActivateHandCard`: put the common zero-return block at `fail:` before the store
+  block and jump back to it from the post-store player-flag rejection. That
+  reproduces the ROM's branch/layout choices. Cast the final helper result to
+  `u16` to retain its `lsl/lsr #16` return narrowing. The full unit matched after
+  enabling this ordinary C body, with no compiler barrier or ABI change.
+- `u16 id = (word << 20) >> 20;` (not `u32`) avoids the extra `lsl/lsr` narrowing when `id` is passed on as `u16`; `u32 n = 0x7FF & id;` declared before the first call keeps the mask in its own register (`0x08041F9C` first half).
+- **`switch (t) { case 0x15: case 0x16: ... }`** reproduces `cmp #0x16; bgt; cmp #0x15; blt`; `t <= 0x16 && t >= 0x15` is folded to `subs; cmp; bhi`.
+- **Bitfield struct `{lo:4; b4:1; b5:1; f6:1; f7:1}`** for the state byte at `0x02017A40+0x491`: separate field stores reproduce the mask/`orr` sequence; `f->f6 = 0` gives `movs #0x41; negs`.
+- **`u8 z; ...; z = 0; *hp = zone; es[0x490] = z;`**: the zero register is created between the address and the store.
+- **`for (i = 0; i < n; i++) { e = (T *)(list + 2 + i * 0x14); ... }`** gives the strength-reduced pointer initialised after the first test.
+- **Shared tails with `goto call; ... call: f(buf, txt); goto out; last: ...; out:`** for the text switch (`0x0804218C`): arms set `txt` then jump; arms of two identical texts need two differently named symbols (`gAlias_080851E8`) or gcc merges them.
+- **`if (a) { u8 *e = sym; if (f(e + 0x1B12)) {...; return;} } {else part}`** keeps the unfolded `ldr =sym; ldr =0x1B12; adds`.
+
+## Bounded hand-loop follow-up
+
+Historical (matched 2026-10-01, see below): `EventResponse_CanPlayerRespond` still used assembly. Moving the real hand-loop counter reset before
+the pointer scope leaves 24 differing bytes at the exact 0xE8 size. The target
+uses its initial player base in r3 for the first guard, then copies it to r8;
+the candidate copies it before the guard. Typed byte/void/integer pointer views,
+explicit guard/do loops, and initialized pre-loop register/input variants did
+not solve that lifetime difference. Private reproducible experiments are
+`build/bigguns-lead2/hand_*.py`; no such variant was activated.
+
+## Usable-card check matched (wave 1, 2026-10-01)
+
+`EventResponse_CanPlayerRespond` (0xE8, start score 6) matches in ordinary C. Working notes and RTL viewer: `build/wf/EventResponse_CanPlayerRespond/` (`rtl.sh`, `rtlview.py`).
+
+- In the hand-loop guard the ROM computes `e+4` into r3 and copies it to r8 **after** the guard branch (next to `r6 = 1&p`); a user variable `pl = e + 4` went straight to r8 before the guard.
+- Mechanism (from `-da` RTL dumps): jump.c duplicates the loop exit test as the guard, with fresh pseudos. The loop test must load the **constant** `gDuel+4` from the pool. GCSE PRE leaves it alone because calls kill memory; loop.c hoists it (in the second loop pass) only when its life is long enough, i.e. when the load comes before the `(1&p)*0xD64` multiply. CSE2 then turns the hoisted load into a copy of the guard's register, giving `mov r8, r3` after `bge`. In the guard, CSE's related-value lookup rewrites the same constant as `e_reg + 4` because `e = gDuel` is in a register from the flags check.
+- What matched: `((struct PL2_080420A4 *)(gDuel + 4))->p[1 & player].handCount` with `struct PL2 { struct DuelPlayerB p[2]; }`. The ARRAY_REF inside a COMPONENT_REF goes through `get_inner_reference`, so the constant base is loaded first.
+- Failed: `(e + 4)` / `(u32)e + 4` inline (+4 folds into the field offset `#6`); a user variable `pl` (nothing hoisted); `pl = e+4,` in the condition (PRE inserts the copy before the guard compare); a static inline (everything invariant); `((T *)(gDuel + 4))[i]` or `(*(T (*)[2])(...))[i]` (pointer arithmetic, the constant loads late and the guard folds to `#6`).

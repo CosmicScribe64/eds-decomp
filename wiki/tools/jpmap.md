@@ -45,7 +45,7 @@ tools/dr python3 tools/jpmap.py --diff CollectEffectTargets   # also write an al
 | `<func>_listing.txt` | `--diff`: a two-column USA/JP listing, plus case maps for switch dispatchers. |
 
 `build/jp/PLAN.md` (the staged plan) and `build/jp/sub_08044224_diff.md` (matching hints for
-[[code-08044224]]) were written by hand from these outputs.
+[[effect-target-collect-c]]) were written by hand from these outputs.
 
 ## Method
 1. **Function discovery.** USA function extents come from `config/functions.tsv`. Instructions, literals and

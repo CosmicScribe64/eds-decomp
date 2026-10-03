@@ -1,0 +1,88 @@
+---
+title: Unit duel_turn_end (duel effect prompts and link-side effect steps)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit duel_turn_end
+
+The unit covers `0x08050A70`-`0x08051A9B` (Thumb, `old_agbcc -O2`), and its source is `src/duel_turn_end.c`. It follows [[duel-phases-c]]. The functions are per-card **effect steps**, which are state machines on a step counter (byte or halfword). They ask the player to pick a card (`TextBoxOpen` text box plus `TextBoxSetMenu` menu, with the callbacks of [[duel-phases-c]] and this unit). They also run the effect handlers of the effect table `gCardEffects` (24-byte entries, see [[effect-hooks-c]]) and exchange the result with the link partner (`DuelLink_SendMessage` / `DuelLink_SendMessageData`, message ids `0xF058`, `0xF065`, `0xF073`, `0xF082`, `0xF092`).
+
+Unit status: `unit bytes MATCH`, **12/13 functions in C** after workflow waves 2-3 (2026-10-01: `0x08051140` in wave 3); 1 stays `INCLUDE_ASM` (`0x08050A70`, draft under `#if 0`). After wave 1: 11/13 (2026-10-01: `0x080515A4`, `0x080516D8` added).
+
+> [!warning] Contradiction: the unit is now 13/13
+> The count above (12/13) predates later matches. `src/duel_turn_end.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 13 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses) |
+|---|---|---|---|
+| `0x08050A70` | 0x3D8 | nonmatching (assembly fallback) | 5-step machine on `0x020192E0+0x1B20` (jump table): step 0 = current player's turn - scan own hand (word bit 18 via `<<13`) for a playable card then own zones 5..10 (id low-12 bits, bit 18 set, skip type 0x15/0x16 with subtype 2..4), play via `ShowCardEffect`/`DiscardHandCard`/`DestroyFieldCard`; step 1 = same for the opponent - hand then opponent zones, then `+0x1B20 += (p?2:1)`, `+0x1B21 = 0`; step 2 = walk zones 0..4 of `+0x1B21` for a card with `(zone+6)>>?` bits 6..9 > 1, text `gStrTurnsUntilDestroyedFmt` + `FormatInt(buf, buf, n-1)` then `TextBoxOpen(0x206,0x712)`, advance `+0x1B21`; step 3/4 = `DuelCmd_Push(2/3 or 0x8002/0x8003, 0,0,0)` by `+0x1B12` bit 1; default = if `0x02015EE8+1` bit 0 zero, zero `0x02015EF0`[0..1] when `+0x1B12` bit 1 clear, then send `0xF002` and `0x020192E0+0x1B10++`, return 1. Draft is logically complete but agbcc register allocation differs throughout and builds 0x14 short |
+| `0x08050E48` | 0x1AC | **matching**, ordinary C | `u16 f(void)`: card prompt on `0x02017FB0+0x452` (step) / `+0x454` (card): number 0x172-0x174, 0x39, 0x4DB, 0x5F2 select a text (`gStrAttackTargetZeroAtkFmt/E60/EBC/F5C`, name via `FormatStr(buf, fmt, 0x0822C720 + idx*0x40)`) shown with `TextBoxOpen(0x204/0x206, ..)`; step 1 stores the menu result `0x0201AE60+0x14` into `+0x45A`. Draft is instruction-identical except one register: the hoisted link-block base copy is in r3 (agbcc) instead of r2 (ROM) |
+| `0x08050FF4` | 0xA4 | **matching**, ordinary C | `u16 f(void)`: step `+0x48D`: 0 look up the effect entry of `+0x45C` (`FindCardEffect`, halfword `0x02017A40+0x3D6`), store `fn10` at `0x02017A40+0x480`, clear `+0x3E4`; 1 call `fn(L+0x45C, L+0x470)` until it returns non-zero |
+| `0x08051098` | 0xA8 | **matching**, ordinary C | same with step `+0x48E`, handler `fn14` in `0x02017A40+0x484`, flag `+0x3E5` |
+| `0x08051140` | 0x1B0 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `u16 f(void)`: step `+0x48F`: 0 toggle bit 0 of `L+0x45E`/`+0x472` and the low byte of the halfwords `+0x462/+0x464/+0x476/+0x478` (`x = 1 - x`), look up the entry (`fn4` -> `0x02017A40+0x3D8`), `0x02017A40+0x3E0 = 0x80`; 1 call `fn(L+0x45C, L+0x470 or 0)` (by `L+0x490` bit 0), result in `+0x3E0`, advance when 0. Step 0 mirrors the two 0x14-byte effect refs at `L+0x45C`/`+0x470` to the other side's point of view. See Wave 3 matches below (historical: register allocation only, base r7, `&step` r8, persistent constant 1 in r4) |
+| `0x080512F0` | 0x17C | **matching**, ordinary C | `u16 f(void)`: link-side dispatcher on the pending-effect flags: `+0x450` bit 0 (with `+0x306` bit 5 clear) -> `DuelLink_RunCardPrompt` then send `0xF058` with `+0x45A/+0x456/+0x458`; `+0x308` bit 2 -> `DuelLink_RunRemoteChainA` then `0xF092` (`DuelLink_SendMessageData`, 0x14 bytes from `+0x45C`); bit 0 -> `DuelLink_RunRemoteChainB` then `0xF082`; `(+0x306 & 0x420) == 0x400` -> `DuelLink_AnswerActivateQuery`, clear `+0x307` bit 2; bit 4 -> `DuelLink_RunRemoteResolve` then `0xF073`; bit 6 -> `ChainListScreen_Run` then `0xF065`. Returns 1 when a flag was handled |
+| `0x0805146C` | 0x138 | **matching**, ordinary C | duel-step tail: set `0x020192E0+0x1B12` bit 1; if `0x02015EE8+1` bit 0 (link duel): `+0x306` bit 3 -> `0x02015EE8++`, return 1; run `DuelLink_RunPartnerRequests`; else handle the A/B key (`0xF004`/`0xF006`, message 3), clear `+0x306` bit 2; finally clear the bit, `0x02015EE8 -= 6`, clear `+0x1B20`, `+0x1B21` |
+| `0x080515A4` | 0x98 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | `(player, u16 flag)`: number of hand cards of `player` (flag set: only those of type <= 0x14) whose hand word has neither bit 17 nor bit 18; flag 0: the hand count. See [Wave 1 matches](#wave-1-matches-2026-10-01) |
+| `0x0805163C` | 0x9C | **matching**, ordinary C | `u16 (a, b)`: player 0's hand selection: card at `0x0201CFB0+0x82C` (a: type <= 0x14 only), refuse (sound 3) when bit 17/18 set, else `DiscardHandCard(0, idx, b, 1)`. Permuter fix: read the hand as `gDuelPlayers->hand` rather than through the `ps` local, which gives the ROM's `ps` r4 / `a` r5 |
+| `0x080516D8` | 0x58 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | draws `0x02017A40+0x4FD` cursor sprites (attr 0x431C) 10 pixels apart: `for (i=0;i<count;i++) AddSprite((y<<16)|(x0+i*10),0,0x431C)` with `x0=(menu.x+1)*8`, `y=(menu.b21-menu.h+2)*8`. The old draft folded the invariant `(y<<3)<<16` into `lsls r7,r0,#19` in the preheader instead of the ROM's in-loop `lsls r0,r7,#16`; fixed in wave 1 (see below) |
+| `0x08051730` | 0x8C | **matching**, ordinary C | `int f(void)`: step `0x0201AE60+0x23`: 0 `DiscardPrompt_TryDiscardSelected(w&1, w&2)` (`w = 0x020192E0+0x1B54`), 1 `DuelCursor_Select(0, 0xB, 0)`, 2 decrement `0x02017A40+0x4FD`, done at 0 |
+| `0x080517BC` | 0x190 | **matching**, ordinary C | `(player, count, -, u16 x)`: 4-step machine on `0x020192E0+0x1B62`: 0 `DuelScreen_ScrollToZone(player, 0xB)`, `0x02017A40+0x4FC = 0`, `+0x4FD = count`; 1 the AI (player != 0) picks a hand card by `AiPickDiscard` / `AiPickWeakestHandCard` / `FindMagicInHand` / `FindTrapInHand` or a random index (`Random() % byte 0x020192E4+0xD6A`) and calls `DiscardHandCard(player, idx, x, 1)`, `--count`; the human (player 0) opens the text box `0x209/0x50E` with `TextBoxSetMenu(5, DiscardPrompt_DrawRemaining, DiscardPrompt_HandleInput)`; 2 `TriggerForcedRequisition(player, count)`; 3 `EventResponse_Request(1 - cur, 0x1D, player)` |
+| `0x0805194C` | 0x150 | **matching**, ordinary C | steps 0 and 1 of the same machine (without steps 2/3) |
+
+## Structs and globals
+- `0x02017FB0` link block (`struct LinkBlk` in the source): `+0x306` byte (bit 3, bit 5), `+0x307` byte, `+0x308` word of pending-effect flags (bits 0, 2, 4, 6 used), `+0x450` word (bit 0 flag), `+0x452` u16 step, `+0x454` u16 card, `+0x456/+0x458/+0x45A` u16 results, `+0x45C` u16 effect card + args `(+0x45C..)`, `+0x45E` byte (bit 0), `+0x48D/+0x48E/+0x48F` step bytes, `+0x490` byte.
+- `0x02017A40` (see [[duel-setup-c]]): `+0x3D6` s16 effect index, `+0x3D8/+0x480/+0x484` handler pointers, `+0x3E0/+0x3E1/+0x3E4/+0x3E5` result flags, `+0x4FC/+0x4FD` byte counters.
+- `0x0201AE60` menu block ([[duel-phases-c]]): `+0x14` selection, `+0x23` step byte.
+
+## Matching tricks
+- **Inline `(*step)++; return 0;` in every case** (instead of `break` to a common tail) matched `0x08050FF4`, `0x08051098`, `0x080517BC`; the break/tail form changed the register assignment of the zero constant.
+- **Address the link block through the global name for every access (no `struct *l` local)** gives the ROM's separate base copies (`0x080512F0`).
+- **`x &= -5` on a byte gives `mov #251`**; use a `u8` bitfield view (`((struct Bits8 *)&byte)->g2 = 0`) or `int m = -5; m &= x; byte = m;` to get the ROM's `mov #5; neg`.
+- **`(int)(v << 14) < 0`** (signed cast) is needed for a bit-17 test of a `u32`; the unsigned expression is folded away.
+- **`struct HandW { u32 lo:17, f17:1, f18:1, rest:13 }`** with `struct HandW v = *w; if (v.f17) ok = 0;` keeps the branchy flag computation of `0x0805163C` (`ok = 1; if (..) ok = 0;` on an int is if-converted to `mvns; lsrs`).
+- **Halfword low-byte update** `*hp = (u8)(1 - h) | ((h >> 8) << 8);` reproduces `sub; lsl 24; lsr 24; lsr 8; lsl 8; orr` (an 8-bit bitfield gives a byte store instead).
+- **Loop counting down over a hand pointer**: reading the count once into a local (`n = handCount`) gives the ROM's `sub r3,#1; bne` countdown copy in `0x080515A4`. The matched source (wave 1) indexes `&gDuelPlayers[player & 1].hand[i]` inside the loop rather than stepping `p++`; loop.c makes the pointer itself.
+- **`0x080516D8`: defeating agbcc's loop-invariant motion** (historical; matched in wave 1 by a different route, see below). A `for`/`while`/`do` loop lets two passes fold the loop-invariant `(y<<3)<<16`. A `goto` loop stops `loop.c` (shift stays in the loop, x/i registers match the ROM) but the loop is then rotated (`b <bottom test>`), and adding a guard (`if (i >= count) return;`) lets PRE fold `y<<19` again. Writing it as a `do { if (i >= count) return; ... } while (i < count)` (guard + do-while) gives both loop tests and all of the ROM's registers (x r4, i r5, y r7, &count r6). Only the shift is still folded. `y = (...) * 8` and `u16 y` do not stop the fold.
+- **`0x08050E48`: hoisted base-address copy register.** With the link block addressed by its global name everywhere, the only diff is the hoisted `&gLinkState` copy landing in r3 instead of r2 (and r2/r3 swap throughout). A `u8 *l`/`struct LinkBlk *b` local, `switch (b->h452)`, a `u16 *base = &gLinkState.h454` accumulator, and the m2c goto structure all made it worse.
+- **`0x0805163C`: local pointer versus global base.** The permuter reached score 0 by changing `u32 *hp = ps->hand;` to `u32 *hp = gDuelPlayers->hand;` (same value, different pseudo lifetime) which flipped the `ps`/`a` register assignment to the ROM's `ps` r4 / `a` r5. Try the global-array form when a local pointer only shuffles registers.
+- **`0x08050A70` structs:** the duel state `0x020192E0` needs `+0x1B10` u16, `+0x1B12` byte (bit 1 = player), `+0x1B20` step byte, `+0x1B21` byte index, `+0x1B54` u16 (kept for `0x08051730`). Zones live at `0x0201930C + player*0xD64 + i*0x94` (entries: `+0` u32 with low-12-bit id and bit-18 valid flag, `+2` byte with bit 2 cleared when played, `+6` u16 whose bits 6..9 count something). Hand words use bit 18 (`<<13`), card type `(stats & 0x1F00000)>>20`, subtype `(stats & 0xE0000)>>17`.
+
+## Exact C conversion (2026-10-01)
+
+`DuelLink_RunCardPrompt` now matches all 0x1AC bytes. The link prompt uses integer-address card-number and card-name tables. The number-table change leaves four differing operand bytes; the name-table change closes those too. Buffer size, prompt arguments and selection-state transitions remain unchanged. Earlier base-register near-miss notes are superseded. The cleaned whole-unit check and combined ROM checkpoint passed; no signatures or emitted instructions were fabricated. Evidence: `build/bigguns-lead2/DuelLink_RunCardPrompt/solo-clean/`, `build/lead-pass10/` and `build/lead-pass11/`.
+
+## Wave 1 matches (2026-10-01)
+
+Working notes: `build/wf/CountDiscardableHandCards/NOTES.md`, `build/wf/DiscardPrompt_DrawRemaining/NOTES.md`.
+
+### `CountDiscardableHandCards` (0x98, start score 38; FAKEMATCH)
+
+- Template from `CountHandMonsters` ([[duel-piles-c]]): index the type table through an inline `W515Type(u16 id)`, so the `& 0x7FF` stays a separate `and` with 0x7FF hoisted in r6 (a macro let GCC fold it into `lsl 21 / lsr 19`).
+- Early return for `flag == 0`, then `n = handCount` read once into a variable (gives the `add r3, r1, #0` countdown copy), and `u32 *p = &gDuelPlayers[player & 1].hand[i]` inside the loop (one address for the word and its byte +2).
+- That left a count/base swap (r6/r5, score 18). Declaration order, a `continue` form, and if/else with one return did not fix it; a `register asm("r5")` pin on count broke the `cmp r5, r1`.
+- The permuter found the fix in seconds: `((u8 *)p)[2] & (six = 6)`, the mask through an assigned temporary (FAKEMATCH, commented in the source).
+
+### `DiscardPrompt_DrawRemaining` (0x58, start score 28; FAKEMATCH)
+
+1. The old draft's `u8 *count = &gChain.count` folds to one literal (sym+0x4FD); the ROM does `ldr base; ldr 0x4FD; add`, which a direct `gChain.count` access in the loop condition gives. The old `s16` counter also added narrowing.
+2. With a plain for loop, loop.c hoisted `y << 16` and combine folded it into `lsl #19` in the preheader. The `-dL` dump shows the threshold: a move happens when `13 * savings * lifetime >= insn_count` (threshold 13 because the loop has a call). The life-1 movable stays in the loop only if the second loop pass sees 14 or more insns; `(x + i*10) | (y << 16)` gives 13.
+3. Then y and the count pointer had r6/r7 swapped: the hoisted pointer carries `REG_EQUAL const(sym+0x4FD)`, so `update_equiv_regs` doubles its live length (14 to 28), and its global-alloc priority falls below y's (3/28 < 3/22).
+- What matched: the permuter's `gChain.count += 0;` at the top of the loop body, a FAKEMATCH no-op self-store. It adds loop insns, so `y<<16` stays in the loop, and extra refs on the count address, so the pointer outranks y and lands in r6. (The permuter's extra empty `if (gTextBox.b21) {}` is not needed.)
+- Failed: pinning y to r7 (`register asm("r7")`; r7 is then left out of the push/pop, the known agbcc pin issue); an `asm("" ::: "r6")` clobber; a struct base-pointer local with an asm barrier (the add is not hoisted).
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/DuelLink_RunRemoteResolve/NOTES.md`.
+
+### `DuelLink_RunRemoteResolve` (0x1B0, start score 137; FAKEMATCH)
+
+The draft had base r6 / `&step` r7 instead of r7 / r8, one constant-1 register too few, different halfword flips and a different table lookup.
+- Halfword flips: `u16 h = *hp; *hp = (u8)(1 - h) | (h >> 8 << 8);` (the halfword low-byte trick above; `u16`, not `s8`, and a `u16 :8` bitfield becomes a `strb`).
+- FAKEMATCH bit flips: `u8 v = T8->f0; u8 one = 1; T8->f0 = one - v;`. The `u8` constant is its own QImode pseudo (ROM r4), separate from the SImode 1 that serves as the store mask and the halfword minuend (ROM r3). That extra pseudo shifts local-alloc so that the base lands in r7 and `&step` in r8. Declaring `u8 one` before the load emits `movs r4,#1` too early (score 2). The bitfield must be reached through the byte (`struct T8` view); a `u8 player:1` member of the 4-aligned 0x14-byte ref struct changed the code (81).
+- Handler table: a real `fn4` field of the declared array, `gCardEffects[i].fn4` (the entry struct gained `u16 u2; u32 fn4`), gives `ldr sym; adds #4`. A pointer cast gives `ldr [r0,#4]`, and `*(u32 *)&arr[i].u2[2]` folds `sym+4` into the literal pool.
+- Failed for the flips: `!f0`, `^= 1`, `(u8)(1 - f0)`, `1 - (u32)f0`, an int temporary, a `static inline u8 Flip` (8/32), u32/u16 bitfield structs (114).

@@ -1,0 +1,80 @@
+---
+title: Unit duel_cursor (effect cursor navigation and card reorder prompt)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit duel_cursor
+
+Thumb, `old_agbcc -O2`, `0x08052B78`–`0x08053E57`. **6/9 functions in C** after workflow waves 2-3 (2026-10-02: `0x08052B78` in wave 3), with `unit bytes MATCH`; 3 stay `INCLUDE_ASM` (`0x0805304C`, `0x080538C8`, `0x08053AF8`). After wave 1: 5/9 (2026-10-01: `DeckReorder_DrawCards`, `DeckReorder_DrawSwap` added). Two C attempts (`0x080538C8`, `0x08053AF8`) remain disabled beside their assembly implementations. Names and gameplay interpretations below are hypotheses.
+
+> [!warning] Contradiction: the unit is now 9/9
+> The count above (6/9) predates later matches. `src/duel_cursor.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 9 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| 0x08052B78 | 0x170 | **matching** (wave 3, 2026-10-01) | MoveEffectCursorHorizontal (hyp.) | Direction bits 4 (left) / 8 (right) move through zones 0/5/10/11 (11 = hand) in a loop until `DuelCursor_IsValidTarget` accepts the new player/zone/index (stored through the pointers, returns 1) or the cursor is back at its start (returns 0) |
+| 0x08052CE8 | 0x250 | matching C | MoveEffectCursor (hyp.) | Direction bits 1/2 move between players, hand and field; uses horizontal search for eligible targets |
+| 0x08052F38 | 0x114 | matching C | EffectCursorKeys (hyp.) | Sets screen flag bit 3; repairs cursor in zones 12–15; filters movement through the mask, plays movement sound, returns A-button status |
+| 0x0805304C | 0x688 | asm; not attempted | DuelCursorKeys (hyp.) | Eight dense switches navigate both players and zone codes 0–15 without the eligibility filter |
+| 0x080536D4 | 0x9C | **matching** (wave 1, 2026-10-01; FAKEMATCH) | DrawReorderCards (hyp.) | Draws five cards, optional card backs, animated color on the selected index |
+| 0x08053770 | 0xF4 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | DrawReorderSwap (hyp.) | Draws five cards with opposite x/y displacements for two swapping slots |
+| 0x08053864 | 0x64 | matching C | DrawReorderPrompt (hyp.) | Dispatches swap drawing for modes 10/20 during phases 0–15, otherwise draws stationary cards |
+| 0x080538C8 | 0x230 | asm; C attempt | ReorderPromptKeys (hyp.) | Left/right select; L/R initiate adjacent swaps; swaps card words after animation; A sets mode 15 and returns 1 |
+| 0x08053AF8 | 0x360 | asm; C attempt | ReorderPromptStep (hyp.) | Human text/menu setup or timed CPU scan; CPU swaps adjacent cards according to `AiIsKeyCard(1, number)` |
+
+## Globals and layout
+
+- `0x0201CFB0`: flag byte +0x808 (bit 3 set); signed words +0x824/+0x828/+0x82C are selected player, zone and index. See [[duel-prompt-handlers-c]].
+- `0x02017A40+0x53C`: packed animation word: cursor bits 0–7, mode bits 12–19, phase bits 20–27. The phase is also read from halfword +0x53E, bits 4–11. CPU timer spans byte +0x53F high nibble and byte +0x540 low nibble. Five card words start at +0x544 (`0x02017F84`); cursor byte is `0x02017F7C`.
+- `0x0819D27C/0x0819D280`: interleaved signed x/y animation offsets (8-byte stride). `0x081A4424`: halfword color/flag animation, indexed by `gMain.frameCounter & 0x1E` as a byte offset.
+- Player array `0x020192E4`, stride 0xD64, hand count byte +2. Card IDs are read from the low 12 bits and then masked to 11 bits for number lookup.
+
+## Matching notes
+
+- `switch (zone) { case 12: case 13: case 14: case 15: ... }` gives the ROM's signed `cmp 15/bgt; cmp 12/blt`. Nested range `if`s instead give `cmp 11/ble`, despite equivalent behavior. This was the final difference for `DuelCursor_PickTarget`.
+- Writing index address as `(u32)&gDuelScreen + 0x82C` gives shared offset literal plus 4; normal field access allocated an extra register.
+- Explicit unsigned shifts `(word << 12) >> 24` and `(halfword << 20) >> 24`, followed by an `int` cast, reproduce extraction and signed comparisons in `DeckReorder_Draw`.
+- Disabled drawing attempts differed in address setup, frame-address folding and temporary/high-register allocation (both drawing routines matched in wave 1, see below). Historical (matched in wave 3, see below): horizontal navigation hoists the player stride and orders switch bodies differently. Reorder keys cache pointers across branches and change RMW scheduling. Larger navigation/state machines remain assembly pending further work.
+- `DuelCursor_FindTarget` (matching): writing the cases in source order `11,5,0,10` reproduces the ROM's switch body layout for both direction switches. Making case 11 `if (p != 0) { if (handCount != 0) ... else ... } else ...` puts the `p != 0` path as fall-through. That ordering also fixes the constant registers (`sl`=0, `r9`=5), because the allocator gives `sl` to the first constant emitted, which becomes 0. The tail was the last difference. Writing the store/`return 1` code twice (inline on the `DuelCursor_IsValidTarget` success path and inline on the inner `DuelCursor_FindTargetHorizontal(4,…)` success path, as a `do { … } while (p != backP || …)`) lets old_agbcc cross-jump-merge the two identical blocks and place the shared `return 1` between the inner call and the loop-bottom test, with the unchanged case (`return 0`) as fall-through. `DuelCursor_FindTarget` also reads the two hand counts directly as `gDuelPlayers->handCount` (+0x02) for player 0 and `->unkD66` (+0xD66 = player 1's count) rather than indexing the player array.
+- `DeckReorder_Run` (parked): decoded as four modes of the packed animation word (`(animation<<12)>>24`): 0 = menu setup (`TextBoxOpen`/`TextBoxSetMenu`, timer init) then mode++; 1 = CPU scan (`DeckReorder_DrawCards`, 30-step timer at +0x53F/+0x540, then compare adjacent card numbers with `AiIsKeyCard(1, card&0x7FF)` to pick a swap direction); 10/20 = animated swap of `cards[cursor]` with `cards[cursor±1]` for phases 0–15, then commit and re-draw. The ROM keeps the base `0x02017A40` in r5 and `&animation` in r8; the draft allocates different registers throughout, so it stays disabled.
+
+## Wave 1 matches (2026-10-01)
+
+Both reorder-prompt drawing routines match. Working notes and dump scripts: `build/wf/DeckReorder_DrawCards/`, `build/wf/DeckReorder_DrawSwap/` (`dump.sh`, `loopinfo.sh`).
+
+### `DeckReorder_DrawCards` (0x9C, start score 28; FAKEMATCH)
+
+- Prologue: the ROM loads the base into r2 early, then copies it into the walking pointer r5 (`adds r5, r2, #0`) after `x = 0x24`. Use `cards++` as a basic induction variable (not `cards[i]`), and add `asm("" :: "r"(base));` before `cards = base` (FAKEMATCH) to keep base live past the copy, so combine cannot merge the load into the copy.
+- Loop: a local `u8 *sel = &gUnk_02017F7C`, assigned after `cards = base` and before colors/frame, tested as `i == *sel`. Eight call-crossing pseudos compete for the callee-saved registers; `sel` has the longest live length, gets the lowest priority and no register. Reload then rematerializes the constant through its **round-robin** spill registers, giving r3 for the cursor load and r6 next for the frame reload. Assigning `sel` after frame made colors lose instead (20). The permuter found the same `sel` pointer on its own.
+- Failed: no locals (221, loop does not hoist the constants); `x = i*32+0x24` (89); `(*frame>>1)&0xF` index (75); `flags = 0x1000000` before the if (51); an integer-constant base (16); `sel = (u8 *)base - 8` (16); a `register asm("r3")` pin on the cursor byte (no effect).
+- Cleanup idea: plain C that keeps base live after `cards = base`; every try so far stayed 4 bytes off.
+
+### `DeckReorder_DrawSwap` (0xF4, start score 18; FAKEMATCH)
+
+- hidden and cards had swapped high registers (r8/r9). Pinning `register u32 *cards asm("r8")` fixes this (FAKEMATCH, score 4); pin-free variants (global used directly, or a per-iteration pointer) stay at 14.
+- The `to` compare reloaded its stack slot into r0 where the ROM uses r2.
+- Reload rotation: reload chooses spill registers round-robin (spill_regs [r0, r1, r2]). In the ROM, the `0x0819D280` load in each block is itself a reload (a loop-hoisted pseudo that global-alloc spilled and reload rematerialized through its REG_EQUIV). That extra reload sits between the sl reload (r2) and the `to` reload, which moves `to` onto r2.
+- What matched: both blocks declare `oy = gUnk_0819D280; ox = gCardJumpArc;` at the block start, y first. The long lifetimes make loop.c hoist both (rule: move when `13 * savings * life >= insn_count`, threshold 13 because the loop has a call) and match them across blocks. ox is hoisted later, so its live range is shorter and its priority higher: it gets sl and oy is spilled.
+- `u8 phase`: the redundant zero-extends add 4 RTL insns that combine removes after the loop passes. They keep the second loop pass at 82 insns, so `0x03000040` (life 3, savings 2, 13*6 = 78) stays unhoisted; otherwise `gMain+0x485E` collapses into one pool constant.
+- Failed: a struct-array view `((struct{int x,y;}*)gCardJumpArc)[phase]` (CSEs the y address into `[r0,#4]`); a user-variable `offY` (takes a high register); a `gMain` pointer variable; a set-twice `p`; swapped comparison operands.
+- The loop dump's "savings/life/not desirable" lines show hoisting decisions directly; see [[matching-tricks#Register allocation priority and reload rotation]].
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/DuelCursor_FindTargetHorizontal/NOTES.md`.
+
+### `DuelCursor_FindTargetHorizontal` (0x170, start score 138; ordinary C)
+
+- **Logic and layout fixes to the old draft:** the case bodies go in source order 11, 0, 5, 10 in both switches (`DuelCursor_FindTarget` needed 11, 5, 0, 10). The case-11 wrap was wrong: for p != 0 moving left, and for p == 0 moving right, it is `if (i <= 0) i = handCount; i--;`. The stores at the end go in the order player, zone, index. Direction-8 case 10 is `if (p != 0) i = 0; else i = 4;` (`mov r4,#4; cmp; beq; mov r4,#0`); the `?:` form gives the opposite order.
+- **Natural `for (;;)` with `return 1` inside.** A goto loop disables loop.c, which then leaves the constant 4 CSE-shared with case 10 and puts `side` into r7. In the ROM, loop.c hoists 4, global-alloc spills it, and reload rematerialises it as `movs r1,#4` / `movs r0,#4`. `side = p & 1` is computed before the loop and spilled to `[sp+16]`, and the 0xD64 multiply stays inside the loop.
+- **A twice-set offset keeps the multiply in the loop.** `int off;` is assigned `off = side * 0xD64` at both case-11 sites. A destination set twice in the loop is not invariant, so loop.c never hoists the 0xD64 load, the multiply or the add. With `players[side]`, loop pass 2 hoists all three (13 * 4 * 4 = 208 >= ~160 insns) and the allocation falls apart (score 75). The address is written `*(u8 *)(off + (u32)players + 2)`, an operand order that gives `adds r0,r0,r7`.
+- **Shared decrement by `goto`.** Case 0 jumps into case 11's decrement (`if (i > 0) goto dec4; z = 10; i = 0;`, with `dec4:` right before case 11's `i--`; direction 8 does the same with `dec8`). The ROM shares that tail, but cross-jumping always merged it the wrong way (case 11's tail into case 0's). The NOTES record why from `jump.c`: in jump2's forward scan, an earlier tail whose matching insn is preceded by a label always merges into a later identical tail, so only an explicit goto into the earlier copy keeps it.
+- **Failed:** register pins on players/direction/player/zone (other pseudos still landed on r7, which the NOTES attribute to r7 being the frame-pointer register); a goto loop; `volatile side` (44, slot at `[sp+0]`); `side = side` or `side &= 1` in the loop (the extra refs raise its priority); `?:` join temporaries for the case-0 decrement (they land in r0); and a pinned temporary to hide the case-0 tail (15, but the branches came out `ble C00; b BDA`).
+
+Related: [[duel-prompt-handlers-c]], [[summon-builders-c]], [[ai-picks-c]], [[decomp-workflow]].

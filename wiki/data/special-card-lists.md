@@ -17,9 +17,9 @@ These are small fixed `u16` lists of **card numbers** (see [[card-id-map]]) used
 | `0x08081A6C` | 60 | `HasEnoughRareCards`, `0x0801B6E0` | notable/rare cards: Blue-Eyes White Dragon, Flame Swordsman, the 5 Exodia pieces, Gaia, Harpie Lady Sisters, PUGM, Red-Eyes, … and the 3 Gods (numbers 1910–1912) at the end | `HasEnoughRareCards(n)` counts how many of these 60 the player owns (trunk word bits 0-9 at `0x02011C28 + id*4`) and returns whether that count is at least n. `0x0801B6D4` picks one at random (`rand % 60`). Possibly a progress or unlock check and a "wanted card" pick (hypothesis). |
 | `0x08081A28` … `0x08081A62` | small | `0x0801B868`… | `u16` index tables 1..20 and permutations of them | not card numbers; menu/ordering data (unmapped) |
 | `0x0819DD64` | 4 | `AiActivateMonsterEffects` | Time Wizard, Cannon Soldier, Relinquished, Barrel Dragon | cards the AI looks for in its spell/trap zones (`ai_scan_cards`; role from the converter's reading of the code) |
-| `0x081A78B4` | 47 | `GetCardCopyLimit` (`GetCardCopyLimit`, [[code-0807717c]]) | `{u16 card; u16 limit}` pairs | **the Forbidden/Limited list** (verified, below) |
-| `0x0819A7C8` | 52 + end | [[code-0803c838]] | `{result, a, b, pad}` card numbers, ended by 999 | **two-material fusion recipes**, e.g. Flame Swordsman = Flame Manipulator + Masaki the Legendary Swordsman |
-| `0x0819A970` | 3 + end | [[code-0803c838]] | `{result, a, b, c}` card numbers, ended by 999 | **three-material fusions**: Blue-Eyes Ultimate Dragon (3 × Blue-Eyes White Dragon), Aqua Dragon, Man-eating Black Shark |
+| `0x081A78B4` | 47 | `GetCardCopyLimit` (`GetCardCopyLimit`, [[collection-c]]) | `{u16 card; u16 limit}` pairs | **the Forbidden/Limited list** (verified, below) |
+| `0x0819A7C8` | 52 + end | [[effect-fusion-c]] | `{result, a, b, pad}` card numbers, ended by 999 | **two-material fusion recipes**, e.g. Flame Swordsman = Flame Manipulator + Masaki the Legendary Swordsman |
+| `0x0819A970` | 3 + end | [[effect-fusion-c]] | `{result, a, b, c}` card numbers, ended by 999 | **three-material fusions**: Blue-Eyes Ultimate Dragon (3 × Blue-Eyes White Dragon), Aqua Dragon, Man-eating Black Shark |
 
 ## Forbidden/Limited list (`0x081A78B4`)
 `GetCardCopyLimit` looks a card's number up in these 47 pairs and returns its limit, or 3 when the number is not listed.

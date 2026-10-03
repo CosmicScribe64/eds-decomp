@@ -1,0 +1,83 @@
+---
+title: Unit effect_resolve6 (duel card-effect executors, part 4)
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit effect_resolve6
+
+`0x080361D0`-`0x0803732B`, Thumb, `old_agbcc -O2`. Source: `src/effect_resolve6.c`. Continues [[effect-resolve5-c]] (same `int f(struct CardRef *ref)` effect executors, step machine at `0x02017A40 + 0x3E0`, `CardRef` from [[effect-resolve1-c]]). Tricks from those pages apply.
+
+Unit status: `unit bytes MATCH`, **14/14 functions in C** after workflow waves 2-3 (2026-10-02: `0x08036254`, `0x080367E4`, `0x08036A68` in wave 3); none stay `INCLUDE_ASM`. Before the waves: 11/14. Verified with `tools/check.py effect_resolve6` (complete 0x115C-byte unit).
+
+## Functions
+
+| Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
+|---|---|---|---|
+| `0x080361D0` | 0x84 | matching | both sides (opponent first), zones 5-10 holding a card: `ReturnFieldCardToHand(p, j, 9)` |
+| `0x08036254` | 0x288 | **matching** (wave 3, 2026-10-01) | 5-step machine 0x80..0x7C (`(ref, arg)`): 0x80 `EffectPainfulChoicePrepare`, text `gStrPainfulChoiceSelect5`, `EFF_SIDE = 5`; 0x7F `CardListView_Open`; 0x7E takes the viewer's card into `0x02017A40+0x544+side*4` (`CopyDuelCard`), prints `gStrPainfulChoiceCardsRemaining` with the count; 0x7D copies 5 ids of `0x02017F84` into a u16 array for `DuelPrompt_PostData(opp, 12, ids, 5)`; 0x7C loops the 5 words: the one equal to `0x020192E0+0x1B64` (first time only) -> `sub_08019820` + message 0xCB, else `ShowDestroyedCard` + message 0xD7 and, for card number 0x4DA, `Chain_AddPending(bit12 << 31 \| id \| 0x3C600000, 0)` |
+| `0x080364DC` | 0x34 | matching | message 0x44 |
+| `0x08036510` | 0x60 | matching | two targets: `GetGraveyardCardById(opp, id12(targets[0]), &out)` -> message 0xD5 |
+| `0x08036570` | 0x80 | matching | count zones 0-4 of both sides that hold a card with flag 2; `GainLifePoints(p, count * 300)` |
+| `0x080365F0` | 0x1F4 | **matching** (one FAKEMATCH) | step machine 0x80/0x7F/0x7E/0x7D: 0x80 `DestroyFieldCard` on one target; 0x7F `FindTrapInHand`/`FindNonFieldMagicInHand`/`FindFreeSpellTrapZone` checks, text `gStrDustTornadoSetPrompt`; 0x7E text `gStrDustTornadoSelectCards`; 0x7D key wait, then a card-type/kind check on the viewer's card, message 0xC5 or `PlaySE(3)`; `0x03000040+6 & 2` decides 0x7F/0x7D |
+| `0x080367E4` | 0x1AC | **matching** (wave 3, 2026-10-01) | two targets: 0x80 packs `targets[0] \| targets[1] << 16`, `IsCardInGraveyard`, message 0xD3, `QueueSpecialSummon(p, &packed, 1, 0, 0x20)`, counts zones of side p with id == targets[0] and flag 0x80 into `EFF_SIDE`; 0x7F card 0x447 -> `QueueAddZoneLink(.., 2)`, 0x488 -> `EquipCard` (position from `gSummonAction`) |
+| `0x08036990` | 0x34 | matching | message 0x45 |
+| `0x080369C4` | 0xA4 | matching | one target: for both sides, zones 0-4 with a card with flag 2 and `GetZoneCardAttribute(p, j) == targets[0]`: `DestroyFieldCardByEffect`, `OnCardDestroyedByEffect` |
+| `0x08036A68` | 0x2C8 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | 5-step machine over `EFF_SIDE` (0x3E1) and a counter `EFF_CNT` (0x3E2, starts at 5): 0x80 runs `DestroyFieldCardByEffect`/`OnCardDestroyedByEffect` over both sides' zones 0-4 and seeds the side from `0x020192E0+0x1B12`; 0x7F shows the top deck card of a side: an opponent's flagged card number 0x2FA goes to 0x7D (or `DiscardHandCard`), a type <= 0x14, level <= 4 card with `IsSpecialSummonOnly == 0` goes to 0x7E; 0x7E/0x7D `QueueSpecialSummonChoosePosition`; 0x7C counts `EFF_CNT` down and flips the side, ending with return 0x78 |
+| `0x08036D30` | 0x1F8 | matching | list-viewer step machine 0x80..0x7B (see [[effect-resolve1-c]] `0x08030B88`): `CanSpecialSummon`, `CollectEffectTargets`, `AiPickCardListEntry`, texts `gStrRecruiterNoCardsInDeck/F64/FA4`, `QueueSpecialSummon` |
+| `0x08036F28` | 0x158 | matching | 0x80: `CollectEffectTargets`, card numbers 0x455 / 0x462 -> text (`gStrSenjuAddRitualMonsterPrompt` / `gStrSonicBirdAddRitualMagicPrompt`), `TextBoxSetMenu`; 0x7F text `gStrRitualSearchSelectCard`; 0x7E `CardListView_Open`; 0x7D `AddDeckCardToHand(p, number of the viewer's card)`, return 0x7C |
+| `0x08037080` | 0x38 | matching | message 0x92 with `ref->zone` |
+| `0x080370B8` | 0x274 | matching | card numbers 0x45A / 0x45B / 0x51B: 0x80 `LoseLifePoints(opp, 500)` / `GainLifePoints(p, 1000)`; 0x7F `CollectEffectTargets` then (player 0) a text built by `FormatStr` from `gCardNames + id * 64` (0x45A: `gStrGiantGermSummonPrompt`, others `gStrSameNameSetPrompt`), `0x0201AE60+0x14 = 1` for player 1; 0x7E `RemoveDeckCardByNumber` finds the card in the deck, copies it to `0x02017A40+0x544`; 0x7D `QueueSpecialSummon` (0x51B returns 0xA); default message 0x60 |
+
+## Structs and globals
+- `0x02017A40` (effect state): `+0x3E0` phase, `+0x3E1` side, `+0x3E2` counter, `+0x544` an array of card words (u32).
+- `0x02019968` = `0x020192E4 + 0x684` per-player list of card words; `0x02017F84` five card words (hypothesis: the cards revealed by the effect); `0x0201CF90` a byte (bits 1-5 used as a position); `0x03000040 + 6` halfword (`gMain`; bit 1 tested as a "confirm" key flag, hypothesis).
+- `gCardNames + id * 64`: 0x40-byte per-card records (text source for `FormatStr`) (hypothesis).
+
+## Matching tricks (in addition to [[effect-resolve5-c]])
+- **Table pointer as literal vs symbol.** `((const u16 *)0x08622AB4)[CARD_ID11(w)]` instead of `gCardIdToNumber[...]` fixed the register order in `EffectAddRitualCardToHandResolve`; a literal `(u8 *)0x0822C720` in only one of two calls reproduced the ROM's different register in `EffectSummonSameNameFromDeckResolve`. Try switching between the symbol and the literal address when the pool register differs.
+- **Struct view for a 16-bit global at a large offset** (`S15F00->listPos`, `ES->w542`): keeps the ROM's separate `ldr base; ldr #off; add` instead of one pooled literal (`EffectSpecialSummonFromDeckResolve`).
+- **`u16 ids[16]` before `char buf[0x80]`** matched the ROM's stack layout in `EffectPainfulChoiceResolve` (ids at sp+0, buf at sp+0x20); locals are laid out in reverse declaration order.
+- **`(u32)x << 20 >> 20`** (unsigned) for a 12-bit id from a `u16` (`lsl 20; lsr 20`); `& 0xFFF` gives a pooled mask instead (`EffectGraverobberResolve`).
+- **`!(1 & byte) ? 0x8044 : 0x44`** for the inverted polarity (`mov r1,#0x44; cmp; bne; ldr`), and the plain `(1 & byte) ? 0x8065 : 0x65` otherwise.
+- **Destination lifetime before source-row arithmetic.** In `EffectSummonSameNameFromDeckResolve`, declare the initialized destination `u32 *dest = &ES544->card` before the initialized source row `(DuelCard *)&gDuelDecks[ref->player]`, then add `r * 4` to that source. This ordinary C form fixes the last six differing bytes: the ROM forms `player * 0xD64 + base` before adding the deck index. Source-row staging alone, inline row helpers, and initialized pointer input/read-write constraints did not fix it. A bounded one-minute register-allocation permutation pass also did not improve the baseline. The correctly typed `u32 *` destination preserves the exact match and avoids an incompatible-pointer warning from the first successful draft. No compiler hints or ABI changes remain. Exact check: `build/middle_experiments/EffectSummonSameNameFromDeckResolve/unit-check.log`; private successful grid: `deck_source_lifetimes.py`.
+
+## Open problems
+
+Historical (matched in wave 3): remaining `INCLUDE_ASM` were `EffectPainfulChoiceResolve`, `EffectReviveFromGraveyardResolve`, `EffectCyberJarResolve`, each with a decoded draft under `#if 0`. The unit is now fully in C; see [Wave 3 matches](#wave-3-matches-2026-10-0102).
+
+A fresh baseline of `EffectDustTornadoResolve` was 0x1F8 bytes against the ROM's 0x1F4 and differed in more than its old constant-sharing note. Its parked draft reached the ROM's exact 0x1F4 size with only two differing bytes: the first `FindTrapInHand` player argument uses `adds r0,r1,#0` instead of `lsrs r0,r3,#31`. A narrow `u16` card-ID local is lossless after the 12-bit extract and fixes the later id/message register swap. An inline hand-word reader with separate index-byte and player-stride offsets fixes the state-0x7D load order. A read/write constraint on an initialized `int fail=-1` prevents propagation into the second comparison and unwanted sharing with the later minus-one check; constraints on `r` itself created extra saved registers. Lossless signed/unsigned 16-bit stride forms, player-width helpers, count/player staging and input/memory constraints at the original guard did not eliminate the final two bytes. A one-minute register-allocation permutation pass found a zero-difference form by inserting an empty repeated hand-count test inside the zero-count guard. At that point this artificial dead branch was rejected and kept private, and no candidate was enabled. Private evidence: `build/middle_experiments/EffectDustTornadoResolve/two-byte.c`, `minusone-diff.txt`, and `hand_guard_constraints.py`.
+
+## `EffectDustTornadoResolve` enabled (2026-10-01)
+The two-byte draft above now **matches**. It uses the permuter's empty repeated hand-count test inside the zero-count guard and is marked `FAKEMATCH` in the source. Earlier sessions rejected that form as an artificial dead branch. On 2026-10-01 the project began accepting byte-identical, behaviour-neutral fakematches when they are documented, to speed up the remaining functions. **Why it works (hypothesis):** the extra conditional ends CSE's extended basic block before the `FindTrapInHand` call. GCSE then still shares the `lsls r3,..,#31` but not the following `lsrs`, so the ROM's `lsrs r0,r3,#31` reappears. The natural `&&`-chain form also changes the switch layout and is worse. The complete unit `0x115C` matches.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/EffectPainfulChoiceResolve/NOTES.md`, `build/wf/EffectReviveFromGraveyardResolve/NOTES.md`, `build/wf/EffectCyberJarResolve/NOTES.md`.
+
+### `EffectPainfulChoiceResolve` (0x288, start score 124; ordinary C)
+
+Score 124 to 64 to 42 to 20 to 0:
+- One `int i` shared by the 0x7D copy loop and the 0x7C loop (that is why the reversed 0x7D counter sits in r7). Keep 0x7C a real `for` loop: its loop-depth ref weighting gives `ph` r6 and `i` r7; a goto loop swaps them.
+- `sub_08019820(ref->player, CARD_ID(*pw))` takes two arguments (real prototype `(int player, u16 id)`; the unit declares one, so the source calls it through a cast). The id stays live in r1 across the call, which pushes the `ldrb` temporaries to r2/r3.
+- `first = 0` after the `DuelCmd_Push` call; `u32 id`, not `u8 id` (the u8 form dropped the 0x7FF mask); OR order `0x3C600000 | bit << 31 | id`.
+- The last 0x4DA hoist: `CARD_NUMBER(id) == 0x4DA` is shortened to an HImode compare, whose constant becomes a 3-insn chain (savings 2, life 4) that loop.c moves into sl (13*2*4 >= 98 insns). `u32 num = CARD_NUMBER(id); if (num == 0x4DA)` keeps it SImode (savings 1), so it stays in place.
+- Failed: `u16 id` (over the threshold in loop pass 1 but not pass 2, and it changed the AND operand order); `((w >> 12) & 1) << 31` instead of `((w << 19) >> 31) & 1` (23).
+
+### `EffectReviveFromGraveyardResolve` (0x1AC, start score 156; ordinary C)
+
+- Rewritten from the asm on the template of `EffectInspectionResolve` ([[effect-resolve7-c]]): `u8 skip = 4 & byte4`, `int pp = 1 & ref->player` before `ZB(pp, ref->zone)`, the zone check as `CARD_WORD(..) << 20 == 0`. The `1 &` leaves a `movs r5,#1` pseudo that CSE reuses for the later message `1 & byte2` (156 to 24).
+- The zone-count loop needs the `p*0xD64 + z*0x94` address order (a local `ZB2_367E4` macro) while the first zone access keeps the `ZB` order. The `gSummonAction` position bits are `(u32)(gSummonAction << 26) >> 27` on the u8 extern (a bitfield struct widens the read to `ldr`; a plain `<< 26 >> 27` gives `asrs` plus a u16 truncation). The inner switch needs `break` and a single `return 0x64` (24 to 2).
+- Last diff: the `IsCardInGraveyard` argument was `adds r0,r2,#0` where the ROM recomputes `lsrs r0,r3,#31`. `goto ret0` on the zone check let jump1 invert the branch and delete the fall-through CODE_LABEL, so `reload_cse_regs` saw r2 already holding `lshiftrt(r3,31)`. A plain `return 0` there keeps a label until after reload, which blocks reload CSE (score 0).
+
+### `EffectCyberJarResolve` (0x2C8, start score 151; FAKEMATCH)
+
+- Inner loop `int j` instead of `s16`. The second message reads halves through `h = (u16 *)deck`; CSE turns that into a `mov r8, r4` copy used only after the 3-way join.
+- 0x7F restructured as if/else with one `return 0x7C` after it, an inline `EffCardLevel(type, id)` switch on an int type and a `u32 type` for the `<= 0x14` test (`bhi`); cross-jumping then keeps the 0x7D tail as the shared `return 0x7C`.
+- A real array extern `struct PFA gPF_020192E4[2]` (deck at `+0x7C4`): with an array the base `ldr r7` comes before the index; the pointer-cast macro loaded it after.
+- Key register fix: index with `static inline int EffSideIndex(int p) { return (u8)p & 1; }`. The QImode AND sees a non-REG first operand (a subreg of an int), so `expand_binop` swaps the forced const-1 QI register into op1 and the andsi3 expander force_regs only the side copy. No SImode register ever holds 1, so `1 - EFF_SIDE` gets a fresh `movs r0,#1` and the shared 1 drops to sl.
+- FAKEMATCH: `asm volatile("" ::: "memory")` after `EFF_CNT = 5` in 0x7C. The ROM rereads `EFF_SIDE` there, but cse2 disambiguates the two byte stores through their REG_EQUAL addresses and forwards the stored value.
+- Failed: `1 & EFF_SIDE`, `% 2`, `(u8)(EFF_SIDE & 1)`, `u8 one = 1` (promoted to SImode, still shared), bitfield views, `(u8)(s8)` casts; `asm("" : "+r")` on the minus constant (CSE made it a copy of the shared reg) or on the mask (pushed `one` to r5); a local `u8 *e` base (fixes the reread but is not the PRE copy); `volatile EFF_CNT`; an `EffPlayer()` inline returning `&gPF[...]` (reorders the base load).
+- Tool note from the agent: after a Docker daemon restart mid-session, `wf.py check` printed "score: 0 (MATCH)" while Docker was failing; re-verify with `tools/dr python3 tools/check.py <unit>` (a `wf.py` issue not yet recorded on [[agent-tooling]]).

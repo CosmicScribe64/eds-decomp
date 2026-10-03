@@ -1,0 +1,116 @@
+---
+title: Unit ai_turn_steps (CPU turn step handlers 0, 1, 6 and the phase-10 hand choice)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit ai_turn_steps
+
+`0x0805A30C`-`0x0805B3F3`, Thumb, `old_agbcc -O2` ([[compiler-flags]]). Source: `src/ai_turn_steps.c`. Unit status: `unit bytes MATCH`, **4/5 functions in C** after workflow waves 2-3 (2026-10-02: `0x0805B184` in wave 3); 1 stays `INCLUDE_ASM` (`0x0805A30C`, no draft). Before wave 3: 3/5. Continues the CPU AI of [[ai-summon-c]] / [[ai-deck-c]] and feeds [[ai-steps-c]]. Three of the five functions are CPU-turn step handlers invoked through the table `gAiSteps` (dump: step 0 = `0x0805A89D`, 1 = `0x0805AB91`, 2/5 = `0x0805B3F5` (`AiMainPhase`), 3 = `0x0805B885`, 4 = `0x0805BB81`, 6 = `0x0805A8E9`, 8 = `0x0805D4D1`); each returns 0 to keep running or 1 when done. All names are proposals.
+
+> [!warning] Contradiction: the unit is now 5/5
+> The count above (4/5) predates later matches. `src/ai_turn_steps.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 5 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x0805A30C` | 0x590 | INCLUDE_ASM (no draft yet) | `AiPickHandCard` (hyp.) | phase-10 hand choice: gate `CountFreeMonsterZones(1)`; ~20 scripted checks pairing a trigger (`gDuelCtrl+4 & 0x200` + `AiCountExodiaOnField`, `AiCountExodiaInDeck`, `CountMonsters(0)` counts, `CountGraveyardCardsOfType(1, type)`, hand counts `PLAYER(1)` > 2 && `PLAYER(0)` > `PLAYER(1)+2`, opponent deck top `gDuelDecks[0..4]` number switch, `CountActiveCardsOnField2(0, n)`, `CountSpellTraps`, `CountActivatableSetCards(0)`) with `idx = FindHandCardByNumber(1, cardNo)` returning the hand index at once; then max zone value `GetZoneCardAtk(0, 0..4)` and a best-weight scan over player 1's hand (weight 0 for types 0x15-0x17, 0xFA0 for 0x18, else `(stats & 0x1FF) * 10`, needs `sl < w <= r9` plus the `CanSummonFromHand` / `AiIsKeyCard(2, num)` / `IsSpecialSummonOnly` / `AiHasTributesFor` filters), then a second scan returning the first hand card with `CardCost <= 4` and type <= 0x14 passing the same three filters. Returns -1 = nothing. |
+| `0x0805A89C` | 0x4C | **matching** | `AiStep0PickStrategy` | step 0: clear the AI work area `0x02015F00` (0x1B28 bytes, `MemClear16`), queue message `0x8052` (`DuelCmd_Push(0x8052, 0, 0, 0)`); if the scripted-strategy picker `AiChooseStrategy()` (see [[ai-steps-c]]) returns non-zero, set `gAiState.step = 8` and clear `+2..+5` (jump to step 8), return 0; else return 1 (runner advances to step 1) |
+| `0x0805A8E8` | 0x2A8 | **matching C**, initialized hints | `AiStep6HandScan` (hyp.) | step 6: sub-state `+2` (0 = init: `+3 = 0`, `+2++`), then scan player 1's hand (`+3` index): `w = gDuelHandP1[i] & 0xFFFFF`, `r7 = FindFreeSpellTrapZone(1)` (abort with return 1 when < 0), number switch: 0x3FB/0x3FE/0x402 check `CountHandCardsByNumber(0, 0x14F/0x150/0x3F0) > 0`; 0x405/0x482 scan opponent zones 5-9 for a face-down type-0x16 card (`gDuelZones + 0x94*z`, type 0x16, `flags6 & 2 == 0`) and then any type-0x16 in opponent's hand; 0x406/0x409 same for type 0x15; 0x4DD/0x522 never; default: own type 0x15, or type 0x16 with spell-subtype (`stats & 0xE0000) >> 17 == 5, or number 0x136. On a hit: `PayChainEnergyCost(1)` and `DuelCmd_Push(0x80C5, w, ((i & 0xF) << 4) | (r7 & 0xF), 0)`, return 0 (without `+2++`). Otherwise `+3++` while `gUnk_0201A04A` (= `PLAYER(1).handCount`) != 0 and `+3 <` it; at the end `+2++`, return 0 |
+| `0x0805AB90` | 0x5F4 | **matching C**, initialized hints | `AiStep1CardScan` (hyp.) | step 1: phase switch on `+0xA` (0/1/2, else return 1). Phase 0: `+6` = 0, then for `f6` = 0..0x13 over the s16 card numbers `gAiSimpleSpells[f6]` (0x151-0x155, 0x3EE, 0x15A, 0x156-0x15A, 0x3EF, 0x3F1, 0x3EC, 0x437, 0x29F, 0x438, 0x425, 0x427, 0x42F): gate `CountActivatableSetCards(1, num)`; per-number `ok` tests (LP checks against `PLAYER(0).lp` / `PLAYER(1).lp` with constants 500/1000/1500/2000*handCount, `CountFaceUpSpellTrapsOfType(0, 0x15/0x16)`, `CountSpellTraps(0/1)`); numbers 0x3EE/0x3EF and 0x151-0x159 always act. Action: scan player 1's spell/trap zones 5-9 for that number face-down (`+0x91 & 4`) passing `CanActivateFieldCard(sp, 1, z)`, then `DuelCmd_Push(0x807F, z, 0, 0)` + `Chain_AddPending(((z & 0x1F) << 16) | (cardWord \| 0x80200000), 0)`, return 0. `f6 > 0x13` → `+0xA++` and falls into phase 1. Phase 1: same table with gate `AiFindHandCardByNumber(1, num) >= 0`, per-number `ok` tests (0x15A: `lp0 <= 1999 && lp1 > 1500`; 0x42F: `lp1 > 1000 && handCount0 != 0`; 0x425/0x438: `CountSpellTraps(0) > 0 && CountSpellTraps(1) == 0`; ...); action: build a CardRef on the stack (`b2 \|= 1`, `b3 &= 3`, `id = CardNumberToId(num)` via `gCardNumberToId`), `CanActivateEffect(sp, 0, 1)` and `CanPlaceSpellTrapCard(1, id)`; on success `+0xA++`, return 0; `f6 > 0x13` → return 1. Phase 2: if `CountActiveCardsOnField(0, 0x49C)` or `CountActiveCardsOnField(1, 0x49C)` non-zero send `DuelCmd_Push(0x80C5, CardNumberToId(tbl[f6]), ((AiFindHandCardByNumber(1, num) & 0xF) << 4) | (FindFreeSpellTrapZone(1) & 0xF), 0)`, else the same with `\| 0x100` plus `Chain_AddPending(((FindFreeSpellTrapZone(1) & 0x1F) << 16) | (id \| 0x80200000), 0)`; then `+0xA = 0`, return 0 |
+| `0x0805B184` | 0x270 | **matching** (wave 3, 2026-10-02) | `AiStepZoneAttack` (hyp.) | state machine on `+6` (0/1/2, else return 1). 0: `+4 = 0`, `+5 = 0`, `+6++`, falls into 1. 1: for zone index `+5` 0..4 of player 1 (`0x0201A070 + 0x94*z`): empty or face-up (`flags6 & 2`) → `+5 = z+1`; else if `HasFlipEffect(CARD_NUMBER(id), 0) == 0` → `+5++`; else a 19-case number switch (0x27, 0x53, 0x65, 0xDF, 0x109, 0x1AB, 0x1F4, 0x21B, 0x21C, 0x231, 0x246, 0x249, 0x24E, 0x259, 0x262, 0x280, 0x2FA, 0x452, 0x48B) deciding `+6++` (accept zone) vs `+5++` (next zone) via `CountMonsters(0/1)`, `CountSpellTraps(0)`, `CountActivatableSetCards(0, num)`, `CountActiveCardsOnField2(0, 0x148/0x15B)`, `CountGraveyardCardsOfType(1, 0x15/0x16)` and the `PLAYER(1).handCount > 2 && PLAYER(0).handCount <= hc1+2` test. 2: `QueueFlipSummon(1, +5)` (queue attack/activation from that zone), `+5++`, `+6 = 1`, return 0 |
+
+## Structures and globals
+
+- `AiState` `gAiState` (see [[ai-steps-c]]): `+1` step index into `gAiSteps` (step 0 sets it to 8), `+2` step-6 sub-state, `+3` step-6 hand index, `+4`/`+5` cleared by step 0, `+5` step-7 zone index, `+6` step-1 loop counter over `gAiSimpleSpells` (and step-7 sub-state 0/1/2), `+0xA` step-1 phase (0/1/2).
+- `gAiWork` (0x1B28 bytes): AI work area cleared by step 0 (covers `+0x1B20` flags and `+0x1B24` commit block, see [[ai-steps-c]]).
+- `DuelPlayer` `gDuelPlayers[2]` (0xD64 each): `+0` u16 `lp`, `+2` handCount, `+3` deckCount. Player 1 = CPU: base `0x0201A048`, hand `0x0201A6CC` (u32 card words, id = `(w << 20) >> 20`), handCount also reachable as the byte symbol `0x0201A04A`; zones `0x0201A070` (0x94 each, 0-4 monsters / 5-9 spell+trap, `flags6` bit 1 = face up, `+0x91` bit 2).
+- `gDuelDecks` = player 0's deck (`0x020192E4 + 0x7C4`); `AiPickMonsterToSet` reads its first 5 entries.
+- `gAiSimpleSpells`: s16 table of 20 card numbers (0x151 0x152 0x153 0x154 0x155 0x3EE 0x15A 0x159 0x158 0x156 0x157 0x3EF 0x3F1 0x3EC 0x437 0x29F 0x438 0x425 0x427 0x42F) scanned by step 1; read as `ldsh` (signed) for the switches and `ldrh` for the id conversion.
+- Card tables: `gCardIdToNumber` (id → number), `gCardStats` (stats: type = bits 20-24, spell subtype = bits 17-19, `CardCost` = bits 25-28, weight = bits 0-8), `gCardNumberToId` (stored card → id, `CardNumberToId`: 0xFFFF → 0, <= 0x7CF direct, else `[(n - 0x7D0) & 0x7FF] + 1`).
+- Stack CardRef in `AiStepPlaySimpleSpells` (0x14 bytes at sp, +0x14 spill): `+0` u16 id, `+2` byte (`|= 1` = player 1 flag), `+3` byte (`&= 3` clears the kind bits).
+
+## Matching tricks
+
+- **Constant propagation through switch edges:** in the case-0 body of a switch on a byte, `p->f4 = 0` compiles to `strb r0, [r4, #4]` reusing the switch value register (r0 is known to be 0 on the `beq` edge), so no `mov r0, #0` is needed (`AiStepStartMainPhase`, `AiStepPlaySimpleSpells`).
+- A `cmp r, #0; ble/bne <false>` followed by fall-through comes from `if (cond) { ...; return 0; } break;`, because gcc places the merged body block right after the test (`AiStepFlipSummon`).
+- Writing the same state increment in two different access forms (pointer `p->f6++` vs direct `gAiState.f6++`) keeps the two tail blocks unmerged, as in the ROM (`AiStepFlipSummon` `B38A`/`B3BA`).
+- `CountActivatableSetCards(0, num)` inside the number switch needs the switch operand kept in `r1`. Writing the second argument as the same expression (`CARD_NUMBER(id)`) lets gcc reuse it; the ROM does not call with a garbage `r1`.
+- The phase-10 chooser mixes `idx >= 0` (`cmp #0; blt`) and `idx > -1` (`cmp r, r(-1); ble`, with `-1` materialized once per group via `mov rX, #1; neg rX, rX`). Reproduce each check with the form the ROM uses.
+
+## Nonmatching notes
+
+- **`DuelPlayer` padding bug (fixed in the draft):** the old struct had a stray `pad674[0x10]` before `hand[]` and sized `pad6E4` as `0xD64-0x6E4`, making the struct `0xE54` bytes so `gDuelPlayers[1].handCount` read `0x0201A13A` (+0xE56) instead of `0x0201A04A` (+0xD66). `hand[]` is at +0x684 and the struct is `0xD64` bytes; the ROM's pool word `0xD66` confirms it.
+- `0x0805A8E8`: structure/control flow correct. The ROM keeps the state pointer in r9, `w` in r8 and the `0x7FF` mask hoisted to sl across the `FindFreeSpellTrapZone` call; the build keeps the pointer in sl and rematerialises `0x7FF`. The skip check must be written through the global (`gAiState.f3 >= gUnk_0201A04A`) so gcc reuses the just-incremented `f3` and emits the ROM's `lsls/lsrs; cmp; bcs`. Permuter (corrected base): best score 5245 in 10 min, no score 0.
+- Historical (matched in wave 3): `0x0805B184`: structure/control flow fully decoded (see the `#if 0` attempt). The ROM uses dispatch ptr r4 (dead after the dispatch, reused for `0x7FF`), body ptr r5, zones base r6 and `0x94` in r7; the build keeps the `gCardIdToNumber` table address and `0x7FF` in r6/r7 across the `HasFlipEffect` call, so zones/`0x94` spill to r8 (5 callee-saved vs 4). Case `0x231` must use the body pointer (`q->f6++`, r5), not `p`. Permuter: best score 6595 in 10 min, no score 0. (The `static` helper variant reproduces the dispatch byte-exactly but leaves the body as a separate function.)
+- `0x0805AB90`, `0x0805A30C`: decoded, no draft yet.
+
+## Private card-scan reconstruction (2026-10-01)
+
+`AiStepPlaySimpleSpells` now has a complete private C reconstruction at `build/bigguns-lead2/ai_card_scan.c`; live ASM remains active. The best evaluated private variant (`AiStepPlaySimpleSpells/solo-ai-life-3-1-0/`) has the original 0x5F2 symbol size (0x5F4 source slice including alignment) and 44 normalized instruction-diff lines. It uses fixed card-table views, a bound card-ID local, and explicit free-zone results before message calls. Remaining differences concern address CSE across phases, the field-card extraction, message-literal scheduling and action packing. The initial ordinary form, scalar widths, scope/table-pointer changes, 48 per-phase address variants and a bounded safe permuter search produced no exact match.
+
+1,200 finite ROM/candidate fixtures passed using the existing Thumb interpreter: all 20 table positions, phases 0/1/2/3/255, selected LP/count boundaries and synthetic external callees. Compared return value, full EWRAM, live IWRAM, external call order/arguments and preserved registers/SP. Callee stubs model the written card-reference fields and exercise caller-saved clobbers. This is not proof of equivalence or matching acceptance. Evidence: `verify_ai_scan.py` and that variant's `behavior.json`. The private caller prototype experiments preserve signed table loads; both number-taking callees narrow to 16 bits in the ROM. Their cross-unit declarations still require review before enabling anything. The stack reference deliberately retains the ROM's partial initialization; do not replace reserved bytes with invented values.
+
+> [!warning] Contradiction
+> The older overview describes phase-0 flag +0x91 as belonging to the selected zone. The instructions at 0x0805AD46–0x0805AD58 instead multiply the AI table-position byte `f6` by 0x94 for that read; the card itself comes from zone 5–9. The private reconstruction preserves this observed behavior. The 0x40F test is 200 times hand count, as the immediate/multiply confirms.
+
+## Card scan matched (2026-10-01)
+
+`AiStepPlaySimpleSpells` is enabled: all 1,524 source bytes match (1,522 symbol/code bytes plus alignment). The unit is 2/5 C. Its full 0x10E8-byte image and the entire ROM match. The older private/nonmatching notes above are superseded for this function.
+
+- Separate initialized pointers preserve the phase-0 increment and phase-1 reset lifetimes. Staging the number-table pointer, retained state and stack-record pointer gives the original preheader. Keep the phase-1 success increment expressed through the global so its tail reload remains.
+- A raw card-word local restores extraction. The number lookup uses a GNU statement expression with initialized mask copies; an inline function introduced an extra ID parameter copy. The table-position-based flag access remains exactly as observed, including positions beyond the selected zone.
+- Form the message's packed nibbles before the 0x80C5 literal. For the 0x100 bit, an empty clobber marks the previous r1 scratch dead, followed by an initialized r1 constant seed and ordinary constant copy. A fixed-register copy instead lost the compiler's range information and added unwanted narrowing. No live value is consumed after that scratch clobber.
+- The final card conversion is inline, with an initialized r1 result and r2 table scratch. Its halfword narrowing follows the zone-bit calculation before flags are ORed into the card word. All bound caller-saved values are consumed before the next external call.
+- Seven bindings and seven empty constraints remain after removing five bindings and six constraints in two passes. The field action packing and first raw-card extraction need no hints; all remaining hints are marked FAKEMATCH. Fixed r7 table variants overlapped a live threshold and were rejected.
+
+Both number-taking helpers explicitly decode signed word inputs as u16, matching the original signed table loads and callee entry shifts ([[duel-zones-c]], [[summon-builders-c]]). Predicate definitions now expose their zero-extended word results ([[effect-activation-c]], [[effect-targets4-c]]). The local free-zone helper declaration uses its actual u16 ID parameter. Each complete affected unit is unchanged.
+
+The final candidate passes 2,400 finite differential fixtures: phases 0/1/2 and two invalid phases, all 20 real table entries, LP/count boundaries, randomized non-ID card bits, and message hooks changing the table position before the final reload. Return values, full EWRAM, active IWRAM, calls, preserved registers and SP agree. This is finite evidence alongside exact byte verification. Partially initialized CardRef fields preserve the ROM stores; reserved bytes are not invented.
+
+Evidence: `build/bigguns-lead2/ai_scan_{resume,phases,phase1_stage,field_load,field_mask,field_inline,message_pack,action_inline,message_flag,flag_order,final_table,flag_width,flag_constant,preheader,preheader_ok,minimize,abi,clean,accept}.py`, `verify_ai_scan_complete.py`, `AiStepPlaySimpleSpells/solo-ai-scan-clean/`, and `build/lead-pass27/`.
+
+## Hand scanner matched (2026-10-01)
+
+`AiStepSetSpellTraps` is enabled: all 680 bytes match, as do the full 0x10E8-byte unit and ROM. This unit is now 3/5 C. Its older register-allocation near-miss notes are superseded.
+
+> [!warning] Corrected parked draft and description
+> The former C draft used `0x1F000000` for the card type, conflicting with the original `mov #0xF8; lsl #17`, which gives `0x01F00000` (bits 20–24). The enabled source uses the observed mask. The earlier summary also suggested an opponent-hand scan for both field-type groups: only the 0x405/0x482 group scans the opponent hand; the 0x406/0x409 group scans field zones only. The exact body establishes this distinction.
+
+- Separate the dispatch pointer, loop pointer, outer mask and inner masks. Explicit backedges keep the original loop layout and repeated table loads. Advance the opponent-hand pointer at the tail to retain LDR plus ADD instead of LDMIA.
+- Preserve the source index before the lookup mask copy; type predicates use u16 `ok` so the three number-query calls share the original Boolean conversion. Numbers 0x4DD/0x522 branch directly to the skip tail, not through the Boolean test.
+- Integer address terms preserve the field ADD operand order. Cache the incremented byte index as a word, perform the count load, then narrow for comparison, matching the original store/shift/reload order.
+- Two minimization passes removed 35 bindings and 10 empty constraints. Twenty-four initialized bindings and twelve empty constraints remain, marked FAKEMATCH. A trial that bound the free-zone result in r7 omitted its save and was rejected; ordinary allocation preserves the ABI. Every caller-saved binding dies before an external call.
+- [[duel-cmd-queue-c]] explicitly decodes the message helper's final two word arguments as u16. Keeping only the third word parameter reordered the entry shifts; decoding both in source order preserves all 0x11F4 unit bytes. No extra source coverage is claimed for that interface repair.
+
+The final candidate passes 13,952 finite differential fixtures: all 821 actual card IDs under 16 profiles, phases 0/1/2/255, hand counts through 80, index boundaries, opponent field types/flags, high raw-card bits, negative query results and post-action index mutations. Nine targeted synthetic table-read values exercise the literal special-number cases, including numbers absent from this ROM's ID map; the ROM itself is unchanged. Return, full EWRAM, active IWRAM, calls, saved registers and SP agree. Finite fixtures supplement the exact byte check.
+
+Evidence: `build/bigguns-lead2/ai_hand_{resume,tables,loops,new,refine,scratch,finish,pack,pack_hints,pack_order,message_abi,message_finish,minimize,clean,accept}.py`, `verify_ai_hand.py`, `AiStepSetSpellTraps/solo-hand-clean/`, and `build/lead-pass29/`.
+
+## Frontier audit after the hand scanner match
+
+> [!warning] Contradiction
+> The next paragraph (frontier audit, 2026-10-01) says that removing the hand-count constraints of `AiStepFlipSummon` shortens the branch but combines a required MOV/ADD pair, and that no bounded variant resolved both. The wave 3 match (2026-10-02, `build/wf/AiStepFlipSummon/NOTES.md`) writes that test as the plain global expression `gDuelPlayers[1].handCount <= 2 || gDuelPlayers[0].handCount > gDuelPlayers[1].handCount + 2`. Regmove then produces the `add r0,r2,#0; add r0,#2` pair by itself, the `beq` fits, and the function needs no asm at all. Resolved in favour of the matched source.
+
+Historical (matched in wave 3): `AiStepFlipSummon` remains ASM. `solo-attack-count-ptr-0` reproduces every normalized operation except one conditional branch expansion at 0x0805B298; all complete-unit bytes must still agree before enabling it. Compiler `-dp` annotations show empty constraints and conservative pool alignment inflate the estimated branch span. Removing the count constraints shortens the branch but combines a required MOV/ADD pair. The bounded variants in `ai_attack_{count_liveness,count_constraints,count_volatile,global_tail_forms,threshold_placement,all_hints,count_inline}.py` did not resolve both simultaneously. No coverage is claimed.
+
+`AiPickMonsterToSet` also remains ASM. At 0x0805A5E0 and 0x0805A5FA, the original prepares r0 but calls `CountActivatableSetCards` without an explicit r1 setup. The callee explicitly narrows incoming r1 and passes it to `CountActivatableSetCardsIn`; m2c represents the values using `SECOND_REG` from preceding calls. This is unresolved register-residue behavior, not permission to invent a parameter or use uninitialized C. Preserve the original until a defined matching representation and the actual call-path residue are established.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/AiStepFlipSummon/NOTES.md`.
+
+### `AiStepFlipSummon` (0x270, start score 246; ordinary C)
+
+- **Starting point:** the parked draft in `src/` was a broken copy (unreachable statements after a `return 0;`) and scored 246. The run started from the private near miss `build/bigguns-lead2/AiStepFlipSummon/solo-attack-count-ptr-0` instead, in which every operation matched except one `beq` emitted as `bne; b` at +0x114.
+- **Prototype:** call `CountMonsters` through an `(int (*)(int))` cast (the `B184_Count` macro). The unit header declares it `u16`, but its definition in `duel_card_lists.c` returns `int`, and the `u16` return adds `lsl/lsr` narrowing after every call (128 -> 4).
+- **The long branch:** three empty `asm()` constraints in the 0x21B/0x24E hand-count case each count 2 bytes in `shorten_branches`, which pushed the 0x262 `beq` over the 254-byte estimate. The plain global form `gDuelPlayers[1].handCount <= 2 || gDuelPlayers[0].handCount > gDuelPlayers[1].handCount + 2` gives the ROM's `base+0xD66` address, and regmove produces the `add r0,r2,#0; add r0,#2` pair by itself. A `struct DuelPlayer *pl` local instead splits the address into `+0xD64` and `[r0,#2]`.
+- **No hints left:** with that block plain, every other pin and asm in the function could be removed, including the plain `number = table[CARD_ID(ZONE(q->f5)->card) & 0x7FF]` and the unpinned body pointer. Two separately initialised pointers remain (`p` for the dispatch, `dispatch` -> `q` for the body), and the success increments still mix `q->f6++` and `gAiState.f6++` to keep the ROM's unmerged tails.
+- **Tooling:** `wf.py check` sometimes printed "does not compile" for a variant that compiled fine on a re-run (flaky, possibly concurrent Docker use). See [[agent-tooling]].
+- **Caller (ROM check, 2026-10-02):** a script over the local ROM found no literal `0x0805B185` and no `bl` to `0x0805B184`, and entry 7 of the step table `gAiSteps` is 0. The function therefore looks unreferenced (hypothesis: a removed step-7 handler, matching the "step-7" field names above). The NOTES and the source comment call it "step 6", but step 6 is `0x0805A8E9` (`AiStepSetSpellTraps`).
+
+Related: [[ai-steps-c]], [[ai-deck-c]], [[ai-summon-c]], [[duel-response-c]], [[card-table]], [[decomp-workflow]], [[compiler-flags]].

@@ -1,0 +1,27 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/bustup_runner/Bustup_Init.s"
+	.include "asm/nonmatching/bustup_runner/Bustup_DrawOpponentRecord.s"
+	.include "asm/nonmatching/bustup_runner/Bustup_UnusedOpponentPreview.s"
+	.include "asm/nonmatching/bustup_runner/Bustup_LoadScene.s"
+	.include "asm/nonmatching/bustup_runner/Bustup_ChangeSpeaker.s"
+	.include "asm/nonmatching/bustup_runner/Bustup_Update.s"
+	.include "asm/nonmatching/bustup_runner/CB_Bustup.s"
+	.include "asm/nonmatching/bustup_runner/CB_AutoBustup.s"
+	.include "asm/nonmatching/bustup_runner/GetDialogueIndex.s"
+	.include "asm/nonmatching/bustup_runner/GetDialogueEventId.s"
+	.include "asm/nonmatching/bustup_runner/GetDialogueSpeaker.s"
+	.include "asm/nonmatching/bustup_runner/StartDialogue.s"
+	.include "asm/nonmatching/bustup_runner/GetSceneSet.s"
+	.include "asm/nonmatching/bustup_runner/PlotPixel8bpp.s"
+	.include "asm/nonmatching/bustup_runner/DrawGlyph8bpp.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_DrawStringShadow.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_DrawEventNames.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_ClearEventPanel.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_FlipPage.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_UpdateEventNames.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_SetCursorDate.s"
+	.include "asm/nonmatching/bustup_runner/Calendar_DrawCursorAndHeader.s"

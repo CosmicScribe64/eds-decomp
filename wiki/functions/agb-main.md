@@ -10,7 +10,7 @@ updated: 2026-10-01
 
 | Function | Address | Size | Mode | Unit (current asm) | Match |
 |---|---|---|---|---|---|
-| `AgbMain` | `0x08075F64` | 0x0E | Thumb | `asm/code_080750E0.s` | nonmatching (not attempted) |
+| `AgbMain` | `0x08075F64` | 0x0E | Thumb | `asm/main.s` | nonmatching (not attempted) |
 | `GameInit` (proposed; `GameInit`) | `0x08075DF4` | 0x114 (code 0x08075DF4–0x08075F08, then the pool to `0x08075F64`) | Thumb | same | nonmatching |
 | `MainLoop` (proposed; `MainLoop`) | `0x08075D70` | 0x68 (code up to `0x08075DD8`, then the pool) | Thumb | same | nonmatching |
 

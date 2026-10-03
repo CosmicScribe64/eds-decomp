@@ -20,7 +20,7 @@ struct SceneSet {               /* 0x14 bytes */
     const void *const *anim;    /* NULL-terminated animation track list, or NULL (sets 0-4) */
 };
 ```
-`GetBustupSet` (`GetSceneSet`, [[code-08001364]]) maps a character ID to a set, with a jump table on the ID.
+`GetBustupSet` (`GetSceneSet`, [[bustup-runner-c]]) maps a character ID to a set, with a jump table on the ID.
 
 > [!warning] Contradiction
 > [[graphics-formats]] described `anim` as a "script in .rodata 2 (e.g. `0x08197954`)". The table plugin's decoding shows it is a NULL-terminated list of step-array pointers in the scene/list range `0x0819790C`–`0x0819A9D4`. The step arrays themselves live in `.rodata` 1, and [[rom-map]] reserves the name ".rodata 2" for `0x0819DD64`–`0x081A7A0C`. Resolved in favour of the decoded tables; [[graphics-formats]] is updated.

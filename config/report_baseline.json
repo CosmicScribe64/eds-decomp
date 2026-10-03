@@ -1,0 +1,1 @@
+{"matched_functions": 1976, "note": "tools/check_report.py fails a report with fewer matched functions; raise it when progress grows"}

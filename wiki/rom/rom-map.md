@@ -82,7 +82,7 @@ The driver and the formats are on [[sound-engine]]. This table only pins the ext
 
 > [!warning] Contradiction
 > Two `.rodata` 2 claims changed when the table and sound converters decoded the range (2026-10-02).
-> - **The "three 0x2800 blocks, probably tilemaps"** at `0x0819DD94`/`0x081A0594`/`0x081A2D94` are the HBlank warp tables of `BattleScene_HBlank` ([[code-0805d58c]]): BG2X and BG2Y as `s32[16][160]` (0x2800 each), then BG2PA as `s16[16][160]`. The third table is 0x1400 bytes, not 0x2800, so the UI tables start at `0x081A4194`.
+> - **The "three 0x2800 blocks, probably tilemaps"** at `0x0819DD94`/`0x081A0594`/`0x081A2D94` are the HBlank warp tables of `BattleScene_HBlank` ([[duel-card-anim-c]]): BG2X and BG2Y as `s32[16][160]` (0x2800 each), then BG2PA as `s16[16][160]`. The third table is 0x1400 bytes, not 0x2800, so the UI tables start at `0x081A4194`.
 > - **The sound lookup row** listed "envelope/volume tables", a pitch table starting at `0x081A8D48`, and one PSG frequency table up to `0x081ABC4C`. The decoded layout is the four tables above. The pitch table starts at `0x081A8A0C`, and the old frequency range holds two tables.
 >
 > Both were re-checked against the ROM for this page: the block sizes, and every value of the pitch and frequency formulas. Resolved in favour of the decoding.
@@ -118,7 +118,7 @@ The `tables_game` converter names each sub-table and writes it as `tables/rodata
 | `0x081A7970`, `0x081A79A4` | `password_steps`, `card_trading_steps` | scene step tables |
 | `0x081A79E8`, `0x081A79F4` | `sound_channel_map`, `se_variant_channel_order` | u8[12]; u8[4][6] (read through `gSeVariantTrackMap`), ending exactly at `0x081A7A0C` |
 
-The OAM frames are 8-byte OAM attribute entries (attr3 always 0). The animation scripts that use them are in `.rodata` 1 at `0x08086C54`–`0x08087338`. Each step is `{u8 frames; u8 count; u16 pad; const OAM *data}`. In `src/code_080784E4.c` the second byte is still `unk1`. The `tables_code` reading of the animation code (`AnimBlockInit`, `AnimStateTick`, `OamListAddSpriteGroup`) treats it as the number of templates drawn, and it matches each frame's OAM count ([[scene-sets#Animation]]).
+The OAM frames are 8-byte OAM attribute entries (attr3 always 0). The animation scripts that use them are in `.rodata` 1 at `0x08086C54`–`0x08087338`. Each step is `{u8 frames; u8 count; u16 pad; const OAM *data}`. In `src/text_render.c` the second byte is still `unk1`. The `tables_code` reading of the animation code (`AnimBlockInit`, `AnimStateTick`, `OamListAddSpriteGroup`) treats it as the number of templates drawn, and it matches each frame's OAM count ([[scene-sets#Animation]]).
 
 ### Font bank (`0x081C0000`–`0x0822C720`)
 See [[font]].

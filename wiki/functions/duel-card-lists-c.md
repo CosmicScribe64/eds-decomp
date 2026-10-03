@@ -1,0 +1,150 @@
+---
+title: Unit duel_card_lists (deck lists, zones, field queries)
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit duel_card_lists
+
+`0x08007994`–`0x08008A1B`, Thumb, `old_agbcc -O2`. Source: `src/duel_card_lists.c`.
+Duel-state helpers: the per-player deck / fusion-deck lists, placing a card in a field zone, zone link lists, and "is card X on my field" queries. Related: [[card-detail-c]] (same card-subtype helper), [[duel-zones-c]].
+
+Unit status: `unit bytes MATCH`, **32/32 functions in C** after workflow wave 3 (2026-10-02: `0x08007D50`, `0x08008940` in wave 3); none stay `INCLUDE_ASM` (verified with `tools/check.py duel_card_lists`). Before wave 3: 30/32.
+
+## Shared headers
+
+The unit uses `include/duel.h` (it does not need `include/main.h`: it never touches `gMain`).
+The card, zone and player structures (`struct DuelCard`, `DuelZone`, `DuelPlayer`, `DuelState` and
+`DuelZonesPlayer`) and the globals `gDuel` / `gDuelPlayers` / `gDuelZones` now come from
+that header; the unit's own six struct definitions (`DuelCard`, `DuelZone`, `DuelZoneBits`,
+`DuelPlayer`, `Duel`, `DuelZonesPlayer`) and its three global `extern`s were deleted. `gSaveData`
+(save image) is not in a shared header and keeps its local `struct SaveData`.
+
+Local views kept (canonical field differs; see the comments in `src/duel_card_lists.c`):
+
+- `struct DuelCardBit18`: canonical `DuelCard` has `unk13:7` over bits 13–19 and `flag20` at bit 20, so
+  the bit-18 flag `0x08007C58` clears has no canonical name.
+- `struct DuelZone90`: canonical `DuelZone` stops at `+0x8C`; `0x08007B24` clears the u32 bitfield at
+  `+0x90` bit 18 (the ROM's `+0x92 &= 0xFC03`).
+- `struct DuelZoneFlags`: canonical `DuelZone` declares `+0x06` as the bitfields `flag6_0`/`flag6_1`, but
+  the zone searches read those bits as plain byte masks (`mov #2; ldrb; and`) and need the `[rn,#6]`
+  displacement (the `+0x06` store sites in `0x08007A4C`/`0x08007B24` do use canonical `flag6_0`/`flag6_1`).
+- `struct DuelSerial` (alias `gUnk_020192E0_serial asm("gDuel")`): canonical `DuelState` starts
+  with `u32 unk0`, but this unit increments the placement serial as a `u16` at `+0x00`.
+
+## Functions
+
+| Address | Size | Status | Purpose | Proposed name |
+|---|---|---|---|---|
+| `0x08007994` | 0xB8 | matching | Monster (type ≤ 20) with subtype 2 | |
+| `0x08007A4C` | 0xD8 | matching | Put a card into a zone: clear, copy word, stamp serial, flags, clear `unk26` bit, flag +0x8C bit 4 for `IsToonMonster` cards | `DuelZone_Place` |
+| `0x08007B24` | 0x134 | matching | Place a card in zone 5+zone (+0x2E4), or zone 10 (+0x5C8) for type-22 subtype-2 cards; clears/inits the +0x90 flags, stamps serial | |
+| `0x08007C58` | 0x88 | matching | Put a card on top of the deck (clears card bit 18) | `Deck_PutTop` |
+| `0x08007CE0` | 0x38 | matching | Append a card to the bottom of the deck | `Deck_PutBottom` |
+| `0x08007D18` | 0x38 | matching | Append to the fusion deck (hypothesis) | |
+| `0x08007D50` | 0x118 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | Bring a card with number `cardNo` to the top of the deck, past the run already on top. **Original bugs:** loop bound uses `PLAYER(i)` (loop index), final copy passes the top card word as the destination pointer | |
+| `0x08007E68` | 0x68 | matching | Shuffle: `n * deckCount` random swaps (`Random() % deckCount`) | `Deck_Shuffle` |
+| `0x08007ED0` | 0x78 | matching | Take deck[idx] into `*out`, close the gap | `Deck_TakeAt` |
+| `0x08007F48` | 0xA4 | matching | Remove the first deck card equal to a card word | |
+| `0x08007FEC` | 0xC8 | matching | Take the first deck card with a given card number | `Deck_TakeByNumber` |
+| `0x080080B4` | 0x24 | matching | Draw: take deck[0], add it to the hand (`AddCardToHand`) | `DrawCard` |
+| `0x080080D8` | 0xA4 | matching | Same as `0x08007F48` for the fusion deck (+0x005 count, list at +0xA44) | |
+| `0x0800817C` | 0xFC | matching | Load player 0's deck / fusion deck from the save image (`gSaveData` +0x2008 / +0x209E, sizes +0x20C8 / +0x20CC) | `LoadPlayerDeckFromSave` |
+| `0x08008278` | 0x28 | matching | Clear one zone | |
+| `0x080082A0` | 0x60 | matching | Remove link `idx` from a zone's link lists | |
+| `0x08008300` | 0xBC | matching | Card number → index 1–14 (329–334, 1069, 1125–1130, 1547), else 0 | |
+| `0x080083BC` | 0x70 | matching | First face-up zone 0–10 (≠ skip) with card number | |
+| `0x0800842C` | 0x70 | matching | Byte-identical copy of `0x080083BC` | |
+| `0x0800849C` | 0x88 | matching | Count face-up zones 0–10 (≠ skip, +0x91 bit 3 clear) with card number | |
+| `0x08008524` | 0x14 | matching | `CountActiveCardsOnFieldExcept(player, no, -1)` | |
+| `0x08008538` | 0x78 | matching C | Count magic/trap zones 5–9 with card number and +0x91 bit 3 clear | |
+| `0x080085B0` | 0x5C | matching | Count face-up monsters with `GetZoneCardType(player, i) == value` | |
+| `0x0800860C` | 0x5C | matching | Count face-up monsters with `GetZoneCardAttribute(player, i) == value` | |
+| `0x08008668` | 0x64 | matching | Card 954 face up in zones 5–9 | |
+| `0x080086CC` | 0x64 | matching | Count face-up monsters with card number | |
+| `0x08008730` | 0x64 | matching | First face-up monster zone with card number, or -1 | |
+| `0x08008794` | 0x58 | matching | Count monster zones with card number | |
+| `0x080087EC` | 0x74 | matching | Count face-up monsters with card number and flag bit 0 == arg | |
+| `0x08008860` | 0x44 | matching | Count occupied monster zones | |
+| `0x080088A4` | 0x9C | matching | Count occupied monster zones, optionally face-up only / bit 0 clear only | |
+| `0x08008940` | 0xDC | **matching** (wave 3, 2026-10-01; FAKEMATCH) | Zone usable (hypothesis): empty, bit clear in the player's 5-bit mask (bits at +0x0B/+0x0C), no kind-2 link to card 1320 | |
+
+## Data layout
+
+- `gSaveData` (`0x02011C20`) deck fields: +0x2008 u16 deck card IDs, +0x209E u16 fusion deck card IDs, +0x20C8 deck size, +0x20CC fusion deck size (from `0x0800817C`; array lengths 75/21 are hypotheses from the offsets).
+- `0x020192E0` u16: placement serial counter (stamped into zone +0x04). The per-player structs follow at `0x020192E4` (2 × 0xD64). Code addresses both from one base register; the canonical view is `struct DuelState gDuel` (`duel.h`), with this unit's `struct DuelSerial` view for the `u16` serial at +0x00.
+- Per player (0xD64): +0x02 hand count, +0x03 deck count, +0x04 count of list +0x904, +0x05 fusion count, +0x26 u16 bit per zone, +0x28 11 zones × 0x94, +0x684 hand[80], +0x7C4 deck[80] (deck[0] = top), +0x904 graveyard[80] (count at +0x04, per [[duel-zones-c]]), +0xA44 fusion deck[80] (hypothesis), +0xB84 banished list[80] (count at +0x06), +0xCC4 u16 banished info[80].
+- Zone (0x94): +0x00 card word (bits 0–11 card ID), +0x04 serial, +0x06 bit 0 = ?, bit 1 = face up (hypothesis), +0x07 bits 2 and 5 set on placement, +0x0A u16 links[32], +0x4A u16 linkKinds[32], +0x8A numLinks, +0x8C bit 4, +0x90 u32 bitfields (bit 11 tested as byte +0x91 & 8).
+
+## Matching tricks
+
+- **Card ID through a `struct DuelCard *` cast** (`CARD_ID(ptr)`): the ROM reads the whole word (`ldr; lsl #20; lsr #20`, or `lsl #21; lsr #20` when the `& 0x7FF` index follows). `list[i].id` on the array element gives `ldrh` instead.
+- **`u16 id`** for the ID local makes GCC keep the `0x7FF` mask, not the table address, in a register in the zone loops; some loops need `u32 id` instead (`0x08008668`).
+- **Zone flags are tested as byte masks** (`mov r0,#2; ldrb; and`), which a `u8` bitfield does not produce (it gives `lsl #30`). Tests use `ZONE_FLAGS(zone)` (`struct DuelZoneFlags`, `[rn,#6]`); the stores in `0x08007A4C`/`0x08007B24` do use the canonical `DuelZone` bitfields `flag6_0`/`flag6_1`.
+- **Zone address order**: the loops compute `base + (zone*0x94 + player*0xD64)` (`ZONE_PTR`) or with the two terms swapped (`ZONE_PTR2`). Which one matches depends on the function; `&PLAYER(p).zones[z]` (base folded to `0x0201930C`) matches `0x080082A0`.
+- **Inline list helper**: `DeckRemoveAt()` (decrement count, shift down) is a `static inline` used by `0x08007ED0` and `0x08007FEC`; the inlined copy recomputes the player offset, as in the ROM. A non-static `inline` definition gets emitted at the end of the file in GCC 2.95, so don't use that.
+- Deck/list entries written in a loop: take a pointer to the entry first (`struct DuelCard *c = &list[i]; c->id = ...; c->unk12 = 0;`), as in `0x0800817C`.
+- Shuffle loop: `n *= deckCount; for (i = 0; i < n; i++)` gives the ROM's count-down `bne` loop.
+- `for (i = idx; i < count; i++)` with a separate `i` (not reusing the parameter) is needed in `0x08007ED0`.
+- **Whole-word list search:** in `0x08007F48`/`0x080080D8` take the entry address in a local first
+  (`struct DuelCard *entry = &PLAYER(player).deck[i]; if (*(u32 *)card == *(u32 *)entry) ...`).
+  Writing the array access inline in the comparison made GCC fold `i*4` into the pointer and swap the
+  two loads; the local keeps the ROM's separate induction variable and load order.
+- **Fusion-deck removal:** `0x080080D8` uses a `static inline FusionRemoveAt` (count +0x005, list +0xA44),
+  the fusion counterpart of `DeckRemoveAt`; its inlined copy reloads the base.
+- **Permuter `do { ... } while (0)` group:** `0x080087EC` only matched when the whole loop was wrapped in
+  `do { ... return count; } while (0)` (a scheduling/FAKEMATCH grouping), found by the permuter.
+- **Signed-byte lvalue forces `mov+neg`:** `~4`/`~8`/`~0x10` byte clears in `0x08007B24` only came out as
+  the ROM's `mov #n; neg` when the lvalue was `s8 *`, not `u8 *`; otherwise GCC narrows them to the
+  immediates `0xFB/0xF7/0xEF`.
+- **Bitfield store for the +0x92 clear:** `z->unk90_18 = 0;` (u32 bitfield) gives the ROM's
+  `ldrh rX,[z+0x92]; and rX,=0xFFFFFC03; strh`. A plain `*(u16 *)&z[0x92] &= 0xFFFFFC03` folds the
+  constant to `0xFC03`.
+- **Reload a table address through a local:** in `0x08007A4C` writing
+  `const u16 *tab = gCardIdToNumber; number = tab[CARD_ID(card) & 0x7FF];` stops GCC hoisting the literal
+  pool load above the card-word load, matching the ROM.
+- Historical (both matched in wave 3, see below): **Parked drafts** (near-misses, background permuter picks them up): `0x08007D50` (second-loop word mask
+  now folds like the ROM, allocator differs throughout) and `0x08008940` (GCC strength-reduces both
+  `links` and `linkKinds`; the ROM indexes `links[i]` and pointer-walks `linkKinds`). `0x08008538` was
+  resolved by the verified C below.
+- **Tooling note:** Docker's view of `src/` can lag right after a host write (virtiofs). A check started immediately after an edit may compile a truncated file, so wait about a second.
+
+## Magic/trap number count match (2026-09-30)
+
+`CountEnabledSpellTrapCards` matches all `0x78` bytes as ordinary C. Explicit initialized `offset`, `zoneBase`, `zones` and `mask` locals preserve the ROM's separate player stride, base address and derived zone array. Initialize `i = 5` before those address calculations. Inside the loop, use `u32 stride = i * 0x94`, then `struct DuelCard *entry = (struct DuelCard *)((u32)zones + stride)` before reading `u16 id`. This separates the two address additions, producing the original operand order; `&zones[i]` had the equivalent addition in reversed operands. The flags-byte expression still uses `zoneBase[offset + i * 0x94 + 0x91]` independently.
+
+All temporary number/mask register pins and empty constraints were removed and the isolated bytes stayed exact. The enabled function needs none. `tools/dr python3 tools/check.py duel_card_lists` confirms all `0x1088` unit bytes match; 30/32 functions are now C, with `07D50` and `08940` remaining assembly (historical: both matched in wave 3). The earlier mask/ip allocation near miss is resolved.
+
+## Word-return declaration reconciliation (2026-10-01)
+
+`CountMonsters` now declares its verified zero-extended result as `int`, agreeing with the full-register consumers in [[ai-strategy-c]]. Explicit halfword casts preserve nonconstant results. Its complete unit and the full ROM remain byte-exact; this adds no coverage by itself.
+
+## 2026-10-01 filtered-zone count word result
+
+`CountMonstersFiltered(int player, u16 needFaceUp, u16 needBit0Clear)` now returns `int` with an explicit `(u16)count`. Its actual 0..5 result, entry argument narrowing, and complete unit bytes are unchanged. This agrees with the direct full-register comparison in [[ai-deck-c]]. Evidence: `build/bigguns-lead2/CountMonstersFiltered/solo-step-b-word-count/` and the full-ROM check in `build/lead-pass26/`. No new coverage is attributed to the declaration repair.
+
+## Wave 3 matches (2026-10-01/02)
+
+Both use FAKEMATCH forms. Working notes: `build/wf/MoveDeckCardNumberToTop/NOTES.md`, `build/wf/IsMonsterZoneFree/NOTES.md`.
+
+### `MoveDeckCardNumberToTop` (0x118, start score 125; FAKEMATCH)
+
+- Both `CopyDuelCard` calls pass a card word by value (r1 = the loaded word, r0 = the `deck[0]` word), so the original called it without a prototype with `struct DuelCard` values. The C calls it through a `void (*)()` cast: `(&tmp, c)` and `(PLAYER(player).deck[0], &tmp)`. Both original bugs in the table are reproduced. (The parked draft also had a stray `return` before the last call.)
+- Loop 2 reads `struct DuelCard c = *&PLAYER(player).deck[i];`; plain `PLAYER(player).deck[i]` builds the address as base+off+0x7C4 and GCSE keeps the base alive.
+- Loop 1 needs `u16 id = CARD_ID(...)` plus a `u32 mask = 0x7FF` local: the mask stays in a register and the table load is short-lived, so loop.c pass 1 moves neither, the loop-1 deck-base load and the GCSE copy for loop 2 stay adjacent, and cse2 swaps them (ROM `mov ip, r1; mov sl, ip`). The u16 also lengthens loop 1, so `cardNo` (r7) loses to loop 2's constant 1 (r6) in global-alloc priority.
+- FAKEMATCH: the loop-2 base (deck base - 0x7C4) still won ip over the deck base (priority 3/30 vs 4/82). `register int r9 asm("r9"); asm volatile("" : "=r"(r9));` at the top marks r9 as used, so global alloc's pass 0 gives the loop-2 base r9 and the deck base gets ip. A non-volatile asm is deleted and does nothing.
+- Diagnosis: `roles.py`/`prio.sh` in the work directory print priority (refs/live) and hard register of the key pseudos per variant. A near-miss route (score 12: `u8 pl = player & 1` and `cardNo = (u16)(s16)cardNo` twice) failed only on reload's register choice, because of a duplicated multiply.
+
+### `IsMonsterZoneFree` (0xDC, start score 116; FAKEMATCH)
+
+Returns 1 if zone (player, zone) is free: card ID 0, its bit in the player's 5-bit zone mask (player `+0x0B` bits 4-7 and `+0x0C` bit 0) clear, and no kind-2 link to a zone holding card number 1320. The mask is read from `0x0201930C - 0x28 + p*0xD64` = player base `0x020192E4 + p*0xD64`, so it is the same 5 bits as `removedMask` (`+0x08` bits 28-32, monster zones whose card is temporarily banished) in [[duel-zones-c]]. Five fixes, in order of discovery:
+
+1. Links read as `u8 lp = z->links[i]; u16 lz = z->links[i] >> 8;` through the local `z`. Narrowing a mem gives `ldrb` from the same address, and `(z + 10) + i*2` is not a giv because loop.c does not hoist `z + 10` (life 1, "not desirable"). `*(u8 *)&z->links[i]` makes the address a giv (strength-reduced, wrong).
+2. `player & 1` is evaluated first only as a macro or inline argument: a `static inline ZoneAt8940(p, z)` returning `base + (z * 0x94 + p * 0xD64)` gives the ROM order (and; zone*0x94; p*0xD64; add; add base), both in the prologue and in the inner lookup `(lp & 1, lz)`.
+3. Zone mask: a packed `u16 zoneMask:5` bitfield straddling `+0x0B`/`+0x0C`. `extract_split_bit_field` ORs `(part2, part1)`, the ROM's `orrs r1, r2` operand order; the explicit `(pl[0xB] >> 4) | ((pl[0xC] & 1) << 4)` ties the wrong register.
+4. FAKEMATCH: `linkKinds` is walked by a pointer started at `((p*0xD64 + 0x4A) + z*0x94) + base`. loop.c must find that giv in pass 1 with the multiplications still visible, which needs the base load hoisted in pass 1. A second inline `ZoneAtB8940` loads the base into a local first, which puts it early in the movable list; the giv's add order follows `zone94 + pD64 + base`.
+5. FAKEMATCH: `numLinks` is hoisted to r5 by loop pass 1 only when the loop test recomputes the zone address (`i < ZoneAt8940(player & 1, zone)->numLinks`) instead of using `z`; its movables match the `linkKinds` ones, so the final load is forced out. An explicit `n = z->numLinks` scored 12 (loaded straight into r5, wrong order); `int` locals hoist `numLinks` in pass 2, after 1320, so the two swap r4/r5.
+
+Measured loop.c threshold model (a loop without calls; from experiments, not checked against the loop.c source): T starts at 26 and drops by 3 for every insn moved (forced moves included); a movable is moved when `T * savings * life >= insn_count`. Forced moves ("cond forces N") skip the test.

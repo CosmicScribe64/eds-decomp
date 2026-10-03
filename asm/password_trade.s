@@ -1,0 +1,26 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/password_trade/Password_RollAndCheck.s"
+	.include "asm/nonmatching/password_trade/Password_RevealAndGiveCard.s"
+	.include "asm/nonmatching/password_trade/Password_ShowError.s"
+	.include "asm/nonmatching/password_trade/Password_FadeOut.s"
+	.include "asm/nonmatching/password_trade/Password_ShowUsed.s"
+	.include "asm/nonmatching/password_trade/CB_Password.s"
+	.include "asm/nonmatching/password_trade/CardTrading_LoadObjTiles.s"
+	.include "asm/nonmatching/password_trade/CardTrading_DrawMenu.s"
+	.include "asm/nonmatching/password_trade/CardTrading_ClearState.s"
+	.include "asm/nonmatching/password_trade/CardTrading_InitVideo.s"
+	.include "asm/nonmatching/password_trade/CardTrading_FadeIn.s"
+	.include "asm/nonmatching/password_trade/CardTrading_HandleInput.s"
+	.include "asm/nonmatching/password_trade/CardTrading_UnusedReturnFalse.s"
+	.include "asm/nonmatching/password_trade/CardTrading_FadeOut.s"
+	.include "asm/nonmatching/password_trade/CardTrading_SelectCard.s"
+	.include "asm/nonmatching/password_trade/CardTrading_ThrowCard.s"
+	.include "asm/nonmatching/password_trade/CardTrading_ReverseThrow.s"
+	.include "asm/nonmatching/password_trade/CardTrading_Exchange.s"
+	.include "asm/nonmatching/password_trade/CardTrading_ShowReceivedCard.s"
+	.include "asm/nonmatching/password_trade/CB_CardTrading.s"
+	.include "asm/nonmatching/password_trade/CardTrading_UnusedCallbackWrapper.s"

@@ -13,7 +13,7 @@ in a different register than the ROM did, and why. Possible causes are global-al
 local-alloc and reload rotation. For differences that the allocation order can fix, it also says what in the
 source has to change, and it checks that answer by recompiling. It ships with `tools/regoracle_agbcc.patch`, a
 tracing patch for agbcc. Both were added in commit `d77fcef` (2026-10-02), together with the match of the last
-function, [[code-08044224]], where the region workers used it.
+function, [[effect-target-collect-c]], where the region workers used it.
 
 It automates the manual method of [[matching-tricks#Register allocation priority and reload rotation]]: reading
 `.greg`/`.lreg` dumps, computing priorities and tracing `last_spill_reg`.
@@ -112,7 +112,7 @@ and rerun `--verify-compiler`. The next run rebuilds every tree whose stamp no l
   - Selftest was not re-run here because it rewrites `build/regoracle/<func>/`.
 
 ## Use on `CollectEffectTargets`
-The six region workers of the last round ([[code-08044224#How it matched (2026-10-02)]]) used it as follows:
+The six region workers of the last round ([[effect-target-collect-c#How it matched (2026-10-02)]]) used it as follows:
 - They used its differing-line count as a second metric next to `check.py`. For example, r1B went from 183 to
   129 lines. r1C's scratch build combining the fixes for 0x3FA, 0x400, 0x41E, 0x439 and 0x47B was at 68.
 - The solver asked for **live +3 on pseudo 5415** in case 0x439. Three dead stores supplied exactly that

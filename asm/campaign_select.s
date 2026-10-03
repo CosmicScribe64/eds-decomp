@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/campaign_select/Calendar_DrawMonth.s"
+	.include "asm/nonmatching/campaign_select/Calendar_Init.s"
+	.include "asm/nonmatching/campaign_select/Calendar_FadeIn.s"
+	.include "asm/nonmatching/campaign_select/Calendar_HandleInput.s"
+	.include "asm/nonmatching/campaign_select/Calendar_FadeOut.s"
+	.include "asm/nonmatching/campaign_select/CB_Calendar.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_Init.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_FadeIn.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_HandleInput.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_FadeOut.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_SetBgScroll.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_PrevPage.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_NextPage.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_ExitToMainMenu.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_Run.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_DrawSelectionRing.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_DrawPageArrows.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_DrawLockedCovers.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_SnapCursor.s"
+	.include "asm/nonmatching/campaign_select/OpponentSelect_LoadPage.s"

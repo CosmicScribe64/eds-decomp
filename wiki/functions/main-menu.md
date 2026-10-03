@@ -17,7 +17,7 @@ updated: 2026-10-01
 | step 3 | `0x08003A58` | 0x36 | `MainMenu_Launch` |
 | helper | `0x08003850` | 0xBA | `MainMenu_DrawItems` |
 
-Mode: Thumb. Unit: `asm/code_080034B8.s`. Match: nonmatching (not attempted).
+Mode: Thumb. Unit: `asm/main_menu.s`. Match: nonmatching (not attempted).
 
 ## Purpose (verified)
 This is the hub scene, listed as "Menu" in the debug table. `MainLoop` falls back to it whenever a scene's callback returns nonzero. It's a step runner (table `0x081984F4`, index `gMain+0x4859`, sub-state `+0x485A`; see [[set-main-callback]]).

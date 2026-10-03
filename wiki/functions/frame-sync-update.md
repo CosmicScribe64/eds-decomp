@@ -10,7 +10,7 @@ updated: 2026-10-01
 
 | Function | Address | Size | Mode | Unit | Match |
 |---|---|---|---|---|---|
-| `FrameSyncUpdate` | `0x08075CB4` | 0x9C | Thumb | `asm/code_080750E0.s` | nonmatching |
+| `FrameSyncUpdate` | `0x08075CB4` | 0x9C | Thumb | `asm/main.s` | nonmatching |
 | `FlushOamBuffer` | `0x08075C44` | 0x5C | Thumb | same | nonmatching |
 
 ## Purpose (verified)

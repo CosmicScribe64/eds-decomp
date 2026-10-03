@@ -55,7 +55,7 @@ Every USA function, classified by [[jpmap]] (`build/jp/map.tsv`; counts re-check
 | no JP counterpart found | 1130 | 60.5% |
 | **JP-only functions** | **1290** (0x56EB4 bytes), 195 of them in the Mobile Adapter library | |
 
-706 of the 846 pairs have every aligned call and function pointer consistent with the map. "No counterpart" does not always mean absent: some USA code exists in JP in a form rewritten past recognition. For example, `CanReviveGraveyardCard` has its counterpart right before JP `sub_08061840` (the counterpart of `CollectEffectTargets`, [[code-08044224]]), but it scores only 0.36.
+706 of the 846 pairs have every aligned call and function pointer consistent with the map. "No counterpart" does not always mean absent: some USA code exists in JP in a form rewritten past recognition. For example, `CanReviveGraveyardCard` has its counterpart right before JP `sub_08061840` (the counterpart of `CollectEffectTargets`, [[effect-target-collect-c]]), but it scores only 0.36.
 
 ### The compiler is the same (verified)
 Ten matched USA C functions whose JP counterparts are identical modulo relocation were compiled with the USA compiler and flags (`old_agbcc -O2`, [[compiler-flags]]), linked at their JP addresses with their relocations set to the JP values, and compared. **All ten are byte-identical** (`build/jp/compile_test.txt`). Every relocation's JP target agrees with the independently derived function and address map. The largest, `LinkSioRecvMultiBlock` (0x338 bytes), has 20 relocations, 11 of them to RAM that moved. The 2026-10-01 comparison had already found [[lzss-decompress]] (`LZSSDecompress`) byte-identical, literal pool included, at JP `0x08002C80`.
@@ -69,19 +69,19 @@ The duel engine's data model differs between the versions:
 | Player block | `struct DuelPlayer` at `0x020192E4 + p*0xD64` ([[duel-engine]]) | `0x020078F0 + p*0x18`, card lists at `+0x746 + p*0x64` |
 | Card stats / ID→number tables | `0x08621DE0` / `0x08622AB4` ([[card-table]], [[card-id-map]]) | `0x0837FCE0` / `0x0837ECE0` (same packed stats format) |
 
-Effect executors, target prompts, the deck editor and the duel UI mostly have no counterpart: their best JP candidates score at chance level (0.3–0.4), and the constants that mark the USA executors (for example `0x206`, `0x712` and `0x613` in [[code-08039638]]) never occur together in one JP function. Shared code is concentrated in the system and library layer (`build/jp/units.tsv`):
+Effect executors, target prompts, the deck editor and the duel UI mostly have no counterpart: their best JP candidates score at chance level (0.3–0.4), and the constants that mark the USA executors (for example `0x206`, `0x712` and `0x613` in [[effect-resolve9-c]]) never occur together in one JP function. Shared code is concentrated in the system and library layer (`build/jp/units.tsv`):
 
 | USA unit | Identical or same-shape bytes | What it is |
 |---|---:|---|
 | `sdk/libagbsyscall`, `sdk/agb_sram` | 100% | SDK ([[bios-swi-stubs]], [[agb-sram]]) |
-| [[code-08072fac]] | 93% | link/SIO |
-| [[code-0807a6ac]] | 71% | LZSS and graphics helpers |
-| [[code-08076144]] | 53% | main loop, video helpers |
-| [[code-0807960c]], [[code-0807b6b8]], [[code-080750e0]], [[code-080044e4]], [[code-080740bc]], [[code-08025108]], [[code-0807717c]], [[code-08000228]] | 15–26% | |
-| [[code-08071f40]], [[code-080034b8]], [[code-08026124]], [[code-08029750]] | 6–9% | |
+| [[bg-image-c]] | 93% | link/SIO |
+| [[gfx-util-c]] | 71% | LZSS and graphics helpers |
+| [[sprite-c]] | 53% | main loop, video helpers |
+| [[bitmap-text-c]], [[link-sio-c]], [[main-c]], [[title-screen-c]], [[text-canvas-c]], [[coin-toss-scene-c]], [[collection-c]], [[bustup-scene-c]] | 15–26% | |
+| [[text-bg-c]], [[main-menu-c]], [[dice-scene-c]], [[turn-order-steps-c]] | 6–9% | |
 | the other 97 units | under 5% | game logic |
 
-For one worked pair, `build/jp/sub_08044224_diff.md` compares `CollectEffectTargets` with JP `sub_08061840` case by case. It was written as matching hints for [[code-08044224]].
+For one worked pair, `build/jp/sub_08044224_diff.md` compares `CollectEffectTargets` with JP `sub_08061840` case by case. It was written as matching hints for [[effect-target-collect-c]].
 
 > [!warning] Contradiction
 > **Localisation or rework?** This page held the hypothesis (2026-10-01): "The low exact-match share comes mostly from localization changing RAM and struct layouts (text buffers, save data), which alters the immediate field offsets in most functions, rather than from different logic." [[jpmap]] and `build/jp/PLAN.md` §6 refute it. The card and player data model differs, JP has 928 cards against 821, and 60% of USA code bytes have no counterpart even at the similarity level. RAM did move (below), and those deltas are verified for the system layer. But a pure layout shift leaves a function's instruction shape unchanged, and only 41 pairs are like that. Resolved: the hypothesis is withdrawn.
@@ -91,11 +91,11 @@ Matched functions form 428 runs that keep their relative order in both builds (`
 
 | USA range | JP start | Functions | USA units |
 |---|---|---:|---|
-| `0x08027C58`–`0x08029EC4` | `0x0805DB48` | 37 | [[code-08027580]], [[code-08028684]], [[code-08029750]] |
-| `0x0807A490`–`0x0807ADE8` (LZSS library) | `0x08007508` | 19 | [[code-0807960c]], [[code-0807a6ac]] |
-| `0x0807B9D4`–`0x0807BF54` | `0x0807AB04` | 16 | [[code-0807b6b8]] |
-| `0x08072C0C`–`0x08073574` | `0x08067A80` | 15 | [[code-08071f40]], [[code-08072fac]] |
-| `0x08026194`–`0x08026C90` | `0x0807662C` | 15 | [[code-08026124]] |
+| `0x08027C58`–`0x08029EC4` | `0x0805DB48` | 37 | [[destiny-board-scene-c]], [[turn-order-scene-c]], [[turn-order-steps-c]] |
+| `0x0807A490`–`0x0807ADE8` (LZSS library) | `0x08007508` | 19 | [[bitmap-text-c]], [[gfx-util-c]] |
+| `0x0807B9D4`–`0x0807BF54` | `0x0807AB04` | 16 | [[link-sio-c]] |
+| `0x08072C0C`–`0x08073574` | `0x08067A80` | 15 | [[text-bg-c]], [[bg-image-c]] |
+| `0x08026194`–`0x08026C90` | `0x0807662C` | 15 | [[dice-scene-c]] |
 
 The link code from `0x080735D4` forms an 11-function run. The sound driver, the SWI stubs and AgbSram come last in both builds. `build/jp/link_order.tsv` lists the JP order in terms of USA code. The breaks between runs are the best evidence so far for the original object-file boundaries in both versions (see [[open-questions]]).
 

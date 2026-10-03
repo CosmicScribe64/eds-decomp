@@ -43,14 +43,14 @@ def cflags(unit):
 def make_config():
     out = []
     for u in units():
-        if u.startswith('code_'):
-            cat = 'game'
-        elif u.startswith('sound_'):
+        if u.startswith('sound_'):
             cat = 'sound'
         elif u.startswith('sdk/'):
             cat = 'sdk'
-        else:
+        elif u in ('crt0', 'veneer') or u.startswith('rodata_') or u.startswith('@'):
             continue  # crt0, veneer, data
+        else:
+            cat = 'game'
         entry = {'name': f'{cat}/{u}', 'metadata': {'progress_categories': [cat]}}
         c = f'src/{u}.c'
         if cat == 'sdk' or os.path.exists(f'src/{u}.s'):  # authored assembly: complete as written

@@ -1,0 +1,110 @@
+---
+title: deck_edit_cards (deck-edit card lists: list accessors, comparators, quicksort, panel drawing) decompilation status
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# deck_edit_cards: card-list accessors, comparators and sort for the deck-edit scene (`0x08068180`-`0x08069284`)
+
+`src/deck_edit_cards.c` (15 functions, 0x1104 bytes). **14/15 functions in C** by the 2026-10-02 count of `src/` (`0x080690C4` in workflow wave 3, see [Wave 3 matches](#wave-3-matches-2026-10-0102); `0x08068180` is also C now but is not yet written up on this page); 1 stays `INCLUDE_ASM` (`DeckEdit_BuildCardLists`, which has a private nonmatching reconstruction and a parked first draft). Before wave 3: 12/15. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Continues [[deck-edit-widgets-c]] and [[deck-edit-panel-c]]: same state block `0x0201DB20`, same card stats ([[card-table]]). Names are proposals; code keeps `sub_08XXXXXX`. "Kind" in the code comments below is the card **type** field (bits 20-24, see [[card-table]]: `0x15` Trap, `0x16` Magic, `0x17` Ticket, `0x18` Divine).
+
+> [!warning] Contradiction: the unit is now 15/15
+> The count above (14/15) predates later matches. `src/deck_edit_cards.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 15 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x08068180` | 0x2B4 | nonmatching (assembly fallback) | `DrawListCounts(list)` | draws 7-8 numbers with `DrawNumberSprites` (13 args, last = `&gDeckEdit`): the current card's owned count (trunk `+8` bits 0-9), its two 2-bit copy fields, `*0x02013CEC + *0x02013CE8`, trunk halfwords `+0x20C6/+0x20CA`; then by `list` 0/1/2 more numbers at y `0xE0`; see the panel-call reconstruction below for the corrected draw and argument counts |
+| `0x08068434` | 0x234 | **matching**, initialized hints | `GetCopiesLeft()` | by cursor 0/1/2: if `cnt1494[row][cursor] == 0` returns 0, else the trunk count (list 0), bits 6-7 or 2-3 of trunk byte `+9` (list 1, by `DeckEdit_IsFusionMonster`) or bits 4-5 (list 2) of the current card |
+| `0x08068668` | 0x80 | **matching**, ordinary C | `GetListRow(list)` | `&lists[list][arr14A0[list]]`: pointer to the selected row (0x728 bytes) of card list `list` |
+| `0x080686E8` | 0x4A8 | nonmatching (assembly fallback) | `BuildLists()` | clears `cnt1494[0..2]`, then by the mode byte `gMain+0x4874 & 3` loops card ids 1..0x333 and appends ids that pass type/level/owned tests to the lists (`0x0201E164`/`0x0201EFB4`/`0x0201EFB8` counters) and finally re-filters each list; inlines the `GetListCard/SetListCard` switches many times (hypothesis) |
+| `0x08068B90` | 0xB8 | **matching**, ordinary C | `UpdateSelectedCardGfx()` | card id of the selected slot (inline `GetListCard`), entry `gCardNames + id * 0x40`; if its first halfword differs from `*0x0201F775` stores it and copies the graphic with `RenderStringToTiles(buf, 0x06012FE0, 1, 0, 0)` |
+| `0x08068C48` | 0xD4 | **matching**, ordinary C | `DrawSlideCounter()` | if `f1C42[cursor] == 0` and `f1C58 != 0`: decrements `f1C58`, y from `cnt1494[row][cursor]` (`0x30` if <= 3 else `(f1BB2 + f1BB0/2) >> 8`), draws two sprites with `OamListAddSpriteGroup` (13 args, tables `gNameIndexTabSprite/080874A0`) |
+| `0x08068D1C` | 0x88 | **matching**, ordinary C | `GetListCard(list, row, col)` | `u16` at `0x0201DB20 + {0x644,0xCAE,0xD4E}[list] + row * 0x728 + col * 2`; other `list` values return `list` unchanged (falls off the end) |
+| `0x08068DA4` | 0x7C | **matching**, ordinary C | `SetListCard(val, list, row, col)` | stores `val` into that cell |
+| `0x08068E20` | 0x24 | **matching**, ordinary C | `FillMapBlock(a, b, c, d)` | `DeckEdit_DrawPortraitTilemap(a, b, c, d, 0)` ([[deck-edit-panel-c]] `FillMapBlock9x10`) with u8 narrowing |
+| `0x08068E44` | 0xB8 | **matching**, ordinary C | `CompareAtk(a, b)` | 1 if ATK*10 of card `a` > that of `b` (0 for types `0x15-0x17`, 4000 for `0x18`, else `(stats << 14 >> 23) * 10`) |
+| `0x08068EFC` | 0xC0 | **matching**, ordinary C | `CompareDef(a, b)` | same with `(stats & 0x1FF) * 10` |
+| `0x08068FBC` | 0x30 | **matching**, ordinary C | `CompareType(a, b)` | `(type(a) - type(b)) >> 31` = 1 if type(a) < type(b) |
+| `0x08068FEC` | 0x28 | **matching**, ordinary C | `CompareAttr(a, b)` | `((stats(a) >> 29) - (stats(b) >> 29)) >> 31` |
+| `0x08069014` | 0xB0 | **matching**, ordinary C | `CompareLevel(a, b)` | 1 if level (`stats >> 25 & 0xF`, 10 for type `0x18`, 0 for `0x15-0x17`) of `a` > of `b` |
+| `0x080690C4` | 0x1C0 | **matching** (wave 3, 2026-10-02) | `SortS16(n, arr, cmp)` | non-recursive quicksort of `n` `s16` values: pending `(lo, hi)` pairs live in a stack at `0x02030000`; ranges <= 20 (`hi - lo`) use insertion sort; `cmp(a, b) != 0` means "a orders before b"; pivot via a flawed median-of-three (uses the swap temp uninitialised when `a >= b`; the original source's unbraced swap macro, see below) |
+
+## Structures
+
+- **`0x0201DB20` state** (continues [[deck-edit-widgets-c]]): three card lists start at `+0x644`, `+0xCAE`, `+0xD4E` (`u16` ids, `0x728` bytes per row); `+0x1494` u16 `cnt1494[row][cursor]`; `+0x14A0`/`+0x620` per-list row/column selectors; `+0x1712` u16 array; `+0x1BB0/+0x1BB2` u16; `+0x1C1C` cursor; `+0x1C42` u8 array; `+0x1C58` s16 counter.
+- **Trunk entries** `0x02011C20 + 8 + id*4` as in [[deck-edit-widgets-c]] (bits 0-9 count; byte `+9` three 2-bit fields at bits 2-3, 4-5, 6-7).
+- **Sort stack** `0x02030000`: `struct { s16 lo; s16 hi; }[]`.
+
+## Matching tricks learned (old_agbcc)
+
+- **Modelling overlapping lists as a union** in one `extern struct` (`union { u16 l0[1][0x394]; struct { u8 p[0x66A]; u16 a[1][0x394]; } l1; ... } lists;`) makes every list access a field of the single symbol, so gcc shares one base register across the three cases exactly like the target; separate `extern` declarations of the same address reload the symbol in each case. **agbcc rounds every struct (here the union members) up to a multiple of 4**: a struct of size `0xE32` becomes `0xE34`, shifting later fields by 2 (a 0x14A0 offset silently became 0x14A2 and turned a `movs/lsls` constant into a literal-pool load).
+- **Narrowing order**: params `(int a0, int b0)` followed by `u16 b = b0; u16 a = a0;` reproduces a prologue that narrows the second parameter first (`CompareCardsByAtk/EFC/9014`). `(u16 a, u16 b)` always narrows in order.
+- **`switch ((u8)list)` on an `int` parameter** avoids the extra register copy that `switch (list)` on a `u8` parameter produces (`DeckEdit_GetActiveListRow`).
+- **Uninitialised variable** (`DeckEdit_GetListCard`): omitting the `default` return leaves `r0` = the narrowed `list`, as in the target.
+- **Sort loops**: `s16` variables with `arr[++i]` / `arr[--j]` give `lsls; +0x10000; lsrs; asrs #15` and `lsls; ldr =0xFFFF0000; adds; lsrs` for the index updates; using `u16` with casts or `i++; ... arr[i]` yields `adds; lsls; lsrs` instead. `s16 top; top--;` likewise yields the `0xFFFF0000` form. `a, b, c` read from an `s16 *` into `s16` locals compare via `lsl 16` on both sides (no `asr`).
+- **Constants hoisted by gcc into high registers** (`r8/r9/sl`) change with minor source shape; see the parked `DeckEdit_DrawCardCounts`.
+
+## Nonmatching notes
+
+- `0x08068180`: same 13-argument call sequence. Target keeps `&state` in r9, the table pointer `gDeckEditDigitSprites` in sl, `&arr14A0[list]` in r8 and 0 in r7; built hoists the constants 1 and the table instead and rematerialises `&state`. Tried locals for `st`/`tbl`, pointer-typed last parameter, inline wrapper.
+- `0x08068434`: the trunk literal is loaded before the list read in the target; built allocates `&cursor`/`cursor*2` differently. `cnt1494` modelled `[row][cursor]`.
+- `0x08068B90`: tail only (`ldr r6,=0x0822C720` and the compared halfword in r0).
+- `0x08068FBC`: target rematerialises the `0x08621DE0` literal at each use; built CSEs it into r4 and needs `push {r4, lr}`.
+- `0x08068FEC`: built has `0x7FF` in r3 and the table in r2 (target the opposite).
+
+> [!warning] Contradiction
+> The next note (2026-10-01) says the parked `0x080690C4` draft had the ROM's instruction sequence and differed only in register assignment. The wave 3 match (2026-10-02, `build/wf/QuickSortS16/NOTES.md`) started from score 229: the draft had an `s8 i` typo, a partition loop whose `if (i < j) {swap} else break;` blocked the ROM's loop-exit layout, and a hand-expanded median-of-three with separate `a/b/c/p/u` locals, where the ROM reuses one variable set and an unbraced swap macro (only `t = a` conditional). Resolved in favour of the matched source.
+
+- Historical (matched in wave 3): `0x080690C4`: same instruction sequence and size; only the register assignment differs (see the `#if 0` block).
+
+Related: [[deck-edit-widgets-c]], [[deck-edit-panel-c]], [[card-table]], [[decomp-workflow]], [[compiler-flags]].
+
+## Exact C conversion (2026-10-01)
+
+`DeckEdit_UpdateNameIndexLetters` now matches all 0xB8 bytes. The selected-card display uses the integer address of the card-name table, closing the final five differing bytes. Its list selector has the existing 0–2 precondition, also used by adjacent list accessors. Initializers set 0 or 2 and the matched list-switch helpers wrap within 1–2. The ROM itself leaves r4 unset for an invalid selector; no invented default or uninitialized allocation scaffold was introduced. The cleaned whole-unit check and combined ROM checkpoint passed; no signatures or emitted instructions were fabricated. Evidence: `build/bigguns-lead2/DeckEdit_UpdateNameIndexLetters/solo-clean/`, `build/lead-pass10/` and `build/lead-pass11/`.
+
+## Private collection-list reconstruction (2026-10-01)
+
+`DeckEdit_BuildCardLists` has a private complete draft (`build/bigguns-lead2/rebuild_lists.c`). It rebuilds row 0 according to mode and deck-only flags, then compacts each selected saved row using its ownership/deck/side predicate. `solo-shape-True-0-False/` reproduces the 0x4A8 size and 0xC stack frame but remains 287 normalized diff lines away. 96 finite ROM comparisons passed across the four modes, both deck settings, all row selectors and sparse valid counts, comparing full EWRAM/live IWRAM and preserved registers without any callee stubs. This does not count as a byte match.
+
+Remaining work includes typed array extents for the second rows and the address/branch layout. Integer/byte-pointer helpers remove the questionable single-row indexing but change code size and allocation. Address-root, overlay, helper-return and pointer-lifetime grids found no exact result; keep ASM active. Evidence: `rebuild_*.py`, `verify_rebuild.py`, and `DeckEdit_BuildCardLists/solo-shape-True-0-False/behavior.json`.
+
+## Complete read views for the list reader, unchanged ABI
+
+`DeckEdit_GetListCard` now accesses each overlapping list through a complete two-row view at offsets 0x644, 0xCAE and 0xD4E, with the original 0x728 row stride. Its existing `u16 (u8, u8, u16)` signature and all 0x1104 unit bytes are unchanged. This repairs the reader's former single-row indexing for row 1 without moving the shared state's later metadata. The writer and other legacy views are not altered by this change. The caller declaration in [[deck-edit-widgets-c]] now agrees with the actual narrow interface. The 7,680 touch fixtures execute the original reader across both rows; exact per-unit and full-ROM checks pass. Evidence: `DeckEdit_GetListCard/solo-touch-full-rows/` under `build/bigguns-lead2/`.
+
+## Copy-count reader matched
+
+`DeckEdit_GetSelectedCardCopies` now matches **all 564 bytes**; the whole 0x1104-byte unit and full ROM pass. It reads the selected column before the inline list switch, keeps separate trunk-pointer lifetimes in each arm, and uses staged state-base assignments before adding offsets. Its complete two-row views cover both selected rows without extending the overlapping metadata layout. Packed-byte left shifts use unsigned values.
+
+The final source retains **four initialized register bindings and two empty constraints**, marked FAKEMATCH; minimization removed twelve bindings and six constraints. The doubled selector local is used to form the column address. No unused-value scaffold or scratch clobber remains. The high-register card-ID and fixed trunk experiments were removed: one early draft let old_agbcc overwrite a still-live r7 trunk pointer, so it was rejected. All final ABI registers and stack balance are verified. The only real call is the unchanged, pure `u16 DeckEdit_IsFusionMonster(u16)`; thus the nested selector remains valid after that call. All outer invalid byte selectors return zero.
+
+**24,829 finite fixtures PASS**, with an independent return/memory oracle, complete EWRAM, live IWRAM, ordered call arguments, r4–r11 and SP checks. Fixtures cover all 821 card IDs, both rows, empty/nonempty lists, counts 0..1023, every packed main/side/extra combination, and the cross-product of 32 synthetic types, four frame kinds and eight special-number boundaries. The actual predicate executes with no callee stubs. Every invalid byte selector is also checked. Out-of-range row/column pointers remain outside editor preconditions.
+
+Evidence: `build/bigguns-lead2/deck_copies_*.py`, `verify_deck_copies.py`, `DeckEdit_GetSelectedCardCopies/solo-copies-final/`, and `build/lead-pass35/`. Private `DeckEdit_DrawCardCounts` panel trials remain nonmatching: the best current symbol-address form has the right 0x2B4 size but 326 normalized instruction differences.
+
+## Private panel-call reconstruction
+
+The old `DeckEdit_DrawCardCounts` draft omitted a discarded card-list read before its side-count read. The ROM performs five `DeckEdit_GetListCard` calls, then six number draws for selector 0 or seven for 1/2; each number call has twelve arguments. This corrects the earlier table's 7–8 draws / thirteen-argument wording. `solo-panel-base-7` restores that call and has the target 0x2B4 size, but still differs by 551 bytes / 143 normalized instructions. **6,144 finite fixtures pass**, comparing an independent twelve-word draw-argument oracle, the original card-list accessor, all 821 IDs, both rows, selectors 0..2, full packed-count combinations and randomized halfword totals. Draw calls are captured with caller-save clobbering; full EWRAM/live IWRAM and saved registers/SP agree. This remains private, not matching coverage.
+
+Explicit state/row/column lifetimes, late side-count pointer forms and initialized register grids reached 122–125 normalized differences, but some variants require a 36-byte rather than 32-byte frame. They are not accepted or behavior-verified. See `deck_panel_{calls,lifetimes,side,base,pointers,stage,explicit}.py`, `verify_deck_panel.py` and `DeckEdit_DrawCardCounts/` under `build/bigguns-lead2/`. No source bytes changed in this step.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/QuickSortS16/NOTES.md`.
+
+### `QuickSortS16` (0x1C0, start score 229; ordinary C)
+
+Score 229 -> 238 (macro and break form, right layout) -> 228 (shared variables) -> 40 (extern symbol) -> 30 (lo before top) -> 0 (pointer local):
+- The parked draft's `s8 i` was a typo; `s16` is correct.
+- Partition loop: `if (i < j) { swap } else break;` blocked stmt.c's loop-exit rotation. `if (i >= j) break; SORT_SWAP(...)` gives the ROM's `b scan; swap: ...; scan: ...; blt swap` layout.
+- Median-of-three: the original swap macro has no braces, `#define SORT_SWAP(a, b) t = a; a = b; b = t`, and is used under an unbraced `if`, so only `t = a` is conditional. This explains the "flawed median" (t used uninitialised); the pivot is not a true median.
+- `lo, hi, i, j, x` are one set of function-scope `s16` variables shared by the partition and the insertion-sort branches (key == x), which gives i r5, j r4, x r6.
+- Stack base: `extern struct Range gScratchBuffer[]` instead of a cast constant (the frame went from 0x18 to 0x14 and hi moved to r8), read through a first local `struct Range *stack = gScratchBuffer;`. That long-lived pointer gets no register, so reload rematerialises it at every use; the extra entry reloads (`mov r1,#0; ldr r2,=base`) fix the reload rotation (r3 for `top = 1`, and so on) and the stack-slot order of lo/top. Declaring lo/hi before top puts lo at `[sp]` and top at `[sp+4]`.

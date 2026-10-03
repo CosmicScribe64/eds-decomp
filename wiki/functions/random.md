@@ -13,7 +13,7 @@ updated: 2026-09-29
 | Address | `0x08076F9C` |
 | Size | 0x1A (+ a 3-word pool) |
 | Mode | Thumb |
-| Unit | `asm/code_08076144.s` |
+| Unit | `asm/sprite.s` |
 | Match | nonmatching |
 
 ## Purpose (verified)

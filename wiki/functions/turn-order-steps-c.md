@@ -1,0 +1,82 @@
+---
+title: turn_order_steps (hand game steps + card list widget)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# turn_order_steps
+
+Second half of the screen in [[turn-order-scene-c]] (same work area `0x02020310`, same fade object at `+0xAF8`), plus a card-list widget state (`0x0201D810`, hypothesis: deck/card list selection screen) used by `CardListView_DrawNames` through `CardListView_InitScreen`.
+
+Status: unit `MATCH` (0x1370 bytes), **22/22 functions in C** after workflow wave 3 (2026-10-01: `0x08029B0C` in wave 3); none stay `INCLUDE_ASM`. The count also includes `0x0802A6DC` and `0x0802A188`, matched later on 2026-10-02 and not yet written up on this page (their rows and parked-draft notes below predate those matches). Before wave 3: 19/22 (wave 1 on 2026-10-01 added `CardListView_DrawNames`). Previously rechecked with `tools/check.py turn_order_steps` after enabling `CardListView_DrawCardStatus` on 2026-09-30.
+
+| Address | Size | Status | Purpose / proposed name |
+|---|---|---|---|
+| 0x08029750 | 0x64 | matching | fade in via BLDY; when done latch `unkABF & 1` into `gMain+0x4870` bit 0 |
+| 0x080297B4 | 0x244 | matching | main play step (fade object, sequence advance, hands/sprites update) |
+| 0x080299F8 | 0x58 | matching | draw hand selection (`TurnOrder_DrawTurnChoiceConfirm`) and advance step |
+| 0x08029A50 | 0xBC | matching | step 0: DMA-clear work area, reset display (same as `TurnOrder_Init`) |
+| 0x08029B0C | 0x200 | **matching** (wave 3, 2026-10-01) | Left/Right choice at step 2 (A sends the pick over link or advances the step), then the fade object, affine reset, step table `gTurnOrderChoiceSubsteps`, hand drawing |
+| 0x08029D0C | 4 | matching | `return 1` |
+| 0x08029D10 | 0x6C | matching | load 3 hand graphics, random first hand |
+| 0x08029D7C / DCC | 0x50 / 0x68 | matching | step runners: `gTurnOrderRpsSteps[gMain+0x4859]` handler; DCC also handles B (`SetMainCallback(0x08003AA5)`) |
+| 0x08029E34 / E74 / EC4 | 0x40 / 0x50 / 0x40 | matching | same runners with tables `gTurnOrderPlayerChoiceSteps`, `gTurnOrderCpuChoiceSteps` |
+| 0x08029F04 | 0xC4 | matching | fill BG tile-map buffer pieces at `gMain+0xC9C..0xD56` with a running tile number |
+| 0x08029FC8 | 0xD4 | matching | draw a string with drop shadow (2-byte byte-swapped chars if `gSave[4] & 0x80`) |
+| 0x0802A09C | 0xEC | **matching** (wave 1, 2026-10-01; FAKEMATCH) | draw up to 4 card-name rows from a list |
+| 0x0802A188 | 0x2D4 | parked draft | card detail page: draw frame/type icons, subtype, ATK/DEF and level stars for the selected entry (class-oriented card table reads) |
+| 0x0802A45C / 47C / 4A4 | 0x20 / 0x28 / 0x28 | matching | thin wrappers over `CardListView_DrawCardInfo` / `CardListView_DrawNames` / `CardListView_DrawCursorFrame` for the current selection |
+| 0x0802A4CC | 0x18C | matching C | draw status icons of one list entry |
+| 0x0802A658 | 0x84 | matching | draw up to 4 icons from a bit mask, one highlighted with 3 sprites |
+| 0x0802A6DC | 0x3E4 | parked draft | list screen init state machine (5 states: wait for setup, display regs, BG/OBJ gfx, list load, fade) |
+
+## `0x0201D810` selection state (hypothesis)
+`+0` flags (bits 5-7 mode: 0x60 / 0x40 / 0x80 / 0x20 / 0, bit 1 = page), `+3` init state, `+5` bits 0-1 cursor row (`sel`), `+6` u16 scroll, `+0xC` u32 entries (bits 0-11 card id, bit 12 flag, bit 19 / 20 flags, byte +1 bits 6-7), `+0x20C` u16 per-entry state (1, 2, 4), `+0x30C` u16 count. `gCardStats[id]` is the card table (bitfields: bits 20-24 kind, `& 0x1FF` * 10 = ATK, ...).
+
+## Matching tricks
+- `u16 ch = *str; ch = (ch >> 8) | ((u8)ch << 8);` (`TextDrawShadowedString`) matches in place; a `u32` local does not.
+- `(u8)w << 8` gives `lsl #24; lsr #16`; `& 0xFF` gives a pooled mask.
+- Bitfield store `gMain.unk4870b0 = x;` (1-bit field in a >4-byte struct) reproduces `(x & 1) | (old & ~1)` with the `mov #2; neg` constant (`TurnOrder_FadeOutAndSetFirstPlayer`).
+- A struct of exactly 4 bytes (`struct Entry`) is read as one word; use a cast to `u32` where the ROM does `ldr; lsl; lsr`.
+- Loop-invariant `y = i * 16 + 7` must be written inline: a separate `y += 16` variable changes hoisting (`CardListView_DrawNames`).
+- Locals `s32 a = t << 5; s32 b = a + 2;` computed before the branch reproduce the ROM's early `r5`/`r4` (`CardListView_DrawButtons`).
+- `TurnOrder_RunRpsLink` explicitly invokes the loaded entry as a `u16 (*)(void)` callback. An empty asm clobber of `r0` after the entry load preserves the ROM's callback address in `r1`; this compiler hint emits no instructions and is marked FAKEMATCH in C.
+- Odd-address rodata: pass `(const u8 *)0x08082703` instead of the `gHandCardPalNums` symbol (check.py clears bit 0 of every symbol).
+- `TurnOrder_InitChoice` keeps the DMA register pointer in r1 and separates its initialized destination from the saved work pointer. The two initial volatile control reads are explicit; an empty input constraint retains the initialized destination, second read, and sign mask before copying the work pointer. Testing the second read as signed negative preserves the initial `bge`, followed by the original repeated mask polling. This FAKEMATCH hint emits no instructions; the complete 0x1370-byte unit matches. The old stack-source CSE note was stale, because the baseline already recomputed `mov r0,sp` correctly. Merely separating the destination/copy around DMA writes leaves an eight-byte scheduling mismatch; keeping the DMA pointer in r1 plus the explicit poll dependency resolves it.
+- `CardListView_DrawCursorFrame` initializes a fresh r0 byte-base pointer after the first fill loop and retains it with an empty input constraint before computing `+0xCAC`. This prevents the second-loop pointer from being hoisted into r6 before the first loop; it also retains the ROM's literal reload instead of copying the saved r5 base. An ordinary pointer with a read/write constraint reached a two-byte miss; the named r0 input matches. The old fifth-loop hoist note was stale, because its `+0xD1E` setup already matched. Integer-cast whole addresses did not resolve the second-loop setup. Original ABI and stores are unchanged; the hint is marked FAKEMATCH.
+- Historical (matched 2026-10-01, see below): `CardListView_DrawNames` remained parked. A bounded batch reached a two-byte isolated miss at the correct 0xEC size: read the packed entry once into `u32 raw`, compute `raw << 20`, copy its `struct Entry` view before the zero-ID branch, and compute the name pointer before advancing `list`. For the final fill, initialize `i`, the `0x11F` bound, selection pointer, and global base; a read/write base constraint with initialized inputs keeps `gMain + 0x49C` unfused and orders the preheader as the ROM. Only the first loop's `mov r1,#16; add r8,r1` remains `r0` instead. An empty r0 clobber and explicit y/step variants did not resolve it; a separate y normally changes hoisting. No failed candidate was enabled or counted as C. The best complete private candidate is `build/middle_experiments/CardListView_DrawNames/two-byte.c`.
+- `CardListView_DrawCardStatus` now matches all 0x18C bytes. A `u16` card-type helper using the constant-address `0x08621DE0` table view shares the packed ID shift between the 11-bit table index and the full 12-bit `IsSpecialSummonOnly` argument. The earlier draft omitted that table-index mask. In the final lookup, an ordinary unsigned flag value supplies the packed player bit, and explicit row-byte, player-offset and base stages preserve the original low-byte read from the two-byte list entries. One FAKEMATCH input-only constraint retains the initialized row in r0 before the player-state base is formed; the row is no longer live at any sprite call. No flags register pin, output constraint, emitted instruction, or new runtime access is needed. Private and live whole-unit checks both report 22/22 including fallbacks, exact 0x1370; logs are `build/bigguns-effects/a4cc-accept/whole-unit-check.log` and `live-whole-unit-check.log`. Removing all hints and register choices remained 20 bytes different; an intermediate version without the row hint remained 6 bytes different. Source/ABI review checked the original icon order, widths, unsigned shifts, post-call reloads and selected-row range.
+- Historical (matched in wave 3, see below): `TurnOrder_ChoiceMain` derives the second-half base from the fade pointer (`f - 0xAF8`).
+
+> [!note] Resolved contradiction (2026-09-30)
+> The earlier note described `sub_0807EE9C` as an ordinary two-argument function. `config/names.txt` identifies `0x0807EE9C` as the SDK `_call_via_r1` veneer (`bx r1`), and the ROM uses it to invoke a callback. The matching `TurnOrder_RunRpsLink` now expresses that indirect call directly; older matched runners still use the unnamed veneer symbol.
+
+## Parked drafts (background permuter input)
+- `CardListView_DrawCardInfo` (0x2D4): card-detail page. Reads the selected list entry, draws the card frame (kinds 0x15/0x16 use the Magic images `0x08636CD8`/`0x08636DA0`, chosen by the 0x15/0x16 subtype), the subtype icon (`gSpellSubtypeIconImages[subtype]`), the attribute icon (`gAttributeIconImages[stats>>29]`) / type icon (`gMonsterTypeIconImages[type]`), ATK (`gUnk_072C0C(0x701A7,0x4013A,...,0)`) and DEF (`0x701C7,0x4013E`), then the level stars into tile map `0x0300045C` (`0x0C + (i&7) + (((i>>3)+0xD)<<5) = 2`). Helper getters mirror `card_canvas.c` (`GetSpellSubtype(u32 stats)`, `GetCardAtk10/Def10/Level(u16 id)` using `stats = gCardStats[id & 0x7FF]`, type = `(stats>>20)&0x1F`, ATK = `((stats<<14)>>23)*10`, DEF = `(stats&0x1FF)*10`, level mask `(stats&0x1E000000)>>25`; 0x18 maps to 10/4000). The header also does `(flags & 0xE0)==0x60` mode gating with `gDuelPlayers[0xCC4 + (scroll+sel)*2 + 0xD64*(flags bit1)]==2`, toggles `flags` bit 3, and calls `DrawCardPortrait(3,0x155,id,0x178+bit*0xB4,(bit*4+8)*16)`.
+  - Difference: the ROM keeps only r4-r7 (bit1 in r7, `scroll+sel` in r5), reloads the `gCardStats` base on each subtype/ATK/DEF/level use; agbcc spills the base to r8 and swaps bit1/row. The flags-bit3 toggle (`lsls #28;lsrs #31; movs #1; subs; movs #1; ands; lsls #3; movs #9; negs; ands`) and the `kind` range check (`cmp #0x16;bgt; cmp #0x15;blt`) also come out slightly differently.
+  - Later private frontier: `build/bigguns-effects/a188-arguments/best.c` compiles to the correct 0x2D4 and leaves 194 differing bytes (baseline 0x2DC / score 693). Constant-address table views remove the r8 save, separate player/display-bit locals recover the early register roles, and u32 internal ATK/DEF/level arguments avoid an unwanted saved halfword-shift representation. The 16-bit tile-row expression restores the ROM's narrowing shift. Explicit player-list address stages also recover the early low-byte lookup. Remaining differences are the flag toggle/display-bit lifetime, a redundant table-base reconstruction before ATK, return-value registers and final tile-index order. This is a private compiled candidate with one initialized `next` constraint; it was not activated, counted as C, or executed for behavioral equivalence. `a188_views.py`, `a188_scopes.py`, `a188_widths.py` and `a188_arguments.py` reproduce the bounded sequence. The older parked source remains intact.
+- `CardListView_InitScreen` (0x3E4): list-screen init state machine keyed on `gCardListView` byte +3 (5 states). 0: wait `DuelScreen_FadeOutStep`, clear `gDuelScreen` bits 1/2 (`DuelFlags` bitfields). 1: reset video regs (`REG_DISPCNT`/`BLDCNT`/`BG0..3CNT`, `gMain+0x40E=0x303`). 2: load BG/OBJ palettes+tiles, three `LoadBgImage4bppMap1` images, a 2-iteration fixed-point loop (accumulators `+0x600000`/`+0xF0000`, `>>16`) copying six `gCardListViewCursorFrameGfx` slices into VRAM, then `gCardListViewTitlesGfx` page (mode = flags bits 5-7, <=4) and the `0x0300045C` tile map (`0x7142`/`0x714E`). 3: if `count` draw the current entry and set `gMain+0x4422 = -(sel*16)`, else the "no cards" path (`TextCanvasInit`, `TextDrawShadowedString(0x42,0x18,gStrCardListViewNoCards,0xC)`, fill `gMain+0x49C` with `i+0x10`, `TextCanvasToTiles(0x06004200,0)`); then advance the 2-bit `cur` / 4-bit `mask` page fields in `filler8[0]` to the next set bit, set `flags |= 0x10`. 4: `REG_DISPCNT |= 0x1F00`, wait `FadeFromBlack(4)`.
+  - Difference: logic and calls agree. With a `struct Sel *unk = &gCardListView` used only in case 3, the base lands in r4 as in the ROM. The remaining differences are scheduling and register names, the state-2 loop constant reuse (`0xAD<<1`, `subs #0x5A`), the common state++/return tail being shared or short-jumped, and the `flags` bits 5-7 extract (`lsrs #5` versus `lsls #24;lsrs #29`).
+
+## Card-name list rows matched (wave 1, 2026-10-01)
+
+`CardListView_DrawNames` (0xEC, start score 4) matches; the whole unit is 22/22 including fallbacks, bytes exact. Working notes: `build/wf/CardListView_DrawNames/NOTES.md`.
+
+- Root cause of the last two bytes (`movs r1,#16; add r8,r1` built with r0): old_agbcc reload picks reload registers **round-robin** over the spill registers (here {r0, r1, r5}), starting after `last_spill_reg`. Before the 16, the ROM has one more round-robin reload, which lands in r0: the `gCardNames` name-table base, which loop.c hoists, global alloc leaves without a register, and reload rematerializes at its use (`ldr r0,=sym; add r2,r2,r0`).
+- Confirmed with a probe: an `asm("" :: "l"(0x55))` in the then-branch moved the 16 into r1.
+- Fix (FAKEMATCH): `names = gCardNames;` at the top of the loop body (loop.c hoists it); the address written `(const u16 *)((e.id << 6) + (u32)names)` (offset first gives `add r2,r2,r0`; `names[e.id]` swaps the operands); and an empty `asm volatile("")` after `list++` in the else-branch. The empty asm lengthens the loop by one insn, so the address giv (9 refs, live length 132) drops below `e` (4 refs, live length 39) in global-alloc priority. Then `e` gets r7, the giv r8, count r9, tab sl, and `names` no register.
+- Failed: `names` hoisted by hand at function top, set inside `if (bits)` or before `if (ok)` (each got a register); pinning `e` or `raw` to r7 (the compiler ignores the conflict and also puts the giv in r7); `names[e.id]`, `(e.id+names)`, `e.id[names]` and the u8* form (operand swap).
+- See [[matching-tricks#Register allocation priority and reload rotation]].
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/TurnOrder_ChoiceMain/NOTES.md`.
+
+### `TurnOrder_ChoiceMain` (0x200, start score 204; ordinary C)
+
+- The parked draft called `FadeTick(f)` before `f` was assigned (a bug).
+- First half: the else branch is `gWork.unkAF5++` (CSE'd against `&gWork.unkADC`: `ldrb [r4, #0x19]`); the second `unkB0D` block reads `gWork.unkABF` directly (a fresh `gWork` load at the join) and `unkB10` through the top pointer `v`.
+- Second half: the affine loop and the final part use direct `gWork` accesses, but the post-loop block (step-table call, `unkAF5 <= 3`, `unkABF != 0xFF`, `TurnOrder_UpdateChoiceBob` / `TurnOrder_DrawTurnChoice`) uses a **second** pointer `w = &gWork` assigned right after the loop. GCSE/PRE hoists that load into the loop preheader (after `i = 0`), cse2 rewrites it as `fade - 0xAF8` (the ROM's `ldr rX, =0xFFFFF508; add r6, r5, rX`), and the loop-hoisted base becomes `mov r8, r6`. With direct accesses the first post-loop constant is `gWork + 0xAF5` (`r6 = r5 - 3`); one pointer for the whole function collapses both bases into one register (160).
+- Lesson: a base derived from another constant address before a loop, with post-loop code at `base + bigoffset`, points to a plain pointer local assigned after the loop, which PRE hoists into the preheader.

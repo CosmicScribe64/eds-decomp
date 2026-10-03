@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/bustup_scene/GetDuelistName.s"
+	.include "asm/nonmatching/bustup_scene/CopyBitmapRows.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_DrawLabel.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_DrawNumber.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_LoadSceneSet.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_LoadSceneSetWithHeader.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_ChangeSceneSet.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_ShowPage.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_ClearHiddenBox.s"
+	.include "asm/nonmatching/bustup_scene/CopyFullBitmapToPage.s"
+	.include "asm/nonmatching/bustup_scene/CopyBitmapToPage.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_MarkBoxDirty.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_InitTextBox.s"
+	.include "asm/nonmatching/bustup_scene/AnimStateStart.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_TickBlink.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_ResetBlink.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_ResetBlinkUnused.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_DrawCursorTrail.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_UpdateTextBox.s"
+	.include "asm/nonmatching/bustup_scene/Bustup_InitState.s"

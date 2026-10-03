@@ -1,0 +1,182 @@
+---
+title: Unit duel_field_moves (duel field-zone event handlers)
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit duel_field_moves
+
+`0x080184D8`–`0x08019553`, Thumb, `old_agbcc -O2`. Source: `src/duel_field_moves.c`.
+Per-zone field handlers. They announce duel events through the command
+dispatcher `DuelCmd_Push` ([[duel-cmd-queue-c]], `DuelCmd_Push`), re-apply field
+bonuses, and queue action-list entries through `Chain_AddPending`
+([[duel-setup-c]], `ActListA_Add`). Related: [[duel-setup-c]] (duel state at
+`0x020192E0`, action lists at `0x02017A40`), [[duel-cmd-queue-c]]
+(`DuelCmd_Push`).
+
+Unit status: `unit bytes MATCH`, **15/15 functions in C** after workflow waves 2-3 (2026-10-01: `0x08019078` in wave 2, `0x08018690` and `0x0801919C` in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 12/15. Verified with
+`python3 tools/check.py duel_field_moves`.
+
+## Shared headers
+
+Since 2026-09-30 this unit uses the canonical layouts from `include/duel.h`
+(`struct DuelCard`, `DuelZone`, `DuelPlayer`, `DuelState`, plus the
+`gDuelPlayers` / `gDuel` externs). Its four local duplicates
+(`DuelCard`, `DuelZone`, `DuelPlayer`, `DuelStateLite`) and the local
+`gDuelPlayers` / `gDuel` externs were deleted. Field renames by
+offset: `faceUp` became `flag6_1` (+0x06 bit 1), `unk6_0` became `flag6_0` (+0x06
+bit 0), and `unk91` (+0x91) became `unk8C[5]`. `main.h` and `duel_ui.h` are not
+needed (the unit uses no `struct Main`, `DuelCmd` or `DuelScreen`).
+
+No per-function local views were required, because every canonical field compiled to
+the same bytes. Unit-specific layouts the headers do not define stay local:
+`struct HandRow` (`gDuelHands`, the hand rows at `0x020192E4+0x684`),
+`struct Unk02017A40` (`gChain`) and `struct Unk02018450`
+(`gBattle`).
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x080184D8` | 0x6C | matching | `Field_ReapplyByCardNo` | For every zone 0-10, if a face-up card's number matches `cardNo`, call `DestroyFieldCard`. |
+| `0x08018544` | 0xDC | matching | `Field_ReapplyZoneBonus` | Re-apply a zone's field bonus (`SendFieldCardToGrave`); if the card is 0x5F8/0x605-0x608, also fix the other Magic/Trap zones. |
+| `0x08018620` | 0x44 | matching | `Field_MonsterZones` | For zones 0-4 holding a card, call `DestroyFieldCard`. |
+| `0x08018664` | 0x2C | matching | `Field_ZoneEntryMsg` | Announce event 0x7D with the two words of `args`, then `DestroyLinkedCards(player, zone, 1)`. |
+| `0x08018690` | 0x36C | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `Field_CardEnteredZone` | A card entered `zone` from the hand (`args` = its list entry). Locked play (`CountFaceUpMonstersByNumber(_,0x453) > 0`): report via `BanishBattleDestroyedCard`. Card number 0x1DE: summon directly (`ShowCardEffect`, event 0x6A). Else set `args[2]` bit 0x20, announce event 0x7C, set `0x020192E4[player].unkB` bit 3 for monsters (card data word field `>>20 & 0x1F <= 0x14`), then dispatch: a large card-number set (0x2F,0x12F,0x136,0x138-0x140,0x23D,0x414,0x454,0x456,0x45A-0x463,0x4D9,0x4DA,0x4E9,0x57D) queues `Chain_AddPending` with `(owner<<31)|((0x3F&gChain.w48A)<<25)|(id|0x600000)`; 0x1CD queues event 0x73 + `LoseLifePoints(owner,5000)`; 0x45C queues `Chain_AddPending` with the `gUnk_02017ECA` value; 0x2D9/0x534 call `QueueRemoveLinksToZone`; 0x5EA (only if `arg0 == player`) queues event 0x4C. Tail: `LoseLpOnSendToGraveyard(player,1)`, `DestroyLinkedCards(player,zone,1)`. |
+| `0x080189FC` | 0xEC | matching | `Field_CardLeftZone` | Announce 0x7A/0x7B (arg), `DestroyLinkedCards` for monster rows, 0x8F for card 0x48A, 0x11 for the field zone when face-up. |
+| `0x08018AE8` | 0x154 | matching | `Field_ZoneEffect` | Card left the zone: if its number is 0x780-0x7CF re-apply field bonuses, else announce 0x80; for monster rows notify `EventResponse_Request(1-side,0x1B,player\|zone<<8)`; 0x11 for the face-up field zone; card 0x447 hands its destruction target over. |
+| `0x08018C3C` | 0x128 | matching | `Field_CardFlip` | `id==0` -> return; numbers 0x780-0x7CF re-apply, else 0x81; 0x11 for the face-up field zone; card 0x447 hands over its `FindMonsterLinkedToCard` target. |
+| `0x08018D64` | 0x64 | matching | `Field_ScanAllMonsters` | For both players (opponent first) run `ReturnFieldCardToDeck` over zones 0-4; if `arg` and `CountMonsters(p) > 0`, announce 0x60. |
+| `0x08018DC8` | 0x110 | matching (initialized lifetime hint) | `Field_MonsterFlipped` | Monster summoned/flipped into `zone`: announce 0x7F; face-down -> 0x90 and possibly `Chain_AddPending` (special summon of 0x5FA-immune card 0x5E); face-up -> `DestroyLinkedCards(player,zone,1)`. |
+| `0x08018ED8` | 0x1A0 | matching (initialized lifetime hint) | `Field_MonsterEntered` | Monster in `zone` (<=4, non-empty): announce 0x7E; if the zone's +6 bit 0 is set, card 0x5E with `CanActivateEffectOfCard` -> queue `Chain_AddPending`; else for card numbers 0x77/0xA1/0x1F0 do the same. Then if `arg3` and `arg2` are set, the zone is not face-up, `HasFlipEffect(cardNo,0) != 0` and neither player has 0x5FA, queue the 0x14400000 event. |
+| `0x08019078` | 0x124 | **matching** (wave 2, 2026-10-01) | `Field_TwoZoneEvent` | Two zones (`arg1`,`arg2` = player\|zone<<8): if the first holds a card and the second is empty, announce 0x82; if the players differ, card 0x1E3/0x222 in the first zone with +7 bit 0x20 hands its effect to the other player (0x92). |
+| `0x0801919C` | 0x214 | **matching** (wave 3, 2026-10-01) | `Field_TwoZoneEvent2` | Both zones hold a card: announce 0x84; then for card 0x1E3/0x222 in either zone with +7 bit 0x20, hand its flip effect to the other player. |
+| `0x080193B0` | 0x24 | matching | `Field_NotifyEvent` | Announce event 0xC3 with `(arg1,arg2)`. |
+| `0x080193D4` | 0x180 | matching (ordinary C) | `Field_HandCardUsed` | Hand-row card used: 0xC0 (0xC1 while `CountFaceUpMonstersByNumber(_,0x453)`); look up the hand word `0x02019968[player].c[idx]`; card 0x215/0x1CE with `arg2` -> event 0x73 + `LoseLifePoints`/`DrawCards`; 0x4DA queues `Chain_AddPending`; finally if `CountActiveCardsOnField(1-player,0x40E) > 0` announce 0x73 with `gCardNumberToId[0x40E]` and `LoseLifePoints(player,n*500)`; `LoseLpOnSendToGraveyard(player,1)`. |
+
+## Data
+
+- `0x0201930C` = `0x020192E4 + 0x28`: the 11 zones of a player struct (`0xD64`
+  bytes each). Zone `p,z` is at `z*0x94 + (p&1)*0xD64 + 0x0201930C`. A card
+  word is `id:12 | 20`; zone fields used: `+0x06` bits 0/1 (`flag6_0`, `flag6_1`),
+  `+0x07` bit 0x20 (`unk7`), `+0x91` bit 8 (`unk8C[5]`).
+- `0x020192E0` duel state; `+0x1B12` bit 1 (`linkSkip`/turn side) read by
+  `ReturnFieldCardToHand` and `SendBattleDestroyedCardToGraveyard`.
+- `0x02019968` = `0x020192E4 + 0x684`: 80 hand card words per player
+  ([[effect-fusion-c]]).
+- `0x08622AB4` maps card ID to card number; `0x08621DE0` maps card ID to card data word
+  (monster type in bits 20-24); `0x08623DF4` maps card key to card number.
+- `0x02017E...` `0x02017ECA` u16 scratch set to 0x13 by `SendBattleDestroyedCardToGraveyard`;
+  `0x02017A40 + 0x48A` u16 used in the `Chain_AddPending` event word;
+  `0x02018450` u16/byte pair used to build the event's second word.
+
+## Matching tricks
+
+> [!warning] Contradiction
+> The next bullet (page text before 2026-10-01) prescribes `ZONE_AT(p,z)` for agbcc's multiply order. The wave 2 match of `MoveFieldCard` (2026-10-01, `build/wf/MoveFieldCard/NOTES.md`) and the wave 3 match of `SwapFieldCards` (2026-10-01, `build/wf/SwapFieldCards/NOTES.md`) need the array form `ZONE(p, z)` written inside each memory reference: there `expand_expr` with `EXPAND_SUM` gives `p&1`, `z*0x94`, `*0xD64`, and the base stays in one register that CSE shares, while a `ZONE_AT` pointer local expands in source order and reloads the base. Resolved in favour of the matched source: which macro matches depends on whether the address is formed inside the memory reference or stored in a pointer local.
+
+- For the zone pointer, `ZONE_AT(p,z)` (`z*0x94 + (p&1)*0xD64 + 0x0201930C`) matches
+  agbcc's multiply order. `ZONE(p,z)` (`&gDuelPlayers[p&1].zones[z]`) can emit
+  `(p&1)*0xD64 + base` first and then `z*0x94`.
+- `CARD_NUMBER(id)` is `((const u16 *)0x08622AB4)[id & 0x7FF]`.
+  Reading a `DuelCard.id` bitfield from an array element lets agbcc use `ldrh`.
+  To force a full `ldr` (as in `DiscardHandCard`), read the word through
+  `*(u32 *)&...` and mask `(word << 20) >> 20`.
+- **Bit tests on zone `+6`:** a bitfield read used only in a zero test compiles
+  to `and #1`/`and #2` (`z->flag6_0`, `z->flag6_1`).
+- **Event constant 0x14400000:** `ChangeBattlePosition`/`MoveFieldCard` need
+  `0xA2 << 0x15` (agbcc emits `mov #0xA2; lsl #0x15`), and a bitwise-OR chain
+  matches when built through two locals (`ev = A; ev2 = B|C; ev|ev2|id`) rather
+  than a single left-associative expression.
+- **`EventResponse_Request`/`DiscardHandCard` packed position word:** `(u16)((u8)player | ((u8)zone << 8))`
+  compiles to `lsl #24 / lsl #24 / lsr #8 / orr / lsr #16` (not `lsl #8; orr`),
+  matching the ROM.
+
+## Parked drafts (for the permuter)
+
+Historical (all three matched in waves 2-3, see the match sections below): `SendBattleDestroyedCardToGraveyard`, `MoveFieldCard` and `SwapFieldCards` each had a complete `#if 0` draft directly above their `INCLUDE_ASM` line. The logic and most instruction shapes match. The remaining differences are in register allocation and instruction scheduling:
+
+- The old `ChangeBattlePosition` setup and register blocker is resolved by the lossless signed-halfword offset and initialized-one lifetime hint described below.
+- The old `DiscardHandCard` blocker is resolved by the staged offsets and shared card-number local described below, and its active source now matches.
+- `SwapFieldCards`, `SendBattleDestroyedCardToGraveyard` (and `MoveFieldCard` until wave 2): agbcc assigns the high registers (r8/r9/sl/ip) to different live values than the ROM.
+
+## Hand-event conversion
+
+`DiscardHandCard` now matches all `0x180` bytes. After the initial event call, initialize the masked player separately, then the index byte offset, then its player product in a nested scope before the raw word read. This produces the target's index shift before the stride multiply, with the correct r0/r1 scratch roles. Keep the extracted ID as a u32. Then assign a separate `u16 cardNo=0x40E` inside the second argument of `CountActiveCardsOnField`, and index the reverse table through a literal pointer using that same local. This keeps the number in r6 and puts the table ADD operands in ROM order. No hints or register bindings remain, and the original four-argument ABI and all event and callee order are unchanged.
+
+The first valid 33-case helper/number grid reduced a `0x184` baseline to the exact size, with six differing bytes. Sixteen symbol-backed helper variants first failed because their new data symbol was missing from the private link stub. After adding only that address-suffixed data alias they compiled, but each still differed by at least 15 bytes. The failed builds say nothing about the source. A separate 37-case grid over initialized locals, operand association and scheduling found the exact ordinary-C form, with the masked player summed first. No empty constraints were needed.
+
+Evidence: `build/codex-continue/hand-use-unit-check.log` reports all **0x107C unit bytes MATCH**. The check's 15/15 slices include five remaining assembly fallbacks, so the source is **10/15 C**. This conversion adds one function of 0x180 (384) bytes. Private scripts, logs and candidates are in `build/codex-continue/hand-use-readers/`, `hand-use-symbol-readers/` and `hand-use-scheduling/`.
+
+### Bounded monster-entry scheduling follow-up
+
+The first `ChangeBattlePosition` draft had the correct `0x1A0` size but 13 differing bytes, more than the old "only initial order" note suggested. Seventeen valid staged player/zone-offset candidates did not improve it. A 25-case grid over a shared initialized-one local and views reached nine differing bytes with a word-sized one local and an input-only lifetime hint. The grid's first variants had malformed C90 declarations, failed to compile, and were corrected before any matching evidence was collected. Logs: `monster-entered-offsets-fixed.log` and `monster-entered-one.log` under `build/codex-continue/`.
+
+### Lossless signed-halfword player offset resolves monster-entry allocation
+
+`ChangeBattlePosition` now matches all **0x1A0 (416) bytes**. Initialize `one=1`, `p=player&one` and the zone byte product separately, then store `p*0xD64` in an `s16 playerBytes` local. Its value is only zero or `0xD64`, so the signed narrowing is lossless for every player input. The old compiler gives the signed-halfword local different register priorities, so player now stays in r8 and the initialized mask in r9. The later zone-byte sum, full card-word read, event order, argument widths, original early returns and post-call flag reread are unchanged.
+
+One empty **input-only** constraint on the initialized `one` value is needed before the pointer sum. The source has no fixed registers, emitted instructions, artificial uninitialized locals or ABI changes. A strict-branch-target permuter run found the signed-halfword change after 388 iterations; its 37 compile failures are excluded from the evidence. An independent eight-case minimization grid found only `s16` plus the retained one-input hint exact: `u16`, `s32` and `u32` each differ by nine bytes, and removing the hint leaves the output four bytes short. The earlier 17 register-binding and 19 scope/lifetime variants did not resolve the allocation.
+
+`build/codex-continue/monster-entered-unit-check.log` reports all **0x107C unit bytes MATCH**. The source is now **11/15 C**, with four assembly fallbacks, and the conversion accounts for 0x1A0 (416) bytes. Private evidence: `monster-entered-permuter.log`, `monster-entered-minimized/results.json` and `build/permuter/ChangeBattlePosition/output-0-1/source.c`.
+
+### Monster-flip card width, player lifetime and staged event word
+
+`FlipFieldCard` now matches all **0x110 (272) bytes**. A new 33-case grid over offsets, card width and player lifetime reduced the original 40 differing bytes to 13, using a `u16 id` local and one empty input-only constraint on the initialized masked player before computing the zone pointer. The ID comes from a 12-bit card field, so narrowing it to `u16` preserves its value. Keep the zone byte product in its own initialized local; the player product can stay inline. This recovers the original zone pointer and the narrowed message-argument register roles.
+
+The last 13 differing bytes came only from the event OR schedule. Build `ev=p<<31` and `ev2=((zone&0x1F)<<16)|0x16400000` separately, then pass `ev|ev2|id`. This keeps the event value and emits the target's mask/shift/constant/OR order. Nine event variants found the exact shape, and a 25-case minimization grid confirmed that the inline player product is enough, with no signed-halfword offset or fixed register. Removing or moving the initialized player-input constraint, or widening the card-ID local, lost the match. An independent bounded strict-branch-target permuter also found a zero-byte diff after 930 iterations (32 compilation failures), but its assignment-only constant temporary was not installed.
+
+All parameters, the initial card load, the empty-card return, the face-up test, the original event and helper order, the immunity checks and the final effect arguments are unchanged. The source has no emitted assembly or artificial uninitialized values. Evidence: `build/codex-continue/monster-flipped-unit-check.log` reports all **0x107C unit bytes MATCH**; the source is **12/15 C**, with three fallbacks, and the conversion covers 0x110 (272) bytes. Private evidence: `monster-flipped-types.log`, `monster-flipped-event.log`, `monster-flipped-minimized/results.json` and `monster-flipped-permuter.log` under `build/codex-continue/`.
+
+### ROM audit corrects an inactive two-zone event argument
+
+The older `MoveFieldCard` draft passed zero to `sub_080197C0` in both the card-number `0x1E3` and `0x222` arms. In the ROM, r1 still holds the freshly reloaded 12-bit card ID at both calls, and the `sub_080197C0` wrapper uses that halfword in event `0x72`. The parked draft now reloads `id` after event `0x82` and the player-equality return, then uses that ID for the number lookup and both effect calls. This matches the ROM's read after the callback instead of caching the initial card word. The assembly fallback stays active.
+
+A new 17-case grid over faithful ID, player and zone types did not reach exact bytes. Its best result is four bytes short with 261 differing bytes (277 length-penalized score). The baseline zero-argument draft was eight bytes short. These scores do not establish correctness. Evidence for the parked draft only: `build/codex-continue/two-zone-draft-repaired-unit-check.log` reports full **0x107C unit bytes MATCH**, with coverage unchanged at **12/15 C**. Private results: `two-zone-types.log` and `two-zone-types/results.json`.
+
+### Card-entry draft semantic repairs
+
+Historical (`SendBattleDestroyedCardToGraveyard` matched in wave 3, see below). The repaired semantics here (card-word reloads, owner of the `0x45C` arm, byte +1 of `0x02018450`) carried into the match; the byte +1 read is now a padded u16 bitfield view rather than a raw byte view.
+
+A new source/ROM audit of the disabled `SendBattleDestroyedCardToGraveyard` found differences beyond the old allocation note. After event `0x7C`, the ROM reads the card word again for the type test, and the dispatcher reads it once more after the player's flag update. The draft now reproduces both reloads. Most arms keep the original saved owner; card-number `0x45C` instead takes the owner from the new dispatcher word, as the ROM does.
+
+The high target halfword reads byte **+1** of `0x02018450`, not the old local struct's byte member at +2, so the draft now uses a raw byte view at +1. Both target-field extractions shift unsigned words, which avoids signed promotion of a halfword or byte before a left shift that can overflow. The saved owner is also unsigned for its bit-31 event packing. No assembly fallback was disabled, and the whole `0x107C` unit still matches with **12/15 C functions**.
+
+The faithful isolated baseline is `0x37C` bytes against a target of `0x36C`. A first 16-case grid over ID width and initialized registers did not match (two pointer-binding setup failures excluded). Further scheduling work should start from these repaired semantics, not from the old cached-ID draft. Evidence: `build/codex-continue/card-entry-semantics/` and `card-entry-roles/`.
+
+A later 54-case grid over typed readers and unsigned extraction brought the faithful ordinary draft to the original **0x36C** length with **306 differing raw bytes**. Typed `DuelCard` ID and owner reads avoid the extra cached `0xFFF` literal, the canonical `DuelPlayer.flagB_3` member restores the byte +0x0B store, and event assembly keeps a meaningful extraction from the fresh dispatch word. This exact-size ordinary draft is parked, with no hints or register bindings. It still differs in saved-ID and dispatch-word allocation, packed-target lifetimes and switch-tail order. `build/codex-continue/card-entry-parked-unit-check.log` confirms the active **0x107C** unit and the **12/15 C** count are unchanged. Private best draft, object and disassembly diff: `card-entry-readers/best.c`, `best.o`, `best.diff` and `results.json`.
+
+## Two-zone move event matched (wave 2, 2026-10-01)
+
+`MoveFieldCard` (0x124, start score 50) matches in ordinary C, with no FAKEMATCH. Working notes: `build/wf/MoveFieldCard/NOTES.md`.
+
+- The parked draft stored the source zone in a pointer local `z1 = ZONE_AT(...)` (raw-integer address). Two problems: (1) a plain assignment expands the sum in source order (the `zone*0x94` multiply first), while the ROM does `p&1`, then `zone*0x94`, then `*0xD64`, which is the order `expand_expr` produces with `EXPAND_SUM`, i.e. when the address is formed **inside a memory reference**; (2) with the raw-integer form the base `0x0201930C` is a `const_int` that combine folds into the add, so reload loads it twice, whereas the ROM keeps the base in one register (r2) shared by both zone address computations. The array form (`&gDuelPlayers[p & 1].zones[z]`) forces the base into a pseudo that CSE shares.
+- What matched: no pointer local; every access written as `ZONE_CARD_ID(ZONE(p, z))` / `ZONE(p, z)->unk7` with the unit's `ZONE()` struct-array macro, and plain `int` locals for p1/zone1/p2/zone2 (the old draft's `s16 p2` hack is unnecessary). The card-ID reload after event 0x82 described above is kept.
+- Steps: `ZONE_AT` in place (93, wrong multiply order); `ZONE_AT` with operands swapped (40, order right but base reloaded); `ZONE()` array form (0). `ZONE(p,z)->card.id` instead of `ZONE_CARD_ID(...)` costs 10 (component-ref path).
+- Likely applies to `SwapFieldCards` too (same two-zone shape, high-register allocation difference). Confirmed in wave 3 (see below).
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/SendBattleDestroyedCardToGraveyard/NOTES.md`, `build/wf/SwapFieldCards/NOTES.md`.
+
+### `SendBattleDestroyedCardToGraveyard` (0x36C, start score 123; FAKEMATCH)
+
+Whole unit `0x107C` matches. Steps, in order:
+
+1. Big-arm card ID re-read from `*args`; GCSE turns it into the ROM's `adds r2, r3, #0` copy of the dispatch word. `id | 0x600000` goes through its own local so fold does not move the constant outward.
+2. Battle-state view at `0x02018450` (`struct Unk02018450b`): u16 bitfields `atkSlot` (bits 6-8) and `defSlot` (9-11), padded past 4 bytes. agbcc reads a struct of at most 4 bytes with `ldr`; in a larger one it uses `ldrh` for `atkSlot` and `ldrb [base, #1]` for `defSlot`, as the ROM does.
+3. Source case order: big set, `0x1CD`, `0x45C`, `0x5EA`, then `0x2D9`/`0x534`. Type-table read through the literal pointer `((const u32 *)0x08621DE0)[...]` (106 -> 102).
+4. `u16` first ID and `u32` dispatch ID (102 -> 58): the u16 makes the `ShowCardEffect` call set r0 before r1. `sub_080197C0` is called through `(void (*)(int, int))`, as other units declare it (56).
+5. Turn-bit re-read (the old "allocation" blocker, FAKEMATCH): the ROM reads `+0x1B12` again after the attacker-position `if`, so CSE1 and CSE2 never saw one path across that join. A dead store `else hi = 0;` (with `hi` assigned again below) keeps the else block alive through both CSE passes; flow deletes it later and jump2 removes the leftover jump. A redundant `&& linkSkip < 2` also broke the path (18) but left its compare in the code.
+6. `0xFFFF` between the two shifts, `ev` in r4 / `lo` in r3 (22 -> 0, FAKEMATCH): split the extraction, `t = *(u32 *)args << 20; w = 0xFFFF; t = (t >> 20) | 0x600000;`, reusing the dispatch-word variable `w` as `lo`. `update_equiv_regs` doubles the live length of a pseudo whose first set (in insn order) is a constant, even when later sets cancel the equivalence (102 instead of 51), and that let `ev` win r3. With the load as `w`'s first set there is no doubling, so `lo` gets r3 and `ev` r4.
+
+Failed: if/else or `?:` for `lo` (a real else block), `do { } while (0)` around the `lo` `if` (CSE2 still merges; once fixed ev/lo only by reordering blocks, 94), a volatile re-read (keeps the address register), user labels and gotos (do not survive jump1), `switch (player == turn)` (32), a redundant `&& player == turn` (removed by CSE1), `ev2 = ev | t` (regmove merges it back).
+
+### `SwapFieldCards` (0x214, start score 179; ordinary C)
+
+The old draft cached the first zone in a `ZONE_AT()` pointer local, used s16/s8 ID locals, passed the cached ID to `sub_080197C0` (the ROM re-reads the card word after the event call) and swapped the call order in the second `0x222` arm. Two experiments:
+
+1. Rewrite in the style of `MoveFieldCard` (wave 2, above): `int p1/zone1/p2/zone2`, no pointer locals, every access through the array-form `ZONE(p, z)`, and `ZONE_CARD_ID(ZONE(..))` re-read in each arm. Score 172 at the exact size; only the high-register roles differed (`arg2`, `p1`, `p2`, `zone2`, constant 1).
+2. `u16 id1` (with `u32 id2`): the narrowing leaves the ROM's `adds r5, r0, #0` copy for `id1`, which shifts every global-alloc decision into place (0). `s16 id1` scored 216, `int`/`u32` 172.

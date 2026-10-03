@@ -1,0 +1,27 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_AnimateHighlights.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_MarkMatchingCoins.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_CountUnfinished.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_SpawnSparkle.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_UpdateSparkles.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_DrawSparkles.s"
+	.include "asm/nonmatching/coin_toss_scene/CoinToss_ClearSparkles.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_AddOamPiece.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_DrawCharacter.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_TickCharacter.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_Init.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_LoadGraphics.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_ThrowDie.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_RollToResult.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_CharacterEnter.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_HoldDie.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_Update.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_SetupSkullDice.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_SetupGracefulDice.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_SetupPlainDie.s"
+	.include "asm/nonmatching/coin_toss_scene/DiceScreen_PrepareRoll.s"
+	.include "asm/nonmatching/coin_toss_scene/DuelScene_SkullDice.s"

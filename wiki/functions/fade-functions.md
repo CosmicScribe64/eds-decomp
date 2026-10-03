@@ -8,7 +8,7 @@ updated: 2026-10-01
 ---
 # Fade helpers (`0x080757F4`–`0x08075C3C`)
 
-All of these live in unit `asm/code_080750E0.s`. They are all Thumb and all nonmatching (not attempted). They drive the hardware brightness effect (`BLDCNT` `0x04000050`, `BLDY` `0x04000054`) and keep the current level in the low 6 bits of `gMain.brightness` (`0x03004872`, u8). The top 2 bits of that byte are preserved.
+All of these live in unit `asm/main.s`. They are all Thumb and all nonmatching (not attempted). They drive the hardware brightness effect (`BLDCNT` `0x04000050`, `BLDY` `0x04000054`) and keep the current level in the low 6 bits of `gMain.brightness` (`0x03004872`, u8). The top 2 bits of that byte are preserved.
 
 | Address | Size | Proposed name | Behaviour (verified) |
 |---|---|---|---|

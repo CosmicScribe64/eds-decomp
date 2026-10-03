@@ -1,0 +1,132 @@
+---
+title: link_sio (OAM sprites, tweens, SIO link, card password entry) decompilation status
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# link_sio: sprite setup, tween update, Konami link (SIO) accessors and a link/password menu (`0x0807B6B8`-`0x0807C7C8`)
+
+`src/link_sio.c` (28 functions, 0x1110 bytes). **28/28 functions in C** after workflow waves 2-3 (2026-10-01: `0x0807C058`, `0x0807B6B8`, `0x0807B864` in wave 2, `0x0807C4CC` in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 24/28 (`TweenInit` added in wave 1). The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; the code keeps `sub_08XXXXXX`. Follows [[gfx-util-c]]; uses the OAM list of [[bitmap-text-c]] (`OamListAlloc` = list alloc).
+
+The last third (`0x0807BCFC`-`0x0807C4CC`) is the **two-player link ("BASICSIO") handshake and the link/password menu screen** that shares state at `0x0201F7B0` (0x18 bytes).
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x0807B6B8` | 0x1AC | **matching** (wave 2, 2026-10-01) | `OamAddSprite(layer, tile, x, y, w, h, mode, pal, _, flags, aff, prio, list)` | allocates an OAM entry (`OamListAlloc`) and fills attr0-2: `w x h` in pixels (8/16/32/64) selects the shape/size bits (invalid combos hang in `while(1)`), mode 8 = 256 colours (`0x2000`), `aff << 25`, y `& 0xFF`, x `& 0x1FF`, `pal << 12 \| tile \| prio << 10`; returns the entry |
+| `0x0807B864` | 0x170 | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `DrawNumberSprites(num, count, mode, x, y, base, _, step, ..., l)` | number drawn with sprites (`OamListAddSpriteGroup` per digit, digit sprite table `base + d*8`, x decreases by `step`); mode 0 fixed `count` digits, mode 1 strips leading zeros (one `0` sprite when num == 0) |
+| `0x0807B9D4` | 0xE0 | **matching** (wave 1, 2026-10-01) | `TweenInit(x0, y0, x1, y1, dur, b, t, mode)` | fills a `Tween` (mode 0 velocity approach, 1 = `(dur+0x7F)/dur` step, 2/3 = `0x4000/dur`); sets `kind` and `mode` |
+| `0x0807BAB4` | 0x220 | matching | `TweenUpdate(t)` | mode 0: +-1 velocity approach with snap at `\|d\| <= 7`; modes 1-3: ease `step2` along the sine table `gSineTable` (`MulFix8`), snap to (x1,y1) at the end and set `kind = 2` |
+| `0x0807BCD4` | 0x20 | matching | `SetBgOffset(hofs, vofs, bg)` | `BGnHOFS/VOFS` pair at `0x04000010 + bg*4` (both `& 0x1FF`) |
+| `0x0807BCF4` | 0x8 | matching | `ClearByte8(p)` | `p[8] = 0` (resets `LinkSync.state`) |
+| `0x0807BCFC` | 0x138 | matching | `LinkHandshakeStep(id, data, p)` | one tick of the pairing state machine (`LinkSync`): sends/receives `{id, phase, data}` packets with `LinkSioSend` / `LinkSioRecv`; 300-tick timeout; returns 1 when done |
+| `0x0807BE34` | 0x2C | matching | `LinkSyncReset(p, q)` | `LinkSioInit(0x03000000, 0x0300001C)`, zero both `data` fields, return 1 |
+| `0x0807BE60` | 0x1C | matching | `LinkSyncFinish` | `LinkSioStop()`, clears `0x03005B60` (0xB38 bytes), returns 1 |
+| `0x0807BE7C` | 0x5C | matching | `SioInitMulti(baud, irq)` | `RCNT = 0`, `SIOCNT = baud&3 \| MULTI mode (0x2000) \| irq<<15`, clears `SIOMLT_SEND` and `SIOMULTI0-3`; the asm returns garbage in r0 (declared `int`, no return) |
+| `0x0807BED8` | 0x10 | matching | `SioGetPlayerId` | `(SIOCNT & 0x30) >> 4` |
+| `0x0807BEE8` | 0x10 | matching | `SioSetSend(u16)` | `SIOMLT_SEND = data` |
+| `0x0807BEF8` | 0x10 | matching | `SioGetRecv(id)` | `SIOMULTI[id]` |
+| `0x0807BF08` | 0x14 | matching | `SioGetErrorFlag` | `SIOCNT & 0x40` |
+| `0x0807BF1C` / `0x0807BF30` | 0x14 | matching | `SioGetSD` / `SioGetSI` | `SIOCNT & 8` / `& 4` |
+| `0x0807BF44` | 0x10 | matching | `SioStart` | `SIOCNT \|= 0x80` |
+| `0x0807BF54` | 0x14 | matching | `SioIsBusy` | `SIOCNT & 0x80` |
+| `0x0807BF68` | 0x34 | matching | `LinkMenuDrawIcons` | 8 x `AddSprite(0x80000 \| (0x18 + 8i), 0x8000, gPassword[i] + 0x1080)` |
+| `0x0807BF9C` | 0x44 | matching | `LinkMenuAnimIcon(idx)` | one icon with `gPasswordSlotCursorFrames[(frame >> 3) % 6]`, `frame` = `u16 @ 0x0300485E` |
+| `0x0807BFE0` | 0x78 | matching | `LinkMenuDrawCursor` | 11 entries of `gPasswordKeypad` (8 bytes: `x, y, ..., u16 flags:12 @+4`); draws the one selected by `state.cur >> 4`, entry 10 is two sprites |
+| `0x0807C058` | 0x178 | **matching** (wave 2, 2026-10-01) | `RenderCardPortrait(a, b, id, c)` | fills a 10 x 9 tilemap area at `0x0300045C + (a&7)*0x800 + b*2` with ascending tiles (or clears it when `id == 0xFFFF`), copies the card's 64-colour palette (`0x08608360`) and unpacks its 6bpp image (`0x082A6500`, 0x10E0 bytes, 720 x 6 -> 8 bytes, same as `UnpackCardArt8bpp`) into `0x06004000 + c*32` |
+| `0x0807C1D0` | 0x134 | **matching** | `LoadCardFrameGfx(id)` | picks the frame graphics by card kind (`stats[id] >> 20 & 0x1F` = 0x15-0x17 Magic/Trap/Ritual, else by card number range `0x776-0x778` or the type bits 18-19) and calls `LoadBgImageMap1` then `DrawCardPortraitOrClear(2, 0xA2, id, 0x300)` |
+| `0x0807C304` | 0x70 | matching | `FindCardByPassword` | packs 8 BCD nibbles (`gPassword[8..0xF]`) into 4 bytes and linearly searches the 821 x 4-byte table at `0x08623120` (the password table, BCD big-endian, see [[password-table]]); returns the card id or 0 |
+| `0x0807C374` | 0xF8 | matching | `LinkMenuInitVideo` | DISPCNT = 0, BG1-3 CNT = 0x105 / 0x286 / 0x307, clears scroll/blend/window regs, loads two tile sets (`LoadBgImage4bppMap1`), palette, DMA3 copy of `gPasswordObjGfx` to VRAM `0x06010000` |
+| `0x0807C46C` | 0x3C | matching | `LinkStateInit` | clears the 0x18-byte state at `0x0201F7B0` and its bitfields |
+| `0x0807C4A8` | 0x24 | matching | `LinkMenuSetup2` | `DISPCNT = 0x1E00`, `MOSAIC = 0`, then `FadeFromBlack(2)` |
+| `0x0807C4CC` | 0x2FC | **matching** (wave 3, 2026-10-01) | `LinkMenuUpdate` | one frame of the password-entry screen: L/R move the digit cursor (`state.cur` low nibble), the d-pad moves between keys through the neighbour nibbles of `gPasswordKeypad`, A enters a digit or, on OK (key 10), copies the 8 digits, looks the password up with `FindCardByPassword` and prints debug lines (`DebugPrintf`); B deletes a digit or cancels at position 0; Select/Start (`0xC`) cancel (SE 2, `gMain+0x4859 = 10`). `PlaySE(0x25)` = cursor sound. Returns 1 when the screen is done |
+
+## Structures (as declared in the unit)
+
+- `Tween {u16 x, y; u16 x0, y0; u16 x1, y1; s16 step, step2; s16 dx, dy; u8 kind @+0x14; u8 mode @+0x15}`. `kind` 1 = running, 2 = finished.
+- `LinkSync {LinkEntry tx @+0, rx @+4; u8 state @+8; u16 timeout @+0xA}`, `LinkEntry {u8 id, phase; u16 data}`. States: 0 reset, 1 send, 2 wait for reply (rx phase 1 means the same id, so answer with phase 4; rx phase 3 restarts; rx phase 4 means the peer acknowledged), 3 goes to 1, 5 finish.
+- `LinkState @0x0201F7B0 {u8 pad[0x10]; u8 cur; u8 a:6; u32 b:6; u16 c:12; u16 d}` (bitfield layout inferred from the clear masks; byte 0x10 low nibble = selected digit slot, high nibble = cursor entry).
+- `PwView`, the wave 3 view of the same block used by `Password_HandleInput` (verified by the match): `u8 digits[8]` +0, `u8 shown[8]` +8 (copy used for the lookup), `u8 pos:4` and `u16 key:4` at +0x10 (cursor position 0-7, selected key 0-9 or 10 = OK), `u8 blink:6` at +0x11 (= `a`), `u32 timer:6` (+0x10 bits 14-19, = `b`), `u16 c:12` at +0x12, `u16 card` +0x14 (= `d`, the `FindCardByPassword` result). The keypad table `gPasswordKeypad` is viewed as `KeyNav {u8 x, y; u8 pad[4]; u8 up:4, down:4; u8 left:4, right:4}`.
+- SIO registers: `0x04000120-0x04000128` (SIOMULTI0-3, SIOCNT), `0x0400012A` (SIOMLT_SEND), `0x04000134` (RCNT). `SIOCNT` bit 7 start, bit 6 error, bit 3 SD, bit 2 SI, bits 4-5 player id.
+
+## Matching tricks learned (old_agbcc)
+
+- **Struct with a big offset instead of `sym + N`**: `extern struct {u8 pad[0x485E]; u16 x;} gMain;` makes gcc emit `ldr r0,=0x03000040; ldr r1,=0x485E; add` exactly like the target, while an array index folds into one pool entry `sym+0x485E`. A second view of the same symbol uses `extern struct X gUnk_03000040_b asm("gMain");`.
+- **Prototype return type of a helper** decides operand order in the caller: `SioGetMultiPlayerId` declared `u16`-returning (via `asm` alias) gives `eors r1,r0` (result register = the constant) in `LinkHandshakeStep`; `u32` gives `eors r0,r1`.
+- **Fall-through without `break`** (`TweenUpdate` case 2 into case 3) is in the original code; add it explicitly.
+- **Tail duplication**: `TweenInit` cases 1 and 2/3 contain identical code; gcc's cross-jumping merges them only from the `asr` on (the target has the duplicated first `lsl`). Reproduced in wave 1 with block-local temporaries per subtraction (see below).
+- **Bitfield stores** (`u8 a:6`, `u32 b:6`, `u16 c:12`) in the link state reproduce the `ldrb/ldr/ldrh + and mask` sequences of `LinkStateInit` (and `count:7` of the OAM list in [[bitmap-text-c]]).
+- **Local pointer copies** in `LinkHandshakeStep` (`tx = &p->tx; rx = &p->rx; st = &p->state`) reproduce the hoisted `p`, `p+4`, `p+8` registers (r4/r6/r7).
+- **`u16` field with `--x == 0xFFFF`** gives the `lsl 16; cmp 0xFFFF0000` timeout test; `s16 == -1` gives `asr`.
+- **DMA loop**: `vu32 *dma = (vu32 *)0x040000D4; dma[0..2] = ...; dma[2]; while (dma[2] & 0x80000000);` matches the sequence with two reads.
+
+## Nonmatching notes
+
+None remain: the whole unit is in C since wave 3 (2026-10-01). The entries below are historical.
+
+> [!warning] Contradiction
+> The next note (2026-10-01 and earlier) says the case constants and layout of `0x0807B6B8` match and only the x/y narrowing and r4/r6 differ. The wave 2 match (2026-10-01, `build/wf/OamListAddSprite/NOTES.md`) also had to change the layout (64x8 and 64x16 are two separate `while (1);` loops in the ROM, not shared case labels) and stop CSE reusing the just-stored attr word (a volatile entry view). Resolved in favour of the matched source.
+
+- Historical (matched in wave 2, see below): `0x0807B6B8`: case constants/layout match; the u16 narrowing of `x`/`y` lands in the prologue (built) vs at the use (target), and r4/r6 are swapped.
+
+> [!warning] Contradiction
+> The next note (2026-10-01 and earlier) calls `0x0807B864` "register allocation only". The wave 2 match (2026-10-01, `build/wf/DrawNumberSprites/NOTES.md`) needed different counter and digit types (`u8 n`, `u16 d`) and `return` instead of `break` in the mode-1 loop; that loop-rotation change is what fixed the count/sl swap. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2, see below): `0x0807B864`: register allocation only (target: count in sl, the last u8 arg in r8; built: swapped).
+- Resolved `0x0807B9D4` (wave 1): see tail-duplication above and the wave 1 section below.
+- `0x0807C1D0` (solved): the `0x776..0x778` range must be a `switch (n) { case 0x776: v = 3; case 0x777: case 0x778: v = 1; default: ... }` (copy the sibling's `CardFrameKind`). That emits the ROM's two signed compares instead of a folded unsigned range test. The last hurdle was argument-setup order in `LoadBgImageMap1(0x420, 0x20, 0x100, tbl)`: pin the two scalar args as `register u32 a asm("r0") = 0x420; register u32 b asm("r1") = 0x20;` so agbcc sets r0, r1, then the shifted `0x100` (otherwise it schedules `0x100` before `0x20`).
+- `0x0807C304` is matching: initialize the pack-loop counter before its pointers, cache the packed first byte before scanning, and express the table as the fixed ROM pointer `(u8 *)0x08623120 + n * 4` to retain its in-loop literal load. A local buffer-pointer constraint to `r4` is marked `FAKEMATCH`; no inline assembly instructions are emitted. Verified with `tools/check.py`: 28/28 functions match and unit bytes MATCH (0x1110 bytes).
+- `0x0807C46C` is matching: an empty input barrier for `mask = 15` and `zero = 0` immediately after clearing the state schedules the shared constants before the bitfield stores. No instructions are emitted by the barrier. Verified with `tools/check.py`: 28/28 functions match and unit bytes MATCH.
+- `0x0807C058` had a full C draft for clearing/filling the portrait map and unpacking the 6bpp image, with counter allocation (`ip` versus `r8`) and table/mask hoisting nonmatching; matched in wave 2 (see below).
+
+## Open questions
+
+> [!question] `OamListAddSpriteGroup` (12 args) and `AddSprite` (3 args) look like sprite-spawn helpers (signature inferred from these callers only).
+
+Related: [[gfx-util-c]], [[bitmap-text-c]], [[decomp-workflow]], [[compiler-flags]].
+
+## Workflow waves 1-2 matches (2026-10-01)
+
+`TweenInit`, `DrawCardPortraitOrClear` and `OamListAddSprite` match in ordinary C, `DrawNumberSprites` with one FAKEMATCH. Working notes: `build/wf/TweenInit/NOTES.md`, `build/wf/DrawCardPortraitOrClear/NOTES.md`, `build/wf/OamListAddSprite/NOTES.md`, `build/wf/DrawNumberSprites/NOTES.md`.
+
+### `TweenInit` (`TweenInit`, 0xE0, start score 49; wave 1)
+
+The old draft computed dx/dy through function-scope `int a, b2` assigned in both case blocks, so they were cross-block pseudos handled by global-alloc; the sign-extension temporary did not tie with the result, and cross-jumping merged one instruction too many. What matched: **block-local temporaries per subtraction**, `{ int a = (s16)x1, b2 = (s16)x0; t->dx = a - b2; }`. Local-alloc then ties the `lsl` temporary, the `asr` result and the difference to r1, and the duplicated `lsl` stays in each case as in the ROM. Plain `t->dx = (s16)x1 - (s16)x0;` scored 215: tree-level narrowing (`convert_to_integer`) drops the sign extensions entirely when the result goes to an s16 field.
+
+### `DrawCardPortraitOrClear` (`RenderCardPortrait`, 0x178, start score 48; wave 2)
+
+1. ROM tables as integer addresses `(void *)(0x08608360 + id * 0x80)` instead of `gUnk_` symbols: a symbol_ref pool load is a GCSE/PRE expression and was hoisted to the outer fill loop's preheader (into sl); a const_int set is not (same trick as `BattleScene_LoadCardArt` in [[duel-card-anim-c]]).
+2. `u32 y` (not int) for `lsrs`; `(y & 0xFC) * 64` (not `<< 6`) for `movs r0,#252; ands r0,r2`.
+3. `int t = y >> 8`: with `u16 t`, its `& 0x3F` used a separate SImode constant pseudo while the x/z masks used an HImode one, so 0x3F had fewer refs and lost sl to 0xFC0. `(u16)t >> 6` keeps the logical shift (`int t` alone gave `asrs`; u32 casts let combine fold it into `y >> 14`).
+4. `u16 *map = base + (a&7)*0x800; map += b;` (two statements) puts the intermediate in r4.
+- Failed: a local m6 mask variable (wrong operand order/placement), u16 x/y/z, u32 t, s16 t.
+
+### `OamListAddSprite` (`OamAddSprite`, 0x1AC, start score 83; wave 2, ordinary C)
+
+1. y's `lsl r3,#16` sat in the prologue (parameter narrowing) instead of right before the `0xFF0000` mask. Fix: declare the parameter as `int y_` and narrow it at the use, `u16 y; ... y = y_;`. (`(u16)y & 0xFF` on an int is simplified to `y & 0xFF` by combine; an s16 parameter moves the lsl but gives `asrs`.) 83 to 81.
+2. The w = 8 cases and 64x64 reused the just-stored attr word (CSE follows the jumps) instead of `ldr r0,[r2]`. Fix: write through a volatile view `struct OamEntryV { vu32 w; u16 h; }`. 81 to 47.
+3. 64x8 and 64x16 are two separate `while (1);` loops in the ROM, not a shared `case 8: case 16:`. 47 to 12.
+4. x and y swapped r4/r6: global-alloc priority (13 refs each; the draft's x copy lived 109 insns, y 118). Fix: mask the parameter in place (`x &= 0x1FF`, then `y &= 0xFF` on the u16 local), so x's live range starts in the prologue. 12 to 0.
+- Failed: `yy = y; yy &= 0xFF;` (right registers, but it breaks the lsl / and 0xFF0000 / lsr shape, 33); s32 x and y parameters as the callers declare them (220); a plain u16 y parameter with the in-place mask (14, the prologue lsl comes back).
+
+### `DrawNumberSprites` (`DrawNumberSprites`, 0x170, start score 84; wave 2, FAKEMATCH)
+
+1. Types: the loop counter is `u8 n` (add / lsl / lsr #24, unsigned `bcs`), not `int n`, and the digit is `u16 d` (`lsl r4,#3`, no sign extension), not `s16 d`.
+2. Mode-1 loop: with `break` on `d == 0 && num == 0`, expand_end_loop rotates the whole loop head (the `n < count` test, umod, udiv, the d/num tests) to the bottom, because `break` is a jump to the loop-end label and the scan takes the last such exit within 30 insns. The ROM only rotated the `n < count` test, so the leading-zero exit is a `return` (a jump to the function's return label, which the scan ignores). This also fixed the old count/sl versus i/sl swap, because the live lengths changed.
+3. The last 20 lines: in the `num == 0` block the ROM passes r7 (num) for the two zero arguments, the build r6 (k, also known to be 0). CSE merges num and k into one quantity on the `num == 0` jump equivalence, and make_regs_eqv makes the register with the later REGNO_LAST_UID canonical; k's last use (`k++` in the mode-1 loop) comes after num's. FAKEMATCH: a dead `num++;` after the switch moves num's last use later. The store is deleted before allocation, so it costs no code.
+- Tried: `if (num != 0) { loop } else { call }` (CSE then uses r7, but jump.c lays the call out after the loop, because its then/else swap needs a range without labels and a loop has labels); the same with `break;` in the else; literal `0, 0` arguments instead of `num, num` (same result, CSE substitutes the canonical zero register).
+- Cleanup idea: a natural form that references num after the mode-1 loop, or that keeps `k = 0` off CSE's path into the `num == 0` block, so the dead `num++` can go.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/Password_HandleInput/NOTES.md`.
+
+### `Password_HandleInput` (`LinkMenuUpdate`, password entry, 0x2FC, start score 127; ordinary C)
+
+1. Cancel store `gMain+0x4859 = 10`: the draft's `((u8 *)&gMain)[0x4859]` folds to a single pool constant, while the ROM computes `r4 + 0x4859`. Fix: a `gMain` view with a field at +0x4859 (`struct KeysView { u8 pad[6]; u16 pressed; ...; u8 step; }`), the big-offset struct trick listed above.
+2. A-press key extraction: the ROM does `lsl r1,b,#24` once, then `lsr #28` twice, once for the compare and once for the store. The draft's `u32 key:4` gave one `lsr #4`. Fix: **`u16 key:4`**. With `u8 key:4`, CSE's paradoxical-subreg handling puts both QImode results in one class, so the store reuses the compare's register; with u16 the store takes a truncation of an HImode value, so CSE shares only the `<< 24` and keeps both `>> 28`. The d-pad blocks are unaffected (combine still simplifies them to `lsr #4`). Uglier forms that also match: `& 0x1F`, `% 32` or `<< 28 >> 28` on the stored value; `& 0xF` shares its constant with a later mask and does not.
+3. Tail (B / Select / Start): the ROM loads `0x03000040` again at the `0xC` test, and the cancel code uses that register. Fix: write the cancel tail twice, once inside `if (pos == 0)` in the B block and once as `if (keys & 0xC) { ...; return 1; } return 0;`, and let cross-jumping merge the two copies. The B-block copy uses the B test's register through cse1, which makes the symbol non-anticipated on that path, so the LCM-based PRE in gcse.c (placement by anticipation only) keeps the `0xC` test's own load. `goto cancel` reused the register instead; `if (!(keys & 0xC)) return 0;` followed by the second copy gave the wrong return-0/return-1 layout.
+- Failed (no effect): compare forms (`<= 9`, `< 10`, casts) and `(u32)`, `(int)`, `(s8)`, `(u16)` casts on the stored key.

@@ -1,0 +1,82 @@
+---
+title: Unit booster_pack (booster pack generator and pack-opening scene)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit booster_pack
+
+`0x080629F0`-`0x08063A27`, Thumb, `old_agbcc -O2`. Source: `src/booster_pack.c`. Holds the booster pack generator ([[booster-packs]]) and the first half of the Get-a-pack scene (continues in [[booster-get-pack-c]]). Unit status: `unit bytes MATCH`, **11/12 functions in C** after workflow wave 3 (2026-10-01: `0x080636AC` and `0x08063040` in wave 3, see [Wave 3 matches](#wave-3-matches-2026-10-0102)); 1 stays `INCLUDE_ASM` (`0x08062AF4`, attempt under `#if 0`). Before wave 3: 9/12.
+
+> [!warning] Contradiction: the unit is now 12/12
+> The count above (11/12) predates later matches. `src/booster_pack.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 12 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses unless noted) | Proposed name |
+|---|---|---|---|---|
+| `0x080629F0` | 0x1C | matching | `(PackSlots*)`: index of the highest non-empty rarity slot (7 down to 1), else 0 | `PackCommonSlot` |
+| `0x08062A0C` | 0xC8 | matching | `(pack, packId)`: rarity roll: `rand % 180` (`% 270` when `packId` equals the last opened pack at save+0x2154), pity counter at save+0x2156; walks slots 0..6 with thresholds `0x081A570C` | `PackRollRarity` |
+| `0x08062AD4` | 0x20 | matching | `(pack, slot)`: random card of a slot (`cards[rand % count]`) | `PackRandomCard` |
+| `0x08062AF4` | 0x3F4 | nonmatching (`#if 0`) | `(u16 *out5, packId)`: builds the 5 cards (see [[booster-packs]]); special ids 0x66/0x67/0x6E pick 5 distinct random cards excluding numbers 0x780-0x7CF (0x66 needs type 0x15, 0x67 type 0x16); stores 9999 at `0x02015160+0x112` and returns -1 (random packs) | `GeneratePackCards` |
+| `0x08062EE8` | 0x84 | matching C | `(id)`: card id -> key (`IdToKey`), true if the trunk entry at `save+8+key*4` has a non-zero count or any of the three 2-bit fields (byte +9 bits 2-7) | `IsCardOwned` |
+| `0x08062F6C` | 0xD4 | **matching C** | pack-opening step runner on `gMain+0x485A`: 0 = `PackList_ClearWork` then generate with arg `gMain+0x4876` (or `PackList_AddUnlockedPacks`); 1-3 = `PackList_Init/BA0/DF8` ([[deck-edit-panel-c]]); default = clear the `0x02015160` buffer (0x11C bytes), generate cards for the pack selected in the list (`0x02020310`), return 1 | `PackOpenStep` |
+| `0x08063040` | 0x2F0 | **matching** (wave 3, 2026-10-01) | scene init: DISPCNT/BGxCNT, palettes and tile copies (`MemCopy16`), fills BG3 map (2x2 metatiles 0x1130-0x1133) and BG1 map (frame tiles 0x2200-0x2208), clears pack-buffer `+0x116`/`+0x118` and the five reveal states between two `ResetBgScroll` calls, installs `GetPack_HBlank` as hblank callback, sets `bgVofs` from the scroll byte | `PackOpenSceneInit` |
+| `0x08063330` | 0x24 | matching | `DISPCNT \|= 0x1F00; GetPack_ScrollBg(); return FadeFromBlack(4)` (fade wait) | `PackSceneShow` |
+| `0x08063354` | 0x128 | matching | reveal animation: advances 5 per-card states (`0x02015160+0x10C`, 0x17 = revealed; card i advances once card i-1 > 0xC; A/B key snaps to 0x17), then registers revealed cards with `GetPack_DrawCardRow(i, key)`; returns 1 when all 5 done | `PackRevealStep` |
+| `0x0806347C` | 0x190 | **matching C** | scroll/cursor byte at `0x02015160+0x114` (bits 0-2 row, 3-5 sub-step, 6-7 anim): updates `gMain.bgVofs[1] = -(row<<5) - gPackCursorSlideOffsets[sub]`, handles UP (0x40) / DOWN (0x80) and A (step += 3) / B (return 1) | `PackScrollStep` |
+| `0x0806360C` | 0xA0 | matching | `GetPack_ScrollBg; GetPack_DrawCardSprites(5,-1,0)`; if `FadeToBlack(2)` passes, calls `AddCardToTrunk(IdToKey(ids[i]))` for the 5 pack cards (adds them to the trunk?) | `PackAddCardsToTrunk` |
+| `0x080636AC` | 0x37C | **matching** (wave 3, 2026-10-01) | card browser state machine on `gMain+0x485A` (12 states, jump table): state 0 fills `0x02013D90` (key at +2, ATK*10 at +0x2C, DEF*10 at +0x30 of the current card); 1-2 fade in; state 3 LEFT/RIGHT (0x20/0x10) moves `row = (row +/- 1) % 5` and goes to state 10; 4/10 wait; 11 resets to 0; other states return 1 | `PackCardBrowserStep` |
+
+## Structs and globals
+- `struct PackSlots { struct { const u16 *cards; s32 count; } slot[8]; }` (0x40 bytes), table `0x081A562C` = `{PackSlots *p; u16 id; u16 pad}[28]`.
+- Save mirror `0x02011C20`: `+0x2154` u16 last opened pack id, `+0x2156` u16 pity counter (commons-only packs); `+8 + key*4` card trunk entry.
+- Pack buffer `0x02015160` (size >= 0x11C): `+2..` shuffled copy of the common slot (u16, up to 0x100 entries used by the generator), `+0x102` u16[5] generated card numbers, `+0x10C` u8[5] reveal states, `+0x112` u16 (9999 for random packs, else the rolled card), `+0x114` scroll byte (bitfield a:3 b:3 c:2).
+- `0x02013D90`: card-detail display state (`+2` key, `+0x2C` ATK*10, `+0x30` DEF*10).
+- `gMain` fields used: `+4` held keys, `+6` new keys, `+0x414` vblank callback, `+0x41C` BG maps, `+0x4420`/`+0x4422` BG vofs shadows, `+0x4859` step, `+0x485A` sub-step, `+0x4876` argument.
+- Card id to key (`IdToKey`): `0xFFFF -> 0`, `id <= 0x7CF: tbl[id & 0x7FF]`, else `tbl[(id - 0x7D0) & 0x7FF] + 1` with `tbl = 0x08623DF4` (seen in five functions here and in [[booster-get-pack-c]]).
+
+## Matching tricks
+- Pointer-decrement loops: `for (; i > 0; s--, i--)` with `i = 7; s = &p->slot[7];` as separate statements (`GetPackCommonSlot`); `i = 0; pity = &save.pity;` ahead of the loop and `for (s = p->slot, th = thresholds; i <= 6; s++, th++, i++)` (`RollPackRarity`).
+- `(struct PackSlot *)(slot * 8 + (u32)p)` gives `lsl; add` with the multiplied term first.
+- `Random` (Random) must be declared `int`: with `u32` the `%` calls `__umodsi3`.
+- An array walked by index in a loop whose body doesn't need `i` (`for (i = 0; i < 5; i++) f(IdToKey(g.ids[i]))`) makes gcc strength-reduce to the un-folded `ldr base; mov #0x81; lsl; add` address (`GetPack_FadeOutAndAddCards`); a hand pointer folds to one literal.
+- Inline `IdToKey` returning `int` with callers casting `(u16)` reproduces the `lsl #16; lsr #16` at the call site.
+- `IsCardNumberOwned`: assign `off = (u32)(u16)IdToKey(id) << 16`, then load a separate save-base local, then address the entry using `off >> 14`. This preserves the unsigned key narrowing/scaling and places the save-base load between `lsl #16` and `lsr #14`, matching the ROM's base `0x02011C20` and `[base,#8]` entry access. No compiler barrier is needed. Verified with `tools/check.py booster_pack`: all 12 functions and all 0x1038 unit bytes MATCH.
+- Bitfields in a struct larger than 4 bytes (pad the struct) are read with `ldrb`/`ldrh` and shifts; adjacent bitfield tests get merged by gcc unless they go through separate `static inline` getters.
+- `else if (i != 0) { if (...) } else { ... }` orders the blocks as the ROM (`GetPack_RevealCards`).
+- `goto` into the `if` body (`next:`) shares the `state++` tail, as in [[booster-get-pack-c]].
+
+## Near-misses (for a later pass)
+- `0x08062EE8` is matching; splitting the unsigned key scaling across the base-local assignment resolved the earlier one-instruction scheduling miss.
+- `0x08062F6C` matches. The earlier diagnosis missed a real local-structure error: `bgMap` ends at +0x441C, but the four-byte gap before `bgVofs` was absent. This put the scene fields four bytes early. The view includes the gap and compile-time assertions for `bgVofs` +0x4420, `step` +0x4859, `sub1` +0x485A, and pack argument +0x4876. ROM literals in `GetPack_InitScene` (+0x4420/+0x4422), `GetPack_HandleInput` (+0x4859/+0x485A), `GetPack_SelectAndGenerate` (+0x485A/+0x4876), and `GetPack_ShowCardDetail` (+0x485A) establish those offsets. The correction applies to all pending scene drafts.
+- Separate initialized list-index, output-array and pack-table pointers recover the remaining `GetPack_SelectAndGenerate` scheduling. Input-only empty constraints retain the initialized sub-step cursor and load the table base before the selected index; no instructions or ABI changes are supplied by the hints. `build/bigguns-card-ui/booster_pack-accepted.txt` verifies every existing C slice and all 12 functions / 0x1038 unit bytes. The conversion adds one C function / 0xD4 bytes.
+- `0x0806347C` matches in ordinary C, without compiler hints. Keep completion inside each switch arm. The downward-animation wrap clears `c`, clears `b`, then increments `a`; this reproduces both masks before the final three-bit increment. The `done:` label at the case-1 return expresses the ROM's shared return-zero block, preserving the A/B branch layout. `build/bigguns-card-ui/GetPack_HandleInput/finish-label/check.txt` and the refreshed `build/bigguns-card-ui/booster_pack-accepted.txt` verify all 12 functions and all 0x1038 bytes. This adds one C function / 0x190 bytes.
+- Historical (matched in wave 3): `0x08063040`: the historical draft also omits original state initialization; see the correction below.
+- Historical (matched in wave 3): `0x080636AC`: case 0 exact except `ands r3,r0` vs `ands r0,r3`; cross-jumped tails differ.
+- `0x08062AF4`: dispatch (`switch` with cases 0x6E, 0x66, 0x67 in that source order, `default: goto normal`) and all stores match; hard registers differ.
+
+> [!warning] Contradiction about scene initialization
+> Scene initialization was not merely a scheduling mismatch. The historical `GetPack_InitScene` draft and its source comment claimed the same stores and order. ROM instructions `0x080631CA`–`0x080631EC` clear halfwords at pack-buffer offsets +0x116 and +0x118, then clear the five reveal-state bytes from +0x110 down to +0x10C. A second call to `ResetBgScroll` follows at `0x080631EE`. All of this was absent from that draft. `tools/check.py booster_pack --asm GetPack_InitScene` reproduces the evidence. (Historical: the wave 3 match on 2026-10-01 includes the buffer clear and the second call; see below.)
+
+## Wave 3 matches (2026-10-01/02)
+
+Both match in ordinary C. Working notes: `build/wf/GetPack_InitScene/NOTES.md`, `build/wf/GetPack_ShowCardDetail/NOTES.md`.
+
+### `GetPack_InitScene` (0x2F0, start score 176; ordinary C)
+
+Rewritten from the asm: the old draft lacked the buffer clear and the second `ResetBgScroll` call, and its BG1 loop used an uninitialised pointer. Score 176 -> 147 -> 136 -> 112 -> 108 -> 2 -> 0:
+- `int` loop counters; the old `s8`/`s16` counters added extensions.
+- BG3 loop: loop.c reverses the outer `for (i = 0; i < 16; i++)` into the ROM's 15..0 count. The inner loop is an explicit countdown, `j = 15; q = p + 32; for (; j >= 0; j--)`, with `j` set **before** `q`. That lengthens j's live range (priority 3*11/26, below p's 5*33/126), so p takes r2 and j r3 as in the ROM; with `q` set first the two swap and every later reload register shifts.
+- BG1 loop: `q = (u16 *)((u16)i * 2 + (u32)p)` puts the offset first (`adds r1, r0, r2`); `&p[(u16)i]` or `(u16)i + p` give `adds r1, r2, r0`.
+- Buffer clear: a local `pb = &gPackOpenWork` keeps offsets `0x116`/`0x118` as adds to a base register instead of folding them into the pool constant. `for (i = 0; i < 5; i++) pb->state[i] = 0;` is reversed by loop.c into the ROM's decrementing pointer from `+0x110` with counter 4..0; an explicit countdown left the giv unreduced ("not worth while, 0 vs 9"), and an explicit `*s--` pointer put the init in the wrong order.
+- The two u16 zero stores go through a 16-bit bitfield overlay (`struct PackTail { u8 pad[0x116]; u16 x116:16; u16 x118:16; }`). The bitfield store makes an SImode zero that reload_cse reuses for the following `strb` loop; plain `*(u16 *)` stores make an HImode zero, the loop reloads `movs r1, #0` and the reload rotation changes at `0x116`.
+
+### `GetPack_ShowCardDetail` (0x37C, start score 110; ordinary C)
+
+1. Case 1 is `if ((u16)CardDetail_InitVideo() != 0) { CardDetail_DrawCard(); sub1++; } return 0;` instead of an early `if (... == 0) return 0;`. The early return left a separate `mov r0,#0; b end` block that cross-jumping then used as the shared return; with the if-block form every case ends in the same `ldrb/add/strb; mov r0,#0` tail, and cross-jumping keeps the copy after case 4/10 as in the ROM (110 -> 8).
+2. `IdToKey(...)` is passed straight into `CardAtkValue`/`CardDefValue`, with no `u16 key` local. With the local, regmove tied the default path's `key & 0x7FF` to the dying key pseudo (`ands r3,r0`); without it the result goes to the constant's register (`ands r0,r3`) (8 -> 0).
+- The old draft's `u8 key` was wrong (`lsl #24`); the ROM narrows to u16, the inline parameter type.

@@ -1,0 +1,79 @@
+---
+title: Unit campaign (CB_Campaign runner, match counter, duel selection widget)
+type: function
+status: verified
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-01
+---
+# Unit campaign
+
+`0x0801CE68`–`0x0801E25F`, Thumb, `old_agbcc -O2`. Source: `src/campaign.c`.
+The unit contains the Campaign scene callback (see [[program-flow]]) and its last step, plus duel-screen drawing helpers for a row of up to 13 selectable entries.
+
+Unit status: `unit bytes MATCH`, **9/9 functions in C** (verified with `tools/check.py campaign`). All nine functions are enabled C; the complete 0x13F8-byte unit and the full ROM match (recorded at checkpoint 17).
+
+## Functions
+
+| Address | Size | Status | Purpose | Proposed name |
+|---|---|---|---|---|
+| `0x0801CE68` | 0x2D8 | matching | Campaign step: reads today's date (`GetCurrentDate`) and its calendar events (`GetCalendarEvents`) into `gMain+0x487C` (`events`). No event in bits 20-21 → return 1. Bit 20: BGM 0x1F, text 0x323, random duel result (`0x020192E0+0x1B12` = `Random() & 3`); on 2001-01-09 text 0x322 and result 0; then `GetRewardPack(0x321)` (result 0) or `(0x385)`. Bit 21: BGM 0x1F, text 0x321 (+0x320 in January 2001), then `GetRewardPack(0x322)` | `Campaign_CalendarEvent` (hypothesis) |
+| `0x0801D140` | 0x18 | matching | `gSaveData+0x2150`++; returns 1. Last Campaign step | `Campaign_CountMatch` (hypothesis) |
+| `0x0801D158` | 0x90 | matching | Show text 0x191, wait for `CB_Bustup`, then return 1 | |
+| `0x0801D1E8` | 0x7C | matching | **CB_Campaign**: runs `gCampaignSteps[gMain.seqIndexCampaign]`; on step done increments the index and clears `gMain+0x488A` bits 4-11, `+0x4858..0x485B`. At the NULL terminator returns `FadeToBlack(8)` (`FadeToBlack`) | `CB_Campaign` |
+| `0x0801D264` | 0x5DC | **matching**, ordinary C | **Battle calculation** `(attacker, noAtk)`: fills `gBattle` (`0x02018450`) sides from the attacker's zone `atkSlot` and the defender's `defSlot` (copies both zones to `+0x20`, ATK/DEF via `GetZoneCardAtk/C8A8`); direct attack; card-specific ATK/DEF boosts (card numbers 0x1DD, 0x4E5, 0x11F); compares ATK vs ATK/DEF, sets destroyed flags and life-point damage (piercing for 0x53D and the 0x521/0x604 links); post effects 0x4CF, 0x4E3, 0x199, 0x49E; damage cancelled by card 0x58F on the field (`CountActiveCardsOnFieldExcept`) | `CalcBattle` (hypothesis) |
+| `0x0801D840` | 0x120 | matching | Draws the selection row of `0x020192E0+0x1B2C` (`sel`): entries whose bit is set in `sel.mask` get a 16 px slot, centred (`0x78 - 8*count`, or `0x28`/`0xD8` when `0x0201CFB0+0x828` is 12/13), y = `0xA0 - 10*sel.rows`; the selected one (`sel.cursor`) is drawn affine with `gPulseScaleCurve[(sel.timer>>1)&15]`, others with AddSprite; tiles from 0x2624 step 4. Bumps `sel.timer` | |
+| `0x0801D960` | 0x98 | matching | Same row layout (0x70/0x20/0xD0, y = 0x60), draws only the selected entry's cursor sprite (tiles from 0x3664 step 8, shape 0x4080) | |
+| `0x0801D9F8` | 0x20C | matching | Skipped when `0x0201CFB0+0x828` is 12/13. Tile = `GetCardIconObjTile(DuelCursor_GetCardId()) + 0x1400`. When `sel.rows` is 1 or 7 and the zone index is 0/5/10, calls `ClearZoneTiles(+0x824, +0x828 + +0x82C)` (or `(+0x824, 10)`). For `rows < 8` it moves an affine sprite from the zone position (`GetAreaX/EC(+0x824, +0x828, +0x82C)`) towards (0x68, 0x20) by `rows/8`; for a face-down card (zone `+0x6` bit 1 clear) the tile switches to `0x440 + 16*rows` (rows 0-2) or shifts by `16*(5-rows)` (rows 3-4): a card-flip animation (hypothesis). `rows >= 8`: sprite fixed at (0x68, 0x20) | `DrawCardMoveToCenter` (hypothesis) |
+| `0x0801DC04` | 0x65C | matching | Card command-menu state machine on `sel.state` (bits 26-33): 0 put the cursor on the last available entry; 1 slide in (`rows` 0→8); 2 input: Left/Right (keys 0x20/0x10) move `cursor` over set `mask` bits (SE 0), B closes (SE 2), A confirms (SE 1): stores `selCard = DuelCursor_GetCardId()`, `player/zone/unk65` from `0x0201CFB0+0x824/0x828/0x82C`; entry 0 on zone 12 calls `CardListView_Open(player, 12, 0, 0)` and stays, entry 0 elsewhere opens the Card Detail view (states 10-11, `CardDetail_Init(selCard)`), other entries go on to 3; 3 slide out and `DrawZoneTiles(player, zone)`; 12 waits for `DuelScreen_FadeInStep`. Other states reset | `DuelCardMenu_Update` (hypothesis) |
+
+## Data
+
+- `0x0201AE0C` = `0x020192E0+0x1B2C` `sel` (card command menu, hypothesis). Bit layout from the start of the struct: 0 `flag0`, 1 `active`, 2-5 `cursor`, 6-9 `rows` (slide/flip animation counter 0-8); these sit in a **u16** container; 10-25 `mask` (entry i available), 26-33 `state` (straddles), 34-41, 42-49 (u32 containers); 50-56 `timer`, 57 `player` (**u16** container); 58-64 `zone` (straddles), 65-72 (u32). `0x020192E0+0x1B28` (u16) is the selected card ID. The struct is larger than 4 bytes, so `cursor` is read with `ldrb`.
+- `0x0201CFB0+0x824/0x828/0x82C` (s32): duel screen values; `+0x828` 12 or 13 moves the row to the left/right edge.
+- `gSaveData+0x2150` (u16): number of Campaign matches played (hypothesis).
+- `gCampaignSteps`: Campaign step table (NULL-terminated).
+
+- `0x02018450` `gBattle` (see also [[duel-stat-queries-c]]): u16 at +0 bit 0 attacker, bit 1 direct attack, bit 5 attacker ATK = 0, bits 6-8 `atkSlot`, bits 9-11 `defSlot`; +4 bit 0; `side[2]` at +0x8 (0xC bytes: +0 bits 0-2 slot, bit 3 destroyed, bit 4 defending, bit 5 copy of bit 3, bit 6; +2 card ID; +4 ATK; +6 DEF; +8 compared value; +0xA damage); copies of both zones at +0x20.
+- **Straddling bitfields**: `sel` has an 8-bit field at bits 26-33 (read as `ldrb [0x1B2F] >> 2 | (ldrb [0x1B30] & 3) << 6`) and a 7-bit one at bits 58-64 (`0x1B33 >> 2 | (0x1B34 & 1) << 6`, used by `CardMenu_Execute`). agbcc lays out `u32 a:26; u32 f:8;` exactly like this (verified with a scratch compile), so declare them as plain `u32` bitfields that cross the word boundary.
+- `GetCurrentDate(&date)` fills a packed date (year:12, month:4, day:5, weekday:3); `GetCalendarEvents(year, month, day)` returns that day's event flags.
+
+## Shared headers
+
+This unit includes `main.h`, `duel.h` and `duel_ui.h` (verified `unit bytes MATCH`). It no longer defines
+its own `struct Main`, `struct DuelZone`, `struct DuelPlayer`, `struct DuelState`, `struct DuelScreen` or
+`struct ZoneWord`, and it dropped the `gMain`, `gDuel`, `gDuelPlayers`, `gDuelZones` and
+`gDuelScreen` externs (all of them come from the headers). Renames: `gMain.step` became `step488A`, zone
+`faceDown`/`cardId` became `flag6_0`/`card.id`, and screen `unk824/unk828/unk82C/flag808_3` became
+`player/zone/cursor/busy`. The selection widget at `0x0201AE0C` (not in any header) keeps its local
+`struct SelMask`.
+
+These local views are kept, and the headers are unchanged:
+
+- `struct DuelStateTail` + `#define gDuelState ((struct DuelStateTail *)&gDuel)`: `duel.h` stops at
+  `DuelState+0x1B20`, so `selCard` (+0x1B28) and `sel` (+0x1B2C) are reached through this view. The `sel`
+  accesses must be base-relative (`gDuel` + 0x1B2C) like the original; a direct `0x0201AE0C` literal
+  compiles to a shorter/different sequence.
+- `struct SelMask` + `gUnk_0201AE0C`: the widget is not covered by `duel.h`. `CardMenu_DrawLabel` reads it directly
+  as `gSelMask` (alias of `gUnk_0201AE0C`); the other functions use `gDuelState->sel` (base-relative).
+- `switch ((s32)gDuelScreen.zone)` in `CardMenu_DrawCardPreview`/`CardMenu_Update`: `duel_ui.h` declares `zone` as `u32`,
+  but this unit's switches use signed compares (`bgt`/`blt`), so the value is cast to `s32` at the switch.
+
+## Matching tricks
+
+- `CalcBattle`: the loop must compute `&gBattle.zones[i]` first (`struct BattleSide *s = &gBattle.side[i]; struct DuelZone *copy = &gBattle.zones[i];` at the top of the body) and read zones as `&gDuelPlayers[p].zones[s]`; then the loop matches the ROM (no strength reduction of `i*0x94`, `&gBattle.side` kept in `sl`). Post-loop code must index `gBattle.side[attacker]` / `[1 - attacker]` directly (no side pointers). The card ID read uses a pointer to the four-byte `DuelCard` view, preserving the word `ldr` instead of a nested halfword read.
+- `Campaign_DeliverMagazines`: `d.year == 2001 && d.month == 1 && d.day == 9` folds into one masked word compare (`& 0x1FFFFF == 0x917D1`), and `year && month` into an `ldrh` compare with 0x17D1. Storing `Random()` into a 2-bit field needs the explicit `& 3` to match.
+
+- Counting set bits of a bitfield (`CardMenu_DrawLabel`): `s32 m = sel.mask; m >>= i; if (m & 1) count++;` keeps the `lsr #16` inside the loop like the ROM; `if ((sel.mask >> i) & 1)` hoists it.
+- `switch (v) { case 13: ...; case 12: ...; }` (13 first) gives `cmp 12; beq; cmp 13; bne; <13 body>`; an `if/else if` puts the 12 body first.
+- **Container type of `sel.timer` matters too**: with `u32 timer:7` `CardMenu_DrawIcons` hoists `y << 16` again; `u16 timer:7` matches.
+- `CardMenu_Update`: `SEL.zone = (u16)unk828;` (the ROM truncates before splitting the value over the two bytes). A 1-bit mask test on a 16-bit field: `(s32)SEL.mask >> n & 1`.
+- **Container type of `sel.rows` matters (`CardMenu_DrawIcons`, `CardMenu_DrawCardPreview`)**: with `u32 rows:4` the loop in `CardMenu_DrawIcons` hoists `y << 16` and `rows == 1 || rows == 7` compiles to an extract; with `u16 rows:4` (and `u32 mask:16` after it) both match the ROM (`ldrh; and #0x3C0; cmp #0x40`).
+- Zone flag in `CardMenu_DrawCardPreview`: compute `player = +0x824 & 1` into a local first, then `(u8 *)gDuel.players[0].zones + zone * 0x94 + player * 0xD64`. Basing it on `gDuel` (not `gDuelPlayers`) lets CSE reach `sel` as `0x0201930C + 0x1B00`, as in the ROM.
+- `switch (v) { case 12: case 13: return; }` gives the ROM's `cmp 13; bgt; cmp 12; blt` range test.
+
+## Battle-calculation match (2026-10-01)
+
+`CalcBattle` matches all 0x5DC bytes. The opening copy loop needs u16 containers for `BattleSide` flag bits and the explicit four-byte card view. The final player flag uses `(s32)((u32)player.unk8 << 30) < 0`, retaining the original signed bit-1 test without a local player-overlay struct. The remaining 58 differing bytes disappear when card-number lookup indexes `((const u16 *)0x08622AB4)` instead of the external array symbol. Both refer to the same ROM table and mask IDs with 0x7FF. No signatures, return behavior or helper arguments changed. The final C has no register bindings, empty constraints or dead assignment scaffolds; the side size is checked as 0xC.
+
+Private reproduction: `build/bigguns-lead2/battle_solo.py`, `battle_fields.py`, `CalcBattle/solo-fixed-table-0/` and `solo-clean/`. Before the literal-pointer repair, pointer/lookup/local grids and a two-minute single-worker permuter run remained nonmatching. Its 3,649 iterations (288 compile errors) yielded a self-assignment mutation; that redundant mutation was rejected. The exact ordinary-C result supersedes those frontiers.

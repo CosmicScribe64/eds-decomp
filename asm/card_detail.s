@@ -1,0 +1,28 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/card_detail/CardDetail_Reset.s"
+	.include "asm/nonmatching/card_detail/CardDetail_Init.s"
+	.include "asm/nonmatching/card_detail/CardDetail_InitVideo.s"
+	.include "asm/nonmatching/card_detail/CardDetail_FadeIn.s"
+	.include "asm/nonmatching/card_detail/CardDetail_FadeOut.s"
+	.include "asm/nonmatching/card_detail/CardDetail_HandleInput.s"
+	.include "asm/nonmatching/card_detail/CardDetail_DrawCard.s"
+	.include "asm/nonmatching/card_detail/CardDetail_Run.s"
+	.include "asm/nonmatching/card_detail/DebugCardDetail_Init.s"
+	.include "asm/nonmatching/card_detail/DebugCardDetail_Browse.s"
+	.include "asm/nonmatching/card_detail/DebugAutoDetail_Cycle.s"
+	.include "asm/nonmatching/card_detail/CB_DebugCardDetail.s"
+	.include "asm/nonmatching/card_detail/CB_DebugAutoDetail.s"
+	.include "asm/nonmatching/card_detail/SubtractLifePoints.s"
+	.include "asm/nonmatching/card_detail/ClearCardStatusFlags.s"
+	.include "asm/nonmatching/card_detail/ClearZoneCardStatusFlags.s"
+	.include "asm/nonmatching/card_detail/IsSameCardName.s"
+	.include "asm/nonmatching/card_detail/CopyDuelCard.s"
+	.include "asm/nonmatching/card_detail/SwapDuelCards.s"
+	.include "asm/nonmatching/card_detail/IsToonMonster.s"
+	.include "asm/nonmatching/card_detail/HasFlipEffect.s"
+	.include "asm/nonmatching/card_detail/IsEffectMonster.s"
+	.include "asm/nonmatching/card_detail/IsSpecialSummonOnly.s"

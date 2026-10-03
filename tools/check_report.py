@@ -17,6 +17,13 @@ for a, b in (('matched_code', 'total_code'), ('matched_functions', 'total_functi
         errors.append(f'{a} ({m.get(a)}) > {b} ({m.get(b)})')
 if int(m.get('total_functions', 0)) < 1900:
     errors.append(f'total_functions = {m.get("total_functions")}: the report is missing units (expected ~1976)')
+try:
+    base = json.load(open('config/report_baseline.json'))['matched_functions']
+except FileNotFoundError:
+    base = 0
+if int(m.get('matched_functions', 0)) < base:
+    errors.append(f'matched_functions = {m.get("matched_functions")} is below the baseline {base} '
+                  f'(config/report_baseline.json): the report pipeline lost matches (e.g. a symbol it cannot resolve)')
 if not r.get('units'):
     errors.append('no units in the report')
 if errors:

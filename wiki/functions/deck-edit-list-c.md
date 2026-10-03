@@ -1,0 +1,102 @@
+---
+title: Unit deck_edit_list (deck-edit panel slide animation, list page redraw, selector keys)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit deck_edit_list
+
+`0x0806704C`-`0x08068180`, Thumb, `old_agbcc -O2` ([[compiler-flags]]). Source: `src/deck_edit_list.c`. Follows the deck-edit add-card machine of [[deck-edit-widgets-c]] and precedes the card-list code of [[deck-edit-cards-c]]; same state block `0x0201DB20` ([[deck-edit-panel-c]]). Unit status: `unit bytes MATCH`, **8/11 functions in C** after workflow waves 1-2 (2026-10-01: `0x0806704C`, `0x0806710C` in wave 1, `0x080671E8`, `0x08067540` in wave 2); 3 stay `INCLUDE_ASM`, each with a near-miss draft under `#if 0 /* NONMATCHING */` (`0x08067660`, `0x080679E0`, `0x08067DA4`; the last two are register-allocation-only misses). Before wave 1: 4/11. Names are proposals; code keeps `sub_08XXXXXX`.
+
+> [!warning] Contradiction: the unit is now 11/11
+> The count above (8/11) predates later matches. `src/deck_edit_list.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 11 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x0806704C` | 0xC0 | **matching** (wave 1, 2026-10-01) | `SwitchPanelCells(new, cur, s)` | when `*new != *cur`: marks the 20-byte cells `(*new + 0xD)` / `(*new + 6)` of the table at `0x0201DB20+0x1726` (byte 0 = 1, byte 1 = 0) and sets byte 0 of the cells of `*cur` to 0xFF, `*cur = *new`; then `s[(*new + 0xD) * 20 + 0xE] = 0xFF`, `s[(*new + 6) * 20 + 0xE] = 1`. Matched once the cell array was placed at a 4-aligned offset (see below) |
+| `0x0806710C` | 0xDC | **matching** (wave 1, 2026-10-01) | `CountListCopies` (hyp.) | for both rows: `f1712[row] = sum` of bits 4-5 of trunk byte `+9` over the non-Trap/Magic cards of list 2 (`cnt1494[row][2]` cards via `DeckEdit_GetListCard(2, row, j)`), then `f1712[1] = f1712[0]` (the store at +0x1714). Matched with a struct-array view of the save symbol (see below) |
+| `0x080671E8` | 0x28C | **matching** (wave 2, 2026-10-01) | `RedrawCardPanel(dir)` | `(u8 dir)` 2/3: sets `f18AC = 0xFC00`, scroll setup `Ease_Start`, toggles page byte `+0x634`, draws the current card graphic (`LoadCardArt8bpp(id, 0x06008000 + page * 0x1680, page)`) or clears it (`CpuFastSet(0, .., 0x010005A0)`), `DeckEdit_DrawPortraitTilemap` frame at x+9 / x+0x1D, then re-initialises the 5 slots around the cursor (`DeckEdit_InitFrameSlot`, `DeckEdit_CalcScrollBar`) |
+| `0x08067474` | 0xCC | **matching** | `PanelSelectorKeyCb(idx)` | R (0x100): `idx = (idx + 1) % 3`, L (0x200): `idx = idx ? idx - 1 : 2`; clears the selector bits 15-17 of the u32 at `+0x1C3C`, sets the low 3 bits of `+0x1C3D` to 3, `DeckEdit_StartListSlide(2 or 3)`, `DeckEdit_DrawStatementLabels(idx)`, SE 0 |
+| `0x08067540` | 0xF0 | **matching** (wave 2, 2026-10-01) | `LoadPanelTiles` (hyp.) | copies two 0x400-byte blocks (`CpuFastSet(src, 0x06010800 + i*0x400, 0x80)`), source by mode (`+0x1C5A & 3`) and selector (`+0x1C3C` bits 15-17): 1: selectors 2-3 -> `gDeckEditSwapLabelGfx`, 2: selector 6 -> `gDeckEditDecideLabelGfx`, else `gDeckEditCommandLabelGfx + sel * 0x400`; then sets WIN1H/WIN1V (`DeckEdit_CommandWindowVBlank` body) |
+| `0x08067630` | 0x30 | **matching** | `SetPanelWindow` | `WIN1H = 0xF0`, `WIN1V = (byte +0x1C3D bits 5-6) << 11 \| 0x70` |
+| `0x08067660` | 0x2A8 | nonmatching (`#if 0`, regalloc) | `DrawSlideFrame(p)` | draws one frame of the slide animation of the record `p` (see `Slide` below): 5 tile blocks via `CopyMapRectSetPalette` (tables `gDeckEditMenuTilemap/17E8/17D4/17E0`, dst `0x0600E000/38/24/30`), one `CopyMapRectAddOffset` while the phase is 0/1, copies phase -> prev, picks the (V/H)blank callback `gMain+0x414` = `DeckEdit_CommandLabelVBlank` (dir 1 / 3) or `DeckEdit_CommandWindowVBlank`, sets `+0x1BB4 \|= 1`, and two `OamListAddSpriteGroup` sprites (`gUnk_081A6EAC`, `gDeckEditCommandLabelSprites[sel]` when the phase is 2) |
+| `0x08067908` | 0xA0 | **matching** | `StepSlide(p)` | countdown `p->ctr--` while `dir != 0`; on wrap: dir 1 (open): phase 0 -> 1 -> 2, then `dir = 0` and bit 0 of `0x0201DB20+0x1C48` set; dir 2 (close): phase 2 -> 1 -> 0, then `dir = 0` and that bit cleared |
+| `0x080679A8` | 0x38 | **matching** | `CopyPanelTilemap(x)` | `CopyMapRectSetPalette(gUnk_086F1B10 + x * 12, 0x0600E3B0, 6, 6, 0x1E, 3, 2)`: a 6x6 tile block of the info panel `x` |
+| `0x080679E0` | 0x3C4 | nonmatching (`#if 0`, regalloc) | `ScrollListUp` | `(u16 *out)`; if `E140[state+0x1C1C] == 0` return. `f1C58 = 0x1E`, `f18AC = 0xFC00`, `Ease_Start(6,0,-1,f628)`, `E140[cursor]--`, `f634 ^= 1`; tilemap scroll `FillMapRectWrap(0,0x0600C000,0,((f63E+t)&0xFF)>>3,0x1E,5,0x0201E160)` with `t=gUnk_0808749C[0]`; while `pos < cnt[row][cursor]` redraw the new top card (`DeckEdit_DrawCursorRowName`, `LoadCardArt8bpp(id, f634*0x1680+0x06008000)`, `DeckEdit_DrawPortraitTilemap`); `f63E -= 0x28`, `f632 -= 0x50`, `f635 = 1`; second scroll (0x0600D000, `t=gUnk_08087494[0]`), then `*out = DeckEdit_GetListCard(cursor,row,pos-2)` if `pos-2 >= 0` else `0xFFFF`; `f63A -= 0x10`; third scroll (0x0600C000, `t=gUnk_0808749C[1]`); `DeckEdit_DrawAtkDef`/`DeckEdit_DrawLevelStars`/`DeckEdit_DrawCardIcons(0)`/`DeckEdit_CalcScrollBar`/`DeckEdit_ScrollFrameSlots`, `DeckEdit_RotateListRowRing(1)`, SE 0. Built is 0x18 bytes short (spills + `sl` allocation only) |
+| `0x08067DA4` | 0x3DC | nonmatching (`#if 0`, regalloc) | `ScrollListDown` | `(u16 *out)`; mirror for the `gUnk_0201F73C` column (which *is* `state+0x1C1C`), guarded by `E140[c] < cnt[row][c] - 1`; `Ease_Start(0,6,1,f628)`, `E140[c]++`, redraw new bottom card; three tilemap scrolls using `gUnk_08087494[2]`(+4), `[3]`(+6), `gUnk_0808749C[1]`(+2); `*out = DeckEdit_GetListCard(c,row,pos+2)` if `pos+2 < cnt` else `0xFFFF`; ends with `DeckEdit_DrawCursorRowName` (cnt != 0, plus `DeckEdit_DrawAtkDef`/`DeckEdit_DrawLevelStars`/`DeckEdit_DrawCardIcons(5)`/`DeckEdit_CalcScrollBar`/`DeckEdit_ScrollFrameSlots` and the `f1BB6`/`f1BB7` flag) or `DeckEdit_DrawNoCardsText` (cnt == 0); `DeckEdit_RotateListRowRing(2)`, SE 0. Built is 8 bytes short (frame `sp,#20` vs `sp,#16`, one 0xFFFF spill and `sl` allocation only) |
+
+## Structs and globals
+
+- **`Slide` record** (`u8 *p`, used by `StepSlide`, `DrawSlideFrame`): `+0` u8 countdown `ctr`; `+1` flags: bits 0-2 `dir` (1 open, 2 close), bits 3-4 `prev` phase, bits 5-6 `phase` 0..2; bits 15-17 of the first word `sel` (a u32 bitfield that straddles bytes 1-2); `+3[3]` and `+6[3]` per-cursor byte arrays (card indices).
+- **`0x0201DB20` (deck-edit state)** additions ([[deck-edit-cards-c]], [[deck-edit-widgets-c]]): `+0x628` u8[8] (passed to `Ease_Start`), `+0x630/+0x632/+0x63A/+0x63E` u16 scroll coordinates (`(v & 0xFF) >> 3` = tile x/y), `+0x634` u8 page toggle (`^= 1`, times `0x1680` = VRAM page offset from `0x06008000`), `+0x635` u8 direction code, `+0x1494` u16 `cnt[2][3]`, `+0x14A0` u8 row-per-cursor, `+0x1712/+0x1714` u16 sums, `+0x1726` 20-byte cells (byte 0 touched flag, byte 1), `+0x18AC` u16 = 0xFC00, `+0x18B0` out-cell buffer, `+0x1BB0` slide extents, `+0x1BB4/+0x1BB5` flag bytes, `+0x1BB8` 5 slots of 16 bytes (`+0xC` = live), `+0x1C14`, `+0x1C1C` cursor, `+0x1C3C` u32 (bits 15-17 selected panel), `+0x1C3D` byte (bits 0-2 mode, 5-6 window), `+0x1C48` bit 0 flag, `+0x1C58` u16 counter (30 at scroll start), `+0x1C5A` bits 0-1 mode.
+- `0x0201E140` u16 list-row positions (`E140[cursor]`), `0x0201EFB8` / `0x0201EFC0` = `+0x1498` / `+0x14A0` of the state (declared through the struct), `0x0201F73C` u8 second selector **= `state+0x1C1C` (the same cursor byte)**, `0x0201E160` scroll scratch buffer, `gMain+0x414` callback slot (`DeckEdit_CommandLabelVBlank` / `DeckEdit_CommandWindowVBlank`).
+- **Scroll views** (`DeckEdit_ScrollListUp` / `DeckEdit_ScrollListDown`): `struct ScrollSt` (asm `gDeckEdit`) adds `+0x63A` / `+0x63E` u16 scroll rows, `+0x640` map scratch, `+0x1BB5` / `+0x1BB6` / `+0x1BB7` flag bytes and names `+0x14A0` `arr14A0`. `gUnk_0201EFB4` is `state+0x1494` (the `cnt1494[2][3]` counters), `gUnk_0201EFC0` is `state+0x14A0` (`arr14A0`), and `gUnk_08087494` / `gUnk_0808749C` are `s16[]` arrays (`[0..3]` / `[0..1]`) of scroll deltas (indices 0/2/4/6 and 0/2 bytes are all used).
+
+## Matching tricks (old_agbcc)
+
+- **Bitfield access style depends on the container type and on the struct alignment** (structs are 4-aligned): with `u32` bitfields of the first word of `Slide`, reads of fields inside one byte come out as `ldrb` + `lsl 29; lsr 29` (QImode), the stores as `movs #8; negs; ands; strb` and a byte store; with `u8` bitfields the **tests against constants** come out as `movs #7; ands` / `(f & 0x60) == 0x40`. `StepSlide` matched only with **both views of the same record**: `struct Slide` (u32 bitfields, for the `switch`, the arithmetic and the stores) and `struct SlideA` (u8 bitfields, `PA(p)->dir != 0`, `PA(p)->phase != 2`, for the compares).
+- **`u8` bitfields in a struct only** make gcc reload the field through a 32-bit `ldr` after any store to a neighbour; u32 containers do not.
+- **Two-literal address with a struct array of 20-byte cells** (`cell[i + 0xD].b0`) gives `idx * 20 + base` then `+ 0x1726`; a `u8` array view with `[idx * 20]` adds the literal first. A second typed view of the same symbol changes the operand order (`DeckEdit_UpdatePanelHighlight`).
+- **A switch over a bitfield with `case 2: case 3:`** gives `cmp 3; bgt; cmp 2; blt` (a range test with two compares), while `if (x >= 2 && x <= 3)` becomes the unsigned trick `(x - 2) <= 1`.
+- **`default:` first in a switch** places the default code first in memory (`DeckEdit_CommandLabelVBlank`).
+- **`for (...; j++, k++)` order** fixes which increment is emitted first (`DeckEdit_StartListSlide`).
+- **Assignments that narrow**: `p[1] = f & ~7` with `u8 f` gives `movs #0xF8`; through an `int` temp (`int v = f & ~7; p[1] = v;`) gives `movs #8; negs` like the ROM.
+- **A mask in a register** (`u8 *p` versus a struct field) decides whether the store reuses the cached byte register (`ands r0,r2`) or reloads it.
+- **`((x + t) & 0xFF) >> 3` with `t` an `s16`** comes out as `movs #0xFF; ands; asrs #3`; the same expression with `t` reloaded from the stack can become `lsrs` instead. The scroll functions need both forms at different call sites, so keep the expression textually identical and let the allocator choose.
+- **`int c2 = gUnk_0201F73C * 2` reused as an index** into both `gUnk_0201E140` and `gUnk_0201EFB4` (offsets `c2` and `c2 + row*6`) keeps one multiply, as in the target; touching the `cnt1494` struct field or the absolute `gUnk_0201EFB4[]` changes which literal/base form gcc emits.
+- **Array-of-`s16` with a constant index**: `gUnk_08087494[1]` gives the target's `movs #2; ldsh [base, idx]` index-register form rather than a folded `ldsh [base, #2]` immediate.
+
+## Nonmatching notes
+
+- Resolved `0x0806704C` (wave 1): `f1726`/`f1727` arrays, typed views, pointer locals and u8 array views had all been tried; the fix was the 4-byte struct alignment (see below).
+- Resolved `0x0806710C` (wave 1, see below): with `switch (kind) { case 0x15: case 0x16: break; default: ... }` and a `u16` id the instructions are identical; `j` / base-pointer registers swapped (declaration order, inner-block declarations tried) and the literal `0x02011C20` is loaded after the `lsl 16; lsr 14` instead of before.
+- Historical (matched in wave 2): `0x080671E8`: a first-shot C translation differs only in two temporaries and the `0x635` literal (built derives it from `0x632`). The cause was a missing third argument to `LoadCardArt8bpp` (see below).
+- Historical (matched in wave 2): `0x08067540`: target keeps the default extraction and case 1's extraction separate (table literal in r2 vs r1) so they are not cross-jumped.
+- `0x08067660`: all 7 calls and the callback logic match structurally; register assignment of r8/r9/sl and the order of `(2 - phase) * 60 + row` remain.
+- Hint from the `0x080671E8` match (hypothesis): `0x080679E0` and `0x08067DA4` also call `LoadCardArt8bpp` with two arguments, and their target asm shows the same `ldrb r2; lsl r3,r2,#1` pattern, so passing the page as the third argument probably fixes part of their register differences.
+- `0x080679E0`: full clean C translation exists (parked); all calls/control flow match, built is 0x18 bytes short. Target `sub sp,#20`, spills `gUnk_0808749C[0]` to `[sp,#16]`, keeps `&state+0x1C1C` in `sl`; built `sub sp,#24`, spills the second table value too and uses `r7`+offset for the cursor.
+- `0x08067DA4`: full clean C translation exists (parked); all 23 calls match, built is 8 bytes short. Target `sub sp,#20` spills the `0xFFFF` constant to `[sp,#16]` and keeps `base+0x14A0` in `sl`; built `sub sp,#16` uses a pool constant and absolute `0x0201E140`/`0x0201EFC0` literals. Advisor (1 call) suggested an early `u16 defVal = 0xFFFF` live across the calls, a `u8 *rowBase = &st->arr14A0` and a reused `c2 = c*2` pointer; both variants regressed, so the draft was left as the best clean form.
+
+Related: [[deck-edit-widgets-c]], [[deck-edit-cards-c]], [[deck-edit-panel-c]], [[card-table]], [[decomp-workflow]], [[compiler-flags]].
+
+## Panel cells and copy counter matched (wave 1, 2026-10-01)
+
+Both functions match in ordinary C. Working notes: `build/wf/DeckEdit_UpdatePanelHighlight/NOTES.md`, `build/wf/DeckEdit_CountSideDeckMonsters/NOTES.md`.
+
+### `DeckEdit_UpdatePanelHighlight` (0xC0, start score 24)
+
+- The parked draft's `struct Cell { u8 b0, b1, pad[18]; }` array placed at `pad0[0x1726]` actually compiled at **+0x1728**: agbcc aligns every struct to 4 bytes (`STRUCTURE_SIZE_BOUNDARY` 32), so the literals came out 0x1728/0x1729 instead of 0x1726/0x1727.
+- Fix: a cell struct `{ u8 pad0[2]; u8 b0; u8 b1; ...; u8 fE /* +0xE */; ... }` with the array at **+0x1724** (4-aligned), so b0/b1 sit at +0x1726/+0x1727. The byte addresses are the same as the "+0x1726 cells" description in the data notes above; only the C view has to start on a 4-byte boundary. Whether the original cells began at +0x1724 or +0x1726 is unknown (hypothesis either way).
+- The stores to the caller's array `s`: `s[(i+0xD)*20 + 0xE]` on a plain pointer gets the constant distributed (c-typeck `pointer_int_sum` applies the distributive law to `ptr + (i + C)`), giving `adds r0,#imm`. Writing `s` as a pointer to a struct wrapping the array (`s->cell[i + 0xD].fE`) is an ARRAY_REF, which is not distributed.
+- `wf.py apply` rejects new `asm("sym")` extern labels inside the function region, so the new view is a cast of the existing `&gUnk_0201DB20_cells`.
+
+### `DeckEdit_CountSideDeckMonsters` (0xDC, start score 20)
+
+- The parked struct put `f1714` at +0x1716, overlapping `u16 f1712[2]`. The target stores to +0x1714, which is `f1712[1]`; fixing that gave 18.
+- The trunk base literal `0x02011C20` was loaded after the `lsl 16; lsr 14` of the id, into r2; the ROM loads it before the shifts, into r1, and the following reload registers (`ldrh r2`, bound r3, `mov r6, r9`) shift with it.
+- Fix: index the save symbol as a struct array, `gSaveData.trunk[(u16)id].f4`, with `struct { u8 pad0[8]; struct { u8 b0; u8 lo4:4; u8 f4:2; u8 hi:2; u16 w2; } trunk[0x800]; }`. The symbol is loaded into its own pseudo after the call, and the loop optimizer does not hoist it.
+- Failed: a `(u8 *)0x02011C20` constant base, through a local or directly (CSE/combine fold it into the add, reload loads it late, 18); `TRUNK_B9`-style `(u32)(b9 << 26) >> 30` (84, 0x7FF hoisted into sl); `extern u8 sym[]` through a local pointer (82, the loop hoists the symbol into sl); used directly as `(struct Cnt9 *)((u16)id * 4 + sym)` it reaches 2.
+
+## Wave 2 matches (2026-10-01)
+
+Both match in ordinary C. Working notes: `build/wf/DeckEdit_StartListSlide/NOTES.md`, `build/wf/DeckEdit_CommandLabelVBlank/NOTES.md`.
+
+### `DeckEdit_StartListSlide` (0x28C, start score 68; ordinary C)
+
+- The difference was register rotation only. In the "card present" branch the ROM has `ldrb r2,[r5]; lsl r3,r2,#1; add r3,r3,r2` (page byte in r2, the `*3` temporary in r3); the build had them swapped, and that one shift propagated through reload's round-robin to every later reload register (the `0x06008000` literal, `mov rX,r8`, the `0x630/0x632/0x634` offsets, and `0x635` derived by move2add as `adds r7,#3` instead of loaded).
+- Fix: `LoadCardArt8bpp` takes a third argument, the page (`void LoadCardArt8bpp(u16 a, u32 b, u16 c)` in [[gfx-util-c]]; other units call it as `LoadCardArt8bpp(id, 0x06008000 + page * 0x1680, page)`). The page byte is then copied to r2 as that argument, so local-alloc gives it r2 and the `*3` temporary r3. The unit-wide prototype has two parameters, so the call goes through a cast to a three-parameter function type (an `asm("LoadCardArt8bpp")` alias also matched, but `wf.py apply` rejects any non-empty `asm()`).
+- The `CpuFastSet` fill word is `u32 zero = 0`, not u16: the ROM's `str r0,[sp,#4]` reuses the r0 known to be 0 after the `beq`.
+
+### `DeckEdit_CommandLabelVBlank` (0xF0, start score 63; ordinary C)
+
+1. Loop: `u8 i` with `i <= 1` (unsigned `bls`), and `src += 0x200` before `dst += 0x400`.
+2. The tile table as an integer constant, `((const u8 *)0x086EF3B0) + sel * 0x400`, not the extern symbol (63 -> 6). The symbol becomes a pseudo that local-alloc puts in r1, so the case-1 default cross-jumps into the top default; a const_int is reloaded at each use, which moves the reload rotation to the ROM's registers (r2 in the case-1 default, r3 for the case-2 `0x1C3C`, r2/r3 for the loop's `0x200`/`0x400`, r1 for `0x1C3D`). A function-wide `tbl` pointer local won r2 and was worse (104).
+3. Case 2: the ROM shares only the `lsl #14` between the selector compare and the default index (`lsl r1,r0,#14; lsr r0,r1,#29; cmp #6` ... default: `lsr r0,r1,#29`). With a plain bitfield compare, CSE follows the `bne` into the default and reuses the whole extraction. Fix: do the compare through an 18-bit view of the same word, `(((struct St3C_18 *)st)->lo18 >> 15) == 6`. CSE then sees `lshiftrt(lshiftrt(x << 14, 14), 15)`, which does not match the default's `lshiftrt(x << 14, 29)`, and combine later folds it to one `lsr #29` (6 -> 0).
+- Failed for case 2 (all 6 or worse): nested switch, if/else, `!= 6` order (22), fallthrough into the outer default (59), direct-global reads, u8/int/u32 `sel` locals with shared labels, xor/sub compares (6), `sel*0x400 == 0x1800` (47), mask compares on the word (34) or the shifted word (44), a pointer compare (73), and the 18-bit view declared with an asm name (139, and rejected by `apply`).

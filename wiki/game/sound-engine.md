@@ -121,7 +121,7 @@ The PCM voices are at `0x030053AC` (6 × 0x10): `+0 u32 dataPtr; +4 u32 remainin
 > [!warning] Resolved correction
 > Earlier disassembly notes listed `SoundPcmStart(voice, sampleId, note, volume)` and placed the PCM-count entry at `0x0807E984`. The byte-matching C in [[sound-driver]] establishes volume in r2, note in r3, and the count entry at `0x0807E990`; the earlier labels were incorrect.
 
-Game-side wrappers: [[sound-api]]. Known song ids are 0 (title, `PlayBGMNoTrack(0)`), 1 (New Game intro script), 3 (main menu) and 0x1B (a Campaign pre-duel BGM). The duel BGM per opponent is a table at `0x08198F20` (`{duelist; u16 bgm}`, read by [[code-0801e260]]; Yugi through Ryou all use song 5). SE ids are 0 (cursor move), 1 (confirm), 2 (cancel) and 3 (error buzz), from menu code (hypothesis). Songs 0, 20, 22 and 23 stop at the end; the other 54 loop.
+Game-side wrappers: [[sound-api]]. Known song ids are 0 (title, `PlayBGMNoTrack(0)`), 1 (New Game intro script), 3 (main menu) and 0x1B (a Campaign pre-duel BGM). The duel BGM per opponent is a table at `0x08198F20` (`{duelist; u16 bgm}`, read by [[duel-cmd-queue-c]]; Yugi through Ryou all use song 5). SE ids are 0 (cursor move), 1 (confirm), 2 (cancel) and 3 (error buzz), from menu code (hypothesis). Songs 0, 20, 22 and 23 stop at the end; the other 54 loop.
 
 ## Open questions
 - [x] ~~The track bytecode format (the command set of `SoundSequencerTick`).~~ See [[sound-sequence-format]].

@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/title_screen/GetCalendarEvents.s"
+	.include "asm/nonmatching/title_screen/DayCountToDate.s"
+	.include "asm/nonmatching/title_screen/GetCurrentDate.s"
+	.include "asm/nonmatching/title_screen/GetWeekOfMonth.s"
+	.include "asm/nonmatching/title_screen/BuildStarterDeck.s"
+	.include "asm/nonmatching/title_screen/Title_HBlank.s"
+	.include "asm/nonmatching/title_screen/License_InitVideo.s"
+	.include "asm/nonmatching/title_screen/License_ShowNintendoNotice.s"
+	.include "asm/nonmatching/title_screen/License_ShowKonamiLogo.s"
+	.include "asm/nonmatching/title_screen/License_ShowKcejLogo.s"
+	.include "asm/nonmatching/title_screen/CB_License.s"
+	.include "asm/nonmatching/title_screen/Title_VBlank.s"
+	.include "asm/nonmatching/title_screen/Title_DrawMenu.s"
+	.include "asm/nonmatching/title_screen/Title_InitBgCnt.s"
+	.include "asm/nonmatching/title_screen/Title_LoadGraphics.s"
+	.include "asm/nonmatching/title_screen/Title_Init.s"
+	.include "asm/nonmatching/title_screen/Title_Setup.s"
+	.include "asm/nonmatching/title_screen/Title_FadeIn.s"
+	.include "asm/nonmatching/title_screen/Title_FadeOut.s"
+	.include "asm/nonmatching/title_screen/Title_HandleInput.s"

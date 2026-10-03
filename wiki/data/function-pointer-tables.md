@@ -31,7 +31,7 @@ callbacks), so a matched member is a good model for the others (see also `tools/
 > Three of the "largest tables" above are runs that span several tables. The scanner allows single NULL gaps, so it joins NULL-terminated step tables that sit back to back. The asset converters, which split the data at code labels (2026-10-02), give these boundaries:
 > - **`0x081A723C` (77)** is six step tables ending at `0x081A7374`: `transfer_steps` (`0x081A723C`, the one `DeckEdit_RunListFilter`/`ProhibitCardSelect_RunListFilter` load), `statistics_steps` (`0x081A724C`, `DeckEdit_RunStatistics`), `deck_edit_steps` (`0x081A725C`, `CB_DeckEdit`), `deck_edit_select_steps` (`0x081A72A0`, `SideDeckSwap_Run`), `deck_edit_sub_steps` (`0x081A72E4`, `TradeCardSelect_Run`) and `deck_edit_popup_steps` (`0x081A7330`, `ProhibitCardSelect_Run`).
 > - **`0x081A7970` (29)** is `password_steps` (`0x081A7970`, `CB_Password`) followed by `card_trading_steps` (`0x081A79A4`, `CB_CardTrading`).
-> - **`0x08199A2C` (22, "no literal-pool reference")** starts one word into `gPlainDieScreenSteps`, whose first entry is NULL, and continues into `gSkullDiceSceneSteps` and further tables of [[code-08025108]]. The references are to the labels, which is why the scanner found none for `0x08199A2C`.
+> - **`0x08199A2C` (22, "no literal-pool reference")** starts one word into `gPlainDieScreenSteps`, whose first entry is NULL, and continues into `gSkullDiceSceneSteps` and further tables of [[coin-toss-scene-c]]. The references are to the labels, which is why the scanner found none for `0x08199A2C`.
 >
 > Resolved in favour of the label-split tables. The scanner's runs are still valid groupings of related functions.
 

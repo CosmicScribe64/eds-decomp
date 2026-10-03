@@ -8,7 +8,7 @@ updated: 2026-10-01
 ---
 # Game-side sound API (`0x08077A44`–`0x08077C10`)
 
-These are thin wrappers in unit `asm/code_0807717C.s`, all Thumb, all nonmatching (not attempted). They gate driver calls on the option flags in the save (`gSaveData+0x2152`, u16 at `0x02013D72`) and track the current BGM in `gMain.currentBgm` (`0x0300489C`). Driver internals are in [[sound-engine]].
+These are thin wrappers in unit `asm/collection.s`, all Thumb, all nonmatching (not attempted). They gate driver calls on the option flags in the save (`gSaveData+0x2152`, u16 at `0x02013D72`) and track the current BGM in `gMain.currentBgm` (`0x0300489C`). Driver internals are in [[sound-engine]].
 
 | Address | Size | Proposed name | Behaviour (verified) | Call sites |
 |---|---|---|---|---|

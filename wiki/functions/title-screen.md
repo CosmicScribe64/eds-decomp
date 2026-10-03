@@ -10,15 +10,15 @@ updated: 2026-10-01
 
 | Function | Address | Size | Proposed name | Unit |
 |---|---|---|---|---|
-| runner | `0x080057BC` | 0x5C | `CB_Title` | `code_08005500` |
-| step 0 | `0x0800527C` | 0x94 | `Title_Init` | `code_080044E4` |
-| step 1 | `0x08005310` | 0x54 | `Title_Setup` | `code_080044E4` |
-| step 2 | `0x08005368` | 0xF4 | `Title_Intro` (hypothesis) | `code_080044E4` |
-| step 3 | `0x0800548C` | 0x74 | `Title_HandleInput` | `code_080044E4` |
-| step 4 | `0x0800545C` | 0x26 | `Title_FadeOut` | `code_080044E4` |
-| step 5 | `0x0800553C` | 0x1D4 | (none; 13-case state machine, jump table `0x08005564`) | `code_08005500` |
-| step 6 | `0x08005718` | 0xA2 | `Title_StartGame` | `code_08005500` |
-| helper | `0x08004FD8` | 0x232 | `Title_Draw` (hypothesis) | `code_080044E4` |
+| runner | `0x080057BC` | 0x5C | `CB_Title` | `title_menu` |
+| step 0 | `0x0800527C` | 0x94 | `Title_Init` | `title_screen` |
+| step 1 | `0x08005310` | 0x54 | `Title_Setup` | `title_screen` |
+| step 2 | `0x08005368` | 0xF4 | `Title_Intro` (hypothesis) | `title_screen` |
+| step 3 | `0x0800548C` | 0x74 | `Title_HandleInput` | `title_screen` |
+| step 4 | `0x0800545C` | 0x26 | `Title_FadeOut` | `title_screen` |
+| step 5 | `0x0800553C` | 0x1D4 | (none; 13-case state machine, jump table `0x08005564`) | `title_menu` |
+| step 6 | `0x08005718` | 0xA2 | `Title_StartGame` | `title_menu` |
+| helper | `0x08004FD8` | 0x232 | `Title_Draw` (hypothesis) | `title_screen` |
 
 Mode: Thumb. Match: nonmatching. Runner table `0x081988B0`, index `gMain+0x4878`, sub-state `+0x4858`. The debug table calls it "TITLE".
 

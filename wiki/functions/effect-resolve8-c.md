@@ -1,0 +1,101 @@
+---
+title: Unit effect_resolve8 (duel card-effect executors)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# Unit effect_resolve8
+
+`0x080383F0`-`0x08039637`, Thumb, `old_agbcc -O2`. Source: `src/effect_resolve8.c`. Same family as [[effect-resolve7-c]] / [[effect-resolve2-c]] (`CardRef`, `DuelZone`, state byte `gChain[0x3E0]`, side byte `[0x3E1]`).
+
+Unit status: `unit bytes MATCH`, **8/9 functions in C** after workflow waves 2-3 (2026-10-02: `0x080384F4` in wave 2, `0x080386B0` in wave 3); 1 stays `INCLUDE_ASM` (`0x08038FB8`, with a complete but non-matching first draft under `#if 0` in the source). Before the waves: 6/9.
+
+> [!warning] Contradiction: the unit is now 9/9
+> The count above (8/9) predates later matches. `src/effect_resolve8.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 9 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Purpose (hypotheses) |
+|---|---|---|---|
+| `0x080383F0` | 0x104 | matching | opponent zones 0-10 that hold a card and are not flagged (`& 2`): messages 8, 0x7F (inverted player bit), `ShowCardDetail(p, card id)` |
+| `0x080384F4` | 0x110 | **matching** (wave 2, 2026-10-01) | random `r = rand % 6 + 1`; card 0x4B3 / 0x4B4 pick a side (`msg` 0xE2 / 0xE3, uninitialised for other cards); zones 0-4 flagged `& 2` with a card: `QueueAddZoneLink(p, id, i << 8 \| side, r << 8 \| 3)`. See [Wave 2 matches](#wave-2-matches-2026-10-01) |
+| `0x08038604` | 0xAC | matching | 0x80: `DuelPrompt_Post(p, 6, 0, 0)`; 0x7F: `targets[0] = *(u16 *)(0x020192E0+0x1B64)`; 0x7E: `targets[1]`, message 0xC7 with both, return 0x64 |
+| `0x080386B0` | 0x588 | **matching** (wave 3, 2026-10-01) | 0x21-state machine 0x60-0x80 (jump table); related coin-flip opening, list-kind selection, two 0x100-byte stack text buffers. See [Wave 3 matches](#wave-3-matches-2026-10-0102) |
+| `0x08038C38` | 0x110 | matching | 0x80: random bit into `0x0201AE60+0x14` or message; 0x7F: coin flip `r`, messages 0xE0/0x12, `QueueAddZoneLink(p, id, p \| zone << 8, r == flag ? 0x103 : 3)`, returns 0xA; else message 0x92 |
+| `0x08038D48` | 0xD0 | matching | three coin flips build `mask` (bit i set = heads) and count tails; messages 0xE1 (mask) and 0x12; if tails > 1: `DestroyFieldCardByEffect(1 - p, zone)` + `OnCardDestroyedByEffect`; message 0x92 |
+| `0x08038E18` | 0xD8 | matching | if `skip4` and not `flag4_3` message 0x49; else 0x80: `CollectEffectTargets(p, number, 0)` then message 0x65 (with the list-view card halves at `0x0201D81C`) -> 0x7F; 0x7F: `QueueSpecialSummonChoosePosition(p, cards, 1, 0)` -> 0x7E; default message 0x49 |
+| `0x08038EF0` | 0xC8 | matching | two targets (`numTargets == 2`); 0x80: both hold a card, first is the opponent's, second is mine: `DestroyFieldCardByEffect(tp1, tz1)`, `OnCardDestroyedByEffect(p, tp1, tz1)` -> 0x7F; 0x7F: `MoveFieldCard(p, targets[1], targets[0])` |
+| `0x08038FB8` | 0x680 | nonmatching (ASM, complete parked C) | `int f(struct CardRef *ref, int arg)`: 0x1F-state machine 0x62-0x80; contains card-level checks (`CARD_LEVEL`), `EffectCanTributeOpponentMonsterPrepare(ref, arg, 0)`, `DuelCursor_PickTarget` (key input?), card numbers 0x58 / 0x105 / 0x1FF |
+
+## Data
+- `0x0201D81C` = `0x0201D810 + 0xC` = first card word of the list viewer (see [[card-list-viewer-c]]); halves at `+0/+2` are passed as message arguments.
+- `0x0201AE60 + 0x14`: u16 flag (a coin result).
+- `0x020192E0 + 0x1B64`: u16, copied into `ref->targets[0]` (a saved position, hypothesis).
+
+## Shared headers
+- Since 2026-09-30 this unit uses `#include "duel.h"` for `struct DuelCard`, `struct DuelZone`,
+  `struct DuelZonesPlayer` and `gDuel` / `gDuelZones` (it does not need `main.h`, which it
+  does not reference). Three local struct definitions (`DuelCard`, `DuelZone`, `DuelZonesPlayer`) and
+  two local externs were removed; `gDuel` is now reached as `(u8 *)&gDuel` because the
+  canonical type is `struct DuelState`.
+- Local views kept (see the comments in `src/effect_resolve8.c`):
+  - `struct PlayerStateLocal` + `extern struct PlayerStateLocal gPlayerState[2] asm("gDuelPlayers")`,
+    used only by the non-matching `EffectTributeOpponentMonsterResolve` draft. The canonical `struct DuelPlayer` declares its
+    byte at +8 as a plain `u8` (`unk8`), while that draft reads and writes bit 4 of it (`flag8_4`), so a
+    bitfield view for that byte is kept. All compiled (matching) functions are unaffected.
+- `struct CardRef`, `struct AE60`, `struct HandRow` and `struct DuelScreen` are unit-local (no shared
+  header defines them).
+
+## Matching tricks
+
+> [!warning] Contradiction
+> The next bullet (pre-wave, rom-analysis) guesses that `0x080384F4` needs the same QImode `u8 r` fix as `0x08038C38`. The wave 2 match (2026-10-01, `build/wf/EffectDiceResolve/NOTES.md`) keeps `int r` and stops the constant-1 sharing differently: the message ternary is written `ref->player ? (msg |= 0x8000) : msg`, which expands to an if/else that ends CSE's skip-blocks path. Resolved in favour of the matched source.
+
+- **`u8 r = Random() & 1;`** instead of `int r` does the AND in QImode with its own `movs #1`, not shared with the later `1 & byte` tests (`0x08038C38`). `int r` shares one constant register and everything shifts. Probably the same story for `0x080384F4` (not found yet; historical, see the note above).
+- **Player term first.** Use `ZBP(p, z) = p * 0xD64 + z * 0x94 + base` (macro in the source) when the ROM adds `p*0xD64` before `z*0x94`. Inside a call argument the default `ZB` order gives `adds r1, r1, r6` instead of `adds r1, r6, r1` (`0x080383F0`).
+- **Inverted ternary**: `!(1 & b2) ? 0x807F : 0x7F` gives `movs r1,#0x7F; cmp; bne; ldr r1,=0x807F` (`0x080383F0`).
+- **Unprototyped `void FlipFieldCard();`** allows the 3- and 4-argument calls of different functions.
+- The wiki tricks in [[effect-resolve2-c]] apply: `int pa = tp & 1;` before `ZB(pa, tz)`, one zone pointer per read.
+
+## Bounded continuation and preserved frontiers
+
+> [!warning] Contradiction
+> The next paragraph (bounded continuation, before 2026-10-01) says the parked draft's local list view already had the layout cards +0x0C, u16 kinds +0x20C, u16 count +0x30C. The wave 3 agent (2026-10-01, `build/wf/EffectTimeWizardResolve/NOTES.md`) found the parked `struct CoinListView` declared as `s8 cards[0x80]; int kinds[0x80]`, which puts kinds and count at the wrong offsets; fixing it first raised the score from 148 to 282 because the bad layout had hidden other differences. The matched source uses `u32 cards[0x80]` (+0x0C), `u16 kinds[0x80]` (+0x20C), `u16 count` (+0x30C), so those offsets are verified; only the claim about the parked draft was wrong. Resolved in favour of the matched source.
+
+Historical (matched in wave 3): `EffectTimeWizardResolve` now has a complete disabled C draft, translated from the ROM and the m2c reference in `build/m2c/effect_resolve8/EffectTimeWizardResolve.c`. Its only consumed incoming argument is the card reference in r0; m2c's apparent `arg3F` is the text buffer at sp+0x100, not a second consumed parameter. Both 0x100-byte arrays are real formatting destinations: phase 0x78 formats into the upper buffer, then into the lower buffer; phase 0x6E uses the lower buffer. The local list view accounts for cards at +0x0C, u16 kinds at +0x20C and a u16 count at +0x30C. The phase-0x76 selector preserves the original unchanged-target behavior for values other than 0/1.
+
+Historical (`EffectTimeWizardResolve`, matched in wave 3): the new baseline was 0x58C with 666 differing bytes, against a target of 0x588. A bounded ordinary-C grid improves this to **640 differing bytes at the same 0x58C**: load list count after the coin-result guard, initialize player before each loop's address calculation and before the phase-0x60 card read, and preserve the kind test's `!=1` then `==2` direction. `u8 random` remains best among u8/u16/int; a kind switch does not improve the draft. The real 0x200 frame and opening phase-0x80 body match their intended shape, but later scratch registers, player/address scheduling, result-tail placement and literal pools remain unresolved. At that point the source was still `#if 0` plus `INCLUDE_ASM` (no longer true: matched in wave 3). Evidence: `build/middle_experiments/EffectTimeWizardResolve/{best.c,fresh-diff.txt,staging-grid.log}` and `coin_state_staging.py` in the parent directory. Complete live-unit validation after parking: `EffectTimeWizardResolve/parked-unit-check.log`, all 0x1248 bytes exact, 6/9 C bodies unchanged.
+
+Historical (matched in wave 2): a bounded follow-up on `EffectDiceResolve` tried an initialized mask. A lossless s16 second-message mask with one read/write input reaches the exact 0x110 size but still has 52 differing bytes, with extra signed narrowing and wrong random/player homes. First-mask inputs and declaration/lifetime forms did not improve it. These are private partial results, not accepted techniques. The original ROM leaves the message and side registers unchanged for other card numbers, and no new default values or unreachable-path assumption were introduced.
+
+The new baseline for `EffectTributeOpponentMonsterResolve` is 0x678 against a target of 0x680, with 1480 differing bytes. The ROM reserves 0x80 stack bytes but has no stack accesses other than the prologue and epilogue, and the purpose of that unused frame is unresolved. No unused uninitialized buffer was added merely to create the frame, and the draft remains disabled.
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/EffectDiceResolve/NOTES.md`.
+
+### `EffectDiceResolve` (0x110, start score 52; ordinary C)
+
+The NOTES mention FAKEMATCH only to say none was needed. The parked draft was also semantically wrong.
+- Why earlier forms missed: `if (ref->player) msg |= 0x8000;` (an if with no else) lets CSE's skip-blocks path share one constant-1 pseudo across all three `1 &` tests; `ref->player ? msg | 0x8000 : msg` as a u16 argument distributes the conversion into the arms and narrows 0x8000 to `ldr =0xFFFF8000`; `int m = c ? msg | K : msg` uses the singleton expansion (`m = msg; if (c) m |= K`) and shares the 1 again.
+- What matched: `DuelCmd_Push(ref->player ? (msg |= 0x8000) : msg, r, 0, 0)`. The MODIFY_EXPR in the arm is not narrowed (SImode `movs #0x80; lsls #8`), the ternary expands to an if/else that stops CSE, and cross-jumping later merges the two zero-extension tails.
+- `plb = pl;` inside the `if` body just before the call: loop pass 1 hoists `pl & 1` then `plb`, pass 2 the `* 0xD64` (the ROM order), and it lowers pl's global-alloc priority below msg's (pl r7, msg and the 1 share r4). With `plb` before the loop, pl gets refs 6 (the pre-loop block is weighted x2 by flow) and wins r4.
+- Fourth argument `(u8)r << 8 | 3` instead of `(0x30000 | r << 24) >> 16`, third `(u8)i << 8 | plb`: fixed the last reload/register round-robin differences.
+- Diagnosis: `wf.py dump -dL` ("moved to" lines show the two loop passes) and `.greg` priorities (pl refs 6 / live 80 vs msg refs 6 / live 98).
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/EffectTimeWizardResolve/NOTES.md`.
+
+### `EffectTimeWizardResolve` (0x588, start score 148; ordinary C)
+
+The NOTES mention FAKEMATCH only to say none was needed. Score 148 to 282 (after fixing the list-view layout, see the contradiction note above) to 0:
+1. One function-scope `int i;` shared by the 0x7F, 0x77 and 0x64 loops, with `for (i = 0; i < gCardListView.count; i++)` in 0x77 (the ROM tests `count == 0` before a reversed counter). With a case-local `i`, CSE replaces it in the entry test with `hasTwo` (another register equal to 0 that lives longer), so combine cannot fold `0 < count` into `count != 0`.
+2. `hasOne`/`hasTwo` set to 0 after the `flag14` guard, not at declaration.
+3. Phase 0x77 ends with `return 0xA;` instead of `goto retA;`, so jump inversion gives the ROM's `bne <0x76 tail>; b retA`.
+4. Phase 0x7F loop: `int p = (1 - ref->player) & 1;` as its own statement, then `ZB(p, i)`. Phase 0x6D: `int pp = player & 1; struct DuelZone *z = ZB(pp, zone);` (an inline `ZB` inside the table index expands `p*0xD64` first).
+5. Card-number lookups in 0x6D and 0x60 use the cast constant `((const u16 *)0x08622AB4)[...]`. Phase 0x6E uses `((const char (*)[0x40])0x0822C720)[gUnk_08623E38]`, an integer constant that becomes a reload and puts the reload rotation back in step (r3, which also fixes the later `0x824/0x828` reload registers in 0x6D); phase 0x78 keeps the extern `gCardNames[]`, a pseudo held in r4 across the call.
+- Diagnosis: `build/wf/EffectTimeWizardResolve/scratch/reloads.py` listed the reload insns from the `.greg` dump in order.

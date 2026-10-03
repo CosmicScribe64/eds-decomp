@@ -1,0 +1,27 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_AddEquipLink.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_AddZoneLink.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_RemoveZoneLink.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SetZoneDeclaredValue.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SetDestroyedByOpponentFlag.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_AddZoneTurnCounter.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SetZoneTurnCounter.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_ClearZoneLinks.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_MoveZoneLinks.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_AddProhibition.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_RemoveProhibition.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_ShuffleDeck.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_DrawCards.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SendTopDeckCardsToGraveyard.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_BanishTopDeckCards.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_AddDeckCardToHand.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_RemoveCardFromDeck.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SummonFromDeck.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SendDeckCardToGraveyard.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_BanishDeckCard.s"
+	.include "asm/nonmatching/duel_cmd_deck/DuelCmd_SendFusionDeckCardToGraveyard.s"

@@ -14,7 +14,7 @@ updated: 2026-10-02
 | Mode | Thumb |
 | Signature | `void LZSSDecompress(const u8 *src, u8 *dst, s32 packedSize)` (proposed name) |
 | File | not split yet |
-| Match | **matching** (2026-10-01, `src/code_0807960C.c`) |
+| Match | **matching** (2026-10-01, `src/bitmap_text.c`) |
 
 ## Purpose
 This is the game's **only** LZ-family decoder. It implements Okumura LZSS with a 4 KiB ring, a first write position of `0xFEE`, a flag byte read LSB first (1 = literal), and 2-byte references `pos = b0 | (b1&0xF0)<<4`, `len = (b1&0xF)+3`. The ring buffer is EWRAM `0x02030000`. The stream format is on [[graphics-formats]].
@@ -68,4 +68,4 @@ The only `0xFEE` literal in `.text` is at `0x0807A220`. Disassembled with `tools
 Related: [[graphics-formats]], [[scene-sets]], [[rom-map]].
 
 ## Matching source (2026-10-01)
-`LZSSDecompress` is byte-matching C; see [[code-0807960c]] for the three details that mattered: `u16` ring/position/byte locals, declaration order, and the match length kept in the loop condition. The "Equivalent C (sketch)" above is behaviourally the same as the matched source.
+`LZSSDecompress` is byte-matching C; see [[bitmap-text-c]] for the three details that mattered: `u16` ring/position/byte locals, declaration order, and the match length kept in the loop condition. The "Equivalent C (sketch)" above is behaviourally the same as the matched source.

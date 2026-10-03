@@ -1,0 +1,133 @@
+---
+title: Unit main (system core)
+type: function
+status: solid
+confidence: high
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# main: system core (`0x080750E0`-`0x08076144`)
+
+`src/main.c` (47 functions, 0x1064 bytes). **47/47 functions in C** after workflow waves 2-3 (2026-10-01: `0x08075114` in wave 2; none in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 46/47 (`0x08075F74`, `0x0807609C` added in wave 1). The unit still links to the exact target bytes. Compiler: `old_agbcc -O2`.
+
+Contents: memory/string helpers, decimal formatting, `SaveGame`, `SetMainCallback`, the VBlank/Timer2/Gamepak IRQ handlers, brightness/fade helpers, OAM flush, `FrameSyncUpdate`, `MainLoop`, `GameInit`, `AgbMain`, the link serial IRQ and an affine-parameter setter. See [[agb-main]], [[interrupt-handlers]], [[set-main-callback]], [[frame-sync-update]], [[read-keys]], [[save-game]], [[fade-functions]].
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x080750E0` | 0x34 | matching | `DrawTextTile` (hyp.) | picks `TextDrawSjisNumber` (Shift-JIS, `gSaveData+4` bit 7) or `TextDrawLatinNumber` (ASCII), 3rd arg u16 passed through. An empty compiler barrier clobbering r3 keeps a/b in r4/r5 without changing the ABI or emitting instructions. |
+| `0x08075114` | 0x114 | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `TextBitmapToTiles` | converts the 1 byte/pixel bitmap at `0x02000000` (w = byte `+0x10000`, h = byte `+0x10001` tiles, 64 bytes per tile) into 4bpp tiles at `dst`; pixel 0 takes the background nibble (`bg & 0xF`). See [Wave 2 matches](#wave-2-matches-2026-10-01). |
+| `0x08075228` | 0x50 | matching | `ReadKeys` | key state + D-pad auto-repeat |
+| `0x08075278` | 0x1C | matching | `MemClear16` | zero `(size+1)/2` halfwords |
+| `0x08075294` | 0x1C | matching | `MemCopy16` | copy `(size+1)/2` halfwords |
+| `0x080752B0` | 0x20 | matching | `CopyDoubleWords` | 8-byte block copy, `(size+7)>>3` blocks |
+| `0x080752D0` | 0x18 | matching | `StrCopy` | strcpy |
+| `0x080752E8` | 0x20 | matching | `StrCat` | strcat |
+| `0x08075308` | 0x68 | matching | `FormatWideNumber` | appends a full-width Shift-JIS decimal (digits `0x824F+d`, 11 wide) |
+| `0x08075370` | 0x5C | matching | `FormatNumber` | appends an ASCII decimal (`itoa`) |
+| `0x080753CC` | 0x14 | matching | `StrLen` | |
+| `0x080753E0` | 0x14 | matching | `StrLen16` | counts 2-byte units until a zero low byte |
+| `0x080753F4` | 0x40 | matching | `FormatStr` | one-substitution `%s` printf (first `%s` only) |
+| `0x08075434` | 0x40 | matching | `FormatInt` | one-substitution `%d` (uses `StrCatNumber`) |
+| `0x08075474` | 0x18 | matching | `RoundTo10` | `(x+5)/10*10` |
+| `0x0807548C` | 0x18 | matching | `ScaleHalfUp` | `(x*5+5)/10` (round half up of x/2) |
+| `0x080754A4` | 0x18 | matching | `ScaleHalfDown` | `(x*5+4)/10` |
+| `0x080754BC` | 0x3C | matching | `SaveGame` | checksum, then up to 32 x `WriteSram`+`VerifySram` |
+| `0x080754F8` | 0xA8 | matching | `SetMainCallback` | SaveGame, clear VBlank cbs and HBlank slot, zero sequencer bytes, set `gMain.callback` |
+| `0x080755A0` | 0x90 | matching | `SaveAndResetSceneState` | same as above with 4 sequencer bytes, returns 1 (no callers) |
+| `0x08075630` | 0x6C | matching | `LoadSystemFontGfx` | palette (`0x0822C300`) + 16 tiles (`0x0822C320`) to BG and OBJ |
+| `0x0807569C` | 0x70 | matching | `VBlankIntr` | |
+| `0x0807570C` | 0x34 | matching | `Timer2Intr` | |
+| `0x08075740` | 0x4 | matching | `GamepakIntr` | `while (1);` |
+| `0x08075744` | 0x34 | matching | `ResetBgHofs` | |
+| `0x08075778` | 0x34 | matching | `ResetBgVofs` | |
+| `0x080757AC` | 0x10 | matching | `ResetBgScroll` | |
+| `0x080757BC` | 0x38 | matching | `SetBrightness` | level = 0x1F, BLDCNT = arg |
+| `0x080757F4` | 0x28 | matching | `ClearBlend` | |
+| `0x0807581C` | 0x70 | matching | `FadeStepDown2` | level -= 2 with BLDCNT arg; returns 1 at 0 |
+| `0x0807588C` | 0x70 | matching | `FadeStepUp2` | level += 2 (cap 0x1F) with BLDCNT arg; returns 1 at full |
+| `0x080758FC` | 0x80 | matching | `AlphaFadeDown` | like the 0x0807581C but writes BLDALPHA = level + ((0x1F-level)<<8) |
+| `0x0807597C` | 0x78 | matching | `AlphaFadeUp` | BLDALPHA counterpart of `0x0807588C` |
+| `0x080759F4` | 0x3C | matching | `SetBrightnessBlack` | BLDCNT 0x3FFF, level 0x1F |
+| `0x08075A30` | 0x3C | matching | `SetBrightnessWhite` | BLDCNT 0x3FBF |
+| `0x08075A6C` | 0x78 | matching | `FadeToBlack` | level += step |
+| `0x08075AE4` | 0x74 | matching | `FadeFromBlack` | level -= step, ClearBlend at 0 |
+| `0x08075B58` | 0x78 | matching | `FadeToWhite` | |
+| `0x08075BD0` | 0x74 | matching | `FadeFromWhite` | |
+| `0x08075C44` | 0x70 | matching | `FlushOamBuffer` | |
+| `0x08075CB4` | 0xB8 | matching | `FrameSyncUpdate` | |
+| `0x08075D6C` | 0x4 | matching | `DebugHook_Nop` | |
+| `0x08075D70` | 0x84 | matching | `MainLoop` | |
+| `0x08075DF4` | 0x170 | matching | `GameInit` | |
+| `0x08075F64` | 0x10 | matching | `AgbMain` | `GameInit(); MainLoop();` |
+| `0x08075F74` | 0x128 | **matching** (wave 1, 2026-10-01) | `LinkSerialIntr` | see below |
+| `0x0807609C` | 0xA8 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | `SetObjAffine` (hyp.) | writes the four OAM affine parameters (`oam[3,7,11,15]`) of group `idx` from `gSineTable128[...]` (sin table, 0x80 entries) at angle, +0x20 and +0x40, divided (scale nibble <= 7: /(n+1)) or multiplied (n-8) by the top nibble of `angle` |
+
+## Structures (as declared in the unit)
+
+`gMain` (`0x03000040`): only the fields this unit touches are named (see [[ram-map]] for the full list). `oam` entries are 8 bytes (`struct OamEntry {u32 w0, w1}`). `intrCheck` is a `vu16` struct member (declaring it as a bare `0x0300044C` global does not reproduce the codegen). `brightness` is a 6-bit bitfield (`u8 brightness:6` at `+0x4832`), which is what gives the `lsl 26; lsr 26` / `and 0x3F` / `and 0xC0` patterns.
+
+`LinkSio` (`0x03005B60`; only the serial-IRQ fields): `+0xA1E u8 master`, `+0xA21 u8 dataReady`, `+0xA2C s32 state` (-3..10), `+0xA30 u16 (*rxBuf)[12]`, `+0xA34 u16 (*rxDone)[12]` (swapped when `state == 9`), `+0xA3C u16 txBuf[10]`, `+0xAE4` the SIOMULTI snapshot (`0x03006644`, u16[4]), `+0xAEC u32`, `+0xAFC s32 i`. Each transfer stores `recv[i]` (i = 0, 1) into `rxBuf[i][state]`; `SIOMLT_SEND` = `txBuf[state]`.
+
+`ScrollReg {vu16 *reg; u16 mask; u16 pad}` tables: `gBgHofsRegs[4]` (BGxHOFS regs, `vblankFlags` bits 4-7), `gBgVofsRegs[4]` (BGxVOFS, bits 8-11).
+
+## Matching tricks (old_agbcc)
+
+- **Ascending `for (i = 0; i < N; i++)` whose index is unused gets reversed** into a count-down `subs; cmp #0; bge` loop (gcc's "dbra" transform). If the target counts down and the body doesn't need the index, write it *ascending*. This fixed the itoa fill loops and the BG-map copy loop in `FrameSyncUpdate`; writing them descending keeps a redundant counter. (Descending source is only right when the index is used in a way that blocks the transform.)
+- **`(size+1)/2` / `(size+7)>>3` copying a fresh temp into r0**: reassign the parameter: `size = (size + 7) >> 3; while (size != 0) { ...; size--; }`. Using a new local `n` puts the sum in the same register as `size`.
+- **Declaration order fixes register order of pointer params**: `const T *src = srcp; T *dst = dstp;` (src first) gave `r4 = src, r3 = dst` in `CopyDoubleWords`.
+- **Volatile register through a pointer local + natural re-reads** (`FadeStepUp2`, `AlphaFadeUp`, `FadeToBlack`, `FadeToWhite`): `{ vu16 *bldy = &REG_BLDY; *bldy = gMain.brightness; if (gMain.brightness <= 0x1E) return 0; return 1; }` in its own block after the clamp. The pointer local makes gcc load the register address *before* reading `brightness`, and reading `gMain.brightness` again for the compare (instead of a `level` local) gives the `adds r0,r1,#0` copy. Every `level`-local / assignment-in-condition / ternary shape differed.
+- **Single-exit form** `u32 ret; if (x) { ...; ret = 1; } else { ...; ret = 0; } return ret;` reproduced the block layout of `FadeStepDown2`, `AlphaFadeDown`, `FadeFromBlack` (early `return` gives the "return 1" block last).
+- **`struct Main *m = &gMain;` in a local** keeps the `ldr =0x03000040` first and unfolded (`ResetBgHofs`); a zero local declared *before* the counter gave the target's `mov r2,#0; mov r1,#3` order. Register-block writes come out as `reg += 2` steps when a `vu16 *reg = &REG_BG0HOFS; *reg = 0; reg += 2; ...` chain is used.
+- **Volatile discard read**: `gMain.intrCheck &= 0xFFFE;` with `intrCheck` a `vu16` struct field emits `ldrh; and; ldrh(discarded); strh` (MainLoop). `IE |= x` on the register itself does not.
+- For DMA, `vu32 *dma = &REG_DMA3SAD; dma[0] = ..; dma[1] = ..; dma[2] = ..; dma[2];` works (the bare read forces the `ldr r0,[r4,#8]`), with the zero source in a stack `u32 zero`.
+- **`OAM flush`**: the priority byte (`|= 0xC` at entry+5) is addressed as `((u8 *)&gMain + i*8)[0x4435]` in the same loop as the two word stores through `u32 *p = (u32 *)&gMain.oam[i]; *p++ = 0; *p = 0;`. The stores are an `stmia` post-increment pair.
+- A `u16` parameter that is also passed on (`TextDrawNumber`) needs `(u16)param` narrowing at the top of the function.
+
+## Nonmatching notes
+
+Remaining: none (`0x08075114` matched in wave 2; `0x08075F74` and `0x0807609C` in wave 1).
+
+> [!warning] Contradiction
+> The next note and the old table text "Only register numbers differ" (2026-10-01 and earlier) describe `0x08075114` as a register-only near miss. The wave 2 match (2026-10-01, `build/wf/TextCanvasToTiles/NOTES.md`) found that the parked draft (score 62) also lost an instruction pair: with a separate `u16 fill` local, combine dropped the HImode truncation (`lsl 16; lsr 16`) after the first OR. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2, see below): `0x08075114`: everything matches except which registers hold `fill`, the row counter and the byte temp (needs `next = i + 1` trick and the `EWRAM` byte array `gTextCanvas[0x10001/0x10000]`).
+- Resolved `0x08075F74` (wave 1, see below): everything after the first basic block matched. The target derives `&state` (`0x0300658C`) and the `LinkSio` base (`0x03005B60`) from the `0x03006644` literal register (`subs r1,#0xB8`; `adds r5,r2,0xFFFFF51C`), that is, register-plus-constant CSE; the build loads the base early into r5. Separate `extern` for `state` and `recv` did not induce it.
+- Resolved `0x0807609C` (wave 1, see below): `angle` is extended in place in r1 in the target and `scale = angle >> 12` is taken from the extended copy (`lsrs r1,r1,#12`); the build folds it to `lsrs #28` from the unextended value and uses r3 for the copy, and swaps r5/r6 for the 2nd/3rd table values.
+- `0x080750E0` is now matching: an empty compiler barrier clobbering r3 before the flag branch places `a`/`b` in r4/r5. The earlier hidden-use suggestion was a hypothesis; no additional runtime use is needed. Checked with `tools/dr python3 tools/check.py main`: 47/47 functions match and unit bytes MATCH.
+
+## Open questions
+
+> [!question] The `TextDrawSjisNumber`/`TextDrawLatinNumber` pair (`0x08075050`, `0x0807509C`, in `code_08074xxx`) look like Shift-JIS vs ASCII text-tile drawers selected by save flag `gSaveData+4` bit 7 (hypothesis).
+
+Related: [[decomp-workflow]], [[compiler-flags]].
+
+## Serial interrupt and affine setter matched (wave 1, 2026-10-01)
+
+Working notes: `build/wf/LinkSerialIntr/NOTES.md`, `build/wf/SetOamMatrixPacked/NOTES.md`.
+
+### `LinkSerialIntr` (`LinkSerialIntr`, 0x128, start score 37; ordinary C)
+
+The target derives `&state` (recv - 0xB8) and the base (recv + 0xFFFFF51C) from the recv literal register, which is GCC's related-value CSE on symbol+offset constants. What matched: take the snapshot through the struct symbol, not the separate `gSioMultiRecv` extern, as one 64-bit copy:
+
+    *(unsigned long long *)gLinkSio.recv = *(volatile unsigned long long *)0x04000120;
+
+A DImode load whose address register is also the low destination gives `ldr r1,[r0,#4]; ldr r0,[r0]`. With every access going through `gLinkSio`, the literals share one symbol and CSE can relate them. A separate extern for recv/state, and copying two u16/u32 halves separately, had failed.
+
+### `SetOamMatrixPacked` (0xA8, start score 38; FAKEMATCH)
+
+- The target zero-extends `angle` in place in r1 and then does `lsrs r1,r1,#12` on the extended value. CSE (not combine; checked with `-da` dumps) folded `(x<<16>>16)>>12` into `lsrs #28` from the unextended copy, which kept the shifted copy alive, moved the extension to r3, and put the 2nd/3rd table values in the wrong registers. An `asm volatile("")` barrier does not help, because CSE ignores it.
+- Fix: copy `angle` to a `u32 t`, run `asm("" : "+r"(t))` on it (FAKEMATCH), then `scale = t >> 12` with `s32 scale`. An `s32` copy gives `asrs`; running the asm on the u16 `angle` itself re-extends it (`lsl 4; lsr 16`).
+- Also: load the tables in the order angle, +0x20, +0x40, and write `(scale + 1)` / `(scale - 8)` inline in each expression (not as `d`/`m` locals), which places `adds r4,r1,#1` / `subs r1,#8` correctly.
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/TextCanvasToTiles/NOTES.md`.
+
+### `TextCanvasToTiles` (`TextBitmapToTiles`, 0x114, start score 62; FAKEMATCH)
+
+- The fill value was a separate `u16 fill` local, and combine dropped the HImode truncation after the first `fill |= fill << 4` (the ROM keeps `lsl 16; lsr 16` after both ORs). Doing the arithmetic on the u16 parameter itself, `bg &= 0xF; bg |= bg << 4; bg |= bg << 8;`, fixed that (score 44).
+- Then only the fill value (ROM r4) and the inner row counter `j` (ROM r5) were swapped. The [[decomp-permuter]] wrapped the three `bg` statements in `do { ... } while (0);` (FAKEMATCH, commented in the source). The loop notes raise the loop depth of those refs (flow.c weights `REG_N_REFS` by loop depth), so bg's global-alloc priority rises above j's and it takes r4.
+- The final source also uses the `next = i + 1` counter and the `gTextCanvas[0x10000]` / `[0x10001]` byte reads that the old note called for. Also tried: an ascending `for (j = 0; j < 16; j++)` (same code after the dbra reversal).
+- The same do-while(0) fill block also fixes the fill register (r2) in the twin `TextCanvasRowsToTiles` ([[text-render-c]]).

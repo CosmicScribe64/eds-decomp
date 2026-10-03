@@ -13,7 +13,7 @@ updated: 2026-10-01
 | runner | `0x08074A34` | 0x4C | `CB_DebugMenu` |
 | steps | `0x08074554`, `0x08074794`, `0x08074868`, `0x080749E8` | | table `0x081A768C`, index `gMain+0x4857` |
 
-Mode: Thumb; unit: `asm/code_080740BC.s`; match: nonmatching.
+Mode: Thumb; unit: `asm/text_canvas.s`; match: nonmatching.
 
 ## Findings (verified)
 - **Nothing references it.** A search of the whole ROM for the pointer `0x08074A35` and for `bl` to `0x08074A34` finds nothing, so it is a leftover developer menu.

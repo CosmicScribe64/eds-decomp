@@ -1,0 +1,103 @@
+---
+title: deck_edit_panel (pack-list scene steps, card frame / metatile drawing, page-state helpers) decompilation status
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# deck_edit_panel: pack-list scene steps and card-view drawing helpers (`0x08064AF0`-`0x08065E6C`)
+
+`src/deck_edit_panel.c` (19 functions, 0x137C bytes). **18/19 functions in C** after workflow waves 1-2 (2026-10-01: `DeckEdit_DrawCardIcons` in wave 1, `PackList_HandleInput` in wave 2); 1 stays `INCLUDE_ASM` (`DeckEdit_DrawAtkDef`, which has a first draft). Before wave 1: 16/19. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. Continues the pack-list ("Get a pack") scene of [[booster-get-pack-c]] (the `0x02020310` slide state and its `PackList_FlushVram`/`PackList_DrawCovers` helpers are there) and adds a second state block at `0x0201DB20` (card/deck viewer, hypothesis) whose byte `+0x1C34` holds a page flag and a rotating offset.
+
+> [!warning] Contradiction: the unit is now 19/19
+> The count above (18/19) predates later matches. `src/deck_edit_panel.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 19 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x08064AF0` | 0x4 | **matching** | `Nop(a)` | `bx lr`; called with `gSceneWork.frame` / 0 from the scene steps (a removed debug hook, hypothesis) |
+| `0x08064AF4` | 0xAC | **matching** | `PackListSceneStep` | step runner: if `flags & 1` (VRAM copy pending) calls `PackList_FlushVram`; state 0 = `current = 1`, `sel = count - 1`, `PackList_InitVideo`; 1 = `PackList_DrawBackground(2, 0x11, 0x1FD)` + `PackList_DrawCovers(sel)`; 2 = `DISPCNT \|= 0x1440`, waits for `FadeFromBlack(2)`, `PackList_SetCoverAlpha(0)`, `unk1C = 8`, `DISPCNT \|= 0xB00`; later steps return 1 |
+| `0x08064BA0` | 0x258 | **matching** (wave 2, 2026-10-01) | `PackListSceneInput` | per-frame: eases `unk1A` toward `unk1C`; while `frame != 0` slides (`posBase + (pos - posBase) * gPackListSlideEase[frame-1] / 4096` into `gMain+0x442A`, clears DISPCNT bits 8 and 11); when done `sel = sel2`. Otherwise LEFT (0x20) / RIGHT (0x10) start an 8-frame slide (`sel2 = (sel -/+ 1) % count`, `pos = posBase -/+ 0x50`), load the neighbour pack's graphics (`PackList_LoadCoverGfx(3, gPackInfo[list[...]].id)`), clear `gMain.bgMap[2]` with DMA3 and call `PackList_DrawCoverTiles`; A returns 1 |
+| `0x08064DF8` | 0x30 | **matching** | `PackListSceneEnd` | if `FadeToBlack(4)` then `DISPCNT &= 0xEEFF`, return 1; else `Nop(0)`, return 0 |
+| `0x08064E28` | 0xD8 | **matching** | `FillMapBlock9x10(col, row, set, wrap, base)` | fills a 9 x 10 block of the BG map at `0x0600F000` with ascending tile numbers starting at `set*90 + base`; `wrap == 0` only rows wrap (`& 0x1F`), `wrap == 1` columns wrap too |
+| `0x08064F00` | 0x90 | **matching** | `LoadFontGlyphs(dst, a, b, flags)` | DMA3-clears 0x400 bytes at `dst`, then renders glyph codes 0x20..0xFF (0x20 bytes each) via `RenderShadowedGlyph(dst, ch, a, b, flags)`; at 0x80 `flags.bit0 = 1` and `ch = 0xA0`, at 0xC0 `flags.bit0 = 0` and `ch = 0xA0` |
+| `0x08064F90` | 0x3C | **matching** | `GetSlotVram(slot)` | `0x06006180 + ((off + slot) % 7) * 0x2A0` (`off` = the 4-bit field in `0x0201F754`) |
+| `0x08064FCC` | 0x2C | **matching** | `GetPageVram` | `0x06000000 + (page * 0x32 + 0x19B) * 32` |
+| `0x08064FF8` | 0x3C | **matching** | `GetSlotTile(slot)` | `((off + slot) % 7) * 21 + 0x30C` (u16) |
+| `0x08065034` | 0x24 | **matching** | `GetPageTile` | `page * 0x32 + 0x19B` |
+| `0x08065058` | 0x7C | **matching** | `RotateOffset(dir)` | `dir == 1`: `off = (off - 1) & 0xF`, if it wrapped to 15 then 6; `dir == 2`: `off = (off + 1) & 0xF`, if 7 then 0 (ring of 7 slots) |
+| `0x080650D4` | 0x34 | **matching** | `TogglePage` | `page = page + 1` (1-bit field) |
+| `0x08065108` | 0x84 | **matching** | `DrawCardThumb(idx, map, col, row, _, slot)` | `DrawStringTiles(gCardNames + idx*0x40, map + ((col+4)&0x1F, (row+1)&0x1F), GetSlotVram(slot), GetSlotTile(slot), 2, 1, 0, 0)`; the 5th parameter is unused (6th arrives on the stack at +4) |
+| `0x0806518C` | 0x1F8 | **matching** | `DrawCardThumbAndPickFrame(id, map, col, row)` | copies the 0x40-byte entry to a stack buffer, draws it like `DrawCardThumb` into the current page (`GetPageVram/GetPageTile`), `TogglePage`, then stores the **card frame kind** (0..9) in `0x0201DB20+0x1C3B`: by `gCardIdToNumber[id & 0x7FF]` (card number `0x76D-0x76F` -> 0, `0x776` -> 3, `0x777-0x778` -> 1) else by kind `stats >> 20 & 0x1F` (`0x15` -> 5, `0x16` -> 4; else again number 0x776/0x777.. and kind 0x16/0x15/0x17 -> 7/8/9, else `stats >> 18 & 3`) |
+| `0x08065384` | 0x6C | **matching** | `DrawDebugString(_, map, col, row)` | copies the string `gStrDeckEditNoCards` into a 0x40-byte stack buffer, truncates it to 100 chars (`buf[100] = 0` - writes past the local buffer as in the original), draws it at `(col + 8, row + 3)` with `DrawTextStrip` and the page vram/tile |
+| `0x080653F0` | 0x2C4 | **matching** | `CopyFrameGraphics(dst)` | 39 x `CpuSet(gUnk_0870xxxx, dst + i*0x80, 0x40)` (the last 0x30 halfwords at `+0x1300`): the 0x80-byte tiles/palettes of the 0x08704xxx-0x08706xxx block |
+| `0x080656B4` | 0x144 | **matching** | `DrawMetatile2x2(kind, idx, map, col, row, pal, tile)` | if `idx != 0`: writes 4 map entries `((tbl[idx] + tile + k) & 0x3FF) \| pal << 12` (k = 0..3) at `(col, row)`, `(col+1, row)`, `(col, row+1)`, `(col+1, row+1)` (& 0x1F wrap, 32 per row); tables per `kind` 0..3 = `gAttributeIconTiles/08087352/0808737C/0808738A` (tile ids) and `gAttributeIconPals/080873C0/08087424/08087440` (pointer arrays to 16-colour palettes); loads palette `pals[idx]` into bank `pal` (`CpuSet(.., 0x05000000 + pal*32, 0x10)`) |
+| `0x080657F8` | 0x2BC | **matching** (wave 1, 2026-10-01; FAKEMATCH) | `DrawCardHeader(pos)` | gets the card id with `DeckEdit_GetListCard(cursor, arr14A0[cursor], arr620[cursor])`, then draws its attribute/type/level metatiles at map `0x0600C000`, column 4/6/8, row `((scroll + (pos+7)*8) & 0xFF) >> 3` (kinds 0x15/0x16: icon 9/8 then `stats >> 17 & 7`; 0x17: none; 0x18: icon 10; else `stats >> 29`, kind, frame kind as in `0x0806518C`) |
+| `0x08065AB4` | 0x3B8 | not attempted | (card frame / text box drawing, hypothesis) | uses `memset`/`memcpy` (4 bytes) and `PutMapTileRun` to draw a bordered box for the same card id; cases by kind 0x15..0x18 and card number 0x776-0x778 |
+
+## State at `0x0201DB20` (fields verified against the asm)
+
+| Offset | Field |
+|---|---|
+| `+0x620` u16[15] | per-slot value passed as 3rd argument to `DeckEdit_GetListCard` |
+| `+0x63E` u16 | scroll position used for the map row computation |
+| `+0x14A0` u8[] | per-slot value (2nd argument to `DeckEdit_GetListCard`) |
+| `+0x1C1C` u8 | cursor / current slot |
+| `+0x1C34` u8 | bit 0 `page` (0/1), bits 1-4 `off` (rotation 0..6), bits 5-7 unknown |
+| `+0x1C3B` u8 | card frame kind (0..9) chosen by `0x0806518C` |
+
+`0x02020310` (`struct Slide`, see [[booster-get-pack-c]]): additional fields seen here: `+0x0C current`, `+0x10 sel`, `+0x14 sel2`, `+0x18 flags` (bit 0 = VRAM copy pending), `+0x1A/+0x1C` u16 (eased value / target, passed to `PackList_SetCoverAlpha`), `+0x20 pos`, `+0x24 posBase`, `+0x28 frame`, `+0x2A dir`, `+0x2C list[0x20]`, `+0x6C count`. `gMain+0x41C` is an array of eight 0x800-byte BG map buffers (`bgMap[2]` = `0x0300145C` is cleared with DMA3 here); `gMain+0x442A` = BG scroll value of the slide.
+
+## Matching tricks learned (old_agbcc)
+
+- **`switch` for range compares**: a chain `if (n == 0x776) .. else if (n < 0x776 || n > 0x778)` is folded to one unsigned compare; writing it as `switch (n) { case 0x776: ..; case 0x777: case 0x778: ..; default: .. }` produces the target's compare tree (`bne` / `blt` / `bgt`). This is what `Password_DrawCard` in [[link-sio-c]] needs too (it is parked there with exactly that symptom). The default branch holds the nested kind `switch` (0x16 / 0x15 / 0x17 order).
+- **Duplicate-looking dead code is real**: `0x0806518C` tests the card number twice (once in the jump-table switch, again in `default`); keep both.
+- **Nested `n += term;`**: `n = ((s8)a + j) & 0x1F; n += row;` (two statements) gives the `adds r1,r1,r4` operand order that the one-line `x + y` does not (same trick as `idx += mapBase` in [[bg-image-c]]).
+- **Bitfield for `&= ~1` / `|= 1`**: `struct { u8 bit0 : 1; } *flags; flags->bit0 = 0/1` gives `movs r1,#2; negs r1,r1` / constant-first `orrs` as in the target (`RenderOutlinedFontTiles`).
+- **`while (h != 0)` vs `for`** and arrays: see [[bg-image-c]].
+- **A parameter that is never read still counts**: `DeckEdit_DrawListRowName` has six parameters (the 5th unused); omit it and the 6th is read from the wrong stack slot.
+- **Direct `gSceneWork.field` accesses** (not a local pointer) are needed in `PackList_HandleInput`; a local pointer changes the base register roles.
+- **Table reads inside expressions** (`CARD_STATS(id)`, `CARD_NUM(id)` macros over `(const u32 *)0x08621DE0`) are re-evaluated in the target between calls; keep them as macros, not locals.
+- **`(u8)(scroll + x)` narrows the load** of `scroll` to `ldrb`; use `& 0xFF` on the int sum.
+
+## Nonmatching notes
+
+- `0x08064AF4` now matches (0xAC bytes). Labels express the real shared return-zero block after the pending-copy call and the common state increment in case 2. The initialized scene-base local is bound to r4, preserving the ROM base/flag allocation across helper calls; no empty assembly is used. `build/bigguns-card-ui/PackList_Init/regs-1-none/check.txt` records all 19 functions / 0x137C bytes matching with `DeckEdit_DrawCardIcon` also active.
+
+> [!warning] Contradiction
+> The next note and the old table status (2026-10-01, "regalloc only") say the parked `0x08064BA0` draft had the ROM's shape and differed only in register assignment. The wave 2 match (2026-10-01, `build/wf/PackList_HandleInput/NOTES.md`) found that note stale: the draft scored 68 and indexed the ease table with the old frame value instead of the pre-decremented one, a semantic error; five source changes were needed. Resolved in favour of the matched source.
+
+- Historical (matched in wave 2): `0x08064BA0`: shape and size identical (0x258), only register assignment differs.
+- `0x080656B4` now matches: explicit `int x0, y0, x1, y1` coordinate terms, assigned when first used, preserve the column-first addition for all four cells. These locals are reused for the remaining cells; no compiler hints are needed. All ROM callers supply kind 0..3, which initializes the selected table pointers exactly as in the original switch. Private full-unit evidence is in `build/bigguns-card-ui/DeckEdit_DrawCardIcon/coords-int/`: 19/19 functions and all 0x137C bytes match. This adds one C function / 0x144 bytes.
+- `0x080657F8`: matched in wave 1; see below.
+
+Related: [[booster-get-pack-c]], [[bg-image-c]], [[link-sio-c]], [[card-table]], [[decomp-workflow]], [[compiler-flags]].
+
+## Card header matched (wave 1, 2026-10-01)
+
+`DeckEdit_DrawCardIcons` (0x2BC, start score 32) matches. Working notes: `build/wf/DeckEdit_DrawCardIcons/NOTES.md`.
+
+1. Default case: the build kept the 0xFF mask in sl across the first call and spilled `pos+7` (frame 0x10); the ROM keeps `pos+7` in sl and rematerializes `movs r3, #0xFF` at each use (frame 0xC). From `-da` dumps: CSE `canon_reg` merges the two 0xFF pseudos into one call-crossing pseudo, whose local-alloc priority (3 refs / 48 insns) narrowly beats `pos+7` (3 refs / 49 insns) for sl. Rematerialization in the ROM means that pseudo got no hard register and reload used its REG_EQUIV constant (the same mechanism as matched `DeckEdit_DrawScrollBar`).
+   - Fix: `int mask = 0xFF;` declared at the top of the default-case block and used as `& mask` in the first two row computations. The pseudo is born earlier, loses sl to `pos+7`, and is rematerialized per use. A function-scope mask fixed the default case but changed reload registers in the other cases (91).
+2. Default case: the frame-kind variable landed in r1 (copy preference from the r1 argument); the ROM has it in r0, with `adds r1, r0, #0` at the tail.
+   - Fix (FAKEMATCH): a separate `int w` for the default-case frame kind plus `asm volatile("" ::: "r1");` right before the third call. `w` then conflicts with r1, so global-alloc gives it r0, its other preference.
+- Failed: `asm volatile("" : "+r"(m))` on the second mask (CSE canonicalizes the asm input to the first pseudo, 172); the same barrier on the first mask (fixes sl but loses the `nonzero_bits` proof, so the u8 argument gets `lsl/lsr #24`, 118); signed `/ 8` instead of `>> 3` (209); `w` as u8/u16/u32/s8/s16 (36-37); `w` as the inner switch index (55); a static inline `GetFrameKind` (37); reusing `v` for the frame kind (16); `register int w asm("r0")` (4: the hard register loses `nonzero_bits`, so `lsl/lsr #24` stays).
+- Cleanup idea: a natural source shape that makes `w` conflict with r1 or prefer r0 without the clobber.
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/PackList_HandleInput/NOTES.md`.
+
+### `PackList_HandleInput` (0x258, start score 68; ordinary C)
+
+1. `t *= gPackListSlideEase[--gSceneWork.frame];`, a pre-decrement inside the index with no frame local. The table base is loaded before the decrement and the index keeps its explicit u16 zero-extend (`lsl 16; lsr 15`); the later `if (gSceneWork.frame == 0)` is CSE'd to the decremented value, and `zero = 0` in the LEFT branch is CSE'd to the frame register (r8) through the jump equivalence. The working-copy score went 126 -> 86.
+2. `t /= 4096;` as its own statement: t stays live past the division temporary, so CSE keeps t canonical and t lands in r2, apart from the temporary in r0 (-> 40).
+3. `t += posBase; gMain.unk442A = t;` instead of `unk442A = t + posBase` (-> 22).
+4. The flag update through a u32 temporary, `u32 f = flags; f |= 1; flags = f;`, the idiom of `PackList_DrawCovers` in [[booster-get-pack-c]] (-> 2).
+5. In the LEFT branch, read `count = g.count` into a local before `sel = g.sel` and use `(sel + count - 1) % count`, so count is loaded before sel (-> 0).
+- Did not help: `flags = 1 | flags`, a u8 temporary, an s32 temporary starting at 1, assigning `sel` inside the argument, and the orders `count + sel - 1` / `sel - 1 + count`.

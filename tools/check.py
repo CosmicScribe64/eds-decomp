@@ -5,7 +5,7 @@
   tools/dr python3 tools/check.py <unit> --diff <func>   # instruction diff for one function
   tools/dr python3 tools/check.py <unit> --asm <func>    # just print the target disassembly
 
-<unit> is a name from units.txt (e.g. code_08000228); its source is src/<unit>.c.
+<unit> is a name from units.txt (e.g. bustup_scene); its source is src/<unit>.c.
 The unit is compiled with the same flags as the Makefile (via `make build/src/<unit>.o`),
 linked alone at its ROM address with external symbols taken from build/eds.elf (when a full build
 exists), config/symbols.txt, config/functions.tsv, symbols.ld or their _XXXXXXXX address suffix, and

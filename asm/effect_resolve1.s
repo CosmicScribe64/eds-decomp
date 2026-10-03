@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/effect_resolve1/EffectElegantEgotistResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectStopDefenseResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectDragonCaptureJarResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectFieldMagicResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectDarkHoleResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectRaigekiResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectGainLpChosenPlayerResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectGainLpResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectDamageOpponentResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectSwordsOfRevealingLightResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectSpellbindingCircleResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectDarkPiercingLightResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectMonsterEyeResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectBlastJugglerResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectCyberSteinResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectThunderDragonResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectTheImmortalOfThunderResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectDestroyMagicTargetResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectNeedleBallResolve.s"
+	.include "asm/nonmatching/effect_resolve1/EffectYadoKaruResolve.s"

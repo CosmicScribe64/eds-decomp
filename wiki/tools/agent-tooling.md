@@ -36,22 +36,22 @@ Score = differing normalized lines + 4 x |size delta| (the same metric as the sc
 `build/solo-s49/scout2.py`). `check.py --src FILE` and `permute.py --src FILE` are the underlying options.
 The size delta does not count the zero `.align 2, 0` pad that the function table includes after a function ending
 on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad showed as `-2 bytes`, held such
-functions at score 8, and made `apply` refuse them ([[code-08019554]], `DiscardHandCardByNumber`).
+functions at score 8, and made `apply` refuse them ([[duel-card-actions-c]], `DiscardHandCardByNumber`).
 Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01, waves 2-3 and the giants on 2026-10-02: see [[log]]).
 
 **Register differences.** Since 2026-10-02, [[regoracle]] reads the allocation from a traced compiler instead of
 hand-read dumps. It runs on the `wf.py` copy by default. Its output directory is fixed
 (`build/regoracle/<func>/`), so parallel workers on one function need private copies of the tool, as the
-[[code-08044224]] region workers made.
+[[effect-target-collect-c]] region workers made.
 
-**Region-split rounds (2026-10-02).** The last function, [[code-08044224]], matched in one round with six
+**Region-split rounds (2026-10-02).** The last function, [[effect-target-collect-c]], matched in one round with six
 workers on private whole-unit copies. Each worker owned a group of case regions, scored by a per-case diff
 (`rdiff.py`) plus the global `check.py --norm` line. An integrator then applied the patches in score order onto
 copies and moved the result into `src/` with `wf.py apply`. A size error in one region shifts the absolute
 jump-table words of every later switch. Those diffs clear only after integration, so workers should not chase
 them.
 
-**Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `CardMenu_SummonMonster` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[code-08046738]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
+**Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `CardMenu_SummonMonster` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[effect-hooks-c]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
 
 **Parking twice.** `park` merges three ways against the copy's `base.c` and does not refresh `base.c` afterwards, so a second park of the same function conflicts with the first. Agents on the giants worked around this by copying `src/<unit>.c` to `base.c` after each park, once a diff showed only their draft block had changed (`syncbase.py` for `DuelPhase_Standby`, `park.sh` for `CollectEffectTargets`, which also checks that nobody else touched the unit).
 

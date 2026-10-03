@@ -1,0 +1,26 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/duel_info_bar/DuelScreen_DrawCursorInfo.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxDrawChoiceCursor.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxHandleChoiceInput.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxClearTiles.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxDrawText.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxDrawTilemap.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxSlideIn.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxSlideOut.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxHandleInput.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxDrawSprites.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxOpen.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxSetMenu.s"
+	.include "asm/nonmatching/duel_info_bar/TextBoxUpdate.s"
+	.include "asm/nonmatching/duel_info_bar/DuelScreen_VBlank.s"
+	.include "asm/nonmatching/duel_info_bar/DuelScreen_InitBgCnt.s"
+	.include "asm/nonmatching/duel_info_bar/DuelScreen_LoadFieldBackground.s"
+	.include "asm/nonmatching/duel_info_bar/LoadDuelUiGfx.s"
+	.include "asm/nonmatching/duel_info_bar/LoadDuelBgGfx.s"
+	.include "asm/nonmatching/duel_info_bar/DrawBgNumber.s"
+	.include "asm/nonmatching/duel_info_bar/DrawLifePoints.s"
+	.include "asm/nonmatching/duel_info_bar/DrawPhaseIndicator.s"

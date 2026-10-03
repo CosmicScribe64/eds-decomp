@@ -1,0 +1,27 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_FadeOutAndSetFirstPlayer.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RpsMain.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_ShowChoice.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_InitChoice.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_ChoiceMain.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_NopStep.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_CpuChooseTurn.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RunRps.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RunRpsLink.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RunPlayerChoice.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RunPlayerChoiceLink.s"
+	.include "asm/nonmatching/turn_order_steps/TurnOrder_RunCpuChoice.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawCursorFrame.s"
+	.include "asm/nonmatching/turn_order_steps/TextDrawShadowedString.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawNames.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawCardInfo.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawSelectedInfo.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawPage.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawSelectedCursorFrame.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawCardStatus.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_DrawButtons.s"
+	.include "asm/nonmatching/turn_order_steps/CardListView_InitScreen.s"

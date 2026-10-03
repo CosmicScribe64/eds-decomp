@@ -1,0 +1,128 @@
+---
+title: title_screen (calendar date, starting deck, license and title steps)
+type: function
+status: solid
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# title_screen
+
+Unit `title_screen` (`0x080044E4`–`0x080054FF`, Thumb, `old_agbcc -O2`). It holds calendar date conversion, the starting-deck builder, the boot license/logo steps ([[license-sequence]]) and most of the title-screen steps ([[title-screen]]). Source: `src/title_screen.c`.
+
+**Match status: 20/20 functions in C** after workflow waves 2-3 (2026-10-02: `0x08004B84` in wave 2, `0x08004FD8` in wave 3); none stay `INCLUDE_ASM`, and the unit matches byte for byte. Before wave 2: 18/20 (after wave 1, 2026-10-01), with near-complete `#if 0` attempts for the two. `GetCalendarEvents` matched in wave 1; see [the wave 1 section](#sub_080044e4-matched-wave-1-2026-10-01).
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x080044E4` | 0x310 | **matching** (wave 1, 2026-10-01) | `GetDateFlags` (hyp.) | returns a bitmask of date flags for (year, month, day): ORs in `GetHolidayFlags`'s holiday bits per `month-2` switch (fixed dates, Coming-of-Age/Sports Days), then weekend/restriction bits from surrounding days via `IsDayOff` and save counters `gSaveData.unk215E/unk2160`. Plain C: inline `WeekOfMonth` helper plus a single `end: return flags;` label. |
+| `0x080047F4` | 0x120 | matching | `DaysToDate` | day count → `{year:12, month:4, day:5, weekday:3}`. Day 0 = 2001-01-01, with 1461-day cycles. Days > 36523 get +1 (2100 isn't a leap year). Feb length from `0x08198628` + `IsLeapYear` (`0x08004280`). Weekday from `0x080042D8`. |
+| `0x08004914` | 0x1C | matching | `GetCurrentDate` | `DaysToDate(out, gSaveData.days)` (`+0x2150`) |
+| `0x08004930` | 0x2C | matching | | weekday helper: `(c-1)/7+1` |
+| `0x0800495C` | 0x160 | **matching C** | `BuildStartingDeck` | for each of the 11 pools at `0x08198744` ({`cards*`, count:10, take0/1/2:5}): copies it to a stack buffer, does count*4 random swaps (`Random` `0x08076F9C`), then adds the first `take[choice%3]` cards via `AddCardToSavedDeck`. Unknown ids are logged through `DebugPrintf(0x080813E4, id)`. |
+| `0x08004ABC` | 0x3C | matching | `License_HBlank` | wavy BG1HOFS from `gMain.hblankScroll` |
+| `0x08004AF8` | 0x8C | matching | `License_InitVideo` | step 0 |
+| `0x08004B84` | 0x138 | **matching** (wave 2, 2026-10-01) | `License_Notice` | step 1: centred text `0x080813F0`, drawn at 2x2 offsets in colours `0x100F`/`0x1008` (outline), fills 96 BG1 map cells, then fades in and holds 120 frames |
+| `0x08004CBC` | 0xA4 | matching | `License_Logo1` | step 2: logo `0x087D01F4`, fade in (BG0), hold 120 frames, fade out |
+| `0x08004D60` | 0x14C | matching | `License_Logo2` | step 3: logo `0x087D292C`, then resets the sequence state and sets `gMain.callback = 0x080057BC` (title) |
+| `0x08004EAC` | 0x5C | matching | `CB_License` | runs the step table `0x0819879C` |
+| `0x08004F08` | 0x24 | matching | `Title_VBlank` | diagonal BG3 scroll |
+| `0x08004F2C` | 0x78 | matching | `Title_DrawMenu` | "New Game" / "Continue" sprites |
+| `0x08004FA4` | 0x34 | matching | `Title_SetBgCnt` | |
+| `0x08004FD8` | 0x2A4 | **matching** (wave 3, 2026-10-01) | `Title_Draw` | copies palettes/text/logo images, fills the whole IWRAM tile map (`gMain.bgMapBuffer[3]`, i.e. `0x03001C5C`) with a repeating 4x4 tile block `0xC388..0xC397`, halves the brightness of palette entries `0xC0..0xCF` at `0x05000180`, copies the HBlank scroll table (`gMain.hblankScroll`) and installs the VBlank (`0x08004F08`) / HBlank (`0x08004ABC`) callbacks. |
+| `0x0800527C` | 0x94 | matching | `Title_Init` | |
+| `0x08005310` | 0x58 | matching | `Title_Setup` | |
+| `0x08005368` | 0xF4 | matching | `Title_Intro` | fade in, then removes the HBlank handler (`IE &= ~2`, `0x03000004 = NULL`) and draws the menu |
+| `0x0800545C` | 0x30 | matching | `Title_FadeOut` | |
+| `0x0800548C` | 0x74 | matching | `Title_HandleInput` | |
+
+## Structures
+
+- `gTitleState` (`0x0201527C`): `u16 scroll`, then **`u16` bitfields** `savePresent:1`, `continueSelected:1` at +2. `Title_Init` only matches with `u16` containers (not `u8`, not `u32`).
+- `struct Date`: `u32 year:12, month:4, day:5, weekday:3`. `DaysToDate` only matches with `u32` containers. The other units (`bustup_runner`) use the same layout.
+- `IntrTable + 4`: HBlank callback pointer (hypothesis). It's cleared together with `IE &= ~INTR_FLAG_HBLANK`.
+
+## Matching notes
+
+- **Sequence-step pattern** (`seqState0` switch). To keep `&gMain.seqState0` in a register across the switch (the target's `r4`/`r5`), every case must end with its own `gMain.seqState0++; return 0;`, not a shared increment after the switch. The compiler cross-jumps identical tails, which rebuilds the target's shared blocks.
+  - A default case that comes first in the source puts the default code right after the dispatch (`Title_Setup`, `License_InitVideo`).
+  - A fade-out default that returns 1 on success is written `default: if (!Fade(1)) break; ...; return 1; } return 0;`. The trailing `return 0` is what places the merged `return 0` block after case 0/2 instead of at the end (`License_Logo1`). Cases also have to use the early-return form `if (!x) return 0; inc; return 0;`.
+- `Title_HandleInput`: `if (newKeys & A) { ...; return 1; } return 0;`. The inverted early return does not match.
+- `DaysToDate`: `year += days / 365 + 2001` (other groupings reassociate differently), and `if (date->day == 0) date->day++`, because `= 1` orders the constant differently.
+- **Card-id lookup** (also inlined in `bustup_scene`'s `$i`): a `static inline` helper `CardIdToIndex` in the pointer-arithmetic form `*(tbl + (id & 0x7FF))` gets closest. As a `static inline` function it also frees up `sl` for the surrounding loop.
+
+### `GetCalendarEvents` (historical parked notes; matched 2026-10-01)
+- The switch is on `(arg1 - 2)`; the jump table covers 0..10 with only cases 0, 1, 4, 8, 9 and 10 filled and the default falling through to the common tail. Written as a plain `switch` with no `default:`, agbcc reconstructs the shared `orr r7,r0` tail (`_0800468C`) and the jump table exactly.
+- `GetHolidayFlags` here is the holiday-flag helper `GetHolidayFlags(year, month, day)` (defined in `main_menu.c`); `IsDayOff(year, month, day)` is `TRUE` if the date is "red" (Sunday/holiday/Monday-after). Both take the three date arguments.
+- Historical (superseded by the wave 1 match below, which drops the copy): register trick `u32 a1 = arg1;` as the first statement (then use `a1` in the calls) moves `flags` from r6 to r7 and arg1 to r6, fixing the whole function; it is a harmless local copy (marked FAKEMATCH in the draft). At that stage the remaining diff was the prologue, which saves r5 (arg2) before r6 (arg1), and the inner 4-case switch, which lacks the target's `adds r1,r0,#0` index copy. Referencing `v` inside the case bodies makes agbcc emit that copy (e.g. `if (unk215E > v - 2)`) but then it also stops folding the comparison to the immediate the ROM uses (`cmp r0,#1`/`#2`), so the direct-constant form was kept. The last section below resolves the index copy.
+
+### `Title_LoadGraphics` (parked)
+
+Historical (matched in wave 3, see [Wave 3 matches](#wave-3-matches-2026-10-0102)); the final source writes `gMain.bgMapBuffer[3][o]` and `gMain.hblankScroll` directly.
+- The tile map is `gMain.bgMapBuffer[3]`. The target computes its address as `&gMain.hblankScroll - 0x2C1A` (`0x03004876 - 0x2C1A = 0x03001C5C`), so the same pointer is reused for the final `MemCopy16(gMain.hblankScroll, gTitleLogoWave, 0x20)` copy.
+
+> [!warning] Contradiction
+> The parked note below (before 2026-10-01) says the 4x4 fill "must use `s32 t`" stored as `= ++t`. The wave 3 match (2026-10-01, `build/wf/Title_LoadGraphics/NOTES.md`) stores 16 plain constants with no running variable; the `s32 t` form gives the same instructions but shifts the reload round-robin by one, so the palette loop's `0x05000180` reload lands in r0 instead of r1. Resolved in favour of the matched source.
+
+- The 4x4 fill must use `s32 t` (not `u16`). With `u16`, cse folds each `t+1` to a literal and loop.c hoists the last values into `sl/r9/r8/ip`. With `s32 t` only `0xC388` is hoisted, and the store is written `= ++t` so the address is computed before the increment, which gives the target's single `r1` chain. The remaining diff is register numbers only (base r3 vs r4, anchor r9 vs r8).
+
+### Calendar four-byte frontier (2026-09-30)
+
+> Superseded: `GetCalendarEvents` matches since 2026-10-01; see [the wave 1 section](#sub_080044e4-matched-wave-1-2026-10-01). The grids below are kept as a record of what did not work.
+
+The enabled unit stays at **17/20 C** with four assembly fallbacks, and the strict check matches all `0x101C` bytes. The parked calendar draft has its exact `0x310` extent and only **four differing bytes**. A distinct case-local `u32 week = v` and initialized empty inputs in cases 3 and 4 preserve the ROM's index copy without changing either save-counter comparison. Both immediate thresholds remain `1` and `2`. The remaining differences are the reversed month/day saves and the two upper-case switch comparisons that use `r0` instead of the copied `r1`. No calendar conversion has been accepted.
+
+The disassembly review kept every redundant weekday call, unsigned day subtraction and division, halfword save-counter load, and low-halfword holiday-return check. No ABI or argument narrowing was applied. Inputs in the disabled lifetime hints are initialized real week values, and the hints emit no instructions. See [[matching-tricks]] for related copy and lifetime patterns.
+
+Bounded grids over ordinary declarations and copies, case scope, index assignment, explicit branch trees, initialized constraints and register bindings did not clear the final four bytes. Explicit goto trees reproduce the copied value but reorder the upper and lower dispatch blocks, and register-binding the week tends to put every comparison in the same register. A single two-minute, one-worker [[decomp-permuter]] allocation search from this frontier completed **8,984 iterations / 756 compile errors** with no improvement below the base heuristic score of `30`. Heuristic scores are separate from the strict four-byte difference count. Do not repeat these unchanged grids.
+
+Private evidence: `build/decomp_large/game-batch/GetCalendarEvents/index-upper-v-copy/` (`source.c`, `check.txt`, `normalized.diff`, `text.bin`); finite grid result files `build/decomp_large/game-batch/calendar-*-results.json`; search log `build/decomp_large/calendar-four-permuter.log`. The check of the saved disabled draft, with the assembly fallback intact, is in `build/decomp_large/calendar-parked-check.log`.
+
+### License outline follow-up
+
+Historical (`License_ShowNintendoNotice` matched in wave 2 by reusing `j` as the 96-cell fill counter, see [Wave 2 matches](#wave-2-matches-2026-10-01)): a bounded coordinate/induction grid also reviewed `License_ShowNintendoNotice` against the ROM. The target draws four text positions with outer `i = 1, 0`, inner `j = 0, 1`, and the retained one-iteration `k = 0` loop; centering uses signed division toward zero. Explicit running X locals alone leave the baseline `0x13C` extent. One initialized empty read/write constraint on the running X after the K loop produces the correct `0x138` extent with **63 differing bytes**, but saves only two high registers and still differs in the coordinate/counter allocation. Copied draw-coordinate lifetimes, a read/write J counter, declaration order and scoped sums did not yield an exact match. This candidate remains private; the existing disabled source and assembly fallback are intact. No text-loop conversion was accepted.
+
+Evidence: `build/decomp_large/game-batch/License_ShowNintendoNotice/giv-running-rw-after-k/` and `license-*-results.json`. These initialized lifetime hints are compiler experiments, not proof that a candidate is acceptable. Whole-unit exact bytes remain required. Six ABI-preserving K&R calendar declaration orders and eight lossless wide-scalar calendar copies also failed to improve the four-byte frontier; see `calendar-kr-results.json` and `calendar-wide-results.json`.
+
+## Starting-deck builder matched (2026-10-01)
+
+`BuildStarterDeck` matches all 0x160 bytes, with the complete 0x101C-byte unit exact. The inline ID mapper's direct branch binds the initialized mask to r3, its meaningful working copy to r1 and the table pointer to r4; the alternate branch's table pointer uses r3. A single input-only constraint on the initialized mask remains. All offset and pointer constraints were removed with whole-unit rechecks. Form the doubled byte offset first, then add the table to that offset in a separate assignment; reversing the final sum chooses the pointer register as its destination. Every pointer is assigned before use, and the mapper preserves the 0xFFFF sentinel and alternate-ID wrap.
+
+The scene initializes its target to 1 and bounds it to 0..2 (`StarterDeckSelect_Init` / `StarterDeckSelect_HandleInput`), then `StarterDeckSelect_Run` passes that target to this function. This establishes the intended switch domain; no default or invented initialization was added. A ROM read of the eleven 8-byte pools at 0x08198744 verified positive counts (2..57), all within the 64-halfword stack buffer. Their per-choice take counts also fit the pool sizes.
+
+Evidence: `build/bigguns-lead2/start_deck_{lookup,staging,adds,minimize}.py`, `BuildStarterDeck/solo-clean/`, and the full-ROM run in `build/lead-pass18/` (checkpoint 28). No behavior or ABI changes were needed.
+
+## `GetCalendarEvents` switch-index copy fixed (2026-10-01)
+
+The two discarded `GetDayOfWeek(y, m, 1)` / `GetDayOfWeek(y, m, d)` calls before every `(d - 1) / 7 + 1` belong to a `static inline u32 WeekOfMonth(year, month, day)` helper. Its inlined return value is a separate pseudo, which reproduces the ROM's `adds r1,r0,#0` switch-index copy (`cmp r1,#3/#4` in the jump-target block) with no asm hints. The parked draft uses the helper in case 4, case 9 and the trailing Sunday check. At that point only the prologue still differed (resolved below). The ROM copies arg1 to r6 before arg2 to r5. Without the `a1` alias the copy order is right, but arg1 and `flags` swap r6 and r7. Alias variants for arg0 and arg2 and different declaration orders did not help, and a 6-minute permuter run found only junk (score 16 of 20).
+
+## `GetCalendarEvents` matched (wave 1, 2026-10-01)
+
+`GetCalendarEvents` matches all `0x310` bytes in plain C (no FAKEMATCH). Working notes: `build/wf/GetCalendarEvents/NOTES.md`.
+
+- The last difference was the prologue: the ROM copies month (r1 to r6) before day (r2 to r5). It is a global-allocation priority tie, computed as `floor_log2(refs) * refs / live_length`. Without any copy, month (29 refs over 321 insns, 0.3614) narrowly lost r6 to `flags` (31 refs over 342 insns, 0.3626). The old `a1` alias flipped that by shortening month's live range, but it also reordered the parameter moves.
+- Fix: drop the `a1` copy and use the parameter directly, and replace the early `return flags;` after `IsDayOff(...)` with `goto end;` to a single `end: return flags;`. That removes one use of `flags` (30 refs, priority 0.3509), so month takes r6 and `flags` takes r7 with the parameter moves in natural order.
+- Failed: copying both month and day (moves in order, but month lost r6; score 90), declaration order of flags/a1/a2 (90), copying only day (90), `register ... asm("r7")` on flags (247).
+- Method: dump the lreg pass (`-dl`, the "Register N used X times across Y insns" lines) and compute each pseudo's priority to see which small ref or live-length change flips two registers. See [[matching-tricks#Register allocation priority and reload rotation|global-allocation priority]].
+
+## Wave 2 matches (2026-10-01)
+
+Working notes: `build/wf/License_ShowNintendoNotice/NOTES.md`.
+
+### `License_ShowNintendoNotice` (0x138, start score 48; ordinary C)
+
+- What differed: the middle loop's `j++` was computed as `r179 = j + 1` before the k loop and copied back (`j = r179`) after it. That removed j's basic-induction-variable status, so loop.c could not strength-reduce `x + i + j` into the target's r5/r8 giv; the target keeps `adds r7,#1` in place.
+- Root cause, read from the pret/agbcc `gcse.c`/`lcm.c` source: `compute_delayinout` starts DELAYOUT at zero (a least fixpoint), so delay never propagates through an inner loop's back edge, and `compute_latein` is degenerate (LATEIN = DELAYIN for every block except the last). An increment after an inner loop is therefore hoisted to the end of the block before that loop, unless ISOOUT is set at the increment block, i.e. every path after the loop nest reaches a later computation of the same `(plus j 1)`.
+- Fix: the following 96-cell fill reuses `j` as its counter, `for (j = 0; j < 96; j++) gMain.bgMapBuffer[1][0x120 + j] = j + 0x20;` (the clue: the target's fill counter is r7, the same register as j), plus the argument order `x + j + i` (`j + x + i` also matches; `x + i + j` scores 38, `i + j + x` 2).
+- Failed: every x/i/j order with the fill loop on `i` (50-54), `u32 j` (56), `u8` (58), `s16` (82), and the earlier empty asm on j with a running-X local (63 bytes off; see the License outline follow-up above).
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/Title_LoadGraphics/NOTES.md`.
+
+### `Title_LoadGraphics` (0x2A4, start score 106; ordinary C)
+
+1. **Palette loop (106 -> 84).** Separate `u16` component locals: `u16 c = pal[i]; u16 r = c & 0x1F, g = c & 0x3E0, b = c & 0x7C00; r = (r >> 1) & 0x1F; ...; pal[i] = r | g | b;`. The extra HImode insns push the loop's insn count over loop.c's threshold, so the `0x05000180` load and the first `0x1F` are not "desirable" to hoist; with the address constant not invariant, the `i*2 + 0x05000180` giv is not strength-reduced. That gives the ROM's `lsl r3,r5,#1; ldr r1,=0x05000180; add r3,r3,r1` and a forward `i`. The one-expression `u32 v` form hoisted the constant, strength-reduced the address and reversed the loop.
+2. **Fill loop (84 -> 6).** The outer fill loop reuses the palette loop's `i`. The longer live range and extra refs put the counter in r5, with the PRE copy (`y+4`) in the same register, so the base lands in r4, the row in r3 and x in r6. A separate `y` took r0 and the PRE temporary r6.
+3. **Tile values (6 -> 0).** The 16 tile values are plain constants (`map[o + 1] = 0xC389; ...`), with no running `t`. Each constant is loaded right before its store, and postreload `reload_cse_move2add` turns the loads into the ROM's `ldr r1,=0xC389; adds r1,#1` chain. The parked `s32 t; = ++t` form gave the same code, but its reload count was off by one: the round-robin over the spill registers (r0, r1) gave the palette loop's `0x05000180` reload r0 instead of r1.
+- Failed (each 4 at the t-chain stage): a volatile palette pointer, a pointer local in the loop, `u32`/`int` t, `u16` vs `s16` for the `0x05000000` store, declaration order, `i < 0x10`, other palette addressing forms. The early `row = y << 5; y += 4` form scored 339 (loop.c then strength-reduces the inner loop).
+- Lesson: for a `ldr rX,=K; adds rX,#1; ...` chain, try plain constants first; move2add builds the chain.

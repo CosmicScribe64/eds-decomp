@@ -1,0 +1,25 @@
+	.include "asm/macros.inc"
+
+	.syntax divided
+	.text
+
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_AddCardToDeckTop.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_AddCardToDeckBottom.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_SetCrushCardTurns.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_RemoveCardFromFusionDeck.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnGraveyardCardToHand.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnGraveyardCardToDeckTop.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnGraveyardCardToDeckBottom.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_BanishGraveyardCard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_RemoveCardFromGraveyard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnGraveyardToDeck.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_TakeOpponentGraveyardCard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnBanishedCardToGraveyard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_AddCardToGraveyardNoRedraw.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ClearPendingEquip.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_EquipGraveyardCardToOpponent.s"
+	.include "asm/nonmatching/duel_cmd_piles/sub_080106BC.s"
+	.include "asm/nonmatching/duel_cmd_piles/sub_08010708.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_SendHandCardToGraveyard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_BanishHandCard.s"
+	.include "asm/nonmatching/duel_cmd_piles/DuelCmd_ReturnHandCardToDeck.s"

@@ -1,0 +1,63 @@
+---
+title: title_menu (title steps, text windows, card info sprites)
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# title_menu
+
+Unit `title_menu` (`0x08005500`–`0x08006877`, Thumb, `old_agbcc -O2`). It holds the last title-screen steps ([[title-screen]]), the text-window helpers, and the card-info sprite overlays for the card viewer state at `0x02013D90`. Source: `src/title_menu.c`.
+
+**Match status: 10/12 functions in matching C** (after workflow wave 1, 2026-10-01), and the unit matches byte for byte. `CardDetail_RenderText` (`RenderTextShadowed`) matched in wave 1. The two largest functions remain `INCLUDE_ASM`; `CardDetail_DrawSprites` now has a first draft.
+
+> [!warning] Contradiction: the unit is now 12/12
+> The count above (10/12) predates later matches. `src/title_menu.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 12 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x08005500` | 0x3C | matching | `DrawFullscreenObj` | 5x4 grid of 64x32 sprites (full-screen OBJ picture) |
+| `0x0800553C` | 0x1DC | matching | `Title_Notice` | title step 5. It runs only when `savePresent != continueSelected`, i.e. "Continue" without a save or "New Game" over one (hypothesis). Shows a full-screen notice (palette `0x087D01D4`, OBJ tiles `0x087CC1D4`, bitmap `0x087C29D4` into both Mode-4 pages). B goes back to the title (`seqIndexTop = 1`) and START continues. |
+| `0x08005718` | 0xA4 | matching | `Title_StartGame` | step 6 |
+| `0x080057BC` | 0x5C | matching | `CB_Title` | step runner (`0x081988B0`) |
+| `0x08005818` | 0x48 | matching | `Title_HBlank` | |
+| `0x08005860` | 0x154 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | `RenderTextShadowed` | renders a string with a drop shadow. It falls back to tighter spacing and then no shadow when the text is too long (≥400 chars) or runs past row 0xBF. |
+| `0x080059B4` | 0xBC | matching | `DrawTextWindow` | `RenderTextShadowed(size, textPos, str, colors, lineHeight, wrap)`, then fills the tiles at `0x06004000 + tile*32` (`TextCanvasToTiles`). Maps w x h tiles row by row into `gMain.bgMapBuffer[bg]` at (x, y). `pos` and `size` are packed `x \| y<<8` bytes. |
+| `0x08005A70` | 0x960 | asm (not attempted) | | big card-info renderer (uses the name table `0x0822C720` and descriptions, see [[card-table]]) |
+| `0x080063D0` | 0x5C | matching | `DrawNumberObj` | |
+| `0x0800642C` | 0x40 | matching | | ATK number sprite row |
+| `0x0800646C` | 0x40 | matching | | DEF number sprite row |
+| `0x080064AC` | 0x3CC | asm (not attempted) | `DrawCardStars` (hypothesis) | level stars (type 24 Divine: 10 stars; 21–23: none), the attribute icon, the spell/trap subtype icon, and special ATK/DEF digits for card numbers `0x776`–`0x778`. Card numbers `0x780`–`0x7CF` draw nothing. |
+
+## Structures
+
+This unit uses the shared header `include/main.h` for `gMain`. Its local `struct Main` and
+`extern struct Main gMain;` were removed, and the `#define gMain gMain` alias is kept.
+No local views were needed, because every `gMain` field this unit touches (`seqState0`, `seqIndex1`,
+`seqState1`, `seqState2`, `seqIndexTop`, `vblankFlags`, `newKeys`, `lastVcount`, `hblankScroll`,
+`bgMapBuffer`) keeps the same offset and declared type in the canonical layout. The unit does not
+use `include/duel.h` or `include/duel_ui.h` (it touches no duel state/command/screen globals).
+
+- `gTitleState` (`0x0201527C`) here uses `u8` bitfields. `Title_StartGame` tests `continueSelected` with a byte load. `Title_Notice`, however, compares the two flags after **one word load** (`ldr; lsl #15 / lsl #14; lsr #31`). It only matches through a `u32`-bitfield view of the same struct, as `(u8)w->savePresent == (u8)w->continueSelected`. See [[title-screen-c]], where `Title_Init` needs `u16` containers. The three functions disagree, so the original declaration is still unknown (open question).
+- `0x02013D90`: `+0x00` flags (bit 0 = right-hand layout, x + 0x48), `+0x02` u16 card id, `+0x2C`/`+0x30` shown numbers, `+0x3C` text height written by `RenderTextShadowed`.
+
+## Matching notes
+
+- `Title_Notice`: cases 0–3 end in `break`, and cases 10/11 in `return 0`. That mix is what reproduces the target's cross-jumped increment tails (found by searching all 64 break/return combinations).
+- `DrawTextWindow`: the loop bounds `w`/`h` must be signed (`s32 w = (u8)size`). Unsigned gives `bcs`/`bcc`.
+- `RenderTextShadowed` (historical note; matched 2026-10-01, see below): `((u8)lineHeight << 8)` with an `int lineHeight` reproduces the target's lazy `lsl #24; lsr #16`. What's left is the allocation of the six unpacked locals: the target spills `width`, while this attempt spills `color`. Reordering the declarations didn't help.
+
+## `RenderTextShadowed` matched (wave 1, 2026-10-01)
+
+`CardDetail_RenderText` matches all `0x154` bytes (start score 44). Working notes: `build/wf/CardDetail_RenderText/NOTES.md`.
+
+- The old draft called `TextCanvasInitEx` / `TextDrawString` in the wrong order in the last block (a real source error, not an allocation issue).
+- Callee prototype width: calling `TextCanvasInitEx` through the shared `(u8, u8, u16, u8)` prototype makes agbcc copy width and height into fresh pseudos at the second call (CSE of the u8 argument conversion). Calling it through a cast to `(u32, u32, u16, u32)`, the types its definition in [[text-canvas-c]] uses, removes the copies.
+- Allocation order: global-alloc priority (`floor_log2(refs) * refs / live_length`, counted before combine) ran height > width > color; the ROM needs color > height > width. An empty `asm("" : : "r"(color))` (FAKEMATCH) adds one ref without emitting code, which puts color in r9, height in sl and width at `sp[4]`.
+- In block 3, `color | (8 << 8)` passed straight to the u16 parameter folds to a HImode `0x800` subreg, so reload does not swap the commutative `orr` operands. A `u32 attr` temporary for blocks 3 and 4 fixes it.
+- Failed: all 64 u8/u16 local-type combinations, `color &= 0xFF` (combine leaves an extra AND), a `do { } while (0)` around a color use (raises refs via loop depth but its LOOP_END note ends the CSE path), temporaries in the pen-row expression.
+- Cleanup idea: find ordinary C that gives color one more pre-combine ref without a loop note, so the empty asm can go.

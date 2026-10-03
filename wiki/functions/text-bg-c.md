@@ -1,0 +1,149 @@
+---
+title: text_bg (BASICSIO link packets, text/kanji drawing, image-pack loader) decompilation status
+type: function
+status: draft
+confidence: medium
+sources: [rom-analysis]
+updated: 2026-10-02
+---
+# text_bg: Konami link packet layer, SJIS text drawing and image-pack loader (`0x08071F40`-`0x0807304C`)
+
+`src/text_bg.c` (24 functions, 0x106C bytes). **23/24 functions in C** after workflow waves 2-3 (2026-10-01: `0x08072AF8`, `0x08072D28` in wave 2, `0x08072A14` in wave 3); 1 stays `INCLUDE_ASM` (`0x080723B4`, best attempt under `#if 0 /* NONMATCHING */`). Before the waves: 20/24. The unit links to the exact target bytes. Compiler `old_agbcc -O2`. Names are proposals; code keeps `sub_08XXXXXX`. The link install function `LinkSioInit` is in [[bg-image-c]]; the SIO accessors are in [[link-sio-c]] / [[main-c]] / [[text-canvas-c]].
+
+> [!warning] Contradiction: the unit is now 24/24
+> The count above (23/24) predates later matches. `src/text_bg.c` has no `INCLUDE_ASM` left (checked 2026-10-02), so all
+> 24 functions are in matching C. The decompilation reached 100% at commit `d77fcef` ([[overview]]). Resolved in favour of
+> the source. Text below that calls a function nonmatching, parked or `INCLUDE_ASM` is history. Some of the later matches
+> are recorded only in git (`git log`) and not yet written up here.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x08071F40` | 0x60 | matching | `LinkSendPacket(pkt)` | copies a 12-byte packet to `0x03005204`, stamps the sequence nibble (`u16 @ 0x03004EEA`, bits 8-11), calls `LinkSioSend`; on success saves it as the last-sent packet (`0x03004CD2`) and increments the sequence mod 16 |
+| `0x08071FA0` | 0x70 | **matching**, initialized hint | `LinkRxPop` | pops the head of the receive queue (`rxCount @ +0x300`) after re-sending; shifts the rest down; else sends the default ack `gLinkPacketAck` |
+| `0x08072010` | 0x44 | matching | `LinkTxQueue(pkt)` | copies a packet into the 64-entry ring at `+0x52C` (write index `u16 @ +0x528`, mod 64), then sends the ack `gLinkPacketAck` |
+| `0x08072054` | 0x1E4 | **matching**, ordinary C | `LinkRecvHook` | per-frame hook (stored at `gMain+0x418` by `LinkInit`): reads `SIOCNT` player id, `LinkSioRecv(id, buf, 12)`, dispatches on the packet type (`hw >> 8 & 0xF0`: 0x90/0xB0 data, 0xA0 continuation, 0xD0/0xF0 pop, 0xE0 error/debug print); a retry counter (`+0x51E`) > 0x78 prints a debug line (`DebugPrintf`) and sets `+0x522` |
+| `0x08072238` | 0x78 | **matching**, initialized hints | `LinkTxHasTerminator(idx)` | scans the tx ring from `idx` for a 0xB0 packet whose length matches (`0xB000 \| (len+5)`) |
+| `0x080722B0` | 0x104 | **matching**, initialized hints | `LinkRecvMessage(dest)` | busy-waits on the busy bit, then reads one message from the tx ring (`rd @ +0x52A`): 0x90 = single chunk (10 bytes), 0xA0.. 0xB0 = multi-part reassembly at `dest + idx*2`; returns the length byte or 0 |
+| `0x080723B4` | 0x15C | nonmatching | `LinkQueueMessage(src, len)` | splits `len` bytes (n = (len+1)/2 halfwords) into 5-halfword packets in the rx array: one 0x90 packet if n <= 5, else 0xA0 chunks (sent from the tail, header = remaining n) and a final 0xB0 packet; returns 0 if the queue is full (> 0x3F) |
+| `0x08072510` | 0x4C | matching | `LinkInit` | `LinkSioStop`, clear 0x840 bytes at `0x030049D0`, `LinkSioInit(0x03000000, 0x0300001C)`, `lastId = 0xF`, `gMain+0x418 = LinkVBlankHook` |
+| `0x0807255C` | 0x28 | matching | `LinkShutdown` | `LinkSioStop`, clear the hook, clear the buffers |
+| `0x08072584` | 0x2C | matching | `SjisToGlyphIndex(code)` | `lo + 0xC0 * t` with `t = hi + 0x80` (hi <= 0x9F) or `hi + 0x40`: index into the kanji glyph table (`0x081C0000`, 8 bytes per glyph) |
+| `0x080725B0` | 0x1C8 | matching | `ExpandGlyphRow(bits, fg, bg)` | 4 glyph bits (bit 3 = leftmost pixel) -> 4 pixels of 4 bits: set = `fg & 0xF`, clear = `bg & 0xF`; a 16-case switch |
+| `0x08072778` | 0x90 | matching | `DrawGlyph8(ch, dst, fg, bg)` | ASCII glyph (8 bytes at `0x0822BB00 + ch*8`) -> 4 rows of 4 `ExpandGlyphRow` calls = 8x8 tile in 4bpp (dst u16) |
+| `0x08072808` | 0x94 | matching | `DrawGlyphSjis(code, dst, fg, bg)` | same for the kanji table at `0x081C0000` via `SjisToGlyphIndex` |
+| `0x0807289C` | 0x24 | matching | `SetTextLimits(a, b)` | `gMain+0x441C = a`, `gMain+0x441E = b` (b is the line width in map cells) |
+| `0x080728C0` | 0x138 | matching | `IsLineStartForbidden(sjis)` | switch returning 1 for 32 SJIS codes (punctuation `0x8141/42/45/48/49/5B/5D/5E/6A/76/78/7A`, small kana `0x829F..0x82E5`, `0x8340..0x8348`, `0x8362`, `0x8383..0x8387`, `0x8395/96`) |
+| `0x080729F8` | 0x1C | matching | `IsLineEndForbidden(sjis)` | 1 for `0x8169` and `0x8175` (opening brackets) |
+| `0x08072A14` | 0x0E4 | **matching** (wave 3, 2026-10-01) | `DrawTextSjis(col, pk, tile, s)` | draws a 2-byte string into the BG map buffer at `0x0300045C`, tiles from `tile`; wraps to the next 32-cell row when `col & 0x1F >= width-2` (unless the char may not start a line) or `width-3` and the char may not end one |
+| `0x08072AF8` | 0x0BC | **matching** (wave 2, 2026-10-01) | `DrawTextAscii(col, pk, tile, s)` | same for 1-byte strings (chars converted with `AsciiToFullwidthSjis`, 0 = skipped) |
+| `0x08072BB4` | 0x58 | matching | `DrawStringSimple(col, pk, tile, s)` | draws a string with no wrapping (each char = one tile) |
+| `0x08072C0C` | 0x0A0 | matching | `DrawDecimal(a, b, val, zero)` | prints `val` (abs) as up to 8 decimal digits, padded with `'0'` or `' '`, via `DrawStringSimple` |
+| `0x08072CAC` | 0x07C | matching | `DrawHex(a, b, val)` | same in hex (table `0x0808765C`, `'0'` padded) |
+| `0x08072D28` | 0x170 | **matching** (wave 2, 2026-10-01) | `DrawCardPortrait(a, b, c, d, e)` | fills a 9x10 cell map area at `(a & 7) * 0x800 + b*2` with ascending tiles, copies the card's 64-colour palette (`0x08608360 + c*0x80`) to bank `e >> 4`, unpacks its 6bpp image (`0x082A6500 + c*0x10E0`, 720 x 6 bytes -> 8 bytes) to `0x06004000 + d*32`, then adds the palette base (`(u8)e`) to every pixel (same as `DrawCardPortraitOrClear`, `UnpackCardArt8bpp`) |
+| `0x08072E98` | 0x18 | matching | `SetMapEntry(row, col, e)` | `*(u16 *)(0x0300045C + row*0x800 + col*2) = e` |
+| `0x08072EB0` | 0xFC | matching | `LoadImagePack(mapBase, palIdx, tileBase, img)` | see [[graphics-formats]] (image pack); map buffer `0x03000C5C`. Byte-identical to the sibling `LoadBgImage` ([[bg-image-c]]) except the map literal (`0x03000C5C`); the `__asm__` value barrier from that function transfers unchanged |
+
+## Link buffer `struct LinkBuf` at `0x030049D0` (0x840 bytes, all offsets verified against the asm)
+
+| Offset | Field | Meaning |
+|---|---|---|
+| `0x000` | `Pkt rx[64]` (12 bytes each) | outgoing/"rx" queue drained by `LinkRxPop`; filled by `LinkQueueMessage` |
+| `0x300` | `u16 rxCount` | |
+| `0x302`, `0x30E` | `u8 [12]` | last-sent copy (`LinkSendPacket`), current received packet |
+| `0x51C` | `u16 lastId` | last received sequence nibble (init 0xF) |
+| `0x51E` / `0x522` | `u16` | idle counter / error flag |
+| `0x524` | `u8` bitfield | bit 0 busy, bit 2 data-ready (checked as `f & 1`, `f & 4`; the `~1`/`~4` clears use `u8:1` bitfields to get `movs #2; negs` / `movs #5; negs`) |
+| `0x526` | `u16` | last result of `LinkSioRecv` (bytes received) |
+| `0x528` / `0x52A` | `u16 wr`, `u16 rd` | tx ring indices (mod 0x40) |
+| `0x52C` | `Pkt tx[64]` | tx ring |
+| `0x830` | `int i` | scratch loop counter |
+
+`0x03005204` = send scratch (12 bytes), `0x03004EEA` = send sequence counter, `0x03004CD2` = last packet (these are separate from the block above but reached with negative offsets from `0x03005204`). Packet layout: `hw0 = type << 12 | seq << 8 | len`, then 5 halfwords of payload. Types: 0x9 single, 0xA continuation, 0xB final, 0xD/0xF ack/pop, 0xE error.
+
+## Tricks learned (old_agbcc)
+
+- **Structs passed in a register**: `DrawBgHex`/`DrawBgDecimal` take two args that are really `{u16 lo, hi}` packs (`lsl 16; lsr 16` / `lsr 16`); the match uses `u32 a, u32 b` and splits them inside (`(u16)a`, `a >> 16`).
+- **Loop reversal gives the registers**: `for (i = 0; i < 4; i++)` with an unused `i` produced the target's count-down register assignment; `for (i = 3; i >= 0; i--)` and `while (--i >= 0)` swapped two registers (RenderBoldGlyphTile/08072808).
+- **Switch over 32 sparse values** (`IsLineStartForbidden`) compiles to exactly the target comparison tree; written with one `case` per value, `default: return 0`.
+- **`a*0x800 + base + b*2`** only matches with a temp: `u8 *row = base + a*0x800; cell = row + b*2;` (SetBgMapEntry).
+- **`if/else` with an `ok` variable** (LinkSendPacket) gives the `beq` to the `mov #0` tail; `if (...) return 1; return 0;` gives the opposite layout.
+- **Large struct offsets** (`gLinkBuf.lastId`): the base literal is shared through a struct-typed `extern`, `ldr;ldr;add` appears for offsets > 0x7F.
+- **Loop inversion**: `while (1) { if (*s == 0) return; ... }` keeps the test at the top (`b` back), `while (*s)` duplicates it at the bottom.
+- **Explicit divide helper vs `/`** (LinkIsRecvMessageComplete): the target calls the game's own `sub_0807F0AC(len, 5)`; writing `len / 5` makes agbcc emit the pure `__udivsi3` builtin and hoist the (loop-invariant) quotient out of the loop. Call the helper explicitly to keep the `bl` inside the loop.
+- **Constant mask reloaded each iteration** (LinkIsRecvMessageComplete): `(x & 0xF0FF)` hoists `0xF0FF` into a spare register; route the mask through an `unsigned long long` temp (`& (u32)mask`) so agbcc rematerialises the literal each use (`/* FAKEMATCH */`).
+
+> [!warning] Contradiction
+> The next bullet (this page before 2026-10-02; [[matching-tricks]] also lists it as a partial success) says the 64-bit `mb` temp reproduces the target's `ldr;ldr;add` in `DrawBgFullwidthString`. The wave 2 match (2026-10-01, `build/wf/DrawBgFullwidthString/NOTES.md`) found that this temp, with an `s16 base`, was what held the parked draft at score 70 (separate literal loads, no CSE of the base). The matched source uses plain symbol accesses and no FAKEMATCH. Resolved in favour of the matched source.
+
+- Historical (superseded by the wave 2 match): **Constant base address rematerialisation** (DrawBgFullwidthString): `unsigned long long mb = 0x03000040; ((struct MainMap *)(u32)mb)->w` stops agbcc folding `0x03000040 + 0x441E` into a single literal, matching the target's `ldr;ldr;add`.
+- **Value barrier keeps a loaded halfword in its register** (LoadBgImageMap1, and the identical LoadBgImage in [[bg-image-c]]): `u16 w = *tiles; v = w; __asm__ __volatile__("" : : "r"(w));` stops old_agbcc merging the `*tiles` load into `v` and swapping the test/add register roles.
+
+## Nonmatching notes
+
+- `0x08071FA0`: target keeps the base in r4 and copies it to r5 for the shift loop.
+- `0x08072010`: the target does `(b + 0x52C) + idx*12` with the add of the pool constant after the multiply; every source shape reassociates or hoists the literal.
+- `0x08072054`, `0x080722B0`, `0x080723B4`: control flow/bitfields match, register assignment differs; `0x080723B4` re-reads `rxCount` and recomputes `&rx[rxCount] + (++j)*2` per halfword.
+- `0x08072238`: the target calls `sub_0807F0AC(len, 5)` (not the `__udivsi3` that `/5` produces) so it evaluates the bound in the loop each iteration, and reloads the `0xF0FF` mask/`0x52C` each iteration; the updated draft gets the mask reload via the `u64` temp but still differs in which temp registers hold the loop index/base and in the entry's `(base + 0x52C)` computation.
+- `0x080725B0`: cases 0 and 15 (single colour) differ in the register used for the `and` (`movs r0,#15; adds r1,r4,#0; ands r1,r0` vs `movs r1,#15; ands r1,r4`).
+- Historical (matched in waves 2-3, see below): `0x08072A14`, `0x08072AF8`: register allocation; the target keeps the `0x1F` mask in a register and does not hoist the `0x03000040` literal.
+- Historical (matched in wave 2, see below): `0x08072D28`: entry block order (`e>>4`, `c<<7`, `d<<5`, `c<<4`, `e<<8`) and stack slots differ.
+
+Related: [[decomp-workflow]], [[compiler-flags]], [[graphics-formats]], [[link-sio-c]].
+
+## Queue pop and terminator scan matched (2026-10-01)
+
+Two conversions are enabled: `LinkSendNextQueued` (**112 bytes**) and `LinkIsRecvMessageComplete` (**120 bytes**). All 0x106C unit bytes and the full ROM pass. The pop routine stages its decrement/zero and opens a separate loop scope only after the initial count test. One initialized r2 next-packet address prevents reassociating the source offset. Its sender call now uses the actual existing `int LinkSendPacket(void *)` declaration with an explicit low-halfword test, preserving the original narrowing. No empty constraints remain.
+
+The terminator scan stages `idx*12` before deriving the ring base. One initialized r0 address temporary retains the ring offset inside the loop. The initialized 64-bit mask temporary is still required: narrowing it hoists the mask and changes code. No empty constraints remain. The division helper at 0x0807F0AC is also the linked `__udivsi3` address; the earlier prose contrasted names too strongly. The explicit call preserves the target's repeated evaluation.
+
+**910 pop fixtures pass**, covering counts 0..64, empty/single/full queues, send success/failure, high-word stress results, and optional count mutation during send. An independent memory oracle checks every shifted packet and scratch counter. **3,840 terminator fixtures pass**, covering all 64 start positions with eleven boundary lengths, all 256 length bytes, sequence nibbles, ring wrap, and absent/first possible/last in-range/first out-of-range terminators. The independent oracle checks return and exact divide-call count. Both suites compare complete EWRAM/live IWRAM, ordered calls, saved registers and SP with caller-save clobbering. Send/copy and unsigned division are modeled; invalid queue counts/indices are outside the declared domain.
+
+Evidence: `build/bigguns-lead2/link_queue_{resume,stages,address}.py`, `link_terminator_{resume,stages,header,clean}.py`, `link_pair_{prepare,accept}.py`, `verify_link_pop.py`, `verify_link_terminator.py`, each function's `solo-link-pair-final/` and `build/lead-pass36/`.
+
+## Receive hook matched in ordinary C (2026-10-01)
+
+`LinkVBlankHook` adds **484 matching bytes**, making this unit **19/24 C**. The complete unit and ROM match. Separate packet-dispatch and timeout scopes give the original pointer lifetimes. Staged busy-bit and last-sequence operations retain instruction order; the timeout increments a word, stores it to the halfword, then compares an explicitly narrowed value. This preserves wrap from 0xFFFF to zero. All initialized register bindings and empty constraints were removed together. Earlier fixed-timer-pointer variants omitted required narrowing and were rejected. The local receive declaration now has a full-word signed player slot; the byte table still supplies its signed value. The third word is passed by the original caller and ignored by the receive implementation.
+
+**9,200 fixtures pass** against both the ROM and an independent state/call oracle: all 256 flag bytes, sixteen packet types and sequence nibbles, four SIOCNT slots, duplicates, no packet, timeout boundaries and halfword wrap. Calls model receive/send/queue/pop/debug behavior and clobber caller-save registers. Checks include full EWRAM/live IWRAM, ordered arguments, return, r4–r11 and SP. Wide synthetic receive results also exercise the low-halfword test; the actual callee returns u16. This is a finite modular check, not hardware link integration.
+
+Evidence: `build/bigguns-lead2/link_hook_{finish,narrow,minimize,prepare,accept}.py`, `verify_link_hook.py`, `LinkVBlankHook/solo-link-hook-final/`, `build/lead-pass37/`.
+
+## Message reassembly matched (2026-10-01)
+
+`LinkRecvMessage` adds **260 source bytes** (258 instruction/literal bytes plus two alignment bytes). The complete 0x106C unit matches. A copied pointer retains the original single busy read; the original code spins permanently if initially busy, and this behavior is preserved. Raw byte/word flag staging, explicit packet offset calculation, separate loop pointer lifetimes and a shared zero return retain the target layout. Joint minimization across the bounded family leaves four address register bindings; all three empty constraints and two other bindings were removed. The terminator call uses its actual int declaration with an explicit low-halfword test, rather than the legacy u16 alias.
+
+**6,644 completing fixtures pass**, using the actual matched terminator scanner, modeled unsigned division and exact ten-byte copies, plus an independent memory/call oracle. They cover all 64 ring read positions, every flag byte and initial packet type, sequence nibbles, every multipart halfword count 6..255, boundary lengths, missing terminators and ring wrap. **128 initially-busy cases** preserve the original non-terminating loop under bounded execution. Complete EWRAM/live IWRAM, return, ordered calls, saved registers and SP are checked with caller-save clobbering. Malformed multipart streams that stall on a non-A/non-B packet are outside completing fixtures.
+
+Evidence: `build/bigguns-lead2/link_message_{resume,stages,header,flags,busy,minimize,accept}.py`, `verify_link_message.py`, and `LinkRecvMessage/solo-link-message-final/`.
+
+Full-build evidence: `build/lead-pass38/`.
+
+## Wave 2 matches (2026-10-01)
+
+Both match in ordinary C. Working notes: `build/wf/DrawBgFullwidthString/NOTES.md`, `build/wf/DrawCardPortrait/NOTES.md`.
+
+### `DrawBgFullwidthString` (0xBC, start score 70; ordinary C)
+
+- The parked draft used the 64-bit `mb = 0x03000040` temp with casts to `struct MainMap *` and an `s16 base`. That forced separate literal loads (no CSE of the base address) and a signed `asrs` for base, which shifted the whole allocation.
+- What matched: plain C modelled on the sibling `DrawBgSjisString`, with `u16 base` and the symbol-based `gUnk_03000040_m.w` / `&gUnk_03000040_m.map[base]` accesses. agbcc keeps symbol+0x441E as `ldr sym; ldr off; add`, and GCSE shares the `0x03000040` pseudo between the width test and the map recompute. That block-local pseudo gets r6 because r0-r3 are busy, so lo/hi go to the stack and the `0x1F` mask to sl, as in the ROM.
+
+### `DrawCardPortrait` (`DrawCardPortrait`, 0x170, start score 52; ordinary C)
+
+1. Inner unpack loop ported from `BattleScene_LoadCardArt` ([[duel-card-anim-c]]): `u16 s0`, `u32 s1/s2`, `u16 t/x`, `m6`/`m12` mask locals, `(s1 & 0xFC) * 64`. It replaces the draft's `s8 x` hack.
+2. Integer addresses everywhere, as in `DrawCardPortraitOrClear` ([[link-sio-c]]): the map base `(u16 *)(0x0300045C + (a & 7) * 0x800); map += b;` and the ROM tables `0x08608360 + c*0x80`, `0x082A6500 + c*0x10E0`, so reload rematerializes them and the reload rotation matches. The third loop reuses `dst`; a separate `p` pointer got r3 and forced an r5 spill.
+3. Entry order (`e>>4, c<<7, d<<5, c<<4, e<<24`): GCSE PRE inserts these copies at the end of the entry block in expression-index order (index = first appearance), and loop.c then hoists them. Writing `off = d * 32` before `src = ...c * 0x10E0`, with `dst = 0x06004000 + off` after it, gives that order.
+4. Stack slots (`e<<24` at sp+0, `d<<5` at sp+4): spill slots go in pseudo order, and PRE creates its reaching registers in **hash-bucket order**, hash = (13784 + regno + shift) mod N for `(ashift (reg) (const_int))`, with N = (max_cuid/2)|1. The build had N = 73 and needed N = 71 (142-143 insns at GCSE time). Two changes that leave the output otherwise unchanged removed the extra insns: `u32 lim = 0x2CF; for (; i <= lim; i++)` (no HImode bound sequence, -3 insns) and `u32 pal = e` with `pal >> 4` (no shortened u16 shift, so two fewer zero-extends).
+- Tools left in the work directory: `gn.py` prints the GCSE hash-table size N, the insn count and the PRE reaching registers; `try.py` scores a body; `w/final.c` is the applied body.
+
+## Wave 3 matches (2026-10-01/02)
+
+Working notes: `build/wf/DrawBgSjisString/NOTES.md`.
+
+### `DrawBgSjisString` (`DrawTextSjis`, 0xE4, start score 110; ordinary C)
+
+- Draft fixes: `u8 lo` (not `u16`); the wrap recomputes the map as `(u16 *)gUnk_0300045C + base` instead of `&m->map[base]` (two literals); `while (1) { if (...) return; ... }` instead of a `break`, which let jump.c rotate the exit test to the loop bottom; `map` initialised before lo/hi and `s += 2` before `tile++`.
+- The character read: the ROM does `ldrh w; ldrb b; cmp b,#0; ... (w >> 8) | (b << 8)` and then narrows to u16. That comes from `(u8)` of the halfword: CSE shares the test's `(u8)` with the `<< 8` operand, and combine narrows the shared value to `ldrb`.
+- Last step (score 26 to 0): global-alloc order of col (ROM r6) and ch (r5). col's priority had to fall below ch's (0.5333: 8 refs, live length 45) but stay above the `0x1F` mask's (0.5217), which needs a col live length of 85. Reading `*(u16 *)s` three times without a `w` local, plus `(u8)(*(u16 *)s >> 8)`, added exactly 4 pre-combine insns inside col's live range: `if ((u8)*(u16 *)s == 0) return; ch = (u8)(*(u16 *)s >> 8) | ((u8)*(u16 *)s << 8);`. Diagnosed from the `.greg` priority list (`greg.sh` in the work directory).
+- Failed: `ch = *(u16 *)s` then `ch = (ch >> 8) | ((u8)ch << 8)` (4: the `ldrh` lands in ch's r5); a `u16 w` local (26, col/ch swapped); `if ((u8)(w = *(u16 *)s) == 0)` (14: right priorities, but the `<< 8` no longer shares the `ldrb`); `ch = w >> 8; ch |= ...` (32); `& 0xFF` forms, `col % 32`, int/u32 casts of col (no effect).

@@ -51,7 +51,7 @@ IDs 1–24 are the opponents. Their decks sit in the main deck table at the same
 - `0x0808180E`–`0x0808198C`: 24 groups of 7 `u16`s built around `duelistId*1000` (1014, 1013, 1012, 1011, 1010, 1004, 1017, then 2014, …). These may be per-duelist script/portrait/text IDs (hypothesis).
 - Story dialogue with `$`-codes (for example `$r5`, `$c`, `$p`) starts right after this table.
 - **Portraits.** `GetBustupSet` (`GetSceneSet`) maps a character ID to its dialogue scene set. Every opponent 1–24 and Umbra/Lumis (38, 39) has one; Yugi's set 6 is also the default. The IDs 32–35 and 37, which are not in this table, select the five background scenes 0–4. Full table: [[scene-sets]].
-- **Duel BGM.** `0x08198F20` maps each opponent ID to a song (`{duelist; u16 bgm}`, read by [[code-0801e260]]). See [[sound-engine]].
+- **Duel BGM.** `0x08198F20` maps each opponent ID to a song (`{duelist; u16 bgm}`, read by [[duel-cmd-queue-c]]). See [[sound-engine]].
 - The table extracts to `text/duelists.json` ([[assets]]).
 
 ## Method

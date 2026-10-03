@@ -1,0 +1,107 @@
+---
+title: Unit summon_checks (candidate pick prompt, yes/no prompt, action-record step machines)
+type: function
+status: draft
+confidence: low
+sources: [rom-analysis]
+updated: 2026-10-01
+---
+# Unit summon_checks
+
+`0x08053E58`-`0x08054E7B`, Thumb, `old_agbcc -O2` ([[compiler-flags]]). Source: `src/summon_checks.c`. The unit sits between the pick prompts of [[duel-prompt-handlers-c]] and the CPU AI ([[summon-builders-c]], [[ai-picks-c]]).
+
+Unit status: `unit bytes MATCH`, **11 / 11 functions in C**, so the unit is complete. All `0x1024` unit bytes match (`build/lead-pass25/full-compare.log`). Names are proposals, and the code keeps `sub_08XXXXXX`.
+
+## Functions
+
+| Address | Size | Status | Proposed name | Purpose |
+|---|---|---|---|---|
+| `0x08053E58` | 0xA0 | **matching C**, ordinary C | `DrawCandidateRow` | menu draw callback: five card sprites (`GetCardIconObjTile(id) + 0x1000`, shape `0x80`) at x = 0x28, 0x48, ...; ids from `0x020192E0+0x1B52[5]`, the selected one (`0x0201AE60+0x14`) pulses with `gPulseScaleCurve[(frameCounter >> 1) & 0xF] << 16`, the others get the constant `0x100 << 16`. Differs only in the order of the loop pre-header setup |
+| `0x08053EF8` | 0xA0 | **matching** | `CandidateRowKeyCb` | menu key callback, 5 entries: state `0x0201AE60+0x22` 0 -> `DuelInfo_DrawCard(id[sel], 1)`; then key `0x20` (+4) / `0x10` (+1), `sel % 5`, `TextCellsClear()` (cursor SE) + redraw; A (key 1) returns 1 |
+| `0x08053F98` | 0x90 | **matching C**, initialized hints | `PickCandidateStep` | `0x020192E0+0x1B50` bit 2 (link/CPU): random candidate `Random() % 5`; else step `+0x1B62` 0 shows the text `gStrPromptSelectOneOfFive` (`0x206/0x213`, `TextBoxSetMenu(5, DrawCandidateRow, CandidateRowKeyCb)`), then stores the chosen id `h1B52[sel]` in `+0x1B64`; returns 1 when chosen. Layout identical; target has the Duel base in r4 and `&step` in r5 (built: swapped) |
+| `0x08054028` | 0x108 | **matching** | `CanUseChainTriple` (hyp.) | needs card numbers 0x2E1, 0x2F4 and 0x320 (each present on the field via `CountFaceUpMonstersByNumber`, or in hand via `CountHandCardsByNumber`), card 0x34D when `p != 0`, nobody has 0x58A (`CountActiveCardsOnField`); returns 1 when `CountFreeMonsterZones(p) != 0` or one of the three was found face up |
+| `0x08054130` | 0x68 | **matching** | `CanUseCard4E9` (hyp.) | nobody has 0x58A, and `p` has 0x582 or 0x584 (`CountMonstersByNumber`) and `CountTributableMonsters(p, -1) > 1` |
+| `0x08054198` | 0x200 | **matching C**, initialized hints | `CanUseMonsterSet` (hyp.) | `(player, u16 id)`: for card numbers 0x5EA-0x5EF (switch: 0x5EA needs 3 monsters of kind 3, 0x5EB needs 2 of kind 1, 0x5EC-0x5EF one of kind 4/3/5/6): counts the player's field monsters (when `DuelPlayer+0xC` bit 5 is set, `GetZoneCardType == 3` / `GetZoneCardAttribute == mode`) or graveyard cards (`0x02019BE8`, type 3 / type <= 0x14 and stats bits 29-31 == mode); returns 1 when enough. Also 0 when the opponent has card 0x5E7 and the flag is clear. Only the hoisted 0x7FF mask of the last loop differs (see tricks) |
+| `0x08054398` | 0x3D8 | **matching**, initialized join constraint | `CanSelectCard` (hyp.) | `u16 (player, u16 id)`: can the player pick this card as a target? 0 for id 0, `IsCardProhibited`, non-monsters (type > 0x14), subtype 3 (ritual, number 1910) or 2 (fusion), then per card number: 0x37/0x38/0x42/0x170 `CanSpecialSummon && CanActivateEffectOfCard(p, id, 1)`, 0x175 needs numbers 0x172-0x174 and 3 monsters, 0x34D `CanSummonValkyrion`, 0x4E2 / 0x546 count tests, 0x4E9 `CanSummonKey1257`, 0x5EA-0x5EF `CanPayBanishSummonCost`; other cards depend on the level (0-4: `CountFreeMonsterZones > 0`, 5-6: `CountTributableMonsters(p, -1) > 0`, else `> 1`). The original level-switch join is preserved (see tricks) |
+| `0x08054770` | 0x10C | **matching** | `DrawYesNo` | draw callback of a yes/no prompt: two 64x64 sprites at x = 0x40 / 0x90, the first shows the action record's card (`GetCardIconObjTile(cardId)`), the second the same card (if the record's bit 14 is set) or a blank tile 0x40; the one under the cursor pulses |
+| `0x0805487C` | 0x84 | **matching** (permuter) | `YesNoKeyCb` | key callback: state `0x0201AE60+0x22` 0: L/R (`0x30`) toggle `sel = 1 - sel` (SE 0), A (key 1) plays SE 1 and starts state 1; state 1: 60-tick flash on the timer `+0x23`, then state 2; state 2 returns 1. Matched with a `unsigned short` copy of the state and direct `(&gTextBox)->field` accesses (see tricks) |
+| `0x08054900` | 0x260 | **matching C**, initialized hints | `ActionStepA` (hyp.) | 3-step machine on `ActRec.step` (`0x0201CF90+0xE` bits 5-11): 0 announces the action (message `0xC4`/`0x80C4`, `TributeMonster` for the two target flags), 1 `DuelCursor_Select(player, 0, zone)` then message `0x71` or step := 10, 2 checks the zone has a card, message `0x90`/`0x8090`, `TriggerMysteriousPuppeteer(player)`, then per card number 0x1F3/0x455/0x462/0x4D8/0x4DE/0x534 `Chain_AddPending(...)`, 0x31C `ChangeBattlePosition`, 0x45E/0x585 `DestroyFieldCard`; advances the step; returns 1 for unknown steps |
+| `0x08054B60` | 0x31C | **matching C**, initialized hints | `ActionStepB` (hyp.) | 5-step machine on the same record: 0 CPU (`player`) decides `AiShouldSetMonster(cardId, 0)` -> `0x0201AE60+0x14`, human gets the yes/no prompt (`0x207/0x30F`, `DrawYesNo`, `YesNoKeyCb`); 1 stores the answer in the record (`f15 = sel`, `f14 = !f15`, `f14 = 1` when somebody has 0x47F); 2 / 3 / 4 as steps 0-2 of `ActionStepA` |
+
+## Structs and globals
+
+- `0x0201CF90` **action record** (`struct ActRec`, see [[summon-builders-c]]): bit 0 player, bits 1-5 zone, bits 6-13 zone8, bit 14 `f14` (card attached), bit 15 `f15`, bits 16-18 / 19-21 two 3-bit values, bits 25/26 flags (target 1 / 2 present) with their player bits 28/29, **`cardId` at bit 31 (16 bits, straddles the word)**, `+0xC` u16, **`+0xE` bits 5-11 = step of the action** (7 bits, `step++` compiles to `lsl 20; lsr 25; add 1; and 0x7F; lsl 5`).
+- `0x0201AE60` menu block ([[duel-prompt-handlers-c]]): `+0xA` u16 (y of the list, hypothesis), `+0xE` h, `+0x14` selection, `+0x21` row byte, `+0x22` state, `+0x23` timer.
+- `0x020192E0` duel global: `+0x1B50` flags (bit 2 = CPU/link decides), `+0x1B52` u16[5] candidate ids, `+0x1B62` step, `+0x1B64` chosen id.
+- `DuelPlayer` (0xD64 bytes at `0x020192E4`): `+2` hand count, `+4` graveyard count, `+0xC` bit 5 a flag, `+0x28` 11 zones of 0x94 bytes (**ends at +0x684**; an early draft had a wrong `unk624` filler that made `sizeof` 0xDC4 and corrupted every `player * 0xD64`), `+0x684` hand, `+0x7C4` deck, `+0x904` graveyard (`0x02019BE8`).
+- `gMain.frameCounter` is at `0x0300489E` (`0x03000040 + 0x485E`), used for the sprite pulse.
+
+## Matching tricks (old_agbcc)
+
+- **`DUEL.h1B52[i]` with an index** gives the two-literal base (`ldr base; ldr 0x1B52; add`) the ROM has; a hoisted pointer `&DUEL.h1B52[0]` folds into one literal.
+- **Jump / tail layout:** `if (keys & 1) return 1; return 0;` (not the inverted test) for the final tail, and a `goto check_a;` to an else-block placed after the main path reproduces the ROM's "else at the end" layout (`FiveCardMenu_HandleInput`).
+- **`int idx = rand() % 5`** must be a signed `int`: the ROM calls `__modsi3`.
+- **Constant-address tables** (`((const u16 *)0x08622AB4)[id & 0x7FF]`) load `0x7FF` first and the table last; `CARD_NUMBER_C` / `CARD_STATS_C` from [[duel-card-lists-c]] work here too. `static inline GetCardSubtype` and a switch-based `GetCardLevel` reproduce the repeated blocks of `CanSummonFromHand`.
+- **A `u16` local for a 12-bit card id read** (`u16 cid = CARD_ID(word);` then `CARD_STATS_C(cid)`) stops combine merging `lsl 20; lsr 20; and 0x7FF` into `lsl 21; lsr 19`, which is what the ROM has (and makes loop.c hoist the `0x7FF` into a register); the plain `u32` form merges. A bitfield `struct { u32 id : 12; }` read is the `lsl 20; lsr 20`.
+- **Zone addresses:** `*(u32 *)(player * 0xD64 + zone * 0x94 + (u32)gDuelZones)` (flat expression, extern array symbol cast) keeps `p * 0xD64` hoisted and adds the base in the loop; order of the two products follows the written order.
+- **Direct `gSummonAction.field` accesses** (not a pointer local) reproduce the ROM's mixture of a CSE'd base register and fresh `ldr`s after calls; cases that end in their own `step++; return 0;` come out as separate tails.
+- **`#define GRAVE(p, i) (*(u32 *)(0x02019BE8 + ((p) & 1) * 0xD64 + (i) * 4))`** gives the ROM's "pointer stepping by 4 from `p * 0xD64`" loop.
+- **`int` return value of a callee narrowed to `u16`** by the caller: declare the callees `int` and the caller `u16`; the `lsl 16; lsr 16` before the shared return appears by itself (`CanSummonFromHand`).
+- **`SummonPositionMenu_HandleInput` (permuter, score 0):** a `unsigned short t = s;` copy for the `switch` keeps the loaded state byte in r2 and makes `s + 1` stay `adds r0,r2,#1` instead of the constant-folded `movs r0,#2`; the `u->timer` / `u->sel` / `u->state` accesses must be written directly as `(&gTextBox)->field` (a plain pointer local is CSE'd into a register and differs). See [[decomp-permuter]].
+
+## Historical nonmatching notes (resolved below)
+
+- `0x08053E58`: target sets up base (`ldr =0x020192E0`), `x = 0x28`, `0x1B52`, add, then the `&frameCounter` pointer; built emits `x` and the pointer first. ~10 orderings tried (for-init lists, declaration order, giv-style `0x28 + i*0x20`).
+- `0x08053F98`: r4/r5 swapped between the Duel base and `&step` (declaration order, `d->`/`DUEL.` mixes tried).
+- `0x08054198`: see the table; `mode` (r7) vs the `u16 id` (r8) priority.
+- `0x08054398` is **matching**. One input-only empty constraint on the initialized `lvl` immediately after `GetCardLevel(id)` retains the original switch join. Previously, the constant 0/10 arms jumped four bytes past the ROM's first comparison. No instructions, fixed register, extra memory operation or ABI change is introduced. Read/write, paired-input and memory-clobber forms also matched, but the minimal input-only form was retained. All ordinary-C attempts listed above remain historical failures. Evidence: `build/bigguns-lead2/level-join-results.json` and `build/lead-pass2/level-accepted.log`.
+- `0x08054900` / `0x08054B60`: same code, other registers (byte 0 of the record in r5, `msg` in r6, constant `0xF` CSE'd in r3); `0x08054B60` also has different shared `step++` tails.
+
+A further two-minute, single-worker `DuelPrompt_PickOneOfFiveCards` register-allocation search
+completed 24,051 iterations without a usable exact result. Its best weighted
+score-15 output introduced an uninitialized pointer read and was rejected;
+score improvement alone is not evidence of valid C. The defined initialized
+base-input candidate remains a private four-byte miss. Evidence:
+`build/bigguns-lead2/pick-permuter.log` and
+`build/permuter/DuelPrompt_PickOneOfFiveCards/output-15-1/diff.txt`.
+
+A follow-up on `ExecuteSummonAction` tested explicit argument locals, narrower
+record containers, message bindings and named masks. None matched. A bounded
+two-minute single-worker permuter search completed 9,088 iterations with 921
+compile errors. Its best weighted score was 270 (not a raw-byte count), and it
+added a named mask without closing the gap. The 28-byte-difference parked draft
+is unchanged. Evidence: `build/bigguns-lead2/action-permuter.log`, `action_solo.py`,
+`action_containers.py` and `action_masks.py`.
+
+## Both action machines matched (2026-10-01, checkpoint 30)
+
+`ExecuteSummonAction` (0x260) and `ExecuteSummonActionAskPosition` (0x31C) are enabled. All 0x1024 unit bytes and the full ROM match (`build/lead-pass20/`). This supersedes the register/tail near-miss notes and the earlier unsuccessful grids above.
+
+- Both share the tribute-packing shape recovered in [[summon-action-c]], but keep the mask as u16 because this unit correctly declares the message routine's halfword parameters. A word lower-field scratch with one initialized read/write constraint preserves the target AND destination. Both retain an initialized r0 shifted field and an input-only mask constraint. All packed values are assigned before use, and their meaningful bits fit the message halfword.
+- `ExecuteSummonAction` also keeps the acting-player extraction in initialized r1/r3 locals. Removing either changes the case-2 byte/shift registers. No call ABI was changed. Three bindings and two constraints remain; extra packed-value narrowing was removed.
+- `ExecuteSummonActionAskPosition` reads the step before assigning the persistent record pointer. Its case-3 record pointer is copied from that persistent pointer, through an initialized r5 local with one input constraint, into an ordinary pointer before the calls. This retains the copy and the separate step=10 store tail. An r3-bound initialized table base in a narrow inline ID reader reproduces the card-number lookup. Repeating the real `step++; return 0;` in cases 0/2/3 lets the compiler merge both the message call and increment tails; forcing a shared goto only merged the increment. Cases 1/4 use the separate global-base increment label. Three bindings and three constraints remain.
+
+> [!warning] Corrected parked-draft behavior
+> The former `ExecuteSummonActionAskPosition` draft passed f28/f29 to the two optional tribute removals. The ROM instead reads byte 0 bit 0 each time, so the enabled C passes `r->player`. Those alternative-owner fields are correct for sibling `ExecuteSummonAction`, which reads bits 28/29; the routines must not be conflated.
+
+Evidence: `build/bigguns-lead2/action_pack_{followup,narrow,finish}.py`, `action_last_bytes.py`, `action_minimize.py`, `action_b_{repair,pointer,copy,finish,tail,minimize}.py`, and each accepted function's `solo-clean/` directory. All bindings/constraints were independently minimized and the full unit rechecked.
+
+## Word-return declaration (2026-10-01)
+
+`CanSummonFromHand` declares its verified zero-extended result as `int`, which agrees with the full-register consumers in [[ai-strategy-c]]. Explicit halfword casts preserve nonconstant results. Its complete unit and the full ROM stay byte-exact at checkpoint 31, but it adds no coverage by itself.
+
+## Complete unit (2026-10-01, checkpoint 35)
+
+The final three routines are enabled: `FiveCardMenu_Draw` (160 bytes), `DuelPrompt_PickOneOfFiveCards` (144), and `CanPayBanishSummonCost` (512). All eleven functions and the complete 0x1024-byte unit match, and the full ROM passes. Earlier table descriptions and allocation gaps are historical and superseded.
+
+- Renderer: staged Duel/card/frame-counter pointer initialization, a do/while loop and a separate pointer increment reproduce the preheader with ordinary C. Y and pulse shifts use unsigned operands. No compiler hints remain.
+- Picker: three initialized bindings and one empty read/write constraint retain the base/offset ADD order and callee-saved step pointer. The random path skips that pointer and never reads it. The final selected-card load needs only ordinary unsigned address intermediates.
+- Monster set: both grave card IDs are u16. Two initialized r0 symbol-base bindings preserve the separate 12-bit extraction and table mask. One empty read/write constraint on the initialized mode keeps it live across the opponent test. No bound caller-saved value survives a call. Explicit fixed r7 mode and renderer-card variants overlapped other live variables under old_agbcc and were rejected.
+
+The menu setup declarations agree with [[duel-info-bar-c]] and both stored key callbacks return u16. The tile helper agrees with [[card-canvas-c]]. The RNG word declaration agrees with the byte-identical revised definition in [[sprite-c]]; its value remains 0..32767.
+
+Finite differential verification covers 256 renderer, 256 picker, and 1,024 monster-set fixtures. These exercise negative Y, tile wrap, callback mutations of frame/selection/step state, random and manual choices, all six special card-number cases plus defaults, both players, field/grave alternatives, and grave counts 0..80. Missing card-number map entries use a synthetic table-halfword read in both interpreters, without changing the ROM; grave stats use actual ROM data. Return values, memory, call traces, preserved registers and SP agree. These fixtures supplement exact byte checks.
+
+Evidence: `build/bigguns-lead2/menu_batch_{prepare,accept}.py`, `menu_batch_minimize.py`, `verify_menu_batch.py`, `CanPayBanishSummonCost/solo-menu-abi-clean/`, `Random/solo-menu-rng-word/`, and `build/lead-pass25/`.
+
+Related: [[duel-prompt-handlers-c]], [[summon-builders-c]], [[ai-picks-c]], [[duel-card-lists-c]], [[decomp-workflow]], [[compiler-flags]].

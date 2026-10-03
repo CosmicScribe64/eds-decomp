@@ -31,7 +31,7 @@ unit_cflags = $(or $(shell awk '$$1=="$(1)"{$$1="";$$2="";print}' config/cflags.
 
 # Units in link order (see units.txt). A unit links the first of src/<u>.c, src/<u>.s,
 # asm/<u>.s, data/<u>.s that exists.
-# `make compare ASM_UNITS="code_08000228 ..."` forces those units back to asm (e.g. while
+# `make compare ASM_UNITS="bustup_scene ..."` forces those units back to asm (e.g. while
 # someone is mid-edit on src/<unit>.c).
 UNITS    := $(shell sed -e 's/\#.*//' -e '/^[[:space:]]*$$/d' -e '/^@/d' units.txt)
 unit_obj  = $(if $(and $(wildcard src/$(1).c),$(if $(filter $(1),$(ASM_UNITS)),,y)),build/src/$(1).o,$(if $(wildcard src/$(1).s),build/srcasm/$(1).o,$(if $(wildcard asm/$(1).s),build/asm/$(1).o,build/data/$(1).o)))
@@ -84,6 +84,10 @@ $(ASSETS_BUILT): config/assets.tsv config/functions.tsv tools/assets.py $(wildca
 
 build/asm/crt0.o: $(ASSETS_BUILT)   # cartridge header
 
+# Dependency files from an older build can name per-function asm files that a rename has since moved.
+# A file that is really missing still fails when the assembler includes it.
+asm/nonmatching/%.s: ;
+
 # asm units: each includes its functions from asm/nonmatching/<unit>/
 build/asm/%.o: asm/%.s asm/macros.inc
 	@mkdir -p $(@D)
@@ -113,7 +117,7 @@ build/src/%.o: src/%.c config/cflags.txt
 # objdiff / decomp.dev progress report (no baserom needed).
 #   target = each unit's original assembly, base = its C with INCLUDE_ASM functions left out
 #   (-DOBJDIFF_BASE); both get absolute data references resolved (tools/objdiff_resolve.py).
-OBJDIFF_UNITS := $(patsubst asm/%.s,%,$(wildcard asm/code_*.s asm/sound_*.s))
+OBJDIFF_UNITS := $(filter-out crt0 veneer,$(patsubst asm/%.s,%,$(wildcard asm/*.s)))
 OBJDIFF_OBJS  := $(foreach u,$(OBJDIFF_UNITS),build/objdiff/target/$(u).o $(if $(wildcard src/$(u).c),build/objdiff/base/$(u).o))
 
 objdiff.json: units.txt tools/mkobjdiff.py FORCE

@@ -51,7 +51,7 @@ def owner(address, unit):
         return 'sound'
     if 0x08027580 <= address < 0x08041F9C:
         return 'middle'
-    if 0x080431E4 <= address < 0x0807D3D0 and unit != 'code_08044224':
+    if 0x080431E4 <= address < 0x0807D3D0 and unit != 'effect_target_collect':
         return 'later'
     return 'coordinator'
 

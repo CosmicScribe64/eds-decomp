@@ -13,7 +13,7 @@ updated: 2026-10-01
 | Address | `0x08075228` |
 | Size | 0x50 (code to `0x08075276`, with the pool at `0x0807524E`–`0x08075257` in the middle) |
 | Mode | Thumb |
-| Unit | `asm/code_080750E0.s` |
+| Unit | `asm/main.s` |
 | Match | nonmatching |
 
 ## Purpose (verified)

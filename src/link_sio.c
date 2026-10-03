@@ -1,117 +1,90 @@
+/*
+ * link_sio (0x0807B6B8-0x0807C7C8): sprite helpers, tweens, the SIO link layer and the card
+ * password entry screen (wiki/functions/link-sio-c.md).
+ *
+ * The first half is shared drawing and motion helpers: OamListAddSprite builds one OAM entry
+ * of a given pixel size in an OamList, DrawNumberSprites draws a decimal number from digit
+ * templates, and TweenInit / TweenUpdate run the 2D tweens (approach or sine eases) used by
+ * the turn-order banners. SetBgScrollRegs writes a BG scroll register pair.
+ *
+ * The middle is the link layer below the packet protocol: LinkSyncOpen / LinkSyncStep /
+ * LinkSyncClose exchange one value with the partner GBA, and the Sio* helpers wrap the
+ * multi-player SIO registers. LinkSyncStep is also the handshake inside Card Trading.
+ *
+ * The last third is the password entry screen's drawing and input (the Password_* steps live
+ * in password_trade.c): digit and cursor sprites, the won card's frame and portrait, the
+ * FindCardByPassword lookup, video setup and the one-frame keypad handler.
+ */
 #include "global.h"
+#include "card_data.h"            /* CARD_ID_MASK, CARD_STATS_TYPE/KIND field extractors (the gCardStats and
+                                   gCardNumberToId table bases below stay literal) */
+#include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
+#include "constants/card_stats.h" /* CARD_STATS_KIND_MASK/SHIFT, enum CardType */
+#include "constants/sound.h"      /* SE_CANCEL, SE_PASSWORD_CURSOR, SE_PASSWORD_PRESS */
+#include "gba.h"                  /* REG_DISPCNT, REG_BG1CNT..REG_BG3CNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY,
+                                   REG_WIN0H, REG_WIN0V, REG_WININ, REG_WINOUT, REG_DMA3SAD/DAD/CNT,
+                                   REG_RCNT, REG_SIOCNT, A_BUTTON, B_BUTTON, SELECT_BUTTON, START_BUTTON,
+                                   DPAD_UP/DOWN/LEFT/RIGHT, R_BUTTON, L_BUTTON */
+#include "main.h"                 /* struct Main gMain (newKeys, seqIndex1, frameCounter, vblankFlags, bgMapBuffer) */
+#include "sprite.h"               /* struct OamList, struct OamListEntry, OamListAlloc, AddSprite,
+                                   enum NumberSpriteMode; OamListAddSprite and DrawNumberSprites (defined here) */
+#include "util.h"                 /* struct Tween, enum TweenMode, enum TweenState, TweenInit/TweenUpdate (defined
+                                   here), MemClear16, gSineTable */
+#include "link.h"                 /* struct LinkSync, struct LinkSyncPacket, enum LinkSyncState, enum LinkSyncPhase,
+                                   LinkSioInit, LinkSioStop, LinkSioSend; LinkSync and Sio helpers (defined here) */
+#include "password_trade.h"       /* struct PasswordState gPassword, struct PasswordKey, enum PasswordStep,
+                                   enum PasswordKeyId; the Password helpers (defined here) */
 
 
-/* Sprite list (see bitmap_text): 20 layer heads + 128 linked OAM entries. */
-struct OamEntry {
-    u32 w;
-    u16 h;
-    u16 pad;
-    s8 next;
-    u8 pad2[3];
-};
+/* IntrTable (0x03000000): LinkSioInit installs the serial handler in slot 0 and the Timer3
+ * handler in slot 7 (+0x1C). */
+extern u8 IntrTable[];          /* 0x03000000 */
+/* Matching: MulFix8 called through int parameters (util.h declares s16; the tween easing passes
+ * full-width products of the phase and the sine value). */
+extern int MulFix8Int(int a, int b) asm("MulFix8");
+/* Matching: this unit calls OamListAddSpriteGroup through full-width parameters (sprite.h
+ * declares u16/u8 parameters; the digit x is a computed int). */
+extern void OamListAddSpriteGroupWide(u8 *tmpls, u32 layer, u32 count, int x, u16 y, u32 mode,
+                                      u8 priority, u8 sheetX, u8 sheetY, u32 format,
+                                      u32 attr0Flags, u32 list) asm("OamListAddSpriteGroup");
 
-struct OamList {
-    s8 head[0x14];
-    struct OamEntry e[128];
-    u8 count : 7;
-    u8 flag : 1;
-};
-
-#define REG_SIOCNT (*(vu16 *)0x04000128)
-
-extern void LinkSioInit(void *a, void *b);
-extern void LinkSioStop(void);
-extern void MemClear16(void *p, u32 size);
-extern void AddSprite(u32 a, u32 b, u32 c);
-extern u8 gPassword[];
-extern u8 IntrTable[];
-extern struct OamEntry *OamListAlloc(u8 layer, struct OamList *l);
-extern int sub_0807B4D0_i(int a, int b) asm("MulFix8");
-extern s16 gSineTable[];
-extern void OamListAddSpriteGroup(u8 *a, u32 b, u32 c, int x, u16 y, u32 f, u8 g, u8 h, u8 i, u32 j, u32 k, u32 l);
-
-/* Linear motion / tween record (0x16 bytes). */
-struct Tween {
-    u16 x, y;
-    u16 x0, y0;
-    u16 x1, y1;
-    s16 step;
-    s16 step2;
-    s16 dx, dy;
-    u8 kind;
-    u8 mode;
-};
-extern void LoadBgImageMap1(u32 a, u32 b, u32 c, void *src);
-extern void DrawCardPortraitOrClear(u16 a, u16 b, u16 id, u16 c);
-extern u8 gCardFrameTrapGfx[];
-extern u8 gCardFrameMagicGfx[];
-extern u8 gCardFrameTicketGfx[];
-extern u8 gCardFrameEffectGfx[];
-extern u8 gCardFrameFusionGfx[];
-extern u8 gCardFrameRitualGfx[];
-extern u8 gCardFrameNormalGfx[];
+/* bg.h declares the LoadBgImage* unpackers with u16 parameters; Password_DrawCard passes its
+ * arguments in pinned registers, so the wide forms stay local. */
+extern void LoadBgImageMap1(u32 mapOffset, u32 palStart, u32 tileBase, void *pack);
 extern void ResetVideo(void);
 extern void ClearBgMapBuffers(void);
-extern void LoadBgImage4bppMap1(u32 a, u32 b, u32 c, void *src);
-extern void MemCopy16(u32 dst, void *src, u32 n);
+extern void LoadBgImage4bppMap1(u32 mapOffset, u32 palStart, u32 tileBase, void *pack);
 extern void SetBrightnessBlack(void);
-extern u8 gPasswordKeypadBgGfx[];
-extern u8 gPasswordPanelBgGfx[];
-extern u8 gPasswordObjPal[];
-extern u8 gPasswordObjGfx[];
-struct MainBig {
-    u8 pad[0x485E];
-    u16 counter;
-};
-extern struct MainBig gMain;
-struct MainB {
-    u8 pad[0x40E];
-    u16 field;
-};
-extern struct MainB gUnk_03000040_b asm("gMain");
-extern u16 gPasswordSlotCursorFrames[];
+/* ROM graphics of the password screen (read-only data). */
+extern u8 gPasswordKeypadBgGfx[];       /* 0x0863862C */
+extern u8 gPasswordPanelBgGfx[];        /* 0x0863975C */
+extern u8 gPasswordObjPal[];            /* 0x08639DFC */
+extern u8 gPasswordObjGfx[];            /* 0x08639E1C */
+extern u16 gPasswordSlotCursorFrames[]; /* 0x08087E7C */
 
-struct MenuEntry {
-    u8 x, y;
-    u16 pad;
-    u16 flags : 12;
-    u16 pad2;
-};
-extern struct MenuEntry gPasswordKeypad[];
-extern u8 gCardPasswords[][4];
-extern int FadeFromBlack(int);
+/* gPasswordKeypad: one key per enum PasswordKeyId (struct PasswordKey in password_trade.h). */
+extern struct PasswordKey gPasswordKeypad[];   /* 0x08087E24 */
+/* The fades: palette.h declares FadeFromBlack u32-returning; the password steps test the
+ * narrowed u16 result, so this unit keeps the int form (see bg_image.c). */
+extern int FadeFromBlack(int step);
 
-/* Link-menu state at 0x0201F7B0 (size 0x18). */
-struct LinkState {
+/* The Password_InitState clear view of gPassword: wider containers than struct PasswordState
+ * on purpose (the byte/word stores here are the ROM's clearing sequence). */
+struct PasswordClearView {
     u8 pad[0x10];
-    u8 cur;
-    u8 a : 6;
-    u32 b : 6;
-    u16 c : 12;
-    u16 d;
-};
-extern struct LinkState gUnk_0201F7B0_s asm("gPassword");
-
-/* Two-player link handshake state (a struct of two 4-byte entries + state + timeout). */
-struct LinkEntry {
-    u8 id;
-    u8 phase;
-    u16 data;
+    u8 posAndKey;   /* +0x10 whole byte: pos (bits 0-3) | key << 4 */
+    u8 blink : 6;   /* +0x11 */
+    u32 keyBlink : 6; /* word at +0x10, bits 14-19 */
+    u16 timer : 12;   /* +0x12 bits 4-15 */
+    u16 card;         /* +0x14 */
 };
 
-struct LinkSync {
-    struct LinkEntry tx;
-    struct LinkEntry rx;
-    u8 state;
-    u8 pad;
-    u16 timeout;
-};
-
-extern u16 LinkSyncOpen(void *p_, void *unused);
-extern u32 LinkSyncClose(void *a, void *b);
-extern u16 sub_0807BED8_x(void) asm("SioGetMultiPlayerId");
-extern int LinkSioSend(void *p, int n);
-extern int LinkSioRecv(int id, void *p, int n);
+/* Matching: the ROM's LinkSioRecv takes (slot, dst); this unit passes the byte count as a third
+ * argument (dead register), so the call keeps its own prototype (link.h declares the 2-arg form). */
+extern int LinkSioRecv3(int slot, void *dst, int size) asm("LinkSioRecv");
+/* Matching: SioGetMultiPlayerId read through a u16 view (link.h declares u32; the narrowed width
+ * keeps the xor in r1 in LinkSyncStep). */
+extern u16 SioGetMultiPlayerIdU16(void) asm("SioGetMultiPlayerId");
 
 
 /* Allocates an OAM entry on `layer` and fills attr0-2: y/x, shape/size from the w x h pixel size,
@@ -121,8 +94,8 @@ struct OamEntryV {
     vu32 w;
     u16 h;
 };
-struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h, u8 mode, u8 pal, u32 unused,
-                               u16 flags, u8 aff, u8 prio, struct OamList *list)
+struct OamListEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 width, u8 height, u8 bpp, u8 palette, u32 unused,
+                               u16 attr0Flags, u8 attr1Bits, u8 priority, struct OamList *list)
 {
     u16 y;
     struct OamEntryV *e;
@@ -132,18 +105,18 @@ struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h,
     y = y_;     /* int param narrowed here, not in the prologue */
     y &= 0xFF;
     e = (struct OamEntryV *)OamListAlloc(layer, list);
-    v = aff << 25;
+    v = attr1Bits << 25;
 
-    if (mode == 8) {
+    if (bpp == 8) {
         v |= 0x2000;
-        v |= flags;
+        v |= attr0Flags;
     } else {
-        v |= flags;
+        v |= attr0Flags;
     }
     e->w = v;
-    switch (w) {
+    switch (width) {
     case 8:
-        switch (h) {
+        switch (height) {
         case 8:
             e->w |= x << 16 | y;
             break;
@@ -159,7 +132,7 @@ struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h,
         }
         break;
     case 16:
-        switch (h) {
+        switch (height) {
         case 8:
             e->w |= 0x4000 | (x << 16 | y);
             break;
@@ -175,7 +148,7 @@ struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h,
         }
         break;
     case 32:
-        switch (h) {
+        switch (height) {
         case 8:
             e->w |= 0x40004000 | (x << 16 | y);
             break;
@@ -191,7 +164,7 @@ struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h,
         }
         break;
     case 64:
-        switch (h) {
+        switch (height) {
         case 8:
             while (1)
                 ;
@@ -207,166 +180,166 @@ struct OamEntry *OamListAddSprite(u8 layer, u16 tile, u16 x, int y_, u8 w, u8 h,
         }
         break;
     }
-    e->h = pal << 12 | tile | prio << 10;
-    return (struct OamEntry *)e;
+    e->h = palette << 12 | tile | priority << 10;
+    return (struct OamListEntry *)e;
 }
 /* Draws a decimal number with sprites (digit sprite table `base`, 8 bytes per digit), right to left. */
-void DrawNumberSprites(u16 num, u8 count, u8 mode, u16 x, u16 y, u8 *base, u32 unused, u8 step, u8 h, u8 i, u8 g, u32 l)
+void DrawNumberSprites(u16 value, u8 numDigits, u8 mode, u16 x, u16 y, u8 *digitTemplates, u32 unused, u8 spacing, u8 sheetX, u8 sheetY, u8 priority, u32 list)
 {
     u8 n;
-    u8 k = 0;
+    u8 drawn = 0;
     u16 d;
 
     switch (mode) {
-    case 0:
-        for (n = 0; n < count; n++) {
-            d = num % 10;
-            num = num / 10;
-            OamListAddSpriteGroup(base + d * 8, 0, 1, x - k++ * step, y, 2, g, h, i, 0, 0, l);
+    case NUMSPRITE_ZERO_PAD:
+        for (n = 0; n < numDigits; n++) {
+            d = value % 10;
+            value = value / 10;
+            OamListAddSpriteGroupWide(digitTemplates + d * 8, 0, 1, x - drawn++ * spacing, y, 2, priority, sheetX, sheetY, 0, 0, list);
         }
         break;
-    case 1:
-        if (num == 0) {
-            OamListAddSpriteGroup(base, 0, 1, x, y, 2, g, h, i, num, num, l);
+    case NUMSPRITE_NO_LEADING_ZEROS:
+        if (value == 0) {
+            OamListAddSpriteGroupWide(digitTemplates, 0, 1, x, y, 2, priority, sheetX, sheetY, value, value, list);
         } else {
-            for (n = 0; n < count; n++) {
-                d = num % 10;
-                num = num / 10;
-                if (d == 0 && num == 0)
+            for (n = 0; n < numDigits; n++) {
+                d = value % 10;
+                value = value / 10;
+                if (d == 0 && value == 0)
                     return;
-                OamListAddSpriteGroup(base + d * 8, 0, 1, x - k++ * step, y, 2, g, h, i, 0, 0, l);
+                OamListAddSpriteGroupWide(digitTemplates + d * 8, 0, 1, x - drawn++ * spacing, y, 2, priority, sheetX, sheetY, 0, 0, list);
             }
         }
         break;
     }
-    num++; /* FAKEMATCH: dead late use of num makes CSE keep num (not k) as the zero register */
+    value++; /* FAKEMATCH: dead late use of value makes CSE keep value (not drawn) as the zero register */
 }
-void TweenInit(u16 x0, u16 y0, u16 x1, u16 y1, u16 dur, u16 b, struct Tween *t, u8 mode)
+void TweenInit(u16 startX, u16 startY, u16 endX, u16 endY, u16 vxOrFrames, u16 vy, struct Tween *tween, u8 mode)
 {
     switch (mode) {
-    case 2:
-    case 3:
-        t->step = 0x4000 / (s16)dur;
-        t->step2 = 0;
-        t->kind = 1;
+    case TWEEN_EASE_OUT:
+    case TWEEN_EASE_IN:
+        tween->step = 0x4000 / (s16)vxOrFrames;
+        tween->phase = 0;
+        tween->state = TWEEN_RUNNING;
         {
-            int a = (s16)x1, b2 = (s16)x0;
-            t->dx = a - b2;
+            int a = (s16)endX, b2 = (s16)startX;
+            tween->dx = a - b2;
         }
         {
-            int a = (s16)y1, b2 = (s16)y0;
-            t->dy = a - b2;
+            int a = (s16)endY, b2 = (s16)startY;
+            tween->dy = a - b2;
         }
-        t->x = x0;
-        t->y = y0;
-        t->x0 = x0;
-        t->y0 = y0;
-        t->x1 = x1;
-        t->y1 = y1;
+        tween->x = startX;
+        tween->y = startY;
+        tween->startX = startX;
+        tween->startY = startY;
+        tween->endX = endX;
+        tween->endY = endY;
         break;
-    case 0:
-        t->x = x0;
-        t->y = y0;
-        t->x1 = x1;
-        t->y1 = y1;
-        t->step = dur;
-        t->step2 = b;
-        t->kind = 1;
+    case TWEEN_APPROACH:
+        tween->x = startX;
+        tween->y = startY;
+        tween->endX = endX;
+        tween->endY = endY;
+        tween->step = vxOrFrames;
+        tween->phase = vy;
+        tween->state = TWEEN_RUNNING;
         break;
-    case 1:
-        t->step = ((s16)dur + 0x7F) / (s16)dur;
-        t->step2 = 0;
-        t->kind = mode;
+    case TWEEN_EASE_IN_OUT:
+        tween->step = ((s16)vxOrFrames + 0x7F) / (s16)vxOrFrames;
+        tween->phase = 0;
+        tween->state = mode;
         {
-            int a = (s16)x1, b2 = (s16)x0;
-            t->dx = a - b2;
+            int a = (s16)endX, b2 = (s16)startX;
+            tween->dx = a - b2;
         }
         {
-            int a = (s16)y1, b2 = (s16)y0;
-            t->dy = a - b2;
+            int a = (s16)endY, b2 = (s16)startY;
+            tween->dy = a - b2;
         }
-        t->x = x0;
-        t->y = y0;
-        t->x0 = x0;
-        t->y0 = y0;
-        t->x1 = x1;
-        t->y1 = y1;
+        tween->x = startX;
+        tween->y = startY;
+        tween->startX = startX;
+        tween->startY = startY;
+        tween->endX = endX;
+        tween->endY = endY;
         break;
     }
-    t->mode = mode;
+    tween->mode = mode;
 }
-/* Tween update (see struct Tween): mode 0 approaches (x1,y1) with a +-1 velocity, 1..3 ease along the sine table. */
-void TweenUpdate(struct Tween *t)
+/* Tween update (see struct Tween): mode 0 approaches (endX,endY) with a +-1 velocity, 1..3 ease along the sine table. */
+void TweenUpdate(struct Tween *tween)
 {
     int d;
 
-    if (t->kind != 1)
+    if (tween->state != TWEEN_RUNNING)
         return;
-    switch (t->mode) {
-    case 0:
-        d = (s16)t->x - (s16)t->x1;
+    switch (tween->mode) {
+    case TWEEN_APPROACH:
+        d = (s16)tween->x - (s16)tween->endX;
         if (d < 0)
             d = -d;
         if (d <= 7)
-            t->step = (t->step > 0) ? 1 : -1;
-        t->x += t->step;
-        if (t->step >= 0) {
-            if ((s16)t->x >= (s16)t->x1)
-                t->x = t->x1;
+            tween->step = (tween->step > 0) ? 1 : -1;
+        tween->x += tween->step;
+        if (tween->step >= 0) {
+            if ((s16)tween->x >= (s16)tween->endX)
+                tween->x = tween->endX;
         } else {
-            if ((s16)t->x <= (s16)t->x1)
-                t->x = t->x1;
+            if ((s16)tween->x <= (s16)tween->endX)
+                tween->x = tween->endX;
         }
-        d = (s16)t->y - (s16)t->y1;
+        d = (s16)tween->y - (s16)tween->endY;
         if (d < 0)
             d = -d;
         if (d <= 7)
-            t->step2 = (t->step2 > 0) ? 1 : -1;
-        t->y += t->step2;
-        if (t->step2 >= 0) {
-            if ((s16)t->y >= (s16)t->y1)
-                t->y = t->y1;
+            tween->phase = (tween->phase > 0) ? 1 : -1;
+        tween->y += tween->phase;
+        if (tween->phase >= 0) {
+            if ((s16)tween->y >= (s16)tween->endY)
+                tween->y = tween->endY;
         } else {
-            if ((s16)t->y <= (s16)t->y1)
-                t->y = t->y1;
+            if ((s16)tween->y <= (s16)tween->endY)
+                tween->y = tween->endY;
         }
-        if (*(u32 *)&t->x == *(u32 *)&t->x1)
-            t->kind = 2;
+        if (*(u32 *)&tween->x == *(u32 *)&tween->endX)
+            tween->state = TWEEN_DONE;
         break;
-    case 1:
-        t->step2 += t->step;
-        if (t->step2 > 0x7F) {
-            t->step2 = 0x7F;
-            t->kind = 2;
-            t->x = t->x1;
-            t->y = t->y1;
+    case TWEEN_EASE_IN_OUT:
+        tween->phase += tween->step;
+        if (tween->phase > 0x7F) {
+            tween->phase = 0x7F;
+            tween->state = TWEEN_DONE;
+            tween->x = tween->endX;
+            tween->y = tween->endY;
         } else {
-            t->x = t->x0 + (sub_0807B4D0_i(t->dx << 4, (-gSineTable[(u8)t->step2 + 0x40] + 0x100) >> 1) >> 4);
-            t->y = t->y0 + (sub_0807B4D0_i(t->dy << 4, (-gSineTable[(u8)t->step2 + 0x40] + 0x100) >> 1) >> 4);
+            tween->x = tween->startX + (MulFix8Int(tween->dx << 4, (-gSineTable[(u8)tween->phase + 0x40] + 0x100) >> 1) >> 4);
+            tween->y = tween->startY + (MulFix8Int(tween->dy << 4, (-gSineTable[(u8)tween->phase + 0x40] + 0x100) >> 1) >> 4);
         }
         break;
-    case 2:
-        t->step2 += t->step;
-        if (t->step2 > 0x3F00) {
-            t->step2 = 0x3F00;
-            t->kind = 2;
-            t->x = t->x1;
-            t->y = t->y1;
+    case TWEEN_EASE_OUT:
+        tween->phase += tween->step;
+        if (tween->phase > 0x3F00) {
+            tween->phase = 0x3F00;
+            tween->state = TWEEN_DONE;
+            tween->x = tween->endX;
+            tween->y = tween->endY;
         } else {
-            t->x = t->x0 + (sub_0807B4D0_i(t->dx << 4, gSineTable[(u8)((u16)t->step2 >> 8)]) >> 4);
-            t->y = t->y0 + (sub_0807B4D0_i(t->dy << 4, gSineTable[(u16)t->step2 >> 8]) >> 4);
+            tween->x = tween->startX + (MulFix8Int(tween->dx << 4, gSineTable[(u8)((u16)tween->phase >> 8)]) >> 4);
+            tween->y = tween->startY + (MulFix8Int(tween->dy << 4, gSineTable[(u16)tween->phase >> 8]) >> 4);
         }
-        /* falls through (as in the original) */
-    case 3:
-        t->step2 += t->step;
-        if (t->step2 > 0x3F00) {
-            t->step2 = 0x3F00;
-            t->kind = 2;
-            t->x = t->x1;
-            t->y = t->y1;
+        /* falls through, as in the original (enum TweenMode notes this) */
+    case TWEEN_EASE_IN:
+        tween->phase += tween->step;
+        if (tween->phase > 0x3F00) {
+            tween->phase = 0x3F00;
+            tween->state = TWEEN_DONE;
+            tween->x = tween->endX;
+            tween->y = tween->endY;
         } else {
-            t->x = t->x0 + (sub_0807B4D0_i(t->dx << 4, 0x100 - gSineTable[((u16)t->step2 >> 8) + 0x40]) >> 4);
-            t->y = t->y0 + (sub_0807B4D0_i(t->dy << 4, 0x100 - gSineTable[((u16)t->step2 >> 8) + 0x40]) >> 4);
+            tween->x = tween->startX + (MulFix8Int(tween->dx << 4, 0x100 - gSineTable[((u16)tween->phase >> 8) + 0x40]) >> 4);
+            tween->y = tween->startY + (MulFix8Int(tween->dy << 4, 0x100 - gSineTable[((u16)tween->phase >> 8) + 0x40]) >> 4);
         }
         break;
     }
@@ -376,74 +349,74 @@ void SetBgScrollRegs(u32 hofs, u32 vofs, u8 bg)
 {
     *(u32 *)(0x04000010 + bg * 4) = (hofs & 0x1FF) | (vofs & 0x1FF) << 16;
 }
-void LinkSyncStart(u8 *p)
+void LinkSyncStart(u8 *sync)
 {
-    p[8] = 0;
+    ((struct LinkSync *)sync)->state = LINKSYNC_OPEN;
 }
-u32 LinkSyncStep(u16 id, u16 data, struct LinkSync *p)
+u32 LinkSyncStep(u16 msgId, u16 data, struct LinkSync *sync)
 {
-    struct LinkEntry *tx = &p->tx;
-    struct LinkEntry *rx = &p->rx;
-    u8 *st = &p->state;
-    u8 other = 1 ^ sub_0807BED8_x();
+    struct LinkSyncPacket *tx = &sync->tx;
+    struct LinkSyncPacket *rx = &sync->rx;
+    u8 *st = &sync->state;
+    u8 other = 1 ^ SioGetMultiPlayerIdU16();
 
-    switch (p->state) {
-    case 0:
+    switch (sync->state) {
+    case LINKSYNC_OPEN:
         if (LinkSyncOpen(tx, rx))
             (*st)++;
-        p->timeout = 300;
-        tx->phase = 0;
+        sync->timeout = 300;
+        tx->phase = LINKSYNC_PHASE_NONE;
         break;
-    case 1:
-        tx->id = id;
+    case LINKSYNC_SEND:
+        tx->msgId = msgId;
         tx->data = data;
-        tx->phase = 1;
+        tx->phase = LINKSYNC_PHASE_REQUEST;
         if (LinkSioSend(tx, 4))
-            *st = 2;
+            *st = LINKSYNC_WAIT;
         break;
-    case 2:
-        if (LinkSioRecv(other, rx, 4)) {
+    case LINKSYNC_WAIT:
+        if (LinkSioRecv3(other, rx, 4)) {
             switch (rx->phase) {
-            case 1:
-                if (rx->id != id) {
-                    *st = 0;
+            case LINKSYNC_PHASE_REQUEST:
+                if (rx->msgId != msgId) {
+                    *st = LINKSYNC_OPEN;
                     return 0;
                 }
-                tx->phase = 4;
+                tx->phase = LINKSYNC_PHASE_ACK;
                 LinkSioSend(tx, 4);
-                p->timeout = 300;
-                *st = 5;
+                sync->timeout = 300;
+                *st = LINKSYNC_CLOSE;
                 break;
-            case 4:
-                p->timeout = 300;
-                *st = 5;
+            case LINKSYNC_PHASE_ACK:
+                sync->timeout = 300;
+                *st = LINKSYNC_CLOSE;
                 return 1;
-            case 3:
-                p->timeout = 300;
-                *st = 0;
+            case LINKSYNC_PHASE_RESTART:
+                sync->timeout = 300;
+                *st = LINKSYNC_OPEN;
                 break;
             default:
-                *st = 0;
-                p->timeout = 300;
+                *st = LINKSYNC_OPEN;
+                sync->timeout = 300;
                 break;
             }
         }
         break;
-    case 3:
-        *st = 1;
+    case LINKSYNC_RESEND:
+        *st = LINKSYNC_SEND;
         break;
-    case 5:
+    case LINKSYNC_CLOSE:
         LinkSyncClose(tx, rx);
         return 1;
     }
-    if (--p->timeout == 0xFFFF)
-        *st = 0;
+    if (--sync->timeout == 0xFFFF)
+        *st = LINKSYNC_OPEN;
     return 0;
 }
-u16 LinkSyncOpen(void *p_, void *unused)
+u16 LinkSyncOpen(void *tx_, void *rx)
 {
     u8 i;
-    u16 *p = p_;
+    u16 *p = tx_;
     u8 *base = IntrTable;
 
     LinkSioInit(base, base + 0x1C);
@@ -459,16 +432,16 @@ u32 LinkSyncClose(void *a, void *b)
     MemClear16((void *)0x03005B60, 0xB38);
     return 1;
 }
-/* Multi-player SIO setup: baud rate a & 3, IRQ enable b & 1; clears SIOMLT_SEND and SIOMULTI0-3. */
+/* Multi-player SIO setup: baud rate & 3, IRQ enable & 1; clears SIOMLT_SEND and SIOMULTI0-3. */
 int SioInitMultiPlayer(u8 baud, u8 irq)
 {
     u16 i;
 
-    *(vu16 *)0x04000134 = 0;
+    REG_RCNT = 0;
     REG_SIOCNT = (baud & 3) | (((irq & 1) << 15) | 0x2000);
-    *(vu16 *)0x0400012A = 0;
+    *(vu16 *)0x0400012A = 0;   /* SIOMLT_SEND (unnamed in gba.h) */
     for (i = 0; i < 4; i++)
-        ((vu16 *)0x04000120)[i] = 0;
+        ((vu16 *)0x04000120)[i] = 0;   /* SIOMULTI0-3 (unnamed in gba.h) */
 }
 u32 SioGetMultiPlayerId(void)
 {
@@ -476,11 +449,11 @@ u32 SioGetMultiPlayerId(void)
 }
 void SioSetMultiSend(u16 data)
 {
-    *(vu16 *)0x0400012A = data;
+    *(vu16 *)0x0400012A = data;   /* SIOMLT_SEND (unnamed in gba.h) */
 }
-u16 SioGetMultiRecv(u8 id)
+u16 SioGetMultiRecv(u8 playerId)
 {
-    return ((vu16 *)0x04000120)[id];
+    return ((vu16 *)0x04000120)[playerId];   /* SIOMULTI0-3 (unnamed in gba.h) */
 }
 u16 SioGetError(void)
 {
@@ -510,15 +483,15 @@ void Password_DrawDigits(void)
     i = 0;
     v = 0x18;
     for (; i < 8; i++) {
-        AddSprite(0x80000 | v, 0x8000, gPassword[i] + 0x1080);
+        AddSprite(0x80000 | v, 0x8000, gPassword.digits[i] + 0x1080);
         v += 8;
     }
 }
-void Password_DrawSlotCursor(int idx)
+void Password_DrawSlotCursor(int slot)
 {
-    u32 pos = ((idx << 3) + 0x18) | 0x100000;
+    u32 pos = ((slot << 3) + 0x18) | 0x100000;
     u16 *tbl = gPasswordSlotCursorFrames;
-    u16 v = (gMain.counter >> 3) % 6;
+    u16 v = (gMain.frameCounter >> 3) % 6;
 
     AddSprite(pos, 0, tbl[v]);
 }
@@ -527,9 +500,9 @@ void Password_DrawKeyCursor(void)
     int i;
 
     for (i = 0; i <= 10; i++) {
-        u32 attr = 0x1000 | gPasswordKeypad[i].flags;
+        u32 attr = 0x1000 | gPasswordKeypad[i].tile;
 
-        if (i == gPassword[0x10] >> 4) {
+        if (i == gPassword.key) {
             if (i <= 9) {
                 AddSprite(gPasswordKeypad[i].y << 16 | gPasswordKeypad[i].x, 0x40, attr);
             } else {
@@ -539,9 +512,6 @@ void Password_DrawKeyCursor(void)
         }
     }
 }
-extern const u8 gCardArtPalettes[];
-extern const u16 gCardArtGfx[];
-
 /* Fill or clear the ten-row portrait map, then unpack the card's 6bpp art. */
 /* Card portrait (hypothesis: RenderCardPortrait): fills a 9 x 10 tile block of the BG map
  * at 0x0300045C + (a & 7) * 0x800 + b * 2 with ascending tile numbers from c / 2 (or clears
@@ -550,9 +520,9 @@ extern const u16 gCardArtGfx[];
  * The ROM tables are integer addresses so GCSE does not hoist their pool loads; t is an int
  * (its 0x3F mask then shares the SImode constant with the other two masks) and is shifted
  * as u16 to keep the logical shift separate from y >> 8. */
-void DrawCardPortraitOrClear(u16 a, u16 b, u16 id, u16 c)
+void DrawCardPortraitOrClear(u16 screenBlock, u16 cell, u16 cardId, u16 tileBase)
 {
-    u16 *map = (u16 *)(0x0300045C + (a & 7) * 0x800);
+    u16 *map = (u16 *)((u8 *)gMain.bgMapBuffer + (screenBlock & 7) * 0x800);
     u16 i;
     u16 j;
     u16 tile;
@@ -560,8 +530,8 @@ void DrawCardPortraitOrClear(u16 a, u16 b, u16 id, u16 c)
     const u16 *src;
     u16 *dst;
 
-    map += b;
-    if (id == 0xFFFF) {
+    map += cell;
+    if (cardId == 0xFFFF) {
         i = 0;
         do {
             map[0] = 0;
@@ -579,17 +549,19 @@ void DrawCardPortraitOrClear(u16 a, u16 b, u16 id, u16 c)
         } while (i <= 9);
     } else {
         i = 0;
-        tile = c >> 1;
-        off = c << 5;
+        tile = tileBase >> 1;
+        off = tileBase << 5;
         do {
             for (j = 0; j <= 8; j++)
                 map[j] = tile++;
             map += 0x20;
             i++;
         } while (i <= 9);
-        id &= 0x7FF;
-        MemCopy16(0x05000100, (void *)(0x08608360 + id * 0x80), 0x80);
-        src = (const u16 *)(0x082A6500 + id * 0x10E0);
+        cardId &= CARD_ID_MASK;
+        /* Matching: the art palette/graphics table bases stay literal (0x08608360/0x082A6500) so
+         * GCSE does not hoist their pool loads. */
+        MemCopy16(0x05000100, (void *)(0x08608360 + cardId * 0x80), 0x80);
+        src = (const u16 *)(0x082A6500 + cardId * 0x10E0);
         dst = (u16 *)(0x06004000 + off);
 
         for (i = 0; i <= 0x2CF; i++) {
@@ -614,49 +586,51 @@ void DrawCardPortraitOrClear(u16 a, u16 b, u16 id, u16 c)
         }
     }
 }
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_KIND(id) ((int)((CARD_STATS(id) & 0x1F00000) >> 20))
+/* Matching: the gCardStats/gCardNumberToId table bases stay literal (0x08621DE0/0x08622AB4);
+ * indexing the header symbols changes register allocation (see ai_steps). */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id) ((int)CARD_STATS_TYPE(CARD_STATS(id)))
 
-/* Loads the card frame graphics for card `id` (kind 0x15-0x17 = Magic/Trap/Ritual frames, else by card number / type). */
+/* Loads the card frame graphics for card `id` (Trap/Magic/Ticket frames, else by card number / kind). */
 void Password_DrawCard(u16 id)
 {
     void *tbl;
     int v;
     int n;
 
-    switch (CARD_KIND(id)) {
-    case 0x15:
+    switch (CARD_TYPE(id)) {
+    case CARD_TYPE_TRAP:
         tbl = gCardFrameTrapGfx;
         goto load;
-    case 0x16:
+    case CARD_TYPE_MAGIC:
         tbl = gCardFrameMagicGfx;
         goto load;
-    case 0x17:
+    case CARD_TYPE_TICKET:
         tbl = gCardFrameTicketGfx;
         goto load;
     }
-    n = ((const u16 *)0x08622AB4)[id & 0x7FF];
+    n = ((const u16 *)0x08622AB4)[id & CARD_ID_MASK];
     switch (n) {
-    case 0x776:
+    case CARD_OBELISK_THE_TORMENTOR:
         v = 3;
         break;
-    case 0x777:
-    case 0x778:
+    case CARD_SLIFER_THE_SKY_DRAGON:
+    case CARD_THE_WINGED_DRAGON_OF_RA:
         v = 1;
         break;
     default:
-        switch (CARD_KIND(id)) {
-        case 0x16:
+        switch (CARD_TYPE(id)) {
+        case CARD_TYPE_MAGIC:
             v = 7;
             break;
-        case 0x15:
+        case CARD_TYPE_TRAP:
             v = 8;
             break;
-        case 0x17:
+        case CARD_TYPE_TICKET:
             v = 9;
             break;
         default:
-            v = (CARD_STATS(id) & 0xC0000) >> 18;
+            v = CARD_STATS_KIND(CARD_STATS(id));
             break;
         }
         break;
@@ -697,9 +671,9 @@ u16 FindCardByPassword(void)
     u8 *base;
 
     i = 0;
-    base = gPassword;
+    base = (u8 *)&gPassword;
     d = buf;
-    sp = base + 8;
+    sp = base + 8; /* gPassword.password, the submitted copy */
     for (; i < 4; i++) {
         *d = *sp << 4;
         *d |= sp[1];
@@ -710,7 +684,7 @@ u16 FindCardByPassword(void)
     bufp = buf;
     first = bufp[0];
     for (; n <= 0x334; n++) {
-        e = (u8 *)0x08623120 + n * 4;
+        e = (u8 *)0x08623120 + n * 4; /* gCardPasswords: 4 packed-BCD bytes per card */
         if (e[0] == first && e[1] == bufp[1] && e[2] == bufp[2] && e[3] == bufp[3])
             return n;
     }
@@ -722,30 +696,30 @@ u32 Password_InitVideo(void)
 
     ResetVideo();
     ClearBgMapBuffers();
-    *(vu16 *)0x04000000 = 0;
-    *(vu16 *)0x0400000A = 0x105;
-    *(vu16 *)0x0400000C = 0x286;
-    *(vu16 *)0x0400000E = 0x307;
-    gUnk_03000040_b.field = 0x43;
-    *(vu16 *)0x0400004C = 0;
-    *(vu16 *)0x04000050 = 0;
-    *(vu16 *)0x04000054 = 0;
-    *(vu16 *)0x04000012 = 0;
-    *(vu16 *)0x04000010 = 0;
-    *(vu16 *)0x04000016 = 0;
-    *(vu16 *)0x04000014 = 0;
-    *(vu16 *)0x0400001A = 0;
-    *(vu16 *)0x04000018 = 0;
-    *(vu16 *)0x0400001E = 0;
-    *(vu16 *)0x0400001C = 0;
-    *(vu16 *)0x04000028 = 0;
+    REG_DISPCNT = 0;
+    REG_BG1CNT = 0x105;
+    REG_BG2CNT = 0x286;
+    REG_BG3CNT = 0x307;
+    gMain.vblankFlags = 0x43;
+    REG_MOSAIC = 0;
+    REG_BLDCNT = 0;
+    REG_BLDY = 0;
+    REG_BG0VOFS = 0;
+    REG_BG0HOFS = 0;
+    REG_BG1VOFS = 0;
+    REG_BG1HOFS = 0;
+    REG_BG2VOFS = 0;
+    REG_BG2HOFS = 0;
+    REG_BG3VOFS = 0;
+    REG_BG3HOFS = 0;
+    *(vu16 *)0x04000028 = 0;   /* BG2 affine reference point X (unnamed in gba.h) */
     *(vu16 *)0x0400002A = 0;
-    *(vu16 *)0x0400003C = 0;
+    *(vu16 *)0x0400003C = 0;   /* BG3 affine reference point X (unnamed in gba.h) */
     *(vu16 *)0x0400003E = 0;
     LoadBgImage4bppMap1(0, 0x10, 0x20, gPasswordKeypadBgGfx);
     LoadBgImage4bppMap1(0x800, 0x10, 0x88, gPasswordPanelBgGfx);
     MemCopy16(0x05000220, gPasswordObjPal, 0x20);
-    dma = (vu32 *)0x040000D4;
+    dma = (vu32 *)&REG_DMA3SAD;
     dma[0] = (u32)gPasswordObjGfx;
     dma[1] = 0x06010000;
     dma[2] = 0x80001600;
@@ -757,7 +731,7 @@ u32 Password_InitVideo(void)
 }
 u32 Password_InitState(void)
 {
-    struct LinkState *s = &gUnk_0201F7B0_s;
+    struct PasswordClearView *s = (struct PasswordClearView *)&gPassword;
     u16 mask;
     int zero;
 
@@ -766,41 +740,26 @@ u32 Password_InitState(void)
     zero = 0;
     /* Schedule the shared clearing constants before the field stores. */
     __asm__ __volatile__("" : : "r"(mask), "r"(zero));
-    s->cur = 0;
-    s->a = 0;
-    s->b = 0;
-    s->c = 0;
-    s->d = 0;
+    s->posAndKey = 0;
+    s->blink = 0;
+    s->keyBlink = 0;
+    s->timer = 0;
+    s->card = 0;
     return 1;
 }
 u16 Password_FadeIn(void)
 {
-    *(vu16 *)0x04000000 = 0x1E00;
-    *(vu16 *)0x0400004C = 0;
+    REG_DISPCNT = 0x1E00;
+    REG_MOSAIC = 0;
     return FadeFromBlack(2);
 }
-/* Password entry state at 0x0201F7B0 (same block as struct LinkState). */
-struct PwView {
-    u8 digits[8];   /* +0x00 entered digits */
-    u8 shown[8];    /* +0x08 copy used for the lookup */
-    u8 pos : 4;     /* +0x10 cursor position 0-7 */
-    u16 key : 4;    /*       selected key: 0-9 digits, 10 = OK (u16: keeps the A-press extraction separate) */
-    u8 blink : 6;   /* +0x11 */
-    u32 timer : 6;  /* +0x10 bits 14-19 */
-    u16 c : 12;     /* +0x12 bits 4-15 */
-    u16 card;       /* +0x14 result of FindCardByPassword */
-};
-/* Keypad layout: screen position and the neighbours for up/down (byte 6) and left/right (byte 7). */
-struct KeyNav { u8 x, y; u8 pad[4]; u8 up : 4; u8 down : 4; u8 left : 4; u8 right : 4; };
-extern struct KeyNav gUnk_08087E24_n[] asm("gPasswordKeypad");
-extern const u8 gStrDebugPassword[], gStrDebugPasswordDigit[], gStrDebugPasswordCard[];
-void PlaySE(int se);
+extern const u8 gStrDebugPassword[];        /* 0x08087F88 */
+extern const u8 gStrDebugPasswordDigit[];   /* 0x08087F94 */
+extern const u8 gStrDebugPasswordCard[];    /* 0x08087F98 */
+void PlaySE(u32 seId);
+/* debug.h declares DebugPrintf(const char *, ...); the debug format strings here are u8 data. */
 void DebugPrintf(const u8 *fmt, ...);
 void DebugPrintFlush(void);
-#define PW ((struct PwView *)gPassword)
-struct KeysView { u8 pad[6]; u16 pressed; u8 pad2[0x4859 - 8]; u8 step; /* +0x4859 */ };
-extern struct KeysView gKeys_C4CC asm("gMain");
-#define PW_KEYS (gKeys_C4CC.pressed)
 /* Password entry, one frame: L/R move the cursor, the d-pad moves between keys, A enters a digit (or looks up
  * the password on OK), B deletes or cancels. Returns 1 when the screen is done. */
 u32 Password_HandleInput(void)
@@ -808,81 +767,81 @@ u32 Password_HandleInput(void)
     int i;
 
     Password_DrawDigits();
-    Password_DrawSlotCursor(PW->pos);
+    Password_DrawSlotCursor(gPassword.pos);
     Password_DrawKeyCursor();
-    PW->blink++;
-    PW->timer = 0x20;
-    if (PW_KEYS & 0x200) {
-        PW->pos = (PW->pos + 7) & 7;
-        PW->blink = 0x20;
-        PlaySE(0x25);
+    gPassword.blink++;
+    gPassword.keyBlink = 0x20;
+    if (gMain.newKeys & L_BUTTON) {
+        gPassword.pos = (gPassword.pos + 7) & 7;
+        gPassword.blink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0x100) {
-        PW->pos = (PW->pos + 9) & 7;
-        PW->blink = 0x20;
-        PlaySE(0x25);
+    if (gMain.newKeys & R_BUTTON) {
+        gPassword.pos = (gPassword.pos + 9) & 7;
+        gPassword.blink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0x40) {
-        PW->key = gUnk_08087E24_n[PW->key].up;
-        PW->timer = 0x20;
-        PlaySE(0x25);
+    if (gMain.newKeys & DPAD_UP) {
+        gPassword.key = gPasswordKeypad[gPassword.key].up;
+        gPassword.keyBlink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0x80) {
-        PW->key = gUnk_08087E24_n[PW->key].down;
-        PW->timer = 0x20;
-        PlaySE(0x25);
+    if (gMain.newKeys & DPAD_DOWN) {
+        gPassword.key = gPasswordKeypad[gPassword.key].down;
+        gPassword.keyBlink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0x20) {
-        PW->key = gUnk_08087E24_n[PW->key].left;
-        PW->timer = 0x20;
-        PlaySE(0x25);
+    if (gMain.newKeys & DPAD_LEFT) {
+        gPassword.key = gPasswordKeypad[gPassword.key].left;
+        gPassword.keyBlink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0x10) {
-        PW->key = gUnk_08087E24_n[PW->key].right;
-        PW->timer = 0x20;
-        PlaySE(0x25);
+    if (gMain.newKeys & DPAD_RIGHT) {
+        gPassword.key = gPasswordKeypad[gPassword.key].right;
+        gPassword.keyBlink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 1) {
-        PlaySE(0x26);
-        if ((u32)PW->key <= 9) {
-            PW->digits[PW->pos] = PW->key;
-            AddSprite((gUnk_08087E24_n[PW->key].x - 4) | ((gUnk_08087E24_n[PW->key].y - 12) << 16), 0x80, 0x10E0);
-            if (PW->pos <= 6) {
-                PW->pos++;
-                PW->blink = 0x20;
+    if (gMain.newKeys & A_BUTTON) {
+        PlaySE(SE_PASSWORD_PRESS);
+        if ((u32)gPassword.key <= 9) {
+            gPassword.digits[gPassword.pos] = gPassword.key;
+            AddSprite((gPasswordKeypad[gPassword.key].x - 4) | ((gPasswordKeypad[gPassword.key].y - 12) << 16), 0x80, 0x10E0);
+            if (gPassword.pos <= 6) {
+                gPassword.pos++;
+                gPassword.blink = 0x20;
             } else {
-                PW->key = 10;
-                PW->timer = 0x20;
+                gPassword.key = PWKEY_GET_CARD;
+                gPassword.keyBlink = 0x20;
             }
         } else {
             AddSprite(0x780024, 0x80, 0x10E3);
             AddSprite(0x780044, 0x80, 0x10E7);
-            MemCopy16((u32)PW->shown, PW->digits, 8);
-            PW->card = FindCardByPassword();
-            PW->c = 0;
+            MemCopy16(gPassword.password, gPassword.digits, 8);
+            gPassword.card = FindCardByPassword();
+            gPassword.timer = 0;
             DebugPrintf(gStrDebugPassword);
             for (i = 0; i <= 7; i++)
-                DebugPrintf(gStrDebugPasswordDigit, PW->shown[i] + '0');
-            DebugPrintf(gStrDebugPasswordCard, PW->card);
+                DebugPrintf(gStrDebugPasswordDigit, gPassword.password[i] + '0');
+            DebugPrintf(gStrDebugPasswordCard, gPassword.card);
             DebugPrintFlush();
             return 1;
         }
     }
-    if (PW_KEYS & 2) {
-        if (PW->pos == 0) {
+    if (gMain.newKeys & B_BUTTON) {
+        if (gPassword.pos == 0) {
             /* Same tail as the L/R+B cancel below; cross-jumping merges the two copies, and keeping
              * them separate stops GCSE from reusing this block's 0x03000040 register below. */
-            PlaySE(2);
-            gKeys_C4CC.step = 10;
+            PlaySE(SE_CANCEL);
+            gMain.seqIndex1 = PASSWORD_STEP_USED;
             return 1;
         }
-        PW->pos--;
-        PW->blink = 0x20;
-        PlaySE(0x25);
+        gPassword.pos--;
+        gPassword.blink = 0x20;
+        PlaySE(SE_PASSWORD_CURSOR);
     }
-    if (PW_KEYS & 0xC) {
-        PlaySE(2);
-        gKeys_C4CC.step = 10;
+    if (gMain.newKeys & (SELECT_BUTTON | START_BUTTON)) {
+        PlaySE(SE_CANCEL);
+        gMain.seqIndex1 = PASSWORD_STEP_USED;
         return 1;
     }
     return 0;

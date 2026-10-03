@@ -1,35 +1,174 @@
+/*
+ * battle_scene (0x0805E788-0x0805F96B): the card-flip battle scene, the info-bar text cells and the
+ * card info panels (wiki/functions/battle-scene-c.md).
+ *
+ * BattleScene_Update runs the battle scene (duel_card_anim.c draws the two battling cards) one frame
+ * at a time: the cards roll open, their values show, the damaged side shakes and flashes its damage,
+ * the destroyed side darkens, and the scene fades out; DuelCmd_PlayBattleScene calls it until it
+ * returns 1. Holding B (or the duel screen's fast flag) speeds every timer up.
+ *
+ * The rest of the unit is the duel screen's info bar: a buffer of 64 text cells (8x8 4bpp tiles at
+ * gDuelTextTiles, uploaded to BG3 by DuelScreen_Update) that strings, numbers and icons are drawn
+ * into, and the card info panels built on it: DuelCursor_GetCardId (the card under the field cursor)
+ * and the DuelInfo_Draw* panels (name box, ATK/DEF/level, the turn counter of Cocoon of Evolution
+ * and Swords of Revealing Light, and the declared type / attribute icons).
+ */
 #include "global.h"
+#include "card_data.h"            /* gCardNames */
+#include "constants/card_stats.h" /* enum CardType, CARD_STATS_*_MASK, CARD_STATS_*_SHIFT */
+#include "constants/cards.h"      /* CARD_COCOON_OF_EVOLUTION, CARD_SWORDS_OF_REVEALING_LIGHT, CARD_DNA_SURGERY */
+#include "constants/duel.h"       /* enum DuelArea */
+#include "gba.h"                  /* B_BUTTON */
+#include "main.h"                 /* struct Main gMain, heldKeys / newKeys */
 
-/* Duel screen block at 0x0201CFB0 (see code-08051a9c / code-0805d58c). */
-struct DuelScreen {
-    u8 pad0[0x808];
-    u8 f808_0 : 1;
-    u8 f808_1 : 1;
-    u8 f808_rest : 6;
-    u8 pad809[0x824 - 0x809];
-    u32 player;     /* +0x824 */
-    u32 mode;       /* +0x828 */
-    u32 index;      /* +0x82C */
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h does not carry struct ZoneCardStats; this block declares the part of the canonical
+ * layout this unit uses, with the header's names and types (the same declarations as in
+ * duel_response.c), and defines duel.h's include guard so nothing below pulls the header in. After
+ * H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
+ * (build/readability/issues/battle_scene.md). */
+#define GUARD_DUEL_H
+
+/* Effective stats of the card in a zone (GetZoneCardStats, 12 bytes). type / attribute stay in a
+ * u8 container: with a u32, agbcc emits lsls/lsrs for the != 0 tests in DuelInfo_DrawMonsterZone. */
+struct ZoneCardStats {
+    u16 id;                         /* +0x0: card ID */
+    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
+    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
+    u8 unk3;
+    s32 atk;                        /* +0x4 */
+    s32 def;                        /* +0x8 */
 };
-extern struct DuelScreen gDuelScreen;
-extern u8 gDuelZones[];
-struct ZoneW {
-    u32 w;
-    u8 pad[0x90];
+
+void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
+
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(int se);
+/* ---- END duel.h stand-in ---- */
+
+/* ---- Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view") ---- */
+
+/* The duel screen block (duel_screen.h) as this unit reads it: the dirty bits at +0x808 are set
+ * with byte read-modify-writes by the text-cell code, so they stay in a u8 container (the canonical
+ * header uses a u16 and would compile to halfword accesses). */
+struct DuelScreenView {
+    u8 fast:1;                      /* +0x000 bit 0: fast-forward card animations, as if B were held */
+    u8 unk0_1:7;
+    u8 unk1[0x808 - 0x1];
+    u8 textTilesDirty:1;            /* +0x808 bit 0: upload the text cells this frame */
+    u8 textMapReset:1;              /* +0x808 bit 1: after the upload, reset the cell map */
+    u8 unk808_2:6;
+    u8 unk809[0x824 - 0x809];
+    s32 selPlayer;                  /* +0x824: player of the cursor selection */
+    s32 selArea;                    /* +0x828: enum DuelArea of the selection */
+    s32 selIndex;                   /* +0x82C: zone index in the row, or hand index */
 };
-#define CARD_ID(w) (((w) << 20) >> 20)
-/* ROM card stats table through an integer-constant pointer (the ROM reloads the address at every use). */
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-/* AI/UI value of a card: 0 for Magic/Trap/Ritual (types 0x15-0x17), 4000 for type 0x18, else field * 10. */
+extern struct DuelScreenView gDuelScreen;   /* 0x0201CFB0 */
+
+/* The text cell buffer (gDuelScreen.textTiles in duel_screen.h), viewed by TextCellsLoadIcon: two
+ * 0x400-byte tile sets, then the dirty byte (the same byte as gDuelScreen + 0x808). The second set
+ * and the flag are addressed from the global itself, not from a local pointer, so that CSE rebuilds
+ * them from the register holding the buffer base (`add r0, sl`). */
+struct TextTilesView {
+    u8 tilesA[0x400];
+    u8 tilesB[0x400];
+    u8 textTilesDirty:1;            /* +0x800 bit 0 */
+    u8 textMapReset:1;              /* +0x800 bit 1 */
+    u8 unk800_2:6;
+};
+extern u8 gDuelTextTiles[0x800];            /* 0x0201CFB8 */
+
+/* gDuelZones (duel.h) read as raw bytes: the cursor and panel code walks the zones with 0x94-byte
+ * strides and pinned registers, so the canonical struct DuelZonesPlayer view is not used here. */
+extern u8 gDuelZones[];                     /* 0x0201930C */
+
+/* One duel field zone (0x94 bytes; struct DuelZone in duel.h): only byte +6 and the word at +0x90
+ * are used here. */
+struct UiZone {
+    u8 unk0[6];
+    u8 flag6_0:1;                   /* +0x06 bit 0 */
+    u8 flag6_1:1;                   /* +0x06 bit 1: the zone shows its counter / declared icon */
+    u8 counter6:4;                  /* +0x06 bits 2-5: turn counter shown as number sprites */
+    u8 unk6_6:2;
+    u8 unk7[0x90 - 0x7];
+    u32 unk90;                      /* +0x90: declared type / attribute bits (DNA Surgery, card 1448) */
+};
+
+/* gBattle as the battle scene sees it (struct Battle in battle.h, which cannot be included here:
+ * it pulls in duel.h, and its BattleScene_DrawValues / BattleScene_DrawDamage prototypes have
+ * other parameter widths than the matched calls in this unit). Only the scene state at +0x154
+ * (gBattle.scene) is touched. */
+struct Battle {
+    u8 unk0[0x15C];
+    u8 state;                       /* +0x15C: enum BattleSceneState */
+    u8 subState;                    /* +0x15D: fade frame (OPEN) or enum BattleResultStep (RESULT) */
+    u8 unk15E;                      /* +0x15E: zeroed when the scene opens, never read */
+    u8 timer;                       /* +0x15F: frame counter of the steps */
+};
+extern struct Battle gBattle;               /* 0x02018450 */
+
+/* The info-bar map in gMain (main.h: bgMapBuffer[5]): TextCellsLoadIcon forms the entry addresses
+ * from the gMain base at run time, as the ROM does. */
+struct MainInfoBarMap {
+    u8 unk0[0x2C1C];
+    u16 map[0x400];                 /* +0x2C1C */
+};
+extern struct MainInfoBarMap gMainInfoBarMap asm("gMain");
+
+/* Save data header: byte +4 picks the label set and the character width. */
+struct SaveHdr {
+    u8 unk0[4];
+    u8 flags;                       /* +0x4: bits 0-6 == 0: Japanese labels; bit 7: 2-byte characters */
+};
+extern struct SaveHdr gSaveData;            /* 0x02011C20 */
+
+/* gBattle.scene states (battle_scene.h). */
+enum BattleSceneState {
+    BATTLE_SCENE_SHOW = 0,          /* show BG2/BG3/OBJ, darken everything */
+    BATTLE_SCENE_OPEN = 1,          /* cards roll open while the screen fades in (subState 0-15) */
+    BATTLE_SCENE_END_OPEN = 2,      /* remove the HBlank effect */
+    BATTLE_SCENE_RESULT = 3,        /* values, hit and destroy sub-steps (enum BattleResultStep) */
+    BATTLE_SCENE_FADE_OUT = 4,
+    BATTLE_SCENE_DONE = 5           /* BattleScene_Update returns 1 */
+};
+
+enum BattleResultStep {
+    BATTLE_RESULT_START = 0,
+    BATTLE_RESULT_SHOW_VALUES = 1,  /* show both values for 30 frames */
+    BATTLE_RESULT_HIT = 2,          /* shake the damaged sides and flash the damage */
+    BATTLE_RESULT_DESTROY = 3,      /* darken and hide the destroyed sides */
+    BATTLE_RESULT_HOLD = 4          /* hold 60 frames or until B */
+};
+
+/* Per-side flags of BattleScene_Update / BattleScene_DrawValues (player 0 in bits 0-7, player 1
+ * in bits 8-15). */
+enum BattleSideFlags {
+    BATTLE_SIDE_DEFENSE = 0x1,      /* show DEF instead of ATK */
+    BATTLE_SIDE_DESTROYED = 0x2,
+    BATTLE_SIDE_DAMAGE = 0x4        /* this side takes life-point damage */
+};
+
+/* B held or the fast flag: every scene timer runs fast. */
+#define BATTLE_SCENE_FAST ((gMain.heldKeys & B_BUTTON) || gDuelScreen.fast)
+/* ---- Card table reads (card_data.h) ---- */
+
+/* Card ID (bits 0-11) of a struct DuelCard word. */
+#define CARD_ID(word) (((word) << 20) >> 20)
+/* ROM card stats table through an integer-constant pointer (the ROM reloads the address at every
+ * use; reading through gCardStats would compile differently). */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id) ((CARD_STATS(id) & CARD_STATS_TYPE_MASK) >> CARD_STATS_TYPE_SHIFT)
+/* Card number of a card ID (gCardIdToNumber, read through its address like the stats table). */
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+/* Printed ATK of a card: 0 for Trap/Magic/Ticket, 4000 for a Divine card, else the stats field. */
 static inline u16 CardAtk(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 4000;
     }
     return ((CARD_STATS(id) << 14) >> 23) * 10;
@@ -37,138 +176,96 @@ static inline u16 CardAtk(u16 id)
 static inline u16 CardDef(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 4000;
     }
     return (CARD_STATS(id) & 0x1FF) * 10;
 }
-/* Monster level: Magic/Trap types count as 0, type 0x18 as 10. */
+/* Monster level: Trap/Magic/Ticket count as 0, a Divine card as 10. */
 static inline u16 CardLevel(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
+    case CARD_TYPE_DIVINE:
         return 10;
     }
     return (CARD_STATS(id) & 0x1E000000) >> 25;
 }
-/* Card info block filled by GetZoneCardStats (12 bytes). */
-struct CardInfo {
-    u16 id;         /* +0 */
-    u8 attr : 5;    /* byte +2 bits 0-4 (monster attribute? index into gCardTypeIcons) */
-    u8 kind : 3;    /* byte +2 bits 5-7 (index into gCardAttributeIcons) */
-    u32 atk;
-    u32 def;
-};
-void GetZoneCardStats(int player, int slot, struct CardInfo *out);
-void DuelInfo_DrawCard(u16 id, u16 flag);
-void TextCellsLoadIcon(int a, u16 b, u16 *hdr);
+/* ---- ROM data used only here ---- */
 extern const u8 gMonsterInfoAtkLabelJp[];
 extern const u8 gMonsterInfoDefLabelJp[];
 extern const u8 gMonsterInfoAtkLabel[];
 extern const u8 gMonsterInfoDefLabel[];
 extern u16 *const gCardTypeIcons[];
 extern u16 *const gCardAttributeIcons[];
-/* One duel field zone (0x94 bytes); only byte +6 and the word at +0x90 are used here. */
-struct UiZone {
-    u8 pad0[6];
-    u8 f6_0 : 1;
-    u8 f6_1 : 1;        /* bit 1: "face-down" / evaluation flag (hypothesis) */
-    u8 f6_2 : 4;        /* bits 2-5: counter shown as number sprites */
-    u8 f6_6 : 2;
-    u8 pad7[0x90 - 7];
-    u32 w90;
-};
-extern u8 gDuelZones[];
+/* Per-side pointers to the BG offset words shaken during the scene. */
+extern s32 *const gBattleSceneShakeRegs[];
+extern void (*IntrTable[])(void);
+
+void DuelInfo_DrawCard(u16 cardId, u16 showStats);
+void TextCellsLoadIcon(int cell, u16 palSlot, u16 *iconPack);
 extern const u8 gTurnCounterLabel[];
 extern const u8 gInfoAtkLabelJp[];
 extern const u8 gInfoDefLabelJp[];
 extern const u8 gInfoAtkLabel[];
 extern const u8 gInfoDefLabel[];
-/* gMain (0x03000040): 64 halfwords at +0x309C (used by TextCellsResetMap). */
-struct MainTbl {
-    u8 pad[0x309C];
-    u16 tbl[0x40];
-};
-extern struct MainTbl gMain;
-struct MainMap {
-    u8 pad[0x2C1C];
-    u16 map[0x400];
-};
-extern struct MainMap gUnk_03000040_m asm("gMain");
+/* Helpers from other units (memory copies, glyph rendering, the text canvas). */
 void CopyDoubleWords(void *dst, const void *src, u32 size);
-/* Text/tile buffer of 64 cells of 0x20 bytes (8x8 4bpp tiles) at 0x0201CFB8. */
-extern u8 gDuelTextTiles[];
+void MemCopy16(void *dst, const void *src, u32 size);
 void RenderBoldGlyphTile(u32 ch, void *dst, u32 pal, u32 bpp);
 void RenderSjisGlyphTile(u32 ch, void *dst, u32 pal, u32 bpp);
-void MemCopy16(void *dst, const void *src, u32 size);
-extern const u8 gCardNames[];
 int StrLenWide(const u8 *s);
 void TextCanvasInit(u32 w, u32 h);
 void TextDrawString(int x, int y, u16 attr, const u8 *str);
-void TextCanvasToTiles(void *dst, u16 value);
-void TextCellsPutString(int first, const u8 *str, u32 pal);
-void TextCellsPutNumber(int first, int val, u32 pal, int digits);
-void TextCellsCopyBgTile(int a, u16 b);
 void TextDrawNumber(int x, int y, u16 attr, int val);
-/* Save-mirror header at 0x02011C20: bit 7 of byte +4 selects double-width (2-byte) characters. */
-struct SaveHdr {
-    u8 pad[4];
-    u8 flags;
-};
-extern struct SaveHdr gSaveData;
-
-/* Transition state at 0x02018450 (+0x15C step, +0x15D sub-step, +0x15F timer). */
-struct ScnE788 { u8 pad[0x15C]; u8 step; u8 sub; u8 unk15E; u8 t; };
-extern struct ScnE788 gBattle;
-struct KeysE788 { u8 pad[4]; u16 held; u16 pressed; };
-extern struct KeysE788 gKeysE788 asm("gMain");
-/* Per-side pointers to the BG offset words shaken during the transition. */
-extern s32 *const gBattleSceneShakeRegs[];
-extern void (*IntrTable[])(void);
+void TextCanvasToTiles(void *dst, u16 value);
+void TextCellsPutString(int firstCell, const u8 *str, u32 colour);
+void TextCellsPutNumber(int firstCell, int value, u32 colour, int digits);
+void TextCellsCopyBgTile(int cell, u16 tile);
+/* Battle scene helpers (duel_card_anim.c, duel_field_screen.c). The parameter widths are the
+ * matched call-site views: battle_scene.h declares BattleScene_DrawValues(u16, u32 *, u16) and
+ * BattleScene_DrawDamage(int, int, u16) (build/readability/HEADERS.md). */
 void ClearBlend(void);
 void BattleScene_ResetBgAffine(void);
-void BattleScene_DrawValues(u16 flags, s32 *pos, int mode);
-void BattleScene_DrawDamage(int side, int delta, int mode);
+void BattleScene_DrawValues(u16 flags, s32 *values, int hideDestroyed);
+void BattleScene_DrawDamage(int side, int damage, int flash);
 s32 Random(void);
 u16 FadeToBlack(int speed);
-void PlaySE(int se);
-#define E788_FAST ((gKeysE788.held & 2) || (((u8 *)&gDuelScreen)[0] & 1))
-/* Screen transition (fade, shake and blend) run once per frame; returns 1 when finished (hypothesis).
+/* One frame of the battle scene (fade, shake and blend); returns 1 when finished (BATTLE_SCENE_DONE).
  * Holding B (or the fast flag) speeds up every timer. */
-u32 BattleScene_Update(u16 a, u16 b, u16 flags)
+u32 BattleScene_Update(u16 value0, u16 value1, u16 flags)
 {
     s32 pos[2];
     int k;
     u8 v;
     u32 t3;
 
-    pos[0] = a;
-    pos[1] = b;
-    switch (gBattle.step) {
-    case 0:
+    pos[0] = value0;
+    pos[1] = value1;
+    switch (gBattle.state) {
+    case BATTLE_SCENE_SHOW:
         *(vu16 *)0x04000000 |= 0x1C00;
         *(vu16 *)0x04000050 = 0x3FFF;
-        gBattle.step++;
-    case 1:
-        *(vu16 *)0x04000054 = 0xF - gBattle.sub;
-        v = gBattle.sub;
+        gBattle.state++;
+    case BATTLE_SCENE_OPEN:
+        *(vu16 *)0x04000054 = 0xF - gBattle.subState;
+        v = gBattle.subState;
         if (v <= 0xE) {
-            gBattle.sub++;
-            if (E788_FAST && gBattle.sub <= 0xB)
-                gBattle.sub += 3;
+            gBattle.subState++;
+            if (BATTLE_SCENE_FAST && gBattle.subState <= 0xB)
+                gBattle.subState += 3;
             return 0;
         }
-        gBattle.step++;
+        gBattle.state++;
         return 0;
-    case 2:
+    case BATTLE_SCENE_END_OPEN:
         ClearBlend();
         *(vu16 *)0x04000208 = 0;
         *(vu16 *)0x04000200 &= ~2;
@@ -178,145 +275,145 @@ u32 BattleScene_Update(u16 a, u16 b, u16 flags)
         IntrTable[1] = 0;
         *(vu16 *)0x04000208 = 1;
         BattleScene_ResetBgAffine();
-        gBattle.sub = 0;
+        gBattle.subState = 0;
         gBattle.unk15E = 0;
-        gBattle.t = 0;
-        gBattle.step++;
-    case 3:
-        switch (gBattle.sub) {
-        case 0:
+        gBattle.timer = 0;
+        gBattle.state++;
+    case BATTLE_SCENE_RESULT:
+        switch (gBattle.subState) {
+        case BATTLE_RESULT_START:
             if (flags == 0) {
-                gBattle.step++;
+                gBattle.state++;
                 return 0;
             }
-            gBattle.sub++;
-        case 1:
-            if (gBattle.t <= 0x1D) {
+            gBattle.subState++;
+        case BATTLE_RESULT_SHOW_VALUES:
+            if (gBattle.timer <= 0x1D) {
                 BattleScene_DrawValues(flags, pos, 0);
-                gBattle.t++;
-                if (E788_FAST && gBattle.t <= 0x15)
-                    gBattle.t += 7;
+                gBattle.timer++;
+                if (BATTLE_SCENE_FAST && gBattle.timer <= 0x15)
+                    gBattle.timer += 7;
                 return 0;
             }
-            PlaySE(9);
-            gBattle.t = 0;
-            gBattle.sub++;
-        case 2:
+            PlaySE(9); /* SE 9, unnamed in enum SoundEffect */
+            gBattle.timer = 0;
+            gBattle.subState++;
+        case BATTLE_RESULT_HIT:
             BattleScene_DrawValues(flags, pos, 1);
-            if (gBattle.t <= 0x1D) {
+            if (gBattle.timer <= 0x1D) {
                 for (k = 0; k <= 1; k++) {
-                    if ((6 << (k * 8)) & flags) {
+                    if (((BATTLE_SIDE_DESTROYED | BATTLE_SIDE_DAMAGE) << (k * 8)) & flags) {
                         *gBattleSceneShakeRegs[k * 2] = ((Random() % 16) - 8) << 8;
                         *gBattleSceneShakeRegs[k * 2 + 1] = ((Random() % 16) - 8) << 8;
                     }
-                    if ((4 << (k * 8)) & flags)
+                    if ((BATTLE_SIDE_DAMAGE << (k * 8)) & flags)
                         BattleScene_DrawDamage(k, pos[1 - k] - pos[k], 1);
                 }
-                gBattle.t++;
-                if (E788_FAST && gBattle.t <= 0x15)
-                    gBattle.t += 7;
+                gBattle.timer++;
+                if (BATTLE_SCENE_FAST && gBattle.timer <= 0x15)
+                    gBattle.timer += 7;
                 return 0;
             }
             for (k = 0; k <= 1; k++) {
-                if ((6 << (k * 8)) & flags) {
+                if (((BATTLE_SIDE_DESTROYED | BATTLE_SIDE_DAMAGE) << (k * 8)) & flags) {
                     *gBattleSceneShakeRegs[k * 2] = 0;
                     *gBattleSceneShakeRegs[k * 2 + 1] = 0;
                 }
             }
-            gBattle.t = 0;
-            gBattle.sub++;
-        case 3:
+            gBattle.timer = 0;
+            gBattle.subState++;
+        case BATTLE_RESULT_DESTROY:
             BattleScene_DrawValues(flags, pos, 1);
-            t3 = gBattle.t;
+            t3 = gBattle.timer;
             if (t3 <= 0x1F) {
                 *(vu16 *)0x04000050 = 0xC0;
-                if (flags & 2)
+                if (flags & BATTLE_SIDE_DESTROYED)
                     *(vu16 *)0x04000050 |= 0x404;
-                if (flags & 0x200)
+                if (flags & (BATTLE_SIDE_DESTROYED << 8))
                     *(vu16 *)0x04000050 |= 0x808;
-                *(vu16 *)0x04000054 = gBattle.t;
-                gBattle.t = t3 + 1;
-                if (E788_FAST && gBattle.t <= 0x15)
-                    gBattle.t += 7;
-                if (gBattle.t == 0x20) {
-                    if (flags & 2)
+                *(vu16 *)0x04000054 = gBattle.timer;
+                gBattle.timer = t3 + 1;
+                if (BATTLE_SCENE_FAST && gBattle.timer <= 0x15)
+                    gBattle.timer += 7;
+                if (gBattle.timer == 0x20) {
+                    if (flags & BATTLE_SIDE_DESTROYED)
                         *(vu16 *)0x04000000 &= 0xFBFF;
-                    if (flags & 0x200)
+                    if (flags & (BATTLE_SIDE_DESTROYED << 8))
                         *(vu16 *)0x04000000 &= 0xF7FF;
                 }
                 for (k = 0; k <= 1; k++) {
-                    if ((4 << (k * 8)) & flags)
+                    if ((BATTLE_SIDE_DAMAGE << (k * 8)) & flags)
                         BattleScene_DrawDamage(k, pos[1 - k] - pos[k], 0);
                 }
                 return 0;
             }
             *(vu16 *)0x04000050 = 0;
             *(vu16 *)0x04000054 = 0;
-            gBattle.t = 0;
-            gBattle.sub++;
-        case 4:
+            gBattle.timer = 0;
+            gBattle.subState++;
+        case BATTLE_RESULT_HOLD:
             BattleScene_DrawValues(flags, pos, 1);
             for (k = 0; k <= 1; k++) {
-                if ((4 << (k * 8)) & flags)
+                if ((BATTLE_SIDE_DAMAGE << (k * 8)) & flags)
                     BattleScene_DrawDamage(k, pos[1 - k] - pos[k], 0);
             }
-            if (gKeysE788.pressed & 2) {
-                gBattle.step++;
+            if (gMain.newKeys & 2) {
+                gBattle.state++;
                 return 0;
             } else {
-                v = gBattle.t;
+                v = gBattle.timer;
                 if (v <= 0x3B) {
-                    gBattle.t++;
-                    if (E788_FAST && gBattle.t <= 0x33)
-                        gBattle.t += 7;
+                    gBattle.timer++;
+                    if (BATTLE_SCENE_FAST && gBattle.timer <= 0x33)
+                        gBattle.timer += 7;
                 } else {
-                    gBattle.step++;
+                    gBattle.state++;
                 }
             }
             break;
         }
         return 0;
-    case 4:
+    case BATTLE_SCENE_FADE_OUT:
         BattleScene_DrawValues(flags, pos, 1);
         for (k = 0; k <= 1; k++) {
-            if ((4 << (k * 8)) & flags)
+            if ((BATTLE_SIDE_DAMAGE << (k * 8)) & flags)
                 BattleScene_DrawDamage(k, pos[1 - k] - pos[k], 0);
         }
-        if (FadeToBlack(E788_FAST ? 4 : 1))
-            gBattle.step++;
+        if (FadeToBlack(BATTLE_SCENE_FAST ? 4 : 1))
+            gBattle.state++;
         return 0;
     default:
         return 1;
     }
 }
-/* Card id (12 bits) of the card the duel screen cursor points at: zone `mode + index` of `player`
- * for modes 0/5/10, hand slot `index` for mode 11, else 0. */
+/* Card id (12 bits) of the card the duel screen cursor points at: zone `area + index` of `player`
+ * for the monster, spell/trap and field areas, hand slot `index` for the hand, else 0. */
 u32 DuelCursor_GetCardId(void)
 {
-    struct DuelScreen *sc = &gDuelScreen;
-    int player = sc->player;
-    int mode = sc->mode;
-    int index = sc->index;
-    int off = (player & 1) * 0xD64;
-    u8 *z = gDuelZones;
+    struct DuelScreenView *sc = &gDuelScreen;
+    int player = sc->selPlayer;
+    int area = sc->selArea;
+    int index = sc->selIndex;
+    int playerOff = (player & 1) * 0xD64;
+    u8 *zones = gDuelZones;
     /* FAKEMATCH: pinning the base and the byte offset to r2/r0 makes agbcc emit the ROM's
      * `adds r0, r2, r0` operand order for the final zone-address add. */
-    register u8 *bp asm("r2") = off + z;
-    register u32 mi asm("r0") = (mode + index) * 0x94;
+    register u8 *base asm("r2") = playerOff + zones;
+    register u32 zoneOff asm("r0") = (area + index) * 0x94;
     u32 id;
 
-    id = CARD_ID(*(u32 *)((u32)bp + mi));
+    id = CARD_ID(*(u32 *)((u32)base + zoneOff));
 
-    switch (mode) {
-    case 0:
-    case 5:
-    case 10:
+    switch (area) {
+    case DUEL_AREA_MONSTER:
+    case DUEL_AREA_SPELL_TRAP:
+    case DUEL_AREA_FIELD:
         return id;
-    case 11: {
-        u8 *h = z + 11 * 0x94;
-        u8 *hp = off + h;
-        int hoff = index * 4;
-        id = CARD_ID(*(u32 *)(hp + hoff));
+    case DUEL_AREA_HAND: {
+        u8 *hand = zones + 11 * 0x94;
+        u8 *handPtr = playerOff + hand;
+        int handOff = index * 4;
+        id = CARD_ID(*(u32 *)(handPtr + handOff));
         return id;
     }
     }
@@ -346,8 +443,8 @@ void TextCellsClear(void)
         RenderBoldGlyphTile(0x20, cell, 0, 9);
         cell += 0x20;
     }
-    gDuelScreen.f808_0 = 1;
-    gDuelScreen.f808_1 = 1;
+    gDuelScreen.textTilesDirty = 1;
+    gDuelScreen.textMapReset = 1;
     TextCellsResetMap();
 }
 /* Draws a halfword-character string (byte-swapped chars) into the buffer from cell `first`. */
@@ -360,8 +457,8 @@ void TextCellsPutSjisString(int first, u16 *str, u32 pal)
         RenderSjisGlyphTile(lo | hi, gDuelTextTiles + first++ * 0x20, pal, 9);
         str++;
     }
-    gDuelScreen.f808_0 = 1;
-    gDuelScreen.f808_1 = 1;
+    gDuelScreen.textTilesDirty = 1;
+    gDuelScreen.textMapReset = 1;
 }
 /* Draws a byte-character string into the buffer from cell `first`. */
 void TextCellsPutString(int first, const u8 *str, u32 pal)
@@ -370,8 +467,8 @@ void TextCellsPutString(int first, const u8 *str, u32 pal)
         RenderBoldGlyphTile(*str, gDuelTextTiles + first++ * 0x20, pal, 9);
         str++;
     }
-    gDuelScreen.f808_0 = 1;
-    gDuelScreen.f808_1 = 1;
+    gDuelScreen.textTilesDirty = 1;
+    gDuelScreen.textMapReset = 1;
 }
 /* Draws `val` as up to `digits` decimal digits right-aligned at cell `first + digits - 1`. */
 void TextCellsPutNumber(int first, int val, u32 pal, int digits)
@@ -384,59 +481,49 @@ void TextCellsPutNumber(int first, int val, u32 pal, int digits)
             return;
         digits--;
     }
-    gDuelScreen.f808_0 = 1;
-    gDuelScreen.f808_1 = 1;
+    gDuelScreen.textTilesDirty = 1;
+    gDuelScreen.textMapReset = 1;
 }
-/* Copies one cell of the text buffer to tile `b` of the OBJ/BG tile area at 0x06004000. */
-void TextCellsCopyBgTile(int a, u16 b)
+/* Copies BG tile `tile` of char block 1 (0x06004000) into text cell `cell`. */
+void TextCellsCopyBgTile(int cell, u16 tile)
 {
-    MemCopy16(gDuelTextTiles + a * 0x20, (void *)(0x06004000 + b * 0x20), 0x20);
+    MemCopy16(gDuelTextTiles + cell * 0x20, (void *)(0x06004000 + tile * 0x20), 0x20);
 }
-/* Loads a palette+tile block `hdr` (u16 count of palette halfwords at +0, palette at +8, then a
- * tile count and two tile sets) into the text buffer cell `a`, palette slot `b` and patches the four
- * BG map entries of that cell to palette `b & 15`. */
-/* The text/tile buffer at 0x0201CFB8: two 0x400-byte tile sets, then the dirty-flag byte (the same
- * byte as gDuelScreen.f808). The second set and the flag are addressed from the global itself, not
- * from `buf`, so that CSE rebuilds them from the register holding the buffer base (`add r0, sl`). */
-struct TileBufEF00 {
-    u8 a[0x400];
-    u8 b[0x400];
-    u8 f0 : 1;
-    u8 f1 : 1;
-    u8 rest : 6;
-};
-void TextCellsLoadIcon(int a, u16 b, u16 *hdr)
+/* Loads an image-pack icon `iconPack` (u16 count of palette halfwords at +0, palette at +8, then
+ * a tile count and two tile sets) into the text buffer cell `cell`, palette slot `palSlot`, and
+ * patches the four BG map entries of that cell to palette `palSlot & 15`. */
+void TextCellsLoadIcon(int cell, u16 palSlot, u16 *iconPack)
 {
-    int off = hdr[0] * 2;
-    u16 *cnt = (u16 *)((u8 *)hdr + (off + 8));
-    u8 *src = (u8 *)hdr + (off + 0x10);
-    int cell = a << 5;
+    int off = iconPack[0] * 2;
+    u16 *cnt = (u16 *)((u8 *)iconPack + (off + 8));
+    u8 *src = (u8 *)iconPack + (off + 0x10);
+    int cellOff = cell << 5;
     u8 *buf = gDuelTextTiles;
     u16 n = *cnt;
 
-    if (hdr != 0) {
+    if (iconPack != 0) {
         u16 pal;
 
-        MemCopy16(buf + cell, src, n * 16);
-        MemCopy16(&((struct TileBufEF00 *)gDuelTextTiles)->b[cell], src + *cnt * 16, *cnt * 16);
-        CopyDoubleWords((void *)(0x05000000 + b * 32), hdr + 4, hdr[0] * 2);
-        pal = b << 12;
-        /* BG map entries of the 2x2 block at rows 18-19, column a: palette nibble := b. */
-        gUnk_03000040_m.map[(u16)a + 0x240] &= 0xFFF;
-        gUnk_03000040_m.map[(u16)(a + 1) + 0x240] &= 0xFFF;
-        gUnk_03000040_m.map[(u16)a + 0x260] &= 0xFFF;
-        gUnk_03000040_m.map[(u16)(a + 1) + 0x260] &= 0xFFF;
-        gUnk_03000040_m.map[(u16)a + 0x240] |= pal;
-        gUnk_03000040_m.map[(u16)(a + 1) + 0x240] |= pal;
-        gUnk_03000040_m.map[(u16)a + 0x260] |= pal;
-        gUnk_03000040_m.map[(u16)(a + 1) + 0x260] |= pal;
-        ((struct TileBufEF00 *)gDuelTextTiles)->f1 = 0;
+        MemCopy16(buf + cellOff, src, n * 16);
+        MemCopy16(&((struct TextTilesView *)gDuelTextTiles)->tilesB[cellOff], src + *cnt * 16, *cnt * 16);
+        CopyDoubleWords((void *)(0x05000000 + palSlot * 32), iconPack + 4, iconPack[0] * 2);
+        pal = palSlot << 12;
+        /* BG map entries of the 2x2 block at rows 18-19, column cell: palette nibble := palSlot. */
+        gMainInfoBarMap.map[(u16)cell + 0x240] &= 0xFFF;
+        gMainInfoBarMap.map[(u16)(cell + 1) + 0x240] &= 0xFFF;
+        gMainInfoBarMap.map[(u16)cell + 0x260] &= 0xFFF;
+        gMainInfoBarMap.map[(u16)(cell + 1) + 0x260] &= 0xFFF;
+        gMainInfoBarMap.map[(u16)cell + 0x240] |= pal;
+        gMainInfoBarMap.map[(u16)(cell + 1) + 0x240] |= pal;
+        gMainInfoBarMap.map[(u16)cell + 0x260] |= pal;
+        gMainInfoBarMap.map[(u16)(cell + 1) + 0x260] |= pal;
+        ((struct TextTilesView *)gDuelTextTiles)->textMapReset = 0;
     }
 }
 /* Draws a centred 2-row message box: the string `n` of the table at 0x0822C720 (64 bytes each). */
-void DuelInfo_DrawCardNameCentered(u16 n)
+void DuelInfo_DrawCardNameCentered(u16 cardId)
 {
-    const u8 *str = gCardNames + (n << 6);
+    const u8 *str = gCardNames + (cardId << 6);
     int len = StrLenWide(str);
     u32 w = 12;
     int x;
@@ -449,13 +536,13 @@ void DuelInfo_DrawCardNameCentered(u16 n)
     TextDrawString(0x77 - x, 8 - (w >> 1), (w << 8) | 7, str);
     TextCanvasToTiles(gDuelTextTiles, 9);
 }
-/* Card info header: name box (string `id`), then for monster cards (type <= 0x14) with `flag` the
+/* Card info header: name box (string `cardId`), then for monster cards with `showStats` the
  * ATK / DEF / level numbers and labels. */
-void DuelInfo_DrawCard(u16 id, u16 flag)
+void DuelInfo_DrawCard(u16 cardId, u16 showStats)
 {
     /* FAKEMATCH: pinning the byte offset to r0 makes agbcc emit the ROM's lsls-before-ldr order
      * (harmless: it only fixes register/schedule allocation of the name-string address). */
-    register u32 off asm("r0") = id << 6;
+    register u32 off asm("r0") = cardId << 6;
     const u8 *tbl = gCardNames;
     const u8 *str = tbl + off;
     int len = StrLenWide(str);
@@ -468,7 +555,7 @@ void DuelInfo_DrawCard(u16 id, u16 flag)
     TextDrawString(3, 9 - (w >> 1), (w << 8) | 8, str);
     TextDrawString(2, 8 - (w >> 1), (w << 8) | 7, str);
     TextCanvasToTiles(gDuelTextTiles, 9);
-    if (CARD_TYPE(id) <= 0x14 && flag != 0) {
+    if (CARD_TYPE(cardId) <= CARD_TYPE_REPTILE && showStats != 0) {
         if ((gSaveData.flags & 0x7F) == 0) {
             TextCellsPutString(0x17, gInfoAtkLabelJp, 5);
             TextCellsPutString(0x37, gInfoDefLabelJp, 4);
@@ -476,29 +563,29 @@ void DuelInfo_DrawCard(u16 id, u16 flag)
             TextCellsPutString(0x17, gInfoAtkLabel, 5);
             TextCellsPutString(0x37, gInfoDefLabel, 4);
         }
-        v = CardAtk(id);
+        v = CardAtk(cardId);
         TextCellsPutNumber(0x1A, v, 7, 4);
-        v = CardDef(id);
+        v = CardDef(cardId);
         TextCellsPutNumber(0x3A, v, 7, 4);
         TextCellsCopyBgTile(0x18, 3);
-        v = CardLevel(id);
+        v = CardLevel(cardId);
         TextCellsPutNumber(0x37, v, 7, 2);
     }
 }
-extern const u16 gCardIdToNumber[];
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-/* Duel card detail (zone view): name box, a counter box for the special cards 0x47/0x15B/0x4CE, and the
- * ATK/DEF/level numbers; cards 0x479/0x5A8 also show an icon block. */
-static inline struct UiZone *ZoneF270(int player, int slot)
+/* Zone of a player as this unit reads it: a fresh address computation per call (the ROM uses
+ * separate register temporaries per use, which a shared local would not reproduce). */
+static inline struct UiZone *ZonePtr(int player, int zone)
 {
     int pl = player & 1;
-    return (struct UiZone *)(slot * 0x94 + pl * 0xD64 + (u32)gDuelZones);
+    return (struct UiZone *)(zone * 0x94 + pl * 0xD64 + (u32)gDuelZones);
 }
-#define ZONE_F270(p, s) ZoneF270(p, s)
-void DuelInfo_DrawSpellZone(u16 id, u16 flag, int player, int slot)
+/* Duel card detail (zone view): name box, a counter box for Cocoon of Evolution, Swords of
+ * Revealing Light and card 1230, and the ATK/DEF/level numbers; DNA Surgery and card 1448 also
+ * show their declared type / attribute icon. */
+void DuelInfo_DrawSpellZone(u16 cardId, u16 showStats, int player, int zone)
 {
     /* FAKEMATCH: offset pinned to r0 as in DuelInfo_DrawCard */
-    register u32 off asm("r0") = id << 6;
+    register u32 off asm("r0") = cardId << 6;
     const u8 *tbl = gCardNames;
     const u8 *str = tbl + off;
     int len = StrLenWide(str);
@@ -513,15 +600,15 @@ void DuelInfo_DrawSpellZone(u16 id, u16 flag, int player, int slot)
     TextCanvasInit(0x20, 2);
     TextDrawString(3, 9 - (w >> 1), (w << 8) | 8, str);
     TextDrawString(2, 8 - (w >> 1), (w << 8) | 7, str);
-    if (ZONE_F270(player, slot)->f6_1) {
-        int n = CARD_NUMBER(id);
-        switch (n) {
-        case 0x47:
-        case 0x15B:
-        case 0x4CE: {
+    if (ZonePtr(player, zone)->flag6_1) {
+        int cardNumber = CARD_NUMBER(cardId);
+        switch (cardNumber) {
+        case CARD_COCOON_OF_EVOLUTION:
+        case CARD_SWORDS_OF_REVEALING_LIGHT:
+        case CARD_1230: {
             u32 t;
             x -= 0x3C;
-            t = ZONE_F270(player, slot)->f6_2;
+            t = ZonePtr(player, zone)->counter6;
             if ((int)t <= 9) {
                 TextDrawNumber(x + 1, 4, 0xA08, t);
                 TextDrawNumber(x, 3, 0xA07, t);
@@ -540,7 +627,7 @@ void DuelInfo_DrawSpellZone(u16 id, u16 flag, int player, int slot)
         }
     }
     TextCanvasToTiles(gDuelTextTiles, 9);
-    if (CARD_TYPE(id) <= 0x14 && flag != 0 && shown == 0) {
+    if (CARD_TYPE(cardId) <= CARD_TYPE_REPTILE && showStats != 0 && shown == 0) {
         if ((gSaveData.flags & 0x7F) == 0) {
             TextCellsPutString(0x17, gInfoAtkLabelJp, 5);
             TextCellsPutString(0x37, gInfoDefLabelJp, 4);
@@ -548,65 +635,66 @@ void DuelInfo_DrawSpellZone(u16 id, u16 flag, int player, int slot)
             TextCellsPutString(0x17, gInfoAtkLabel, 5);
             TextCellsPutString(0x37, gInfoDefLabel, 4);
         }
-        v = CardAtk(id);
+        v = CardAtk(cardId);
         TextCellsPutNumber(0x1A, v, 7, 4);
-        v = CardDef(id);
+        v = CardDef(cardId);
         TextCellsPutNumber(0x3A, v, 7, 4);
         TextCellsCopyBgTile(0x18, 3);
-        v = CardLevel(id);
+        v = CardLevel(cardId);
         TextCellsPutNumber(0x37, v, 7, 2);
     }
-    z = ZONE_F270(player, slot);
-    if (z->f6_1) {
-        int n = CARD_NUMBER(id);
-        switch (n) {
-        case 0x479:
-            TextCellsLoadIcon(0x1C, 9, gCardTypeIcons[(z->w90 << 14) >> 27]);
+    z = ZonePtr(player, zone);
+    if (z->flag6_1) {
+        int cardNumber = CARD_NUMBER(cardId);
+        switch (cardNumber) {
+        case CARD_DNA_SURGERY:
+            TextCellsLoadIcon(0x1C, 9, gCardTypeIcons[(z->unk90 << 14) >> 27]);
             break;
-        case 0x5A8:
-            TextCellsLoadIcon(0x1C, 9, gCardAttributeIcons[(z->w90 << 14) >> 27]);
+        case CARD_1448:
+            TextCellsLoadIcon(0x1C, 9, gCardAttributeIcons[(z->unk90 << 14) >> 27]);
             break;
         }
     }
 }
-/* Draws a two-row text box frame (rows of string `str`, palette/size byte `a`) and the number `val`
- * centred: `cnt` is the extra width in characters, each digit of `val` adds 1 (2 with 2-byte chars). */
-void DuelInfo_DrawLabelNumber(int a, const u8 *str, int val, int cnt)
+/* Draws a two-row text box frame (rows of string `label`, palette/size byte `glyphWidth`) and the
+ * number `value` centred: `labelLen` is the extra width in characters, each digit of `value` adds
+ * 1 (2 with 2-byte chars). */
+void DuelInfo_DrawLabelNumber(int glyphWidth, const u8 *label, int value, int labelLen)
 {
     TextCanvasInit(0x20, 2);
-    TextDrawString(3, 9 - a / 2, ((u8)a << 8) | 0xD, str);
-    TextDrawString(2, 8 - a / 2, ((u8)a << 8) | 5, str);
-    if (cnt > 0) {
-        int v = val;
+    TextDrawString(3, 9 - glyphWidth / 2, ((u8)glyphWidth << 8) | 0xD, label);
+    TextDrawString(2, 8 - glyphWidth / 2, ((u8)glyphWidth << 8) | 5, label);
+    if (labelLen > 0) {
+        int rest = value;
         int x;
 
-        if (v > 9) {
-            u8 dbl = gSaveData.flags & 0x80;
+        if (rest > 9) {
+            u8 doubleWidth = gSaveData.flags & 0x80;
             do {
-                cnt++;
-                if (dbl)
-                    cnt++;
-                v /= 10;
-            } while (v > 9);
+                labelLen++;
+                if (doubleWidth)
+                    labelLen++;
+                rest /= 10;
+            } while (rest > 9);
         }
-        x = a * cnt / 2;
-        TextDrawNumber(x + 3, 9 - a / 2, ((u8)a << 8) | 8, val);
+        x = glyphWidth * labelLen / 2;
+        TextDrawNumber(x + 3, 9 - glyphWidth / 2, ((u8)glyphWidth << 8) | 8, value);
         x += 2;
-        TextDrawNumber(x, 8 - a / 2, ((u8)a << 8) | 7, val);
+        TextDrawNumber(x, 8 - glyphWidth / 2, ((u8)glyphWidth << 8) | 7, value);
     }
     TextCanvasToTiles(gDuelTextTiles, 9);
 }
-/* Card detail panel for the card in (player, slot): name, labels, ATK/DEF (palette 7 when equal to the
- * printed value, else 6), level and the attribute / kind icons. */
-void DuelInfo_DrawMonsterZone(int player, int slot)
+/* Card detail panel for the card in (player, zone): name, labels, ATK/DEF (palette 7 when equal
+ * to the printed value, else 6), level and the type / attribute icons. */
+void DuelInfo_DrawMonsterZone(int player, int zone)
 {
-    struct CardInfo info;
+    struct ZoneCardStats info;
     int atk;
     int def;
     int x;
     u32 pal;
 
-    GetZoneCardStats(player, slot, &info);
+    GetZoneCardStats(player, zone, &info);
     DuelInfo_DrawCard(info.id, 0);
     if ((gSaveData.flags & 0x7F) == 0) {
         TextCellsPutString(0x18, gMonsterInfoAtkLabelJp, 5);
@@ -626,8 +714,8 @@ void DuelInfo_DrawMonsterZone(int player, int slot)
     x = 0x13;
     if (CardLevel(info.id) > 9)
         x--;
-    if (info.attr != 0 && info.attr <= 0x14)
-        TextCellsLoadIcon(x, 9, gCardTypeIcons[info.attr]);
-    if (info.kind != 0 && info.kind <= 6)
-        TextCellsLoadIcon(x + 2, 10, gCardAttributeIcons[info.kind]);
+    if (info.type != 0 && info.type <= CARD_TYPE_REPTILE)
+        TextCellsLoadIcon(x, 9, gCardTypeIcons[info.type]);
+    if (info.attribute != 0 && info.attribute <= 6)
+        TextCellsLoadIcon(x + 2, 10, gCardAttributeIcons[info.attribute]);
 }

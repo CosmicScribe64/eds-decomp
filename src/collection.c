@@ -1,148 +1,152 @@
-#include "global.h"
-#include "gba.h"
-
 /*
- * Game-side sound API, card-collection bookkeeping and OAM/copy helpers.
- * See wiki/functions/code-0807717c.md
+ * collection (0x0807717C-0x080784E4): card-collection bookkeeping on gSaveData, the game-side
+ * sound API and the tile/OAM copy helpers (wiki/functions/collection-c.md).
+ *
+ * The collection half counts copies of every card in the trunk and in the three saved decks
+ * (Deck, Side Deck, Fusion Deck): GetCardCopyLimit reads the forbidden/limited list, the
+ * Add/Remove function families move single copies between the trunk and a deck list, and
+ * TrimSavedDecksToCopyLimits pushes over-limit copies back to the trunk. RecordDuelWin,
+ * RecordDuelLoss and RecordDuelDraw keep the per-opponent duel records.
+ * The sound half (IsSeEnabled to StopAllSound) is the game-side API over the Konami driver
+ * in sound_driver.c: it honours the save's SE/BGM options and gMain's BGM/SE bookkeeping.
+ * The rest are helpers: OffsetNonZeroPixelsAndCopy brightens a bitmap, the CopyTile*
+ * functions copy tile images with CpuSet, and the OamListAdd* functions emit OAM entries.
  */
+#include "global.h"
+#include "card_data.h"          /* CARD_ID_MASK, gCardIdToNumber, gCardNumberToId */
+#include "constants/cards.h"    /* enum CardNumber: CARD_POLYMERIZATION, CARD_DARK_MAGICIAN, the alt-art numbers */
+#include "debug.h"              /* DebugPrintf, DebugPrintFlush */
+#include "gba.h"                /* CpuSet, CpuFastSet */
+#include "main.h"               /* struct Main gMain: currentBgm, frameCounter, lastSeFrame */
+#include "save.h"               /* struct SaveData gSaveData, struct TrunkEntry, struct CardCopyLimit,
+                                   DECK_MAX_CARDS, SIDE_DECK_MAX_CARDS, FUSION_DECK_MAX_CARDS,
+                                   OPTION_SE_ON, OPTION_BGM_ON, the collection prototypes */
 
+/* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
 
-/* Per-card collection record, 4 bytes at save+8 + id*4. */
-struct CardCount {
-    u16 count : 10;                 /* copies owned (max 0x3FF) */
-    u16 rest : 6;
-    u16 unkA;
+/* One trunk record (gSaveData + 8 + id*4, struct TrunkEntry in save.h) in the two forms this
+ * unit's code was compiled from: the copy count through the low halfword, the three per-deck
+ * counters through byte +1. save.h packs the counters as u16 bitfields of the low halfword;
+ * the ROM loads the byte, so the byte view stays. */
+struct TrunkCount {
+    u16 count:10;                   /* bits 0-9: copies in the trunk (max 0x3FF) */
+    u16 rest:6;
+    u16 unk2;
 };
-struct CardBits {                   /* byte view of +1 of the record */
+struct TrunkCopies {                /* byte view of +1 of the record */
     u8 unk0;
-    u8 pad : 2;
-    u8 n1 : 2;                      /* 0..3 counters, capped by GetCardCopyLimit(id) */
-    u8 n2 : 2;
-    u8 n3 : 2;
-    u16 unkA;
+    u8 pad:2;
+    u8 deckCopies:2;                /* bits 2-3: copies in the saved Deck, capped by GetCardCopyLimit(id) */
+    u8 sideCopies:2;                /* bits 4-5: copies in the saved Side Deck */
+    u8 fusionCopies:2;              /* bits 6-7: copies in the saved Fusion Deck */
+    u16 unk2;
 };
-union CardEntry {
-    struct CardCount c;
-    struct CardBits b;
-};
-
-/* Second per-card record (4 bytes at save+0x20D0 + id*4), three counters seen through different views. */
-struct Card2B { u32 lo : 11; u32 b : 11; u32 c : 10; };
-struct Card2C { u16 lo; u16 pad : 6; u16 c : 10; };
-struct Card2A { u16 a : 11; u16 rest : 5; u16 hi; };
-struct Card2Rec {
-    u8 pad0[0x20D0];
-    struct Card2A a;
-};
-struct Card2RecB {
-    u8 pad0[0x20D0];
-    struct Card2B b;
-};
-struct Card2RecC {
-    u8 pad0[0x20D0];
-    struct Card2C c;
+union TrunkEntryView {
+    struct TrunkCount c;
+    struct TrunkCopies b;
 };
 
-struct Save {
-    u8 pad0[8];
-    union CardEntry cards[0x800];   /* +0x0008 */
-    u16 list1[0x3C];                /* +0x2008 */
-    u16 list2[0xF];                 /* +0x2080 */
-    u16 list3[0x14];                /* +0x209E .. */
-    u16 total;                      /* +0x20C6 */
-    u16 n1;                         /* +0x20C8 */
-    u16 n2;                         /* +0x20CA */
-    u16 n3;                         /* +0x20CC */
-    u8 pad20CE[2];
-    u32 words[0x20];                /* +0x20D0 */
-    u8 pad2150[2];
-    u16 options;                    /* +0x2152 bit0 SE on, bit1 BGM on */
-    u8 pad2154[4];
-    u16 lastId;                     /* +0x2158 last id touched by 948/998/9E8 */
-    u8 pad215A[8];
-    u8 unk2162;
-};
-extern struct Save gSaveData;
 /* Card record viewed from the save base: the record for `id` sits at base + id*4 + 8. */
 struct CardRec {
     u8 pad0[8];
-    union CardEntry e;
+    union TrunkEntryView e;
 };
-#define CARD_REC(id) ((struct CardRec *)((u8 *)&gSaveData + (id) * 4))
 
-
-struct Main {
-    u8 pad0[0x485C];
-    u16 currentBgm;                 /* +0x485C */
-    u16 frameCounter;               /* +0x485E */
-    u8 pad4860[8];
-    u16 lastSeFrame;                /* +0x4868 */
+/* The duel record for `id` (gSaveData + 0x20D0 + id*4, struct DuelRecord in save.h) in the
+ * form each RecordDuel* function was compiled from: only its own counter is read and
+ * rewritten, as a low-halfword field (wins), a whole-word field (losses) or a high-halfword
+ * field (draws). */
+struct DuelRecordWinView {
+    u8 pad0[0x20D0];
+    u16 wins:11;                    /* bits 0-10, max 0x7FF */
+    u16 rest:5;
+    u16 hi;
 };
-extern struct Main gMain;
+struct DuelRecordLossView {
+    u8 pad0[0x20D0];
+    u32 wins:11;                    /* bits 0-10 */
+    u32 losses:11;                  /* bits 11-21, max 0x7FF */
+    u32 draws:10;                   /* bits 22-31 */
+};
+struct DuelRecordDrawView {
+    u8 pad0[0x20D0];
+    u16 lo;
+    u16 pad:6;
+    u16 draws:10;                   /* bits 22-31 of the record, max 0x3FF */
+};
 
-struct RarityRow { u16 key; u16 value; };
-extern const u16 gCardIdToNumber[];
-extern const struct RarityRow gCardCopyLimits[];
-extern u8 gStrErrorIdFmt[];
-s32 GetCardCopyLimit(u32 id);
-void RemoveCardFromSavedSideDeck(u16 id);
-void AddCardToTrunk(u16 id);
-void RemoveCardFromSavedDeck(u16 id);
-extern const u16 gCardNumberToId[], gUnk_08623E10[], gUnk_08623E38[], gUnk_08623E3E[], gUnk_08623E44[];
-extern const u16 gUnk_08623E6E[], gUnk_08623E72[], gUnk_08623E7C[], gUnk_086240FA[], gUnk_086240FE[];
-extern const u16 gUnk_086245CA[], gUnk_08624768[], gUnk_086247B6[];
-extern void DebugPrintf(const void *, u32);
-extern void DebugPrintFlush(void);
+/* ---- ROM tables ---- */
 
-u16 *OamListAlloc(u8 idx, void *work);
-extern void SoundRequestSE(u32);
-extern void SoundRequestBGM(u32);
-extern void SoundFadeOutBGM(u32);
+extern const struct CardCopyLimit gCardCopyLimits[];    /* 0x081A78B4: the 47-row forbidden/limited list */
+
+/* Single entries of gCardNumberToId (0x08623DF4) read through their own literal-pool symbols;
+ * card_data.h lists what each one is. The code below reads entry [0] of each. */
+extern const u16 gUnk_08623E10[];   /* gCardNumberToId[CARD_FLAME_SWORDSMAN] */
+extern const u16 gUnk_08623E38[];   /* gCardNumberToId[CARD_DARK_MAGICIAN] */
+extern const u16 gUnk_08623E3E[];   /* gCardNumberToId[CARD_GAIA_THE_FIERCE_KNIGHT] */
+extern const u16 gUnk_08623E44[];   /* gCardNumberToId[CARD_CELTIC_GUARDIAN] */
+extern const u16 gUnk_08623E6E[];   /* gCardNumberToId[CARD_HARPIE_LADY] */
+extern const u16 gUnk_08623E72[];   /* gCardNumberToId[CARD_TIGER_AXE] */
+extern const u16 gUnk_08623E7C[];   /* gCardNumberToId[CARD_THOUSAND_DRAGON] */
+extern const u16 gUnk_086240FA[];   /* gCardNumberToId[CARD_PENDULUM_MACHINE] */
+extern const u16 gUnk_086240FE[];   /* gCardNumberToId[CARD_LAUNCHER_SPIDER] */
+extern const u16 gUnk_086245CA[];   /* gCardNumberToId[CARD_POLYMERIZATION] */
+extern const u16 gUnk_08624768[];   /* gCardNumberToId[CARD_1210] (0 in EDS) */
+extern const u16 gUnk_086247B6[];   /* gCardNumberToId[1249] (0 in EDS; 1249 has no CARD_ name) */
+
+extern u8 gStrErrorIdFmt[];         /* 0x08087B80: the format string DebugCheckCardId prints */
+
+/* ---- Sound driver (src/sound_driver.c) ---- */
+extern void SoundRequestSE(u32 seId);
+extern void SoundRequestBGM(u32 bgmId);
+extern void SoundFadeOutBGM(u32 speed);
 extern void SoundStopBGM(void);
 extern void SoundStopAllSE(void);
-u16 IsSeEnabled(void);
-u16 IsBgmEnabled(void);
 
-/* BEGIN GetCardCopyLimit */
+/* sprite.h declares it as struct OamListEntry *OamListAlloc(u8 layer, struct OamList *list);
+ * the callers here only fill the entry's OAM halfwords, so the pointer is kept as u16. */
+u16 *OamListAlloc(u8 idx, void *work);
+
 /* Look up the card's key in gCardIdToNumber, then find its row in the 0x2F-entry table gCardCopyLimits. */
 s32 GetCardCopyLimit(u32 id) {
     u16 key = *(const u16 *)((const u8 *)gCardIdToNumber + ((id << 21) >> 20));
-    const struct RarityRow *p;
+    const struct CardCopyLimit *p;
     u32 i;
     for (i = 0, p = gCardCopyLimits; i <= 0x2E; p++, i++) {
-        if (key == p->key)
-            return p->value;
+        if (key == p->cardNumber)
+            return p->limit;
     }
     return 3;
 }
-/* END GetCardCopyLimit */
-/* BEGIN IsBelowCardCopyLimit */
-/* Returns 1 if the player owns fewer copies of card `id` (plus its related cards) than the limit. */
+/* Returns 1 if the player owns fewer copies of card `id` (plus its related cards) than the
+ * limit. Prints that share a limit (alt arts, the Dark Magician and Harpie Lady variants)
+ * pool their Deck/Side Deck copies; the Fusion Deck copies pool only for the cases that use
+ * ADD_N3. */
 #define CR(x) ((struct CardRec *)((u8 *)s + (x) * 4))
-#define ADD_PAIR(x) do { sum += CR(x)->e.b.n1; sum += CR(x)->e.b.n2; } while (0)
-#define ADD_N3(x) sum += CR(x)->e.b.n3
+#define ADD_PAIR(x) do { sum += CR(x)->e.b.deckCopies; sum += CR(x)->e.b.sideCopies; } while (0)
+#define ADD_N3(x) sum += CR(x)->e.b.fusionCopies
 u32 IsBelowCardCopyLimit(u16 id) {
-    struct Save *s = &gSaveData;
+    struct SaveData *s = &gSaveData;
     struct CardRec *r = CR(id);
-    s32 sum = r->e.b.n1 + r->e.b.n2 + r->e.b.n3;
+    s32 sum = r->e.b.deckCopies + r->e.b.sideCopies + r->e.b.fusionCopies;
     s32 limit = GetCardCopyLimit(id);
-    u16 key = *(const u16 *)((const u8 *)gCardIdToNumber + ((id & 0x7FF) << 1));
+    u16 key = *(const u16 *)((const u8 *)gCardIdToNumber + ((id & CARD_ID_MASK) << 1));
     switch (key) {
-    case 0x3EB:
+    case CARD_POLYMERIZATION:
         ADD_PAIR(*(const u16 *)(((key + 0x1F) << 1) + (u32)((const u16 *)0x08623DF4)));
         break;
-    case 0x40A:
+    case CARD_POLYMERIZATION_ALT:
         ADD_PAIR(gUnk_086245CA[0]);
         break;
-    case 0x22:
+    case CARD_DARK_MAGICIAN:
         ADD_PAIR(gUnk_08624768[0]);
         ADD_PAIR((u16)(gUnk_08623E38[0] + 1));
         break;
-    case 0x4BA:
+    case CARD_1210:
         ADD_PAIR(gUnk_08623E38[0]);
         ADD_PAIR(*(const u16 *)((key << 1) + (u32)((const u16 *)0x08623DF4)));
         break;
-    case 0x7F2: {
+    case CARD_DARK_MAGICIAN_ALT: {
         /* FAKEMATCH: keep the initialized related ID separate from the cached count byte. */
         register u16 relatedId asm("r1") = gUnk_08623E38[0];
         u8 flags = *((u8 *)s + relatedId * 4 + 9);
@@ -151,167 +155,154 @@ u32 IsBelowCardCopyLimit(u16 id) {
         ADD_PAIR((u16)(relatedId + 1));
         break;
     }
-    case 0x3D:
+    case CARD_HARPIE_LADY:
         ADD_PAIR(gUnk_086247B6[0]);
         break;
-    case 0x4E1:
+    case 1249: /* no EDS card (no CARD_ name); pairs with CARD_HARPIE_LADY */
         ADD_PAIR(gUnk_08623E6E[0]);
         break;
-    case 0:
+    case CARD_BLUE_EYES_WHITE_DRAGON:
         ADD_PAIR((u16)(((const u16 *)0x08623DF4)[0] + 1));
         break;
-    case 0xE:
+    case CARD_FLAME_SWORDSMAN:
         ADD_N3((u16)(gUnk_08623E10[0] + 1));
         break;
-    case 0x25:
+    case CARD_GAIA_THE_FIERCE_KNIGHT:
         ADD_PAIR((u16)(gUnk_08623E3E[0] + 1));
         break;
-    case 0x28:
+    case CARD_CELTIC_GUARDIAN:
         ADD_PAIR((u16)(gUnk_08623E44[0] + 1));
         break;
-    case 0x3F:
+    case CARD_TIGER_AXE:
         ADD_PAIR((u16)(gUnk_08623E72[0] + 1));
         break;
-    case 0x44:
+    case CARD_THOUSAND_DRAGON:
         ADD_N3((u16)(gUnk_08623E7C[0] + 1));
         break;
-    case 0x183:
+    case CARD_PENDULUM_MACHINE:
         ADD_PAIR((u16)(gUnk_086240FA[0] + 1));
         break;
-    case 0x185:
+    case CARD_LAUNCHER_SPIDER:
         ADD_PAIR((u16)(gUnk_086240FE[0] + 1));
         break;
-    case 0x7D0:
+    case CARD_BLUE_EYES_WHITE_DRAGON_ALT:
         ADD_PAIR(((const u16 *)0x08623DF4)[0]);
         break;
-    case 0x7DE:
+    case CARD_FLAME_SWORDSMAN_ALT:
         ADD_N3(gUnk_08623E10[0]);
         break;
-    case 0x7F5:
+    case CARD_GAIA_THE_FIERCE_KNIGHT_ALT:
         ADD_PAIR(gUnk_08623E3E[0]);
         break;
-    case 0x7F8:
+    case CARD_CELTIC_GUARDIAN_ALT:
         ADD_PAIR(gUnk_08623E44[0]);
         break;
-    case 0x80F:
+    case CARD_TIGER_AXE_ALT:
         ADD_PAIR(gUnk_08623E72[0]);
         break;
-    case 0x814:
+    case CARD_THOUSAND_DRAGON_ALT:
         ADD_N3(gUnk_08623E7C[0]);
         break;
-    case 0x953:
+    case CARD_PENDULUM_MACHINE_ALT:
         ADD_PAIR(gUnk_086240FA[0]);
         break;
-    case 0x955:
+    case CARD_LAUNCHER_SPIDER_ALT:
         ADD_PAIR(gUnk_086240FE[0]);
         break;
     }
     return sum < limit;
 }
 
-/* END IsBelowCardCopyLimit */
-/* BEGIN DebugCheckCardId */
-/* Debug assert: prints gStrErrorIdFmt (format string) with the id, then halts, when id is out of range. */
+/* Debug assert: prints gStrErrorIdFmt with the id, then flushes, when the id is 0 or in the
+ * 1901..1999 token range used by the card-number token entries. */
 void DebugCheckCardId(u16 id) {
     if ((u16)(id - 0x76D) <= 0x62 || id == 0) {
         DebugPrintf(gStrErrorIdFmt, id);
         DebugPrintFlush();
     }
 }
-/* END DebugCheckCardId */
-/* BEGIN AddCardToTrunk */
 void AddCardToTrunk(u16 id) {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     DebugCheckCardId(id);
     s = &gSaveData;
     r = (struct CardRec *)((u8 *)s + id * 4);
     if (r->e.c.count < 0x3FF) {
         r->e.c.count++;
-        s->total++;
+        s->trunkSize++;
     }
 }
-/* END AddCardToTrunk */
-/* BEGIN AddCardToSavedDeck */
 void AddCardToSavedDeck(u16 id) {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     DebugCheckCardId(id);
     s = &gSaveData;
     r = (struct CardRec *)((u8 *)s + id * 4);
-    if (r->e.b.n1 < GetCardCopyLimit(id)) {
-        if (s->n1 < 0x3C) {
-            r->e.b.n1++;
-            s->list1[s->n1++] = id;
+    if (r->e.b.deckCopies < GetCardCopyLimit(id)) {
+        if (s->deckSize < DECK_MAX_CARDS) {
+            r->e.b.deckCopies++;
+            s->deck[s->deckSize++] = id;
         }
     }
 }
-/* END AddCardToSavedDeck */
-/* BEGIN AddCardToSavedSideDeck */
 void AddCardToSavedSideDeck(u16 id) {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     DebugCheckCardId(id);
     s = &gSaveData;
     r = (struct CardRec *)((u8 *)s + id * 4);
-    if (r->e.b.n2 < GetCardCopyLimit(id)) {
-        if (s->n2 < 0xF) {
-            r->e.b.n2++;
-            s->list2[s->n2++] = id;
+    if (r->e.b.sideCopies < GetCardCopyLimit(id)) {
+        if (s->sideDeckSize < SIDE_DECK_MAX_CARDS) {
+            r->e.b.sideCopies++;
+            s->sideDeck[s->sideDeckSize++] = id;
         }
     }
 }
-/* END AddCardToSavedSideDeck */
-/* BEGIN AddCardToSavedFusionDeck */
 void AddCardToSavedFusionDeck(u16 id) {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     DebugCheckCardId(id);
     s = &gSaveData;
     r = (struct CardRec *)((u8 *)s + id * 4);
-    if (r->e.b.n3 < GetCardCopyLimit(id)) {
-        if (s->n3 < 0x14) {
-            r->e.b.n3++;
-            s->list3[s->n3++] = id;
+    if (r->e.b.fusionCopies < GetCardCopyLimit(id)) {
+        if (s->fusionDeckSize < FUSION_DECK_MAX_CARDS) {
+            r->e.b.fusionCopies++;
+            s->fusionDeck[s->fusionDeckSize++] = id;
         }
     }
 }
-/* END AddCardToSavedFusionDeck */
-/* BEGIN RemoveCardFromTrunk */
 void RemoveCardFromTrunk(u16 id) {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     DebugCheckCardId(id);
     s = &gSaveData;
     r = (struct CardRec *)((u8 *)s + id * 4);
     if ((r->e.c.count << 22) != 0) {
         r->e.c.count--;
-        s->total--;
+        s->trunkSize--;
     }
 }
-/* END RemoveCardFromTrunk */
-/* BEGIN RemoveCardFromSavedDeck */
-/* Removes one n1/list1 copy and compacts its list.
+/* Removes one copy from the saved Deck and compacts the list.
  * FAKEMATCH: initialized register constraints reproduce byte caching and
  * pointer copies. The bits/flags input with r1 clobber prevents deriving the
  * negative byte mask from the earlier 3. No instruction is emitted. */
 void RemoveCardFromSavedDeck(u16 id)
 {
-    struct Save *s;
+    struct SaveData *s;
     register struct CardRec *r __asm__("r5");
     register u32 off __asm__("r0");
     register u32 flags __asm__("r2");
     register u32 stage __asm__("r1");
-    u32 n;
+    u32 copies;
     DebugCheckCardId(id);
     s = &gSaveData;
     off = (u32)id * 4;
     r = (struct CardRec *)(off + (u32)s);
     flags = *((u8 *)r + 9);
     stage = flags << 28;
-    n = stage >> 30;
-    if (n != 0) {
-        u32 bits = ((n - 1) & 3) << 2;
+    copies = stage >> 30;
+    if (copies != 0) {
+        u32 bits = ((copies - 1) & 3) << 2;
         s32 mask;
         int i;
         u32 countOff;
@@ -355,28 +346,27 @@ out:
     ;
 }
 
-/* END RemoveCardFromSavedDeck */
-/* Removes one n2/list2 copy and compacts its list.
+/* Removes one copy from the saved Side Deck and compacts the list.
  * FAKEMATCH: initialized register constraints reproduce byte caching and
  * pointer copies. The bits/flags input with r1 clobber prevents deriving the
  * negative byte mask from the earlier 3. No instruction is emitted. */
 void RemoveCardFromSavedSideDeck(u16 id)
 {
-    struct Save *s;
+    struct SaveData *s;
     register struct CardRec *r __asm__("r5");
     register u32 off __asm__("r0");
     register u32 flags __asm__("r2");
     register u32 stage __asm__("r1");
-    u32 n;
+    u32 copies;
     DebugCheckCardId(id);
     s = &gSaveData;
     off = (u32)id * 4;
     r = (struct CardRec *)(off + (u32)s);
     flags = *((u8 *)r + 9);
     stage = flags << 26;
-    n = stage >> 30;
-    if (n != 0) {
-        u32 bits = ((n - 1) & 3) << 4;
+    copies = stage >> 30;
+    if (copies != 0) {
+        u32 bits = ((copies - 1) & 3) << 4;
         s32 mask;
         int i;
         u32 countOff;
@@ -420,18 +410,18 @@ out:
     ;
 }
 
-/* Removes one n3/list3 copy and compacts its list.
+/* Removes one copy from the saved Fusion Deck and compacts the list.
  * FAKEMATCH: initialized constraints retain the staged extraction, separate
  * count copy before decrement, and save-base/count-pointer allocation.
  * Ordinary allocation preserves the copied count pointer in r7. */
 void RemoveCardFromSavedFusionDeck(u16 id)
 {
-    struct Save *s;
+    struct SaveData *s;
     struct CardRec *r;
     u32 off;
     u32 flags;
     register u32 stage __asm__("r1");
-    u32 n;
+    u32 copies;
     DebugCheckCardId(id);
     s = &gSaveData;
     off = (u32)id * 4;
@@ -439,15 +429,15 @@ void RemoveCardFromSavedFusionDeck(u16 id)
     flags = *((u8 *)r + 9);
     stage = flags << 24;
     __asm__ volatile("" : "+r"(stage));
-    n = stage >> 30;
-    if (n != 0) {
+    copies = stage >> 30;
+    if (copies != 0) {
         register u32 bits __asm__("r1");
         register u32 kept __asm__("r0");
         int i;
         u32 countOff;
         register u16 *p __asm__("r0");
-        bits = n;
-        __asm__ volatile("" : "+r"(bits) : "r"(n));
+        bits = copies;
+        __asm__ volatile("" : "+r"(bits) : "r"(copies));
         bits--;
         bits <<= 6;
         kept = 0x3F & flags;
@@ -488,15 +478,14 @@ out:
     ;
 }
 
-/* BEGIN TrimSavedDecksToCopyLimits */
-/* Trim list1 and list2 copy counts to the card-specific limit.
+/* Trim the saved Deck and Side Deck copy counts to the card-specific limits.
  * FAKEMATCH: initialized address/copy bindings, a read-only stack-pointer
  * input, and staged narrowing retain the ROM's original register lifetimes.
  * The next index stays full-width until the inner removal loop finishes. */
 void TrimSavedDecksToCopyLimits(void)
 {
     u32 i;
-    struct Save *s;
+    struct SaveData *s;
     u32 saveBase;
     u32 countOff;
     u16 *initialCount;
@@ -505,7 +494,7 @@ void TrimSavedDecksToCopyLimits(void)
     saveBase = (u32)&gSaveData;
     countOff = 0x20C8;
     initialCount = (u16 *)(saveBase + countOff);
-    s = (struct Save *)saveBase;
+    s = (struct SaveData *)saveBase;
     {
         u32 initialLength = *initialCount;
         __asm__ volatile("" : : "r"(initialLength));
@@ -519,14 +508,14 @@ void TrimSavedDecksToCopyLimits(void)
                     u16 id = *p;
                     struct CardRec *r = (struct CardRec *)((u32)id * 4 + base);
                     u32 flags = *((u8 *)r + 9);
-                    u8 n1 = (flags << 28) >> 30;
-                    u8 n2 = (flags << 26) >> 30;
+                    u8 deckCopies = (flags << 28) >> 30;
+                    u8 sideCopies = (flags << 26) >> 30;
                     u8 limit;
                     u32 next;
                     int sum;
                     saved = p;
                     limit = GetCardCopyLimit(id);
-                    sum = n1 + n2;
+                    sum = deckCopies + sideCopies;
                     next = i + 1;
                     __asm__ volatile("" : : "m"(saved));
                     {
@@ -534,16 +523,16 @@ void TrimSavedDecksToCopyLimits(void)
                         if (sum > limit) {
                             register u16 *current __asm__("r6") = loaded;
                             do {
-                                if (n2 != 0) {
+                                if (sideCopies != 0) {
                                     RemoveCardFromSavedSideDeck(*current);
                                     AddCardToTrunk(*current);
-                                    n2--;
-                                } else if (n1 != 0) {
+                                    sideCopies--;
+                                } else if (deckCopies != 0) {
                                     RemoveCardFromSavedDeck(*current);
                                     AddCardToTrunk(*current);
-                                    n1--;
+                                    deckCopies--;
                                 }
-                            } while (n1 + n2 > limit);
+                            } while (deckCopies + sideCopies > limit);
                         }
                         {
                             register u32 nextCopy __asm__("r1") = next;
@@ -553,7 +542,7 @@ void TrimSavedDecksToCopyLimits(void)
                         }
                     }
                     {
-                        register u16 *count1 __asm__("r2") = &gSaveData.n1;
+                        register u16 *count1 __asm__("r2") = &gSaveData.deckSize;
                         if (i == *count1)
                         break;
                     }
@@ -562,9 +551,9 @@ void TrimSavedDecksToCopyLimits(void)
         }
     }
     i = 0;
-    if (i != s->n2) {
+    if (i != s->sideDeckSize) {
         u32 base = (u32)s;
-        u16 *count = &s->n2;
+        u16 *count = &s->sideDeckSize;
         do {
             register u32 byteOff __asm__("r1") = i * 2;
             register u32 listBase __asm__("r0") = base + 0x2080;
@@ -573,14 +562,14 @@ void TrimSavedDecksToCopyLimits(void)
                 u16 id = *p;
                 struct CardRec *r = (struct CardRec *)((u32)id * 4 + base);
                 u32 flags = *((u8 *)r + 9);
-                u8 n1 = (flags << 28) >> 30;
-                u8 n2 = (flags << 26) >> 30;
+                u8 deckCopies = (flags << 28) >> 30;
+                u8 sideCopies = (flags << 26) >> 30;
                 u8 limit;
                 u32 next;
                 int sum;
                 saved = p;
                 limit = GetCardCopyLimit(id);
-                sum = n1 + n2;
+                sum = deckCopies + sideCopies;
                 next = i + 1;
                 __asm__ volatile("" : : "m"(saved));
                 {
@@ -588,16 +577,16 @@ void TrimSavedDecksToCopyLimits(void)
                     if (sum > limit) {
                         u16 *current = loaded;
                         do {
-                            if (n2 != 0) {
+                            if (sideCopies != 0) {
                                 RemoveCardFromSavedSideDeck(*current);
                                 AddCardToTrunk(*current);
-                                n2--;
-                            } else if (n1 != 0) {
+                                sideCopies--;
+                            } else if (deckCopies != 0) {
                                 RemoveCardFromSavedDeck(*current);
                                 AddCardToTrunk(*current);
-                                n1--;
+                                deckCopies--;
                             }
-                        } while (n1 + n2 > limit);
+                        } while (deckCopies + sideCopies > limit);
                     }
                     {
                         u32 nextCopy = next;
@@ -616,70 +605,52 @@ void TrimSavedDecksToCopyLimits(void)
     }
 }
 
-/* END TrimSavedDecksToCopyLimits */
-/* BEGIN RecordDuelWin */
 void RecordDuelWin(u32 id) {
-    struct Save *s = &gSaveData;
-    struct Card2Rec *w = (struct Card2Rec *)((u8 *)s + id * 4);
-    s32 a = w->a.a;
-    if (a <= 0x7FE)
-        w->a.a = a + 1;
-    s->lastId = id;
+    struct SaveData *s = &gSaveData;
+    struct DuelRecordWinView *w = (struct DuelRecordWinView *)((u8 *)s + id * 4);
+    s32 wins = w->wins;
+    if (wins <= 0x7FE)
+        w->wins = wins + 1;
+    s->lastOpponent = id;
 }
-/* END RecordDuelWin */
-/* BEGIN RecordDuelLoss */
 void RecordDuelLoss(u32 id) {
-    struct Save *s = &gSaveData;
-    struct Card2RecB *w = (struct Card2RecB *)((u8 *)s + id * 4);
-    s32 b = w->b.b;
-    if (b <= 0x7FE)
-        w->b.b = b + 1;
-    s->lastId = id;
+    struct SaveData *s = &gSaveData;
+    struct DuelRecordLossView *w = (struct DuelRecordLossView *)((u8 *)s + id * 4);
+    s32 losses = w->losses;
+    if (losses <= 0x7FE)
+        w->losses = losses + 1;
+    s->lastOpponent = id;
 }
-/* END RecordDuelLoss */
-/* BEGIN RecordDuelDraw */
 void RecordDuelDraw(u32 id) {
-    struct Save *s = &gSaveData;
-    struct Card2RecC *w = (struct Card2RecC *)((u8 *)s + id * 4);
-    s32 c = w->c.c;
-    if (c <= 0x3FE)
-        w->c.c = c + 1;
-    s->lastId = id;
+    struct SaveData *s = &gSaveData;
+    struct DuelRecordDrawView *w = (struct DuelRecordDrawView *)((u8 *)s + id * 4);
+    s32 draws = w->draws;
+    if (draws <= 0x3FE)
+        w->draws = draws + 1;
+    s->lastOpponent = id;
 }
-/* END RecordDuelDraw */
-/* BEGIN IncrementChampionshipWins */
 void IncrementChampionshipWins(void) {
-    if (gSaveData.unk2162 < 0xFF)
-        gSaveData.unk2162++;
+    if (gSaveData.championshipWins < 0xFF)
+        gSaveData.championshipWins++;
 }
-/* END IncrementChampionshipWins */
-/* BEGIN IsSeEnabled */
 u16 IsSeEnabled(void) {
-    return gSaveData.options & 1;
+    return gSaveData.options & OPTION_SE_ON;
 }
-/* END IsSeEnabled */
-/* BEGIN IsBgmEnabled */
 u16 IsBgmEnabled(void) {
-    return (gSaveData.options >> 1) & 1;
+    return (gSaveData.options >> 1) & 1;    /* OPTION_BGM_ON, shifted down */
 }
-/* END IsBgmEnabled */
-/* BEGIN SetSeEnabled */
 void SetSeEnabled(u16 on) {
     if (on)
-        gSaveData.options |= 1;
+        gSaveData.options |= OPTION_SE_ON;
     else
-        gSaveData.options &= ~1;
+        gSaveData.options &= ~OPTION_SE_ON;
 }
-/* END SetSeEnabled */
-/* BEGIN SetBgmEnabled */
 void SetBgmEnabled(u16 on) {
     if (on)
-        gSaveData.options |= 2;
+        gSaveData.options |= OPTION_BGM_ON;
     else
-        gSaveData.options &= ~2;
+        gSaveData.options &= ~OPTION_BGM_ON;
 }
-/* END SetBgmEnabled */
-/* BEGIN PlaySE */
 void PlaySE(u32 id) {
     if (IsSeEnabled()) {
         struct Main *m = &gMain;
@@ -689,8 +660,6 @@ void PlaySE(u32 id) {
         }
     }
 }
-/* END PlaySE */
-/* BEGIN PlayBGM */
 void PlayBGM(u32 id) {
     if (IsBgmEnabled()) {
         struct Main *m = &gMain;
@@ -700,14 +669,10 @@ void PlayBGM(u32 id) {
         }
     }
 }
-/* END PlayBGM */
-/* BEGIN PlayBGMNoTrack */
 void PlayBGMNoTrack(u32 id) {
     if (IsBgmEnabled())
         SoundRequestBGM(id);
 }
-/* END PlayBGMNoTrack */
-/* BEGIN PlayJingle */
 void PlayJingle(u32 id) {
     if (IsSeEnabled()) {
         struct Main *m = &gMain;
@@ -717,8 +682,6 @@ void PlayJingle(u32 id) {
         }
     }
 }
-/* END PlayJingle */
-/* BEGIN StopBGM */
 void StopBGM(void) {
     struct Main *m;
     if (IsBgmEnabled())
@@ -726,8 +689,6 @@ void StopBGM(void) {
     m = &gMain;
     m->currentBgm = 0xFFFF;
 }
-/* END StopBGM */
-/* BEGIN FadeOutBGM */
 void FadeOutBGM(void) {
     struct Main *m;
     if (IsBgmEnabled())
@@ -735,16 +696,12 @@ void FadeOutBGM(void) {
     m = &gMain;
     m->currentBgm = 0xFFFF;
 }
-/* END FadeOutBGM */
-/* BEGIN FadeOutBGMAtSpeed */
 void FadeOutBGMAtSpeed(u32 arg) {
     struct Main *m;
     SoundFadeOutBGM(arg);
     m = &gMain;
     m->currentBgm = 0xFFFF;
 }
-/* END FadeOutBGMAtSpeed */
-/* BEGIN StopAllSound */
 void StopAllSound(void) {
     struct Main *m;
     if (IsBgmEnabled())
@@ -754,8 +711,6 @@ void StopAllSound(void) {
     m = &gMain;
     m->currentBgm = 0xFFFF;
 }
-/* END StopAllSound */
-/* BEGIN OffsetNonZeroPixelsAndCopy */
 /* Add `add` to every non-zero byte of the buffer (colour-index brighten), then CpuFastSet it to dst. */
 void OffsetNonZeroPixelsAndCopy(u8 *src, u8 *dst, u16 n, u8 add) {
     u16 i;
@@ -777,8 +732,6 @@ void OffsetNonZeroPixelsAndCopy(u8 *src, u8 *dst, u16 n, u8 add) {
     }
     CpuFastSet(src, dst, n >> 2);
 }
-/* END OffsetNonZeroPixelsAndCopy */
-/* BEGIN CopyTileSheetTo2D */
 /* Copy a tile image: mode 0x100 is one flat block, mode 0x10 copies 16 rows of
  * 0x200 bytes into a 0x400-byte stride. */
 void CopyTileSheetTo2D(u8 *srcArg, u8 *dstArg, u16 mode) {
@@ -796,8 +749,6 @@ void CopyTileSheetTo2D(u8 *srcArg, u8 *dstArg, u16 mode) {
         }
     }
 }
-/* END CopyTileSheetTo2D */
-/* BEGIN CopyTileSheetRowsTo2D */
 void CopyTileSheetRowsTo2D(u8 *srcArg, u8 *dstArg, u16 mode, u8 rows) {
     u16 i;
     u8 *src = srcArg;
@@ -813,8 +764,6 @@ void CopyTileSheetRowsTo2D(u8 *srcArg, u8 *dstArg, u16 mode, u8 rows) {
         }
     }
 }
-/* END CopyTileSheetRowsTo2D */
-/* BEGIN CopyTileRectTo2D */
 void CopyTileRectTo2D(u8 *srcArg, u8 *dstArg, u16 a, u16 b, u16 c, u16 mode) {
     u16 i;
     u8 *src = srcArg;
@@ -835,8 +784,6 @@ void CopyTileRectTo2D(u8 *srcArg, u8 *dstArg, u16 a, u16 b, u16 c, u16 mode) {
         }
     }
 }
-/* END CopyTileRectTo2D */
-/* BEGIN OamListAddTemplateAt */
 /* Copy OAM entry `src` into slot idx with attr0.y = y and attr1.x = x replaced. */
 u16 *OamListAddTemplateAt(u16 *src, u8 idx, s16 x, s16 y, u32 u4, u32 u5, u32 u6, void *work) {
     u16 *oam = OamListAlloc(idx, work);
@@ -844,8 +791,6 @@ u16 *OamListAddTemplateAt(u16 *src, u8 idx, s16 x, s16 y, u32 u4, u32 u5, u32 u6
     oam[1] = (src[1] & 0xFE00) | (((u32)x << 23) >> 23);
     return oam;
 }
-/* END OamListAddTemplateAt */
-/* BEGIN OamListAddTemplateOffset */
 /* Copy OAM entry `src` into slot idx, offsetting y and x. */
 u16 *OamListAddTemplateOffset(u16 *src, u8 idx, s16 x, s16 y, u32 u4, u32 u5, u32 u6, void *work) {
     u16 *oam = OamListAlloc(idx, work);
@@ -856,8 +801,6 @@ u16 *OamListAddTemplateOffset(u16 *src, u8 idx, s16 x, s16 y, u32 u4, u32 u5, u3
     oam[1] = (src[1] & 0xFE00) | ((b + x) & 0x1FF);
     return oam;
 }
-/* END OamListAddTemplateOffset */
-/* BEGIN OamListAddTemplate */
 /* Copy a 3-halfword OAM entry (6 bytes) into slot idx of the OAM buffer `work`. */
 u16 *OamListAddTemplate(u16 *src, u8 idx, u32 u2, u32 u3, void *work) {
     u16 *oam = OamListAlloc(idx, work);
@@ -865,8 +808,6 @@ u16 *OamListAddTemplate(u16 *src, u8 idx, u32 u2, u32 u3, void *work) {
     oam[2] = src[2];
     return oam;
 }
-/* END OamListAddTemplate */
-/* BEGIN OamListAddSpriteGroup */
 /* Emit count eight-byte sprite templates. format 1 accepts modes 0..2;
  * format 0 also accepts modes 3, 4 and 8. Return the last allocated entry.
  * As in the ROM, callers may use the return value only when count is nonzero
@@ -1010,4 +951,3 @@ u16 *OamListAddSpriteGroup(u16 *src, u8 idx, u8 count, u16 x, u16 y,
     }
     return out;
 }
-/* END OamListAddSpriteGroup */

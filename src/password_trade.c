@@ -1,184 +1,143 @@
-#include "global.h"
-
-#include "gba.h"
-
 /*
- * Password scene (CB 0x0807CC28, step table 0x081A7970) and Card Trading
- * scene (CB 0x0807D348, step table 0x081A79A4). See wiki/functions/code-0807c7c8.md.
+ * password_trade (0x0807C7C8-0x0807D3D0): the Password scene's result steps and the Card Trading scene
+ * (wiki/functions/password-trade-c.md).
+ *
+ * Both scenes are step machines driven by a scene callback (CB_Password, CB_CardTrading): the callback
+ * runs the step function at gMain.seqIndex1 from gPasswordSteps / gCardTradingSteps, and a step that
+ * returns non-zero advances seqIndex1 and clears seqState1/seqState2; a NULL table entry ends the scene.
+ * The Password entry screen itself lives in link_sio.c; this unit has the steps after it:
+ * Password_RollAndCheck runs the slot-machine roll over the eight digits and branches to the card reveal
+ * (Password_RevealAndGiveCard), the ERROR message (Password_ShowError) or the USED message
+ * (Password_ShowUsed). Card Trading picks a trunk card (CardTrading_SelectCard), throws it over the link
+ * cable (CardTrading_ThrowCard, CardTrading_Exchange) and shows the card received in return
+ * (CardTrading_ShowReceivedCard); CardTrading_DrawMenu draws its two buttons and the spinning card.
  */
+#include "global.h"
+#include "gba.h"                    /* REG_DISPCNT, REG_BG0CNT, REG_BG1CNT, REG_BG2HOFS, REG_IE, REG_IME, REG_MOSAIC, A_BUTTON, B_BUTTON, START_BUTTON, DPAD_UP, DPAD_DOWN */
+#include "card_data.h"              /* gCardNames, CARD_NAME_SIZE, CARD_ID_MASK */
+#include "save.h"                   /* struct SaveData gSaveData (trunk[].passwordUsed), AddCardToTrunk, RemoveCardFromTrunk, SaveGame */
+#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR, SE_PASSWORD_* */
+#include "bg.h"                     /* ResetVideo, ClearBgMapBuffers, LoadSystemGfx, LoadBgImage4bppMap1 */
+#include "text.h"                   /* TextCanvasInit, TextDrawString, TextCanvasToTiles */
+#include "card_detail.h"            /* CardDetail_Init, CardDetail_Run */
+#include "util.h"                   /* Random, MemClear16, MemCopy16, StrLenWide */
+#include "sprite.h"                 /* AddSprite, AddAffineSprite */
+#include "debug.h"                  /* DebugPrintf, DebugPrintFlush */
+#include "palette.h"                /* SetBrightnessBlack */
+#include "link.h"                   /* struct LinkSync, LinkSyncStart, LinkSyncStep, LinkSyncClose */
+#include "password_trade.h"         /* struct CardTradingState gCardTrading, struct PasswordState gPassword, enum PasswordStep / CardTradingStep, the scene prototypes */
+#include "deck_edit.h"              /* TradeCardSelect_Run */
 
-/* Main state at 0x03000040: only the fields used here. */
+/* ---- Local views kept for matching (build/readability/issues/password_trade.md) ---- */
+
+/* gMain (0x03000040) as this unit reads it, a subset of include/main.h with main.h's names. Two fields
+ * keep this a local view: pickedCardId (main.h folds +0x4872 into unk4871[3]; this unit reads it as a
+ * halfword, the same divergence as deck_edit_prohibit.c) and tilemap (a staging window inside
+ * bgMapBuffer[0] that main.h does not name). */
 struct Main {
-    u8 filler0[6];
-    u16 keyNew;                 /* +0x06 newly pressed keys */
-    u8 filler8[0x40E - 8];
-    u16 unk40E;
-    u8 filler410[4];
-    u32 unk414;
-    u8 filler418[0x85C - 0x418];
-    u16 tilemap[0x60];          /* +0x85C */
-    u8 filler91C[0x442C - 0x91C];
-    u16 unk442C;
-    u8 filler442E[0x4859 - 0x442E];
-    u8 step;                    /* +0x4859 scene step index */
-    u8 sub;                     /* +0x485A sub-step */
-    u8 sub2;                    /* +0x485B */
-    u8 filler485C[0x16];
-    u16 unk4872;
-    u8 unk4874_0:2;
+    u8 unk0[6];
+    u16 newKeys;                    /* +0x0006 */
+    u8 unk8[0x40E - 0x8];
+    u16 vblankFlags;                /* +0x040E */
+    u8 unk410[4];
+    void (*vblankCallback)(void);   /* +0x0414 */
+    u8 unk418[0x85C - 0x418];
+    u16 tilemap[0x60];              /* +0x85C: tile staging inside gMain.bgMapBuffer[0] (halfword 0x220) */
+    u8 unk91C[0x4428 - 0x91C];
+    u16 bgHofs[4];                  /* +0x4428: [2] is the BG2 scroll shadow */
+    u8 unk4430[0x4859 - 0x4430];
+    u8 seqIndex1;                   /* +0x4859: scene step (enum PasswordStep / CardTradingStep) */
+    u8 seqState1;                   /* +0x485A */
+    u8 seqState2;                   /* +0x485B */
+    u8 unk485C[0x4872 - 0x485C];
+    u16 pickedCardId;               /* +0x4872: card ID returned by the card picker (TradeCardSelect_Run) */
+    u8 mode4874:2;                  /* +0x4874 bits 0-1: card-list mode set for the picker */
+    u8 unk4874_2:6;
 };
+extern struct Main gMain;           /* 0x03000040 */
 
-/* Password / trade scene state at 0x0201F780. */
-struct PwState {
-    u16 code;                   /* +0x00 */
-    u16 a:1;                    /* +0x02 */
-    u16 b:1;
-    u16 c:7;                    /* bits 2-8 */
-    u16 d:4;                    /* bits 9-12 */
-    u16 e:3;
-    u8 filler4[0xC];
-    u8 link[0x4];               /* +0x10 link sync tx entry */
-    u8 linkRx[2];               /* +0x14 link rx entry */
-    u16 peerData;               /* +0x16 data received from the peer */
-    u8 link18[6];
-    u16 timer;                  /* +0x1E */
-    u16 card;                   /* +0x20 */
-    u8 unk22;
-    u8 filler23[5];
+/* The interrupt vector table at the start of IWRAM; entry 1 is the HBlank handler (cleared while the
+ * interrupt registers are rewritten, as in booster_get_pack.c). */
+struct IntrTable {
+    u32 unk0;                           /* +0x00 */
+    void (*hblankCallback)(void);       /* +0x04 */
 };
+extern struct IntrTable IntrTable;      /* 0x03000000 */
 
-/* Link / password menu state at 0x0201F7B0 (size 0x18), see link_sio. */
-struct LinkState {
-    u8 digits[8];               /* +0x00 */
-    u8 pw[8];                   /* +0x08 */
-    u8 slot:4;                  /* +0x10 selected digit slot */
-    u8 cursor:4;                /* +0x10 cursor entry */
-    u8 a:6;                     /* +0x11 */
-    u32 b:6;
-    u16 c:12;                   /* +0x12 (>> 4) frame counter */
-    u16 card;                   /* +0x14 */
-    u8 filler16[2];
-};
-
-/* Save mirror at 0x02011C20: per-card entries of 4 bytes starting at +0xA. */
-struct SaveCard {
-    u8 filler0[2];
-    u8 flag0:1;
-    u8 flag1:1;
-    u8 filler[1];
-};
-struct SaveMirror {
-    u8 filler0[8];
-    struct SaveCard card[1];
-};
-
-extern struct Main gMain;
-extern struct LinkState gPassword;
-extern struct SaveMirror gSaveData;
-int Random(void);
-void MemClear16(void *dst, u32 size);
-void MemCopy16(void *dest, const void *src, u32 size);
-void PlaySE(int);
-void Password_DrawDigits(void);
-void ClearBgMapBuffers(void);
-void ResetVideo(void);
-void LoadSystemGfx(void);
-void SetBrightnessBlack(void);
-void ResetBgScroll(void);
-void LoadBgImage4bppMap1(u32 a, u32 b, u32 c, const void *d);
-int StrLenWide(const void *p);
-void TextDrawString(int x, int y, u16 attr, const void *str);
-void TextCanvasToTiles(void *dest, u16 v);
-void TextCanvasInit(u8 a, u8 b);
-struct Hblank {
-    u32 filler0;
-    void *cb;
-};
-extern struct Hblank IntrTable;
-extern const u8 gCardTradingButtonsPal[], gCardTradingButtonsDimPal[], gCardTradingCardPal[];
-extern const u8 gCardTradingButtonsGfx[], gCardTradingButtonsDimGfx[], gCardTradingCardGfx[];
-extern const u8 gSystemFontPal[], gCardNames[][64], gCardTradingBgImage[];
-void AddSprite(u32 a, u32 b, u16 c);
-void AddAffineSprite(u32 a, u16 b, u16 c, u32 d);
-struct Pair16 {
-    u16 lo;
-    u16 hi;
-};
-extern const u32 gPasswordCardSlideHofs[];
-extern const struct Pair16 gPasswordArrowFrames[];
-void Password_DrawKeyCursor(void);
-void Password_DrawCard(u16 id);
-extern struct PwState gCardTrading;
-u16 FadeToBlack(int);
-u16 FadeFromBlack(int);
-u16 FadeToBlack(int);
-u16 FadeFromBlack(int);
-void CardTrading_DrawMenu(int a, u16 b, int c);
-u32 CB_CardTrading(void);
-void CardDetail_Init(u16 card, int a, int b);
-u16 CardDetail_Run(void);
-u16 TradeCardSelect_Run(void);
-void LinkSyncStart(u8 *);
-u32 LinkSyncStep(u16 id, u16 data, void *p);
-u32 LinkSyncClose(void *a, void *b);
-void AddCardToTrunk(u16);
-void RemoveCardFromTrunk(u16);
-void SaveGame(void);
-extern const u16 gCardIdToNumber[];
-extern const u16 gCardNumberToId[];
-void DebugPrintf(const void *);
-void DebugPrintFlush(void);
-extern const u8 gStrDebugThrowItInNow[];
-extern u16 (*const gPasswordSteps[])(void);
-extern u16 (*const gCardTradingSteps[])(void);
-
-/* Second view of the a/b flag pair as one 2-bit value. */
-struct PwPair {
-    u16 filler0;
-    u16 ab:2;
+/* Second view of struct CardTradingState's hasCard/cursorRow flag pair as one 2-bit value: the ROM
+ * tests both flags with a single `and #3` (3 = "trade now"), which the two separate bitfields would
+ * not reproduce. */
+struct CardTradingFlagPair {
+    u16 tradeCardId;                /* +0x00 */
+    u16 hasCardAndCursorRow:2;      /* +0x02 bits 0-1: hasCard | cursorRow << 1 */
     u16 rest:14;
-    u8 filler4[0x24];
+    u8 unk4[0x24];
 };
+
+/* No shared header declares PlaySE yet (same local form as duel_response.c and link_sio.c). */
+void PlaySE(u32 seId);
+
+/* Matching: palette.h declares FadeToBlack/FadeFromBlack returning u32; this unit's call sites were
+ * compiled against the u16-returning form (same wide-view idiom as duel_field_screen.c). */
+extern u16 FadeToBlackU16(int step) asm("FadeToBlack");
+extern u16 FadeFromBlackU16(int step) asm("FadeFromBlack");
+
+void ResetBgScroll(void);
+extern const u8 gCardTradingButtonsPal[];       /* 0x0870B5E0 */
+extern const u8 gCardTradingButtonsDimPal[];    /* 0x0870B600 */
+extern const u8 gCardTradingCardPal[];          /* 0x0870C620 */
+extern const u8 gCardTradingButtonsGfx[];       /* 0x087095E0 */
+extern const u8 gCardTradingButtonsDimGfx[];    /* 0x0870A5E0 */
+extern const u8 gCardTradingCardGfx[];          /* 0x0870B620 */
+extern const u8 gSystemFontPal[];               /* 0x0822C300 */
+extern const u8 gCardTradingBgImage[];          /* 0x08707B28 */
+extern const u32 gPasswordCardSlideHofs[];      /* 0x08087E88 */
+extern const struct PasswordArrowFrame gPasswordArrowFrames[];  /* 0x08087F08 */
+extern const u8 gStrDebugThrowItInNow[];        /* 0x08087FA0 */
+extern u16 (*const gPasswordSteps[])(void);     /* 0x081A7970 */
+extern u16 (*const gCardTradingSteps[])(void);  /* 0x081A79A4 */
 
 u32 Password_RollAndCheck(void)
 {
-    struct LinkState *s = &gPassword;
+    struct PasswordState *s = &gPassword;
 
-    s->a = 0x20;
-    s->b = 0x20;
+    s->blink = 0x20;
+    s->keyBlink = 0x20;
     Password_DrawDigits();
     Password_DrawKeyCursor();
-    if (gMain.keyNew & 1)
-        s->c = 0xB4;
-    if (s->c++ <= 0xB3) {
-                int i;
+    if (gMain.newKeys & A_BUTTON)
+        s->timer = 0xB4;
+    if (s->timer++ <= 0xB3) {
+        int i;
         u32 base;
 
         i = 0;
         base = (u32)s;
 
+        /* Matching: the store address is (i + base), index first; digits[i] would swap the add's
+         * operands. The % is also load-bearing (the address is computed between rand() and __modsi3). */
         for (; i < 8; i++)
             *(u8 *)(i + base) = Random() % 10;
-        gPassword.cursor = Random() % 10;
-        gPassword.slot = Random() & 7;
-        if ((gPassword.c & 0xF) == 8)
-            PlaySE(0x27);
+        gPassword.key = Random() % 10;
+        gPassword.pos = Random() & 7;
+        if ((gPassword.timer & 0xF) == 8)
+            PlaySE(SE_PASSWORD_ROLL);
     } else {
-        s->c = 0;
-        s->a = 0;
-        s->b = 0;
+        s->timer = 0;
+        s->blink = 0;
+        s->keyBlink = 0;
         if (s->card == 0) {
             MemClear16(s, 8);
-            gMain.step += 3;
-        } else if (gSaveData.card[s->card].flag1 == 0) {
-            MemCopy16(s, s->pw, 8);
+            gMain.seqIndex1 += 3; /* -> PASSWORD_STEP_ERROR */
+        } else if (gSaveData.trunk[s->card].passwordUsed == 0) {
+            MemCopy16(s, s->password, 8);
             Password_DrawCard(s->card);
-            gMain.unk442C = 0;
+            gMain.bgHofs[2] = 0;
             REG_BG2HOFS = 0;
             return 1;
         } else {
             MemClear16(s, 8);
-            gMain.step += 6;
+            gMain.seqIndex1 += 6; /* -> PASSWORD_STEP_USED */
         }
     }
     return 0;
@@ -186,62 +145,63 @@ u32 Password_RollAndCheck(void)
 
 u32 Password_RevealAndGiveCard(void)
 {
-    if (gMain.keyNew & 1)
-        gPassword.c = 0x12C;
-    if (gPassword.c <= 0x12B) {
-        gPassword.a++;
-        if ((gPassword.a & 0x1F) == 0x1F)
-            PlaySE(0x29);
-        if ((gPassword.a & 0x1F) <= 0x1C)
+    if (gMain.newKeys & A_BUTTON)
+        gPassword.timer = 0x12C;
+    if (gPassword.timer <= 0x12B) {
+        gPassword.blink++;
+        if ((gPassword.blink & 0x1F) == 0x1F)
+            PlaySE(SE_PASSWORD_GET_CARD);
+        if ((gPassword.blink & 0x1F) <= 0x1C)
             Password_DrawDigits();
-        if (gPassword.c <= 0x1F) {
-            gMain.unk442C = gPasswordCardSlideHofs[gPassword.c];
-            AddSprite(0x1C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
-            AddSprite(0x4C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
-            AddSprite(0x7C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
+        if (gPassword.timer <= 0x1F) {
+            gMain.bgHofs[2] = gPasswordCardSlideHofs[gPassword.timer];
+            AddSprite(0x1C0070, 0, gPasswordArrowFrames[gPassword.timer].attr2);
+            AddSprite(0x4C0070, 0, gPasswordArrowFrames[gPassword.timer].attr2);
+            AddSprite(0x7C0070, 0, gPasswordArrowFrames[gPassword.timer].attr2);
         }
-        gPassword.c++;
+        gPassword.timer++;
         return 0;
     }
-    switch (gMain.sub) {
+    switch (gMain.seqState1) {
     case 0:
         Password_DrawDigits();
-        if (gMain.keyNew & 3)
-            gMain.sub++;
+        if (gMain.newKeys & (A_BUTTON | B_BUTTON))
+            gMain.seqState1++;
         return 0;
     case 1:
         Password_DrawDigits();
-        if (FadeToBlack(4)) {
-            gSaveData.card[gPassword.card].flag1 = 1;
+        if (FadeToBlackU16(4)) {
+            gSaveData.trunk[gPassword.card].passwordUsed = 1;
             AddCardToTrunk(gPassword.card);
             CardDetail_Init(gPassword.card, 0, 0);
-            gMain.sub++;
+            gMain.seqState1++;
         }
         return 0;
     case 2:
         if (CardDetail_Run())
-            gMain.sub++;
+            gMain.seqState1++;
         return 0;
     default:
         return 1;
     }
 }
+
 u32 Password_ShowError(void)
 {
-    if (gMain.keyNew & 1)
-        gPassword.c = 0x12C;
-    if (gPassword.c <= 0x12B) {
-        if (gPassword.c <= 0xB3) {
-            gPassword.a++;
-            if ((gPassword.a & 0x1F) == 0x1F)
-                PlaySE(0x28);
+    if (gMain.newKeys & A_BUTTON)
+        gPassword.timer = 0x12C;
+    if (gPassword.timer <= 0x12B) {
+        if (gPassword.timer <= 0xB3) {
+            gPassword.blink++;
+            if ((gPassword.blink & 0x1F) == 0x1F)
+                PlaySE(SE_PASSWORD_REJECT);
         }
-        if (gPassword.a & 0x20) {
+        if (gPassword.blink & 0x20) {
             AddSprite(0x80018, 0x40, 0x10CA);
             AddSprite(0x80028, 0x4080, 0x10CC);
         }
-        if (!(gMain.keyNew & 8)) {
-            gPassword.c++;
+        if (!(gMain.newKeys & START_BUTTON)) {
+            gPassword.timer++;
             return 0;
         }
     }
@@ -250,22 +210,23 @@ u32 Password_ShowError(void)
 
 u16 Password_FadeOut(void)
 {
-    return FadeToBlack(2);
+    return FadeToBlackU16(2);
 }
+
 u32 Password_ShowUsed(void)
 {
-    if (gMain.keyNew & 1)
-        gPassword.c = 0x12C;
-    if (gPassword.c <= 0x12B) {
-        if (gPassword.c <= 0xB3) {
-            gPassword.a++;
-            if ((gPassword.a & 0x1F) == 0x1F)
-                PlaySE(0x28);
+    if (gMain.newKeys & A_BUTTON)
+        gPassword.timer = 0x12C;
+    if (gPassword.timer <= 0x12B) {
+        if (gPassword.timer <= 0xB3) {
+            gPassword.blink++;
+            if ((gPassword.blink & 0x1F) == 0x1F)
+                PlaySE(SE_PASSWORD_REJECT);
         }
-        if (gPassword.a & 0x20)
+        if (gPassword.blink & 0x20)
             AddSprite(0x80028, 0x4080, 0x110B);
-        if (!(gMain.keyNew & 8)) {
-            gPassword.c++;
+        if (!(gMain.newKeys & START_BUTTON)) {
+            gPassword.timer++;
             return 0;
         }
     }
@@ -274,22 +235,23 @@ u32 Password_ShowUsed(void)
 /* Password scene callback: runs the current step of the table. */
 u32 CB_Password(void)
 {
-    u16 (*fn)(void) = gPasswordSteps[gMain.step];
+    u16 (*fn)(void) = gPasswordSteps[gMain.seqIndex1];
 
     if (fn) {
         if (fn()) {
-            gMain.step++;
-            gMain.sub = 0;
-            gMain.sub2 = 0;
+            gMain.seqIndex1++;
+            gMain.seqState1 = 0;
+            gMain.seqState2 = 0;
         }
         return 0;
     }
     return 1;
 }
-/* Copies `rows` rows of `width` tiles into VRAM 0x06010000 (stride 0x400 bytes). */
+
+/* Copies `rows` rows of `width` tiles into OBJ_VRAM0 (stride 0x400 bytes). */
 void CardTrading_LoadObjTiles(const void *src, int tile, int width, int rows)
 {
-    u8 *dst = (u8 *)0x06010000 + tile * 32;
+    u8 *dst = (u8 *)OBJ_VRAM0 + tile * 32;
     int i;
 
     for (i = 0; i < rows; i++) {
@@ -298,16 +260,16 @@ void CardTrading_LoadObjTiles(const void *src, int tile, int width, int rows)
         src = (const u8 *)src + width * 32;
     }
 }
-void CardTrading_DrawMenu(int a, u16 b, int c)
+void CardTrading_DrawMenu(int cursorRow, u16 hasCard, int throwFrame)
 {
     int i, j, limit;
 
-    if (b) {
+    if (hasCard) {
         limit = 2;
-        a &= 1;
+        cursorRow &= 1;
     } else {
         limit = 1;
-        a = 0;
+        cursorRow = 0;
     }
     i = 0;
     while (i < limit) {
@@ -322,7 +284,7 @@ void CardTrading_DrawMenu(int a, u16 b, int c)
             int on = 0;
             int x, y;
 
-            if (i == a)
+            if (i == cursorRow)
                 on = 1;
             x = 0;
             if (on == 0)
@@ -334,10 +296,10 @@ void CardTrading_DrawMenu(int a, u16 b, int c)
         }
         i = next;
     }
-    if (b) {
-        AddAffineSprite(0x380098, 0x80, ((c & 0xC) + 0x100) | 0x2000, ((c << 21) + 0x1000000) | gCardTrading.c);
-        if (c == 0)
-            gCardTrading.c = gCardTrading.c + 1;
+    if (hasCard) {
+        AddAffineSprite(0x380098, 0x80, ((throwFrame & 0xC) + 0x100) | 0x2000, ((throwFrame << 21) + 0x1000000) | gCardTrading.spinAngle);
+        if (throwFrame == 0)
+            gCardTrading.spinAngle = gCardTrading.spinAngle + 1;
     }
 }
 u32 CardTrading_ClearState(void)
@@ -353,7 +315,7 @@ u32 CardTrading_InitVideo(void)
     int extent;
     int x;
 
-    gMain.unk40E = 3;
+    gMain.vblankFlags = 3;
     REG_DISPCNT = 0;
     REG_BG0CNT = 4;
     REG_BG1CNT = 0x105;
@@ -363,26 +325,26 @@ u32 CardTrading_InitVideo(void)
     REG_MOSAIC = 0;
     SetBrightnessBlack();
     ResetBgScroll();
-    gMain.unk414 = 0;
+    gMain.vblankCallback = 0;
     REG_IME = 0;
     REG_IE &= ~2;
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= ~2;
-    IntrTable.cb = 0;
+    IntrTable.hblankCallback = 0;
     REG_IME = 1;
-    MemCopy16((void *)0x05000200, gCardTradingButtonsPal, 0x20);
-    MemCopy16((void *)0x05000220, gCardTradingButtonsDimPal, 0x20);
-    MemCopy16((void *)0x05000240, gCardTradingCardPal, 0x20);
+    MemCopy16((void *)OBJ_PLTT, gCardTradingButtonsPal, 0x20);
+    MemCopy16((void *)(OBJ_PLTT + 0x20), gCardTradingButtonsDimPal, 0x20);
+    MemCopy16((void *)(OBJ_PLTT + 0x40), gCardTradingCardPal, 0x20);
     CardTrading_LoadObjTiles(gCardTradingButtonsGfx, 0, 0x10, 8);
     CardTrading_LoadObjTiles(gCardTradingButtonsDimGfx, 0x10, 0x10, 8);
     CardTrading_LoadObjTiles(gCardTradingCardGfx, 0x100, 0x10, 8);
-    MemCopy16((void *)0x05000000, gSystemFontPal, 0x20);
-    LoadBgImage4bppMap1(0, 0x10, 0x200, gCardTradingBgImage);
-    if (gCardTrading.code != 0) {
+    MemCopy16((void *)BG_PLTT, gSystemFontPal, 0x20);
+    LoadBgImage4bppMap1(0, 0x10, 0x200, (u16 *)gCardTradingBgImage);
+    if (gCardTrading.tradeCardId != 0) {
         int i;
 
-        len = StrLenWide(gCardNames[gCardTrading.code]);
+        len = StrLenWide((const u16 *)(gCardNames + gCardTrading.tradeCardId * CARD_NAME_SIZE));
         w = 12;
         if (len > 0x12)
             w = 10;
@@ -390,9 +352,9 @@ u32 CardTrading_InitVideo(void)
         extent = (len * w) >> 1;
         x = 0x78 - extent;
         half = w >> 1;
-        TextDrawString(x, 0xD - half, (w << 8) | 8, gCardNames[gCardTrading.code]);
-        TextDrawString(0x77 - extent, 0xC - half, (w << 8) | 7, gCardNames[gCardTrading.code]);
-        TextCanvasToTiles((void *)0x06005000, 0);
+        TextDrawString(x, 0xD - half, (w << 8) | 8, gCardNames + gCardTrading.tradeCardId * CARD_NAME_SIZE);
+        TextDrawString(0x77 - extent, 0xC - half, (w << 8) | 7, gCardNames + gCardTrading.tradeCardId * CARD_NAME_SIZE);
+        TextCanvasToTiles((u16 *)(VRAM + 0x5000), 0);
         for (i = 0; i < 0x60; i++)
             gMain.tilemap[i] = 0x80 + i;
     }
@@ -401,30 +363,30 @@ u32 CardTrading_InitVideo(void)
 
 u32 CardTrading_FadeIn(void)
 {
-    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
+    CardTrading_DrawMenu(gCardTrading.cursorRow, gCardTrading.hasCard, gCardTrading.throwFrame);
     REG_DISPCNT |= 0x1300;
-    return FadeFromBlack(2);
+    return FadeFromBlackU16(2);
 }
 u32 CardTrading_HandleInput(void)
 {
-    struct PwState *st = &gCardTrading;
+    struct CardTradingState *st = &gCardTrading;
 
-    CardTrading_DrawMenu(st->b, st->a, st->d);
-    if (gMain.keyNew & 2) {
-        PlaySE(2);
-        gMain.step = 4;
-    } else if (gMain.keyNew & 1) {
-        if (((struct PwPair *)st)->ab != 3)
-            gMain.step = 6;
+    CardTrading_DrawMenu(st->cursorRow, st->hasCard, st->throwFrame);
+    if (gMain.newKeys & B_BUTTON) {
+        PlaySE(SE_CANCEL);
+        gMain.seqIndex1 = CARD_TRADING_STEP_EXIT_FADE_OUT;
+    } else if (gMain.newKeys & A_BUTTON) {
+        if (((struct CardTradingFlagPair *)st)->hasCardAndCursorRow != 3)
+            gMain.seqIndex1 = CARD_TRADING_STEP_SELECT_FADE_OUT;
         else
-            gMain.step = 8;
-        PlaySE(1);
-    } else if (gMain.keyNew & 0xC0) {
-        if (st->a) {
-            PlaySE(0);
-            st->b = 1 - st->b;
+            gMain.seqIndex1 = CARD_TRADING_STEP_THROW;
+        PlaySE(SE_CONFIRM);
+    } else if (gMain.newKeys & (DPAD_UP | DPAD_DOWN)) {
+        if (st->hasCard) {
+            PlaySE(SE_CURSOR);
+            st->cursorRow = 1 - st->cursorRow;
         } else {
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
     }
     return 0;
@@ -435,8 +397,8 @@ u32 CardTrading_UnusedReturnFalse(void)
 }
 u32 CardTrading_FadeOut(void)
 {
-    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
-    if (FadeToBlack(2) != 0) {
+    CardTrading_DrawMenu(gCardTrading.cursorRow, gCardTrading.hasCard, gCardTrading.throwFrame);
+    if (FadeToBlackU16(2) != 0) {
         REG_DISPCNT = 0;
         return 1;
     }
@@ -445,92 +407,95 @@ u32 CardTrading_FadeOut(void)
 u32 CardTrading_SelectCard(void)
 {
     if (TradeCardSelect_Run()) {
-        if (gMain.unk4872 != 0) {
-            gCardTrading.code = gMain.unk4872;
-            gCardTrading.a = 1;
-            gCardTrading.b = 1;
+        if (gMain.pickedCardId != 0) {
+            gCardTrading.tradeCardId = gMain.pickedCardId;
+            gCardTrading.hasCard = 1;
+            gCardTrading.cursorRow = 1;
         } else {
-            gCardTrading.code = 0;
-            gCardTrading.a = 0;
-            gCardTrading.b = 0;
+            gCardTrading.tradeCardId = 0;
+            gCardTrading.hasCard = 0;
+            gCardTrading.cursorRow = 0;
         }
-        gMain.step = 1;
-        gMain.sub = 0;
-        gMain.sub2 = 0;
+        gMain.seqIndex1 = CARD_TRADING_STEP_INIT_VIDEO;
+        gMain.seqState1 = 0;
+        gMain.seqState2 = 0;
     }
     return 0;
 }
 u32 CardTrading_ThrowCard(void)
 {
-    struct PwState *st = &gCardTrading;
+    struct CardTradingState *st = &gCardTrading;
 
-    CardTrading_DrawMenu(st->b, st->a, st->d);
-    if (st->c != 0x60) {
-        if (st->c <= 0x5B)
-            st->c += 4;
+    CardTrading_DrawMenu(st->cursorRow, st->hasCard, st->throwFrame);
+    if (st->spinAngle != 0x60) {
+        if (st->spinAngle <= 0x5B)
+            st->spinAngle += 4;
     } else {
-        if (st->d > 14) {
-            LinkSyncStart(st->link);
+        if (st->throwFrame > 14) {
+            LinkSyncStart((u8 *)&st->link);
             DebugPrintf(gStrDebugThrowItInNow);
             DebugPrintFlush();
-            st->timer = 0x200;
+            st->exchangeTimer = 0x200;
             return 1;
         }
-        st->d++;
+        st->throwFrame++;
     }
     return 0;
 }
 u32 CardTrading_ReverseThrow(void)
 {
-    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
-    if (gCardTrading.d > 1) {
-        gCardTrading.d--;
+    CardTrading_DrawMenu(gCardTrading.cursorRow, gCardTrading.hasCard, gCardTrading.throwFrame);
+    if (gCardTrading.throwFrame > 1) {
+        gCardTrading.throwFrame--;
         return 0;
     }
     return 1;
 }
 u32 CardTrading_Exchange(void)
 {
-    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
-    if (LinkSyncStep(gCardTrading.unk22, ((const u16 *)0x08622AB4)[gCardTrading.code & 0x7FF], gCardTrading.link)) {
+    CardTrading_DrawMenu(gCardTrading.cursorRow, gCardTrading.hasCard, gCardTrading.throwFrame);
+    /* Matching: gCardIdToNumber (0x08622AB4) and gCardNumberToId (0x08623DF4) stay literal; indexing
+     * the card_data.h symbols instead changes register allocation (same lesson as link_sio.c). The
+     * peer's card number: 0xFFFF = none, < 2000 plain, 2000 and up wraps with a +1. */
+    if (LinkSyncStep(gCardTrading.linkMsgId, ((const u16 *)0x08622AB4)[gCardTrading.tradeCardId & CARD_ID_MASK], &gCardTrading.link)) {
         u16 id;
         u32 n;
 
-        LinkSyncClose(gCardTrading.filler4, gCardTrading.linkRx);
-        id = gCardTrading.peerData;
+        LinkSyncClose(gCardTrading.unk4, &gCardTrading.link.rx);
+        id = gCardTrading.link.rx.data;
         if (id == 0xFFFF)
             n = 0;
         else if (id < 2000)
-            n = ((const u16 *)0x08623DF4)[id & 0x7FF];
+            n = ((const u16 *)0x08623DF4)[id & CARD_ID_MASK];
         else
-            n = ((const u16 *)0x08623DF4)[(id - 2000) & 0x7FF] + 1;
-        gCardTrading.card = n;
-        AddCardToTrunk(gCardTrading.card);
-        RemoveCardFromTrunk(gCardTrading.code);
+            n = ((const u16 *)0x08623DF4)[(id - 2000) & CARD_ID_MASK] + 1;
+        gCardTrading.receivedCardId = n;
+        AddCardToTrunk(gCardTrading.receivedCardId);
+        RemoveCardFromTrunk(gCardTrading.tradeCardId);
         SaveGame();
         return 1;
     }
-    if (--gCardTrading.timer == 0)
-        gMain.step = 0xE;
+    if (--gCardTrading.exchangeTimer == 0)
+        gMain.seqIndex1 = CARD_TRADING_STEP_TIMEOUT_RETURN;
     return 0;
 }
 u32 CardTrading_ShowReceivedCard(void)
 {
-    switch (gMain.sub) {
+    switch (gMain.seqState1) {
     case 0:
-        CardDetail_Init(gCardTrading.card, 0, 0);
-        gMain.sub++;
+        CardDetail_Init(gCardTrading.receivedCardId, 0, 0);
+        gMain.seqState1++;
         break;
     case 1:
         if (CardDetail_Run())
-            gMain.sub++;
+            gMain.seqState1++;
         break;
     default:
-        gCardTrading.code = 0;
-        gCardTrading.b = 0;
-        gCardTrading.a = 0;
-        gCardTrading.d = 0;
-        gMain.step = 1;
+        gCardTrading.tradeCardId = 0;
+        gCardTrading.cursorRow = 0;
+        gCardTrading.hasCard = 0;
+        gCardTrading.throwFrame = 0;
+        gMain.seqIndex1 = CARD_TRADING_STEP_INIT_VIDEO;
         break;
     }
     return 0;
@@ -538,16 +503,16 @@ u32 CardTrading_ShowReceivedCard(void)
 /* Card Trading scene callback. */
 u32 CB_CardTrading(void)
 {
-    gCardTrading.unk22 = 0x50;
-    gMain.unk4874_0 = 1;
+    gCardTrading.linkMsgId = 0x50;
+    gMain.mode4874 = 1;
     {
-        u16 (*fn)(void) = gCardTradingSteps[gMain.step];
+        u16 (*fn)(void) = gCardTradingSteps[gMain.seqIndex1];
 
         if (fn) {
             if (fn()) {
-                gMain.step++;
-                gMain.sub = 0;
-                gMain.sub2 = 0;
+                gMain.seqIndex1++;
+                gMain.seqState1 = 0;
+                gMain.seqState2 = 0;
             }
             return 0;
         }

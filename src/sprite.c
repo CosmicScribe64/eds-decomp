@@ -1,81 +1,76 @@
-#include "global.h"
-#include "gba.h"
-
 /*
- * OAM affine/sprite emitters, video helpers, Random, save signature, misc.
- * See wiki/functions/code-08076144.md
+ * sprite (0x08076144-0x0807717C): OAM sprite/affine emitters, sprite animation streams, Random, and
+ * the save signature/checksum helpers (wiki/functions/sprite-c.md).
+ *
+ * The AddSprite and AddAffineSprite emitters append entries to the OAM shadow buffer (gMain.oamBuffer,
+ * viewed here as struct OamEntry[128]); the SetOamAffine* functions write the affine matrices that
+ * live in the fourth halfword of every fourth buffer entry. SprAnimLoad / SprAnimRewind /
+ * SprAnimDrawFrame* play the ROM sprite animation streams (struct SprAnim in sprite.h) straight into
+ * the same buffer, and Random is the game's MSVC-style LCG on gMain.rngState. The tail of the unit
+ * is save-mirror code shared with collection.c: the signature and checksum over gSaveData, the
+ * text-mode byte, InitSaveData and the debug "get all cards" helper.
  */
+#include "global.h"   /* u8/u16/u32/s16/s32, vu16/vu32 */
+#include "gba.h"      /* REG_DISPCNT, OBJ_PLTT, OBJ_VRAM0 */
+#include "main.h"     /* struct Main gMain (rngState, oamBuffer, oamCount, affineCount) */
+#include "util.h"     /* MemCopy16, MemClear16, gSineTable128 */
+#include "sprite.h"   /* struct SprAnim, enum SpriteShape, the AddSprite and SprAnim prototypes */
+#include "card_data.h" /* CARD_ID_MASK, gCardIdToNumber */
+#include "save.h"      /* struct SaveData gSaveData, gSaveDataSignature, AddCardToTrunk, the signature/checksum prototypes */
 
+/* One entry of the OAM shadow buffer gMain.oamBuffer (main.h): the affine matrices live in the
+ * fourth halfword of entries 4n..4n+3 (pa, pb, pc, pd of matrix n). */
 struct OamEntry {
-    u16 attr0;
-    u16 attr1;
-    u16 attr2;
-    u16 affine;             /* every 4th entry's pad halfword holds an affine parameter */
+    u16 attr0;              /* +0x0 */
+    u16 attr1;              /* +0x2 */
+    u16 attr2;              /* +0x4 */
+    u16 affine;             /* +0x6: affine parameter of the entry's matrix */
 };
+extern struct OamEntry gMain_oamBuffer[];   /* 0x03004470 (= gMain.oamBuffer) */
 
-struct Main {
-    u32 rngState;               /* +0 */
-    u8 pad0[0x4430 - 4];
-    struct OamEntry oam[128];   /* +0x4430 */
-    u8 oamCount;                /* +0x4830 */
-    u8 affineCount;             /* +0x4831 */
-};
-extern struct Main gMain;
-extern struct OamEntry gMain_oamBuffer[];
-extern const s16 gSineTable128[];
 
-/* Animated OBJ graphics stream state (hypothesis): header = 0x20 byte palette, u16 count, count*4 bytes of table, then count * {u16 tiles; tiles*32 bytes}. */
-struct SprAnim {
-    u8 *base;               /* +0 */
-    u8 *cur;                /* +4 */
-    u16 unk8;               /* +8 */
-    u16 unkA;               /* +A */
-    u16 count;              /* +C */
-    u16 pieces;             /* +E */
-};
-extern void MemCopy16(void *dst, const void *src, u32 size);
-extern void SetOamAffineRotScale(u16 idx, u16 scale, u16 angle);
-extern void SprAnimRewind(struct SprAnim *a);
+/* ---- Local views kept for matching ---- */
 
-/* Save mirror at 0x02011C20 (see collection). */
-struct CardCount {
-    u16 count : 10;
-    u16 rest : 6;
-    u16 unkA;
+/* One trunk record (gSaveData + 8 + id*4, struct TrunkEntry in save.h) in the two forms this
+ * unit's code was compiled from: the copy count through the low halfword, the three per-deck
+ * counters through byte +1. save.h packs the counters as u16 bitfields of the low halfword;
+ * the ROM loads the byte, so the byte view stays (the same view as collection.c). */
+struct TrunkCount {
+    u16 count:10;                   /* bits 0-9: copies in the trunk (max 0x3FF) */
+    u16 rest:6;
+    u16 unk2;
 };
-struct CardBits {
+struct TrunkCopies {                /* byte view of +1 of the record */
     u8 unk0;
-    u8 pad : 2;
-    u8 n1 : 2;
-    u8 n2 : 2;
-    u8 n3 : 2;
-    u16 unkA;
+    u8 pad:2;
+    u8 deckCopies:2;                /* bits 2-3: copies in the saved Deck */
+    u8 sideCopies:2;                /* bits 4-5: copies in the saved Side Deck */
+    u8 fusionCopies:2;              /* bits 6-7: copies in the saved Fusion Deck */
+    u16 unk2;
 };
-union CardEntry {
-    struct CardCount c;
-    struct CardBits b;
+union TrunkEntryView {
+    struct TrunkCount c;
+    struct TrunkCopies b;
 };
+
+/* Card record viewed from the save base: the record for `id` sits at base + id*4 + 8. */
 struct CardRec {
     u8 pad0[8];
-    union CardEntry e;
+    union TrunkEntryView e;
 };
+
+/* Save byte +4 as one whole byte: SetTextMode stores it with a single strb, where save.h's
+ * bitfields (language:7, sjisText:1) would compile to read-modify-write sequences. */
 struct SaveHead {
     u8 pad0[4];
-    u8 modeByte;            /* mode:7 | jpFont:1<<7 */
+    u8 flags4;              /* +4: language:7 | sjisText:1<<7 */
 };
-extern struct SaveHead gSaveData;
-extern u8 gSaveDataSignature[];
-extern const u8 gSaveSignature[];
+extern const u8 gSaveSignature[];   /* 0x081A78A8: "DMEX1INT" */
 extern char *strcpy(char *, const char *);
-extern const u16 gCardIdToNumber[];
-extern void AddCardToTrunk(u16 id);
-extern void MemClear16(void *, u32);
 extern void SetSeEnabled(u32);
 extern void SetBgmEnabled(u32);
 extern void SetTextMode(u16 v);
 extern void SetTextModeLatin(void);
-extern void WriteSaveSignature(void);
-extern u32 MemDiffers(const u8 *a, const u8 *b, u8 n);
 void SetOamAffineScale(u16 idx, u16 scale) {
     u16 *p = (u16 *)gMain_oamBuffer;
     p += (u32)idx << 4;
@@ -128,7 +123,7 @@ void AddSprite(u32 yx, u16 shape, u16 attr2) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF);
         e->attr1 = (x & 0x1FF) | a1;
@@ -149,7 +144,7 @@ void AddSpriteAlpha(u32 yx, u16 shape, u16 attr2) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF) | 0x400;
         e->attr1 = (x & 0x1FF) | a1;
@@ -170,7 +165,7 @@ void AddSprite8bpp(u32 yx, u16 shape, u16 attr2) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF) | 0x2000;
         e->attr1 = (x & 0x1FF) | a1;
@@ -180,7 +175,7 @@ void AddSprite8bpp(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* 256-colour sprite with extra attr1 bits (flip/size). */
-void AddSprite8bppFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
+void AddSprite8bppFlip(u32 yx, u16 shape, u16 attr2, u16 flip) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
@@ -191,10 +186,10 @@ void AddSprite8bppFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF) | 0x2000;
-        e->attr1 = (x & 0x1FF) | a1 | extra;
+        e->attr1 = (x & 0x1FF) | a1 | flip;
         e->attr2 = attr2 << 1;
         (*cnt)++;
     }
@@ -212,7 +207,7 @@ void AddSprite8bppAlpha(u32 yx, u16 shape, u16 attr2) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF) | 0x2400;
         e->attr1 = (x & 0x1FF) | a1;
@@ -237,57 +232,57 @@ void AddAffineSprite8bppAlpha(u32 yx, u16 shape, u16 attr2, u32 sa) {
     if (gMain.affineCount == 0x20)
         return;
     switch (shape) {
-    case 0x0000:
+    case SPRITE_SHAPE_8x8:
         x = x - 4;
         y = y - 4;
         break;
-    case 0x8000:
+    case SPRITE_SHAPE_8x16:
         x = x - 4;
         y = y - 8;
         break;
-    case 0x8040:
+    case SPRITE_SHAPE_8x32:
         x = x - 4;
         y = y - 0x10;
         break;
-    case 0x4000:
+    case SPRITE_SHAPE_16x8:
         x = x - 8;
         y = y - 4;
         break;
-    case 0x0040:
+    case SPRITE_SHAPE_16x16:
         x = x - 8;
         y = y - 8;
         break;
-    case 0x8080:
+    case SPRITE_SHAPE_16x32:
         x = x - 8;
         y = y - 0x10;
         break;
-    case 0x4040:
+    case SPRITE_SHAPE_32x8:
         x = x - 0x10;
         y = y - 4;
         break;
-    case 0x4080:
+    case SPRITE_SHAPE_32x16:
         x = x - 0x10;
         y = y - 8;
         break;
-    case 0x0080:
+    case SPRITE_SHAPE_32x32:
         x = x - 0x10;
         y = y - 0x10;
         break;
-    case 0x80C0:
+    case SPRITE_SHAPE_32x64:
         x = x - 0x10;
         y = y - 0x20;
         break;
-    case 0x40C0:
+    case SPRITE_SHAPE_64x32:
         x = x - 0x20;
         y = y - 0x10;
         break;
-    case 0x00C0:
+    case SPRITE_SHAPE_64x64:
         x = x - 0x20;
         y = y - 0x20;
         break;
     }
     {
-        struct OamEntry *e = &gMain.oam[gMain.oamCount];
+        struct OamEntry *e = &((struct OamEntry *)gMain.oamBuffer)[gMain.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x2700;
         e->attr1 = (x & 0x1FF) | a1 | (gMain.affineCount << 9);
         e->attr2 = attr2 << 1;
@@ -299,7 +294,7 @@ void AddAffineSprite8bppAlpha(u32 yx, u16 shape, u16 attr2, u32 sa) {
 
 
 /* AddSprite variant with extra attr1 bits (flip / size). */
-void AddSpriteFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
+void AddSpriteFlip(u32 yx, u16 shape, u16 attr2, u16 flip) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
@@ -310,10 +305,10 @@ void AddSpriteFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF);
-        e->attr1 = (x & 0x1FF) | a1 | extra;
+        e->attr1 = (x & 0x1FF) | a1 | flip;
         e->attr2 = attr2;
         (*cnt)++;
     }
@@ -329,7 +324,7 @@ void AddSpriteXY(u16 x, s16 y, u16 shape, u16 attr2) {
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
-        struct OamEntry *arr = m->oam;
+        struct OamEntry *arr = (struct OamEntry *)m->oamBuffer;
         struct OamEntry *e = (struct OamEntry *)((u8 *)arr + off);
         e->attr0 = a0 | (y & 0xFF);
         nv = x;
@@ -357,57 +352,57 @@ void AddAffineSprite(u32 yx, u16 shape, u16 attr2, u32 sa) {
     if (gMain.affineCount == 0x20)
         return;
     switch (shape) {
-    case 0x0000:
+    case SPRITE_SHAPE_8x8:
         x = x - 4;
         y = y - 4;
         break;
-    case 0x8000:
+    case SPRITE_SHAPE_8x16:
         x = x - 4;
         y = y - 8;
         break;
-    case 0x8040:
+    case SPRITE_SHAPE_8x32:
         x = x - 4;
         y = y - 0x10;
         break;
-    case 0x4000:
+    case SPRITE_SHAPE_16x8:
         x = x - 8;
         y = y - 4;
         break;
-    case 0x0040:
+    case SPRITE_SHAPE_16x16:
         x = x - 8;
         y = y - 8;
         break;
-    case 0x8080:
+    case SPRITE_SHAPE_16x32:
         x = x - 8;
         y = y - 0x10;
         break;
-    case 0x4040:
+    case SPRITE_SHAPE_32x8:
         x = x - 0x10;
         y = y - 4;
         break;
-    case 0x4080:
+    case SPRITE_SHAPE_32x16:
         x = x - 0x10;
         y = y - 8;
         break;
-    case 0x0080:
+    case SPRITE_SHAPE_32x32:
         x = x - 0x10;
         y = y - 0x10;
         break;
-    case 0x80C0:
+    case SPRITE_SHAPE_32x64:
         x = x - 0x10;
         y = y - 0x20;
         break;
-    case 0x40C0:
+    case SPRITE_SHAPE_64x32:
         x = x - 0x20;
         y = y - 0x10;
         break;
-    case 0x00C0:
+    case SPRITE_SHAPE_64x64:
         x = x - 0x20;
         y = y - 0x20;
         break;
     }
     {
-        struct OamEntry *e = &gMain.oam[gMain.oamCount];
+        struct OamEntry *e = &((struct OamEntry *)gMain.oamBuffer)[gMain.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x300;
         e->attr1 = (x & 0x1FF) | a1 | (gMain.affineCount << 9);
         e->attr2 = attr2;
@@ -423,7 +418,7 @@ void ClearObjPalettesAndFirstTiles(void) {
     vu16 zero = 0;
     vu32 *dma = (vu32 *)0x040000D4;
     dma[0] = (u32)&zero;
-    dma[1] = 0x05000200;
+    dma[1] = OBJ_PLTT;
     dma[2] = 0x81000100;
     dma[2];
     while (dma[2] & 0x80000000)
@@ -431,7 +426,7 @@ void ClearObjPalettesAndFirstTiles(void) {
     zero = 0;
     dma = (vu32 *)0x040000D4;
     dma[0] = (u32)&zero;
-    dma[1] = 0x06010000;
+    dma[1] = OBJ_VRAM0;
     dma[2] = 0x81000040;
     dma[2];
     while (dma[2] & 0x80000000)
@@ -440,25 +435,25 @@ void ClearObjPalettesAndFirstTiles(void) {
 
 /* Load a sprite animation stream: palette 15, then the tile blocks into OBJ VRAM from tile 1; leaves `cur` at the first frame header. */
 void SprAnimLoad(u8 *src, struct SprAnim *a) {
-    u8 *p;
+    const u8 *p;
     u16 n;
     u16 i;
     u8 *dst;
     a->base = src;
     a->cur = src;
-    REG_DISPCNT |= 0x40;
-    MemCopy16((void *)0x050003E0, src, 0x20);
+    REG_DISPCNT |= 0x40;  /* 1D OBJ mapping */
+    MemCopy16((void *)(OBJ_PLTT + 0x1E0), src, 0x20); /* OBJ palette 15 */
     p = a->cur;
     n = *(u16 *)(p + 0x20);
     p += 0x22;
-    a->count = n;
-    dst = (u8 *)0x06010020;
+    a->blockCount = n;
+    dst = (u8 *)(OBJ_VRAM0 + 0x20); /* OBJ tile 1 */
     a->cur = p + n * 4;
     i = 0;
     if (i < n) {
         do {
             u32 len;
-            u8 *q = a->cur;
+            const u8 *q = a->cur;
             len = *(u16 *)q;
             a->cur = q + 2;
             len <<= 5;
@@ -466,13 +461,13 @@ void SprAnimLoad(u8 *src, struct SprAnim *a) {
             dst += len;
             a->cur += len;
             i++;
-        } while (i < a->count);
+        } while (i < a->blockCount);
     }
     {
         u16 v = *(u16 *)a->cur;
         a->cur += 2;
-        a->unk8 = v;
-        a->unkA = 0;
+        a->frameCount = v;
+        a->frameIndex = 0;
     }
     SprAnimRewind(a);
 }
@@ -480,20 +475,20 @@ void SprAnimLoad(u8 *src, struct SprAnim *a) {
 void SprAnimRewind(struct SprAnim *a) {
     /* FAKEMATCH: preserve pointer/count scheduling and ROM iterator registers. */
     u32 n;
-    register u8 *p __asm__("r0");
+    register const u8 *p __asm__("r0");
     register u32 i __asm__("r4");
     p = a->base;
     n = *(u16 *)(p + 0x20);
     p += 0x22;
     __asm__ __volatile__("" : : "r"(n));
-    a->count = n;
+    a->blockCount = n;
     p += n * 4;
     a->cur = p;
     i = 0;
     /* Keep the initialized zero in the iterator register for the unsigned compare. */
     __asm__ __volatile__("" : "+r"(i) : "r"(n));
     if (i < n) {
-        u8 *q = p;
+        const u8 *q = p;
         do {
             register u32 next __asm__("r0");
             u32 len = *(u16 *)q;
@@ -507,11 +502,15 @@ void SprAnimRewind(struct SprAnim *a) {
     {
         u16 v = *(u16 *)a->cur;
         a->cur += 2;
-        a->unk8 = v;
-        a->unkA = 0;
+        a->frameCount = v;
+        a->frameIndex = 0;
     }
 }
 
+/* ---- Local views kept for matching: the SprAnimDrawFrame family's bitfield views of the OAM
+ * buffer. Each draw function was compiled from its own bitfield layout of one OAM entry (the DAC
+ * view splits out hflip/vflip), so the three near-identical views stay separate; the gMainX macros
+ * view gMain through them. ---- */
 struct OamBitsA20 {
     u32 y:8;
     u32 affineMode:2;
@@ -533,7 +532,7 @@ struct MainA20 {
     struct OamBitsA20 oam[128];
 };
 #define gMainA20 (*(struct MainA20 *)&gMain)
-static inline u16 A20_Read16(u8 **pp) {
+static inline u16 A20_Read16(const u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
     return v;
@@ -541,7 +540,7 @@ static inline u16 A20_Read16(u8 **pp) {
 /* Set OAM entry i's size bits from the frame table entry base[0x22 + fmt*4] (0/0x4000/0x8000/0xC000).
  * Being an inline lets integrate.c fold the 0x4433 offsets into the adds, so loop.c does not hoist them. */
 static inline void A20_SetSize(int i, struct SprAnim *a, u16 fmt) {
-    u8 *p = a->base;
+    const u8 *p = a->base;
     u16 sz, t;
     p += 0x22;
     p += fmt * 4;
@@ -566,23 +565,23 @@ static inline void A20_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at (x, y) plus per-piece offsets (hypothesis). */
-void SprAnimDrawFrame(u16 x, u16 y, struct SprAnim *a, u16 flag) {
-    u8 *cur = a->cur;
+void SprAnimDrawFrame(u16 x, u16 y, struct SprAnim *a, u16 advance) {
+    const u8 *cur = a->cur;
     int i, next;
-    if (a->unkA >= a->unk8) {
+    if (a->frameIndex >= a->frameCount) {
         SprAnimRewind(a);
         return;
     }
-    REG_DISPCNT |= 0x40;
+    REG_DISPCNT |= 0x40;  /* 1D OBJ mapping */
     {
         u16 n = A20_Read16(&cur);
-        a->pieces = n;
+        a->pieceCount = n;
     }
-    for (i = 0; i < a->pieces; i = next) {
+    for (i = 0; i < a->pieceCount; i = next) {
         u16 fmt = A20_Read16(&cur);
         u16 dx = A20_Read16(&cur);
         u16 dy = A20_Read16(&cur);
-        u8 *p;
+        const u8 *p;
         u16 len;
         u16 cnt;
         int k;
@@ -604,9 +603,9 @@ void SprAnimDrawFrame(u16 x, u16 y, struct SprAnim *a, u16 flag) {
         gMainA20.oam[i].priority = 0;
         A20_SetSize(i, a, fmt);
     }
-    if (flag != 0) {
+    if (advance != 0) {
         a->cur = cur;
-        a->unkA++;
+        a->frameIndex++;
     }
 }
 
@@ -631,14 +630,14 @@ struct MainBEC {
     struct OamBitsBEC oam[128];
 };
 #define gMainBEC (*(struct MainBEC *)&gMain)
-static inline u16 BEC_Read16(u8 **pp) {
+static inline u16 BEC_Read16(const u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
     return v;
 }
-/* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
+/* Set OAM entry i's size bits from the frame table entry base[0x22 + fmt*4] (0/0x4000/0x8000/0xC000). */
 static inline void BEC_SetSize(int i, struct SprAnim *a, u16 fmt) {
-    u8 *p = a->base;
+    const u8 *p = a->base;
     u16 sz, t;
     p += 0x22;
     p += fmt * 4;
@@ -663,21 +662,21 @@ static inline void BEC_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-void SprAnimDrawFrameAt(u16 x, u16 y, struct SprAnim *a, u16 flag) {
-    u8 *cur = a->cur;
+void SprAnimDrawFrameAt(u16 x, u16 y, struct SprAnim *a, u16 advance) {
+    const u8 *cur = a->cur;
     int i, next;
-    if (a->unkA >= a->unk8) {
+    if (a->frameIndex >= a->frameCount) {
         SprAnimRewind(a);
         return;
     }
-    REG_DISPCNT |= 0x40;
+    REG_DISPCNT |= 0x40;  /* 1D OBJ mapping */
     {
         u16 n = BEC_Read16(&cur);
-        a->pieces = n;
+        a->pieceCount = n;
     }
-    for (i = 0; i < a->pieces; i = next) {
+    for (i = 0; i < a->pieceCount; i = next) {
         u16 fmt = BEC_Read16(&cur);
-        u8 *p;
+        const u8 *p;
         u16 len;
         u16 cnt;
         int k;
@@ -701,9 +700,9 @@ void SprAnimDrawFrameAt(u16 x, u16 y, struct SprAnim *a, u16 flag) {
         gMainBEC.oam[i].shape = 0;
         BEC_SetSize(i, a, fmt);
     }
-    if (flag != 0) {
+    if (advance != 0) {
         a->cur = cur;
-        a->unkA++;
+        a->frameIndex++;
     }
 }
 
@@ -730,13 +729,14 @@ struct MainDAC {
     struct OamBitsDAC oam[128];
 };
 #define gMainDAC (*(struct MainDAC *)&gMain)
-static inline u16 DAC_Read16(u8 **pp) {
+static inline u16 DAC_Read16(const u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
     return v;
 }
+/* Set OAM entry i's size bits from the frame table entry base[0x22 + fmt*4] (0/0x4000/0x8000/0xC000). */
 static inline void DAC_SetSize(int i, struct SprAnim *a, u16 fmt) {
-    u8 *p = a->base;
+    const u8 *p = a->base;
     u16 sz, t;
     p += 0x22;
     p += fmt * 4;
@@ -761,23 +761,23 @@ static inline void DAC_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-void SprAnimDrawFrameAtFlip(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
+void SprAnimDrawFrameAtFlip(u32 yx, struct SprAnim *a, u16 advance, u16 hflip) {
     u16 x = yx;
     u16 y = yx >> 16;
-    u8 *cur = a->cur;
+    const u8 *cur = a->cur;
     int i, next;
-    if (a->unkA >= a->unk8) {
+    if (a->frameIndex >= a->frameCount) {
         SprAnimRewind(a);
         return;
     }
-    REG_DISPCNT |= 0x40;
+    REG_DISPCNT |= 0x40;  /* 1D OBJ mapping */
     {
         u16 n = DAC_Read16(&cur);
-        a->pieces = n;
+        a->pieceCount = n;
     }
-    for (i = 0; i < a->pieces; i = next) {
+    for (i = 0; i < a->pieceCount; i = next) {
         u16 fmt = DAC_Read16(&cur);
-        u8 *p;
+        const u8 *p;
         u16 len;
         u16 cnt;
         int k;
@@ -802,9 +802,9 @@ void SprAnimDrawFrameAtFlip(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
         gMainDAC.oam[i].hflip = hflip;
         DAC_SetSize(i, a, fmt);
     }
-    if (flag != 0) {
+    if (advance != 0) {
         a->cur = cur;
-        a->unkA++;
+        a->frameIndex++;
     }
 }
 /* Random: LCG (MSVC constants) on gMain.rngState, rotated by 16 (written as shifts, not a rotate); returns 15 bits. */
@@ -829,6 +829,7 @@ u32 MemDiffers(const u8 *a, const u8 *b, u8 n) {
     return 0;
 }
 
+/* 1 when gSaveData.signature is "DMEX1INT" (no callers in the USA ROM). */
 u32 IsSaveSignatureValid(void) {
     if (MemDiffers(gSaveSignature, gSaveDataSignature, 8) == 0)
         return 1;
@@ -840,6 +841,8 @@ void WriteSaveSignature(void) {
     strcpy((char *)gSaveDataSignature, (const char *)gSaveSignature);
 }
 
+/* 1 when the halfword at +0x216E (struct SaveData.checksum) equals the negated sum of the
+ * first 0x10B6 halfwords of the save mirror. */
 u32 IsSaveChecksumValid(void) {
     u16 sum;
     u16 *p;
@@ -856,6 +859,7 @@ u32 IsSaveChecksumValid(void) {
     return 0;
 }
 
+/* Recompute the save checksum and store it at +0x216E. */
 void UpdateSaveChecksum(void) {
     u16 sum;
     u16 *p;
@@ -872,12 +876,13 @@ void UpdateSaveChecksum(void) {
     *(u16 *)(base + 0x216E) = v;
 }
 
+/* Set the save's text language (byte +4); v == 0 (Japanese) also sets the Shift-JIS bit. */
 void SetTextMode(u16 v) {
-    struct SaveHead *s = &gSaveData;
+    struct SaveHead *s = (struct SaveHead *)&gSaveData;
     u8 t = v & 0x7F;
-    s->modeByte = t;
+    s->flags4 = t;
     if (v == 0)
-        s->modeByte = t | 0x80;
+        s->flags4 = t | 0x80;
 }
 
 void SetTextModeLatin(void) {
@@ -897,7 +902,7 @@ void InitSaveData(void) {
 void DebugGetAllCards(void) {
     s32 id;
     for (id = 1; id <= 0x334; ) {
-        u16 k = *(const u16 *)((const u8 *)gCardIdToNumber + ((id & 0x7FF) << 1)) - 0x780;
+        u16 k = *(const u16 *)((const u8 *)gCardIdToNumber + ((id & CARD_ID_MASK) << 1)) - 0x780;
         s32 next = id + 1;
         if (k > 0x4F) {
             u8 *s;
@@ -907,7 +912,7 @@ void DebugGetAllCards(void) {
             r = (struct CardRec *)(s + id * 4);
             do {
                 AddCardToTrunk(idv >> 16);
-            } while (r->e.c.count + r->e.b.n1 + r->e.b.n2 + r->e.b.n3 <= 2);
+            } while (r->e.c.count + r->e.b.deckCopies + r->e.b.sideCopies + r->e.b.fusionCopies <= 2);
         }
         id = next;
     }

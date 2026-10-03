@@ -1,130 +1,104 @@
+/*
+ * deck_edit_filter (0x08069284-0x0806A92B): the List Filter screen of the deck-edit card
+ * lists (wiki/functions/deck-edit-filter-c.md).
+ *
+ * DeckEdit_FilterAndSortList rebuilds the three card lists, copies one list (enum DeckEditList)
+ * to its filtered row keeping the cards of one enum ListFilter category, then sorts it by
+ * enum ListSort (QuickSortS16 with the CompareCardsBy* comparators of deck_edit_cards).
+ * The rest is the screen itself: ListFilter_Reset and ListFilter_Init set it up,
+ * ListFilter_Update runs the filter page (LIST_FILTER_PHASE_FILTER), the sort page
+ * (LIST_FILTER_PHASE_SORT) and the 'Now Filtering' apply page (LIST_FILTER_PHASE_APPLY)
+ * over gDeckEdit, and ListFilter_ProgressBarVBlank animates the progress bar while the
+ * rebuild runs. The matching shapes (the u16 loop counters, the literal card-table
+ * addresses, the word-form helper calls) are documented where they live.
+ */
 #include "global.h"
-#include "gba.h"
+#include "bg.h"                     /* CopyMapRect, CopyMapRectAddOffset, CopyTileSheetTo2D (CropMapBlock: word form below) */
+#include "card_data.h"              /* CARD_ID_MASK (the card tables below are read through literal addresses) */
+#include "constants/card_stats.h"   /* enum CardType, enum CardKind, CARD_STATS_TYPE_*, CARD_STATS_KIND_* */
+#include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
+#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL */
+#include "gba.h"                    /* REG_BG0CNT..., REG_DISPCNT, A_BUTTON, B_BUTTON, DPAD_*, CpuSet, CpuFastSet */
+#include "deck_edit.h"              /* struct DeckEdit gDeckEdit, struct SpriteDef, enum ListFilter, enum ListSort, enum ListFilterPhase, the screen prototypes */
+#include "main.h"                   /* struct Main gMain */
+#include "palette.h"                /* struct Fade, FadeStart, FadeTick, SetBldAlpha, enum FadeState */
+#include "sprite.h"                 /* struct AnimBlock, struct AnimState, AnimBlockInit, AnimBlockTick, AnimBlockDraw, OamListFlush, OamListClear (OamListAddSpriteGroup: word form below) */
 
-/* Deck-edit scene, part 3 (helpers after the card-list screens). See wiki/functions/code-08069284.md. */
+/* sound.h does not declare PlaySE; the units declare it themselves. */
+void PlaySE(u32 seId);
 
-/* Card-list/scene state at 0x0201DB20 (see code-08068180); only the flag block at +0x1C49.. is modelled here. */
-struct SceneFlags {
-    u8 pad0[0x1C1C];
-    u8 cursor;                  /* +0x1C1C */
-    u8 pad1C1D[0x1C49 - 0x1C1D];
-    u8 f1C49;
-    u8 f1C4A;
-    u8 f1C4B;
-    u16 f1C4C;
-    u16 f1C4E;
-    u8 f1C50;
-    u8 f1C51;
-    u8 f1C52;
-    u8 f1C53;
-    u8 f1C54;
-};
-extern struct SceneFlags gDeckEdit;
+/* ---- ROM data used only here ---- */
+extern u16 gUnk_0201EFC4[];   /* 0x0201EFC4 = gDeckEdit.sortScratch: base of the list-row
+                                 pointer arithmetic in DeckEdit_FilterAndSortList */
+extern const struct SpriteDef gListFilterCursorSprites[];   /* 0x081A715C */
+extern const struct SpriteDef gListFilterFlashSprites[];    /* 0x081A71CC */
+extern const u8 gListFilterAnimScripts[];       /* 0x081A6118 */
+extern const u8 gListFilterBgPatternMap[];      /* 0x086FC060 */
+extern const u8 gUnk_086FC0E0[];                /* 0x086FC0E0 */
+extern const u8 gListFilterFilterPageMap[];     /* 0x086FC590 */
+extern const u8 gListFilterSortPageMap[];       /* 0x086FCA40 */
+extern const u8 gListFilterListIconMap[];       /* 0x086FD850 */
+extern const u8 gListFilterNowFilteringMap[];   /* 0x086FD580 */
+extern const u8 gListFilterBarFrameMap[];       /* 0x086FD0D0 */
+extern const u8 gListFilterBarFillTiles[];      /* 0x086F41A0 */
+extern const u8 gListFilterBgTiles0[];          /* 0x086F2060 */
+extern const u8 gListFilterBgTiles1[];          /* 0x086F4060 */
+extern const u8 gListFilterBgTiles2[];          /* 0x086F6060 */
+extern const u8 gListFilterObjTiles0[];         /* 0x086F8060 */
+extern const u8 gListFilterObjTiles1[];         /* 0x086FA060 */
+extern const u8 gListFilterBgPal[];             /* 0x086F1C60 */
+extern const u8 gListFilterObjPal[];            /* 0x086F1E60 */
+extern const u8 gListFilterNav[][4];            /* 0x0808756C: filter cursor neighbours */
+extern const u8 gListFilterNavNoFusion[][4];    /* 0x08087588: same without the Fusion option */
+extern const u8 gListSortNav[][4];              /* 0x080875A4: sort cursor neighbours */
+extern const u8 gListSortOptionAnims[];         /* 0x080875BC: sort option -> animation index */
 
-/* Sprite descriptor table entry (8 bytes). */
-struct SpriteDesc {
-    const void *gfx;
-    u8 b4;
-    u8 pad5[3];
-};
-extern const struct SpriteDesc gListFilterCursorSprites[];
-extern const struct SpriteDesc gListFilterFlashSprites[];
-extern void *OamListAddSpriteGroup(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
-void CopyMapRect(const void *src, void *dst, u32 w, u32 h);
-extern const u8 gListFilterNowFilteringMap[];
-extern const u8 gListFilterBarFrameMap[];
-extern const u8 gListFilterBarFillTiles[];
-struct MainLite {
-    u8 pad[0x414];
-    u32 f414;
-};
-extern struct MainLite gMain;
-void ListFilter_DrawProgressBar(const void *src, void *dst, u8 n);
-extern void CpuFastSet(const void *src, void *dst, u32 cnt);
-void CopyMapRectAddOffset(const void *src, void *dst, int w, int h, int a, int b, int c);
-void CropMapBlock(const void *tbl, int a, int b, int c, int d, int e, int f, int g, int h, int i);
-void CopyTileSheetTo2D(const void *src, void *dst, u32 n);
-void AnimBlockInit(const void *a, void *b);
-void FadeStart(u32 a, u32 b, u32 c, void *p);
-extern const u8 gListFilterBgPatternMap[], gUnk_086FC0E0[], gListFilterFilterPageMap[], gListFilterSortPageMap[], gListFilterListIconMap[];
-extern const u8 gListFilterBgTiles0[], gListFilterBgTiles1[], gListFilterBgTiles2[], gListFilterObjTiles0[], gListFilterObjTiles1[];
-extern const u8 gListFilterBgPal[], gListFilterObjPal[], gListFilterAnimScripts[];
-struct FB { u8 f : 8; };
-#define OBJF(off) (((struct FB *)((u8 *)&gDeckEdit + (off)))->f)
+/* ---- Local views kept for matching (build/readability/issues/deck_edit_filter.md) ---- */
 
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((int)((CARD_STATS(id) & 0x1F00000) >> 20))
+/* The card tables are read through their literal ROM addresses: per include/card_data.h
+ * the integer-constant form and the symbol form (gCardStats / gCardIdToNumber) generate
+ * different code, and this unit matches with the literal form. */
+#define CARD_STATS(id)  (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])   /* gCardStats */
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])   /* gCardIdToNumber */
+#define CARD_TYPE(id)   ((int)((CARD_STATS(id) & CARD_STATS_TYPE_MASK) >> CARD_STATS_TYPE_SHIFT))
 
-/* Counters of the three card lists: [0][list] = entries, [1][list] = entries after filtering; +0x14A0 u8[list]; +0x620 u16[list]. */
-struct ListState {
-    u8 pad0[0x620];
-    u16 arr620[3];
-    u8 pad626[0x1494 - 0x626];
-    u16 cnt1494[2][3];
-    u8 arr14A0[3];
-};
-extern struct ListState gUnk_0201DB20_ls asm("gDeckEdit");
-extern u16 gUnk_0201EFC4[];
-void DeckEdit_BuildCardLists(void);
-void CpuSet(const void *src, void *dst, u32 cnt);
-void QuickSortS16(int n, s16 *arr, u16 (*cmp)(s16, s16));
-u16 CompareCardsByAtk(s16 a, s16 b);
-u16 CompareCardsByDef(s16 a, s16 b);
-u16 CompareCardsByType(s16 a, s16 b);
-u16 CompareCardsByAttribute(s16 a, s16 b);
-u16 CompareCardsByLevel(s16 a, s16 b);
+/* OamListAddSpriteGroup as ListFilter_DrawCursor and ListFilter_DrawCursorFlash call it: the
+ * (-1, -1) position is passed as words without narrowing; with sprite.h's u16 x/y the -1 is
+ * loaded from the literal pool instead of negated in a register (same form as dice_scene). */
+extern u16 *OamListAddSpriteGroupWide(u16 *tmpls, u32 layer, u32 count, s32 x, s32 y, u32 mode, u32 priority,
+                                      u32 sheetX, u32 sheetY, u32 format, u32 attr0Flags, void *list)
+    asm("OamListAddSpriteGroup");
 
-/* Monster category (0-3 = normal/effect/fusion/ritual-like by number or the stats bits 18-19), 7/8/9 for Magic/Trap/Ticket. */
-static inline int CardKind(u16 id)
-{
-    int num = CARD_NUMBER(id);
-    int k;
+/* CropMapBlock with word-valued scalar arguments: include/bg.h's u16 sx/sy make the compiler
+ * narrow curList * 5 and emit the add in the other operand order (same form as deck_edit_stats). */
+extern void CropMapBlockWord(u16 *srcMap, int sx, int sy, int srcW, void *dstMap, int dx, int dy,
+                             int w, int h, int mapSize) asm("CropMapBlock");
 
-    if (num == 0x776)
-        return 3;
-    if (num >= 0x776 && num <= 0x778)
-        return 1;
-    switch (CARD_TYPE(id)) {
-    case 0x16:
-        k = 7;
-        break;
-    case 0x15:
-        k = 8;
-        break;
-    case 0x17:
-        k = 9;
-        break;
-    default:
-        k = (CARD_STATS(id) & 0xC0000) >> 18;
-        break;
-    }
-    return k;
-}
-
-/* Frame kind (as CS_FrameKind in deck_edit_stats): direct returns keep jump2 from threading the `== k` test. */
+/* Frame kind of a card (enum CardKind): direct returns keep jump2 from threading the `== k`
+ * test. The three God cards are keyed by number: Obelisk counts as Ritual, Slifer and Ra
+ * as Effect (include/constants/card_stats.h). */
 static inline u8 FS_FrameKind(u16 id)
 {
     switch (CARD_NUMBER(id)) {
-    case 0x776: return 3;
-    case 0x777:
-    case 0x778: return 1;
+    case CARD_OBELISK_THE_TORMENTOR: return CARD_KIND_RITUAL;
+    case CARD_SLIFER_THE_SKY_DRAGON:
+    case CARD_THE_WINGED_DRAGON_OF_RA: return CARD_KIND_EFFECT;
     default:
         switch (CARD_TYPE(id)) {
-        case 0x16: return 7;
-        case 0x15: return 8;
-        case 0x17: return 9;
-        default: return (CARD_STATS(id) & 0xC0000) >> 18;
+        case CARD_TYPE_MAGIC: return CARD_KIND_MAGIC;
+        case CARD_TYPE_TRAP: return CARD_KIND_TRAP;
+        case CARD_TYPE_TICKET: return CARD_KIND_TICKET;
+        default: return (CARD_STATS(id) & CARD_STATS_KIND_MASK) >> CARD_STATS_KIND_SHIFT;
         }
     }
 }
-#define FS_COUNT gUnk_0201DB20_ls.cnt1494[0][list]
+#define FS_COUNT gDeckEdit.listCount[0][list]
 #define FS_KIND(kindValue) \
     for (i = 0; i < FS_COUNT; i++) { \
         u16 card = src[i]; \
         switch ((u8)CARD_TYPE(card)) { \
-        case 0x15: \
-        case 0x16: \
+        case CARD_TYPE_TRAP: \
+        case CARD_TYPE_MAGIC: \
             break; \
         default: \
             if (FS_FrameKind(src[i]) == (kindValue)) \
@@ -139,8 +113,8 @@ static inline u8 FS_FrameKind(u16 id)
             dst[n++] = card; \
     }
 /* Deck-edit filter and sort of card list `list`: rebuilds the lists, copies list `list` (u16 ids) to a scratch array,
-   keeps the cards of category `filter` (0 = all, 1-3 monster categories, 4 = Magic, 5 = Trap, 6 = category 3, 7 = monsters
-   only) and sorts by `sort` (0 none, 1 ATK, 2 DEF, 3 type, 4 attribute, 5 level). */
+   keeps the cards of category `filter` (enum ListFilter) and sorts by `sort` (enum ListSort). The list rows are
+   reached at negative offsets from gUnk_0201EFC4 (the matching pointer form; wiki/functions/deck-edit-filter-c.md). */
 void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
 {
     u16 *src;
@@ -152,32 +126,32 @@ void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
 
     DeckEdit_BuildCardLists();
     switch (list) {
-    case 0:
+    case DECKEDIT_LIST_TRUNK:
         src = base - 0x730;
         dst = base - 0x39C;
         break;
-    case 1:
+    case DECKEDIT_LIST_MAIN_DECK:
         src = base - 0x3FB;
         dst = base - 0x67;
         break;
-    case 2:
+    case DECKEDIT_LIST_SIDE_DECK:
         src = base - 0x3AB;
         dst = base - 0x17;
         break;
     }
-    CpuSet(src, dst, gUnk_0201DB20_ls.cnt1494[0][list]);
+    CpuSet(src, dst, gDeckEdit.listCount[0][list]);
     switch (filter) {
-    case 0:
-        if (sort == 0)
+    case LIST_FILTER_ALL:
+        if (sort == LIST_SORT_NAME)
             break;
         for (i = 0; i < FS_COUNT; i++) {
             u16 card = src[i];
 
             switch (CARD_TYPE(card)) {
-            case 0x15:
-            case 0x16:
-            case 0x17:
-            case 0x18:
+            case CARD_TYPE_TRAP:
+            case CARD_TYPE_MAGIC:
+            case CARD_TYPE_TICKET:
+            case CARD_TYPE_DIVINE:
                 base[n2++] = card;
                 break;
             default:
@@ -186,36 +160,36 @@ void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
             }
         }
         break;
-    case 1:
-        FS_KIND(0);
+    case LIST_FILTER_NORMAL:
+        FS_KIND(CARD_KIND_NORMAL);
         break;
-    case 2:
-        FS_KIND(1);
+    case LIST_FILTER_EFFECT:
+        FS_KIND(CARD_KIND_EFFECT);
         break;
-    case 3:
-        FS_KIND(2);
+    case LIST_FILTER_FUSION:
+        FS_KIND(CARD_KIND_FUSION);
         break;
-    case 4:
-        FS_TYPE(0x16);
+    case LIST_FILTER_MAGIC:
+        FS_TYPE(CARD_TYPE_MAGIC);
         break;
-    case 5:
-        FS_TYPE(0x15);
+    case LIST_FILTER_TRAP:
+        FS_TYPE(CARD_TYPE_TRAP);
         break;
-    case 6:
+    case LIST_FILTER_RITUAL:
         for (i = 0; i < FS_COUNT; i++) {
-            if (FS_FrameKind(src[i]) == 3)
+            if (FS_FrameKind(src[i]) == CARD_KIND_RITUAL)
                 dst[n++] = src[i];
         }
         break;
-    case 7:
+    case LIST_FILTER_MONSTERS:
         for (i = 0; i < FS_COUNT; i++) {
             u16 card = src[i];
 
             switch (CARD_TYPE(card)) {
-            case 0x15:
-            case 0x16:
-            case 0x17:
-            case 0x18:
+            case CARD_TYPE_TRAP:
+            case CARD_TYPE_MAGIC:
+            case CARD_TYPE_TICKET:
+            case CARD_TYPE_DIVINE:
                 break;
             default:
                 dst[n++] = src[i];
@@ -224,62 +198,62 @@ void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
         }
         break;
     }
-    if (filter == 0) {
-        if (sort == 0) {
-            gUnk_0201DB20_ls.cnt1494[1][list] = gUnk_0201DB20_ls.cnt1494[0][list];
-            n = gUnk_0201DB20_ls.cnt1494[0][list];
+    if (filter == LIST_FILTER_ALL) {
+        if (sort == LIST_SORT_NAME) {
+            gDeckEdit.listCount[1][list] = gDeckEdit.listCount[0][list];
+            n = gDeckEdit.listCount[0][list];
         } else {
-            gUnk_0201DB20_ls.cnt1494[1][list] = n;
+            gDeckEdit.listCount[1][list] = n;
         }
     } else {
-        gUnk_0201DB20_ls.cnt1494[1][list] = n;
+        gDeckEdit.listCount[1][list] = n;
     }
     switch (sort) {
-    case 0:
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+    case LIST_SORT_NAME:
+        gDeckEdit.listRow[list] = 1;
         break;
-    case 1:
+    case LIST_SORT_ATK:
         QuickSortS16(n, (s16 *)dst, (u16 (*)(s16, s16))CompareCardsByAtk);
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        gDeckEdit.listRow[list] = 1;
         break;
-    case 2:
+    case LIST_SORT_DEF:
         QuickSortS16(n, (s16 *)dst, (u16 (*)(s16, s16))CompareCardsByDef);
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        gDeckEdit.listRow[list] = 1;
         break;
-    case 3:
+    case LIST_SORT_TYPE:
         QuickSortS16(n, (s16 *)dst, (u16 (*)(s16, s16))CompareCardsByType);
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        gDeckEdit.listRow[list] = 1;
         break;
-    case 4:
+    case LIST_SORT_ATTRIBUTE:
         QuickSortS16(n, (s16 *)dst, (u16 (*)(s16, s16))CompareCardsByAttribute);
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        gDeckEdit.listRow[list] = 1;
         break;
-    case 5:
+    case LIST_SORT_LEVEL:
         QuickSortS16(n, (s16 *)dst, (u16 (*)(s16, s16))CompareCardsByLevel);
-        gUnk_0201DB20_ls.arr14A0[list] = 1;
+        gDeckEdit.listRow[list] = 1;
         break;
     }
-    if (filter == 0 && sort != 0) {
+    if (filter == LIST_FILTER_ALL && sort != LIST_SORT_NAME) {
         int total;
 
         i = 0;
         total = n2 + n;
         for (; i < n2; i++)
             dst[n + i] = base[i];
-        gUnk_0201DB20_ls.cnt1494[1][list] = total;
+        gDeckEdit.listCount[1][list] = total;
     }
-    gUnk_0201DB20_ls.arr620[list] = 0;
+    gDeckEdit.listPos[list] = 0;
 }
 /* Clears the flag block at +0x1C49..+0x1C53 of the scene state; returns 1. */
 int ListFilter_Reset(void)
 {
-    gDeckEdit.f1C4E = 0;
-    gDeckEdit.f1C4C = 0;
-    gDeckEdit.f1C49 = 0;
-    gDeckEdit.f1C4A = 0;
-    gDeckEdit.f1C52 = 0;
-    gDeckEdit.f1C53 = 0;
-    gDeckEdit.f1C4B = 0;
+    gDeckEdit.bgScrollY = 0;
+    gDeckEdit.bgScrollX = 0;
+    gDeckEdit.filterSel = 0;
+    gDeckEdit.sortSel = 0;
+    gDeckEdit.panelShown = 0;
+    gDeckEdit.inputLock = 0;
+    gDeckEdit.subPhase = 0;
     return 1;
 }
 /* Scene init: clears VRAM, loads the tile maps / graphics / palettes of the screen, marks 14 objects and sets up the BG registers. */
@@ -296,40 +270,40 @@ int ListFilter_Init(void)
     CpuFastSet((void *)&z2, (void *)0x06010000, 0x01002000);
     for (i = 0; i <= 3; i++) {
         for (j = 0; j <= 3; j++)
-            CopyMapRectAddOffset(gListFilterBgPatternMap, (u16 *)0x0600F000 + (j * 8 + i * 256), 8, 8, 8, 0, 0);
+            CopyMapRectAddOffset((u16 *)gListFilterBgPatternMap, (u16 *)0x0600F000 + (j * 8 + i * 256), 8, 8, 8, 0, 0);
     }
-    CopyMapRect(gUnk_086FC0E0, (void *)0x0600E000, 0x1E, 0x14);
-    CopyMapRect(gListFilterFilterPageMap, (void *)0x0600D000, 0x1E, 0x14);
-    CopyMapRect(gListFilterSortPageMap, (void *)0x0600C000, 0x1E, 0x14);
-    CropMapBlock(gListFilterListIconMap, 0, gDeckEdit.cursor * 5, 7, 0x0600D000, 0x14, 0, 7, 5, 0);
-    CropMapBlock(gListFilterListIconMap, 0, gDeckEdit.cursor * 5, 7, 0x0600C000, 0x14, 0, 7, 5, 0);
+    CopyMapRect((void *)gUnk_086FC0E0, (void *)0x0600E000, 0x1E, 0x14);
+    CopyMapRect((void *)gListFilterFilterPageMap, (void *)0x0600D000, 0x1E, 0x14);
+    CopyMapRect((void *)gListFilterSortPageMap, (void *)0x0600C000, 0x1E, 0x14);
+    CropMapBlockWord((u16 *)gListFilterListIconMap, 0, gDeckEdit.curList * 5, 7, (void *)0x0600D000, 0x14, 0, 7, 5, 0);
+    CropMapBlockWord((u16 *)gListFilterListIconMap, 0, gDeckEdit.curList * 5, 7, (void *)0x0600C000, 0x14, 0, 7, 5, 0);
     CpuFastSet(gListFilterBgTiles0, (void *)0x06000000, 0x800);
     CpuFastSet(gListFilterBgTiles1, (void *)0x06002000, 0x800);
     CpuFastSet(gListFilterBgTiles2, (void *)0x06004000, 0x800);
-    CopyTileSheetTo2D(gListFilterObjTiles0, (void *)0x06010000, 0x10);
-    CopyTileSheetTo2D(gListFilterObjTiles1, (void *)0x06010200, 0x10);
-    AnimBlockInit(gListFilterAnimScripts, (u8 *)&gDeckEdit + 0x1718);
-    OBJF(0x1726) |= 0xFF;
-    OBJF(0x173A) |= 0xFF;
-    OBJF(0x174E) |= 0xFF;
-    OBJF(0x1762) |= 0xFF;
-    OBJF(0x1776) |= 0xFF;
-    OBJF(0x178A) |= 0xFF;
-    OBJF(0x179E) |= 0xFF;
-    OBJF(0x17B2) |= 0xFF;
-    OBJF(0x17C6) |= 0xFF;
-    OBJF(0x17DA) |= 0xFF;
-    OBJF(0x17EE) |= 0xFF;
-    OBJF(0x1802) |= 0xFF;
-    OBJF(0x1816) |= 0xFF;
-    OBJF(0x182A) |= 0xFF;
+    CopyTileSheetTo2D((u8 *)gListFilterObjTiles0, (void *)0x06010000, 0x10);
+    CopyTileSheetTo2D((u8 *)gListFilterObjTiles1, (void *)0x06010200, 0x10);
+    AnimBlockInit((struct AnimSeq **)gListFilterAnimScripts, (u8 *)&gDeckEdit.anims);
+    gDeckEdit.anims.anims[0].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[1].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[2].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[3].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[4].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[5].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[6].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[7].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[8].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[9].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[10].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[11].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[12].active |= ANIM_HIDDEN;
+    gDeckEdit.anims.anims[13].active |= ANIM_HIDDEN;
     CpuFastSet(gListFilterBgPal, (void *)0x05000000, 0x80);
     CpuFastSet(gListFilterObjPal, (void *)0x05000200, 0x80);
     REG_BG0CNT = 0x1800;
     REG_BG1CNT = 0x1A01;
     REG_BG2CNT = 0x1C02;
     REG_BG3CNT = 0x1E02;
-    FadeStart(0, -0x180, 0, (u8 *)&gDeckEdit + 0x618);
+    FadeStart(0, -0x180, 0, &gDeckEdit.fade);
     REG_BG0HOFS = 0;
     REG_BG0VOFS = 0;
     REG_BG1HOFS = 0;
@@ -338,26 +312,26 @@ int ListFilter_Init(void)
     REG_BG2VOFS = 0;
     REG_BG3HOFS = 0;
     REG_BG3VOFS = 0;
-    gDeckEdit.f1C50 = 0x10;
+    gDeckEdit.panelAlpha = 0x10;
     REG_DISPCNT = 0x1A00;
     return 1;
 }
-/* Creates the sprite group for descriptor `idx` of table 0x081A715C (priority word 0x400). */
+/* Creates the sprite group for descriptor `idx` of table gListFilterCursorSprites (0x081A715C). */
 void ListFilter_DrawCursor(u8 idx)
 {
-    OamListAddSpriteGroup(gListFilterCursorSprites[idx].gfx, 1, gListFilterCursorSprites[idx].b4, -1, -1, 3, 2, 0, 0, 0, 0x400, (int)&gDeckEdit);
+    OamListAddSpriteGroupWide((u16 *)gListFilterCursorSprites[idx].gfx, 1, gListFilterCursorSprites[idx].count, -1, -1, 3, 2, 0, 0, 0, 0x400, &gDeckEdit.oamList);
 }
-/* Same with table 0x081A71CC and priority 0. */
+/* Same with table gListFilterFlashSprites (0x081A71CC). */
 void ListFilter_DrawCursorFlash(u8 idx)
 {
-    OamListAddSpriteGroup(gListFilterFlashSprites[idx].gfx, 1, gListFilterFlashSprites[idx].b4, -1, -1, 3, 2, 0, 0, 0, 0, (int)&gDeckEdit);
+    OamListAddSpriteGroupWide((u16 *)gListFilterFlashSprites[idx].gfx, 1, gListFilterFlashSprites[idx].count, -1, -1, 3, 2, 0, 0, 0, 0, &gDeckEdit.oamList);
 }
-/* Loads two 30x8 tile maps into BG map rows and clears gMain+0x414. */
+/* Loads two 30x8 tile maps into BG map rows and clears the vblank callback. */
 void ListFilter_ShowNowFiltering(void)
 {
-    CopyMapRect(gListFilterNowFilteringMap, (void *)0x0600C200, 30, 8);
-    CopyMapRect(gListFilterBarFrameMap, (void *)0x0600E200, 30, 8);
-    gMain.f414 = 0;
+    CopyMapRect((void *)gListFilterNowFilteringMap, (void *)0x0600C200, 30, 8);
+    CopyMapRect((void *)gListFilterBarFrameMap, (void *)0x0600E200, 30, 8);
+    gMain.vblankCallback = NULL;
 }
 /* Converts 8 entries of 4 bytes from `src` to `dst` (u16 pairs) by `mode` (1..8): mask/zero-extend the first half-word
    and optionally swap it behind the second one. */
@@ -415,296 +389,240 @@ void ListFilter_DrawProgressBar(const void *src, void *dst, u8 n)
     ListFilter_CopyBarTileColumns((u16 *)src, dst, rest);
     ListFilter_CopyBarTileColumns((u16 *)((u8 *)src + 0x200), (u16 *)((u8 *)dst + 0x200), rest);
 }
-/* Advances the animation counter at +0x1C54 and redraws with (counter * 3) & 0x7F groups. */
+/* Advances gDeckEdit.animCounter and redraws the bar at (counter * 3) & 0x7F groups. */
 void ListFilter_ProgressBarVBlank(void)
 {
-    gDeckEdit.f1C54++;
-    ListFilter_DrawProgressBar(gListFilterBarFillTiles, (void *)0x06003C00, (gDeckEdit.f1C54 * 3) & 0x7F);
+    gDeckEdit.animCounter++;
+    ListFilter_DrawProgressBar(gListFilterBarFillTiles, (void *)0x06003C00, (gDeckEdit.animCounter * 3) & 0x7F);
 }
-/* View of the scene state 0x0201DB20 used by the filter/sort menu handler. */
-struct FMObject {
-    u8 pad0[0xE];
-    u8 mark;                    /* +0xE */
-    u8 padF[0x14 - 0xF];
-};
-struct FilterMenu {
-    u8 pad0[0x618];
-    u8 transition[6];           /* +0x618 */
-    u8 transitionState;         /* +0x61E */
-    u8 pad61F[0x1718 - 0x61F];
-    struct FMObject objs[14];   /* +0x1718 */
-    u8 pad1830[0x1C1C - 0x1830];
-    u8 cursor;                  /* +0x1C1C */
-    u8 pad1C1D[0x1C3D - 0x1C1D];
-    u8 dirty : 3;               /* +0x1C3D */
-    u8 dirtyRest : 5;
-    u8 pad1C3E;
-    u8 filter[3];               /* +0x1C3F */
-    u8 sort[3];                 /* +0x1C42 */
-    u8 pad1C45[3];
-    u8 f1C48Low : 1;            /* +0x1C48 */
-    u8 f1C48 : 4;
-    u8 f1C48Rest : 3;
-    u8 filterSel;               /* +0x1C49 */
-    u8 sortSel;                 /* +0x1C4A */
-    u8 phase;                   /* +0x1C4B */
-    u16 scrollX;                /* +0x1C4C */
-    u16 scrollY;                /* +0x1C4E */
-    u8 blend;                   /* +0x1C50 */
-    s8 blendStep;               /* +0x1C51 */
-    u8 fading;                  /* +0x1C52 */
-    u8 timer;                   /* +0x1C53 */
-    u8 anim;                    /* +0x1C54 */
-    u8 pad1C55[0x1C5A - 0x1C55];
-    u8 flags;                   /* +0x1C5A */
-    u8 special;                 /* +0x1C5B */
-};
-#define FM (*(struct FilterMenu *)&gDeckEdit)
-struct FMMain {
-    u8 pad0[6];
-    u16 keys;                   /* +0x6 */
-    u8 pad8[0x414 - 8];
-    u32 callback;               /* +0x414 */
-};
-#define FM_MAIN (*(struct FMMain *)&gMain)
-extern const u8 gListFilterNav[][4];
-extern const u8 gListFilterNavNoFusion[][4];
-extern const u8 gListSortNav[][4];
-extern const u8 gListSortOptionAnims[];
-void PlaySE(int sound);
-void FadeTick(void *state);
-void SetBldAlpha(u32 level);
-void AnimBlockTick(void *objects);
-void AnimBlockDraw(void *objects, int a, int b, int c, int d, int e, int f, int g, int h, void *state);
-void OamListFlush(void *state);
-void OamListClear(void *state);
-
-/* Filter/sort menu frame handler: scrolls BG3, moves the filter (phase 0) and sort (phase 1) cursors through the
-   neighbour tables, applies the choice with DeckEdit_FilterAndSortList (phase 2), runs the 13-frame confirm timer and the fades.
-   Returns 1 when the exit transition is done. The `case 3..5` / `case 4..5` switches give the ROM's signed bound tests. */
+/* Filter/sort menu frame handler: scrolls BG3, moves the filter (LIST_FILTER_PHASE_FILTER) and sort
+   (LIST_FILTER_PHASE_SORT) cursors through the neighbour tables, applies the choice with
+   DeckEdit_FilterAndSortList (LIST_FILTER_PHASE_APPLY), runs the 13-frame confirm timer and the fades.
+   Returns 1 when the exit transition is done. The `case LIST_SORT_TYPE..LIST_SORT_LEVEL` switches give
+   the ROM's signed bound tests (as `case 4..5` / `case 4..6` in d_ui_pick; wiki/functions/deck-edit-filter-c.md). */
 int ListFilter_Update(void)
 {
     u32 keys;
 
-    keys = FM_MAIN.keys & 0x3FF;
-    FadeTick(FM.transition);
-    FM.scrollX += 0x80;
-    FM.scrollY += 0x80;
-    REG_BG3HOFS = FM.scrollX >> 8;
-    REG_BG3VOFS = FM.scrollY >> 8;
-    if (FM.timer == 0) {
-        switch (FM.phase) {
-        case 0:
+    keys = gMain.newKeys & 0x3FF;
+    FadeTick(&gDeckEdit.fade);
+    gDeckEdit.bgScrollX += 0x80;
+    gDeckEdit.bgScrollY += 0x80;
+    REG_BG3HOFS = gDeckEdit.bgScrollX >> 8;
+    REG_BG3VOFS = gDeckEdit.bgScrollY >> 8;
+    if (gDeckEdit.inputLock == 0) {
+        switch (gDeckEdit.subPhase) {
+        case LIST_FILTER_PHASE_FILTER:
             switch (keys) {
-            case 0x40:
-                FM.objs[FM.filterSel].mark = 0xFF;
-                if (FM.flags & 0x20)
-                    FM.filterSel = gListFilterNavNoFusion[FM.filterSel][0];
+            case DPAD_UP:
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_HIDDEN;
+                if (gDeckEdit.sideSwapMode)
+                    gDeckEdit.filterSel = gListFilterNavNoFusion[gDeckEdit.filterSel][0];
                 else
-                    FM.filterSel = gListFilterNav[FM.filterSel][0];
-                FM.objs[FM.filterSel].mark = 1;
-                PlaySE(0);
+                    gDeckEdit.filterSel = gListFilterNav[gDeckEdit.filterSel][0];
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x80:
-                FM.objs[FM.filterSel].mark = 0xFF;
-                if (FM.flags & 0x20)
-                    FM.filterSel = gListFilterNavNoFusion[FM.filterSel][1];
+            case DPAD_DOWN:
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_HIDDEN;
+                if (gDeckEdit.sideSwapMode)
+                    gDeckEdit.filterSel = gListFilterNavNoFusion[gDeckEdit.filterSel][1];
                 else
-                    FM.filterSel = gListFilterNav[FM.filterSel][1];
-                FM.objs[FM.filterSel].mark = 1;
-                PlaySE(0);
+                    gDeckEdit.filterSel = gListFilterNav[gDeckEdit.filterSel][1];
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x10:
-                FM.objs[FM.filterSel].mark = 0xFF;
-                if (FM.flags & 0x20)
-                    FM.filterSel = gListFilterNavNoFusion[FM.filterSel][2];
+            case DPAD_RIGHT:
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_HIDDEN;
+                if (gDeckEdit.sideSwapMode)
+                    gDeckEdit.filterSel = gListFilterNavNoFusion[gDeckEdit.filterSel][2];
                 else
-                    FM.filterSel = gListFilterNav[FM.filterSel][2];
-                FM.objs[FM.filterSel].mark = 1;
-                PlaySE(0);
+                    gDeckEdit.filterSel = gListFilterNav[gDeckEdit.filterSel][2];
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x20:
-                FM.objs[FM.filterSel].mark = 0xFF;
-                if (FM.flags & 0x20)
-                    FM.filterSel = gListFilterNavNoFusion[FM.filterSel][3];
+            case DPAD_LEFT:
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_HIDDEN;
+                if (gDeckEdit.sideSwapMode)
+                    gDeckEdit.filterSel = gListFilterNavNoFusion[gDeckEdit.filterSel][3];
                 else
-                    FM.filterSel = gListFilterNav[FM.filterSel][3];
-                FM.objs[FM.filterSel].mark = 1;
-                PlaySE(0);
+                    gDeckEdit.filterSel = gListFilterNav[gDeckEdit.filterSel][3];
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 2:
-                if (FM.transitionState == 0)
-                    FM.blendStep = 1;
-                PlaySE(2);
+            case B_BUTTON:
+                if (gDeckEdit.fade.state == FADE_STATE_IDLE)
+                    gDeckEdit.panelAlphaStep = 1;
+                PlaySE(SE_CANCEL);
                 break;
             default:
-                FM.objs[FM.filterSel].mark = 1;
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_PLAYING;
                 break;
-            case 1:
-                FM.timer = 1;
-                PlaySE(1);
+            case A_BUTTON:
+                gDeckEdit.inputLock = 1;
+                PlaySE(SE_CONFIRM);
                 break;
             }
-            if (FM.fading != 0 && FM.blend <= 8)
-                ListFilter_DrawCursor(FM.filterSel);
+            if (gDeckEdit.panelShown != 0 && gDeckEdit.panelAlpha <= 8)
+                ListFilter_DrawCursor(gDeckEdit.filterSel);
             break;
-        case 1:
+        case LIST_FILTER_PHASE_SORT:
             switch (keys) {
-            case 0x40:
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
-                FM.sortSel = gListSortNav[FM.sortSel][0];
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 1;
-                PlaySE(0);
+            case DPAD_UP:
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
+                gDeckEdit.sortSel = gListSortNav[gDeckEdit.sortSel][0];
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x80:
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
-                FM.sortSel = gListSortNav[FM.sortSel][1];
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 1;
-                PlaySE(0);
+            case DPAD_DOWN:
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
+                gDeckEdit.sortSel = gListSortNav[gDeckEdit.sortSel][1];
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x10:
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
-                FM.sortSel = gListSortNav[FM.sortSel][2];
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 1;
-                PlaySE(0);
+            case DPAD_RIGHT:
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
+                gDeckEdit.sortSel = gListSortNav[gDeckEdit.sortSel][2];
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 0x20:
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
-                FM.sortSel = gListSortNav[FM.sortSel][3];
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 1;
-                PlaySE(0);
+            case DPAD_LEFT:
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
+                gDeckEdit.sortSel = gListSortNav[gDeckEdit.sortSel][3];
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_PLAYING;
+                PlaySE(SE_CURSOR);
                 break;
-            case 2:
-                FM.phase = 0;
+            case B_BUTTON:
+                gDeckEdit.subPhase = LIST_FILTER_PHASE_FILTER;
                 REG_DISPCNT |= 0x200;
                 REG_DISPCNT &= 0xFEFF;
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
-                FM.objs[FM.filterSel].mark = 0;
-                PlaySE(0);
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_FINISHED;
+                PlaySE(SE_CURSOR);
                 break;
-            case 1:
-                FM.timer = 1;
-                PlaySE(1);
+            case A_BUTTON:
+                gDeckEdit.inputLock = 1;
+                PlaySE(SE_CONFIRM);
                 break;
             default:
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 1;
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_PLAYING;
                 break;
             }
-            if (FM.fading != 0 && FM.blend <= 8)
-                ListFilter_DrawCursor(gListSortOptionAnims[FM.sortSel]);
+            if (gDeckEdit.panelShown != 0 && gDeckEdit.panelAlpha <= 8)
+                ListFilter_DrawCursor(gListSortOptionAnims[gDeckEdit.sortSel]);
             break;
-        case 2:
+        case LIST_FILTER_PHASE_APPLY:
             switch (keys) {
-            case 2:
-                if (FM.transitionState == 0) {
-                    FM.blendStep = 1;
-                    PlaySE(2);
+            case B_BUTTON:
+                if (gDeckEdit.fade.state == FADE_STATE_IDLE) {
+                    gDeckEdit.panelAlphaStep = 1;
+                    PlaySE(SE_CANCEL);
                 }
                 break;
-            case 1:
-                ListFilter_DrawProgressBar(gListFilterBarFillTiles, (void *)0x06003C00, (FM.scrollX >> 8) & 0x7F);
-                PlaySE(1);
+            case A_BUTTON:
+                ListFilter_DrawProgressBar(gListFilterBarFillTiles, (void *)0x06003C00, (gDeckEdit.bgScrollX >> 8) & 0x7F);
+                PlaySE(SE_CONFIRM);
                 break;
             default:
-                FM.objs[10].mark = 1;
-                FM.anim = 0;
-                FM_MAIN.callback = (u32)ListFilter_ProgressBarVBlank;
-                switch (FM.special) {
-                case 3:
-                case 4:
-                case 5:
-                    DeckEdit_FilterAndSortList(FM.cursor, FM.filterSel, FM.special);
-                    FM.special = 0;
-                    FM.sort[FM.cursor] = 1;
-                    FM.dirty = 3;
+                gDeckEdit.anims.anims[10].active = ANIM_PLAYING;
+                gDeckEdit.animCounter = 0;
+                gMain.vblankCallback = ListFilter_ProgressBarVBlank;
+                switch (gDeckEdit.sortOverride) {
+                case LIST_SORT_TYPE:
+                case LIST_SORT_ATTRIBUTE:
+                case LIST_SORT_LEVEL:
+                    DeckEdit_FilterAndSortList(gDeckEdit.curList, gDeckEdit.filterSel, gDeckEdit.sortOverride);
+                    gDeckEdit.sortOverride = 0;
+                    gDeckEdit.commandMenu.sort[gDeckEdit.curList] = LIST_SORT_ATK;
+                    gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
                     break;
                 default:
-                    DeckEdit_FilterAndSortList(FM.cursor, FM.filterSel, FM.sortSel);
+                    DeckEdit_FilterAndSortList(gDeckEdit.curList, gDeckEdit.filterSel, gDeckEdit.sortSel);
                     break;
                 }
-                FM_MAIN.callback = 0;
+                gMain.vblankCallback = NULL;
                 ListFilter_DrawProgressBar(gListFilterBarFillTiles, (void *)0x06003C00, 0x80);
-                FM.blendStep = 1;
-                FM.phase = 3;
+                gDeckEdit.panelAlphaStep = 1;
+                gDeckEdit.subPhase = LIST_FILTER_PHASE_DONE;
                 break;
             }
             break;
         }
     }
-    if (FM.timer != 0) {
-        switch (FM.phase) {
-        case 0:
-            if (FM.timer == 13) {
-                FM.timer = 0;
-                FM.objs[FM.filterSel].mark = 0xFF;
+    if (gDeckEdit.inputLock != 0) {
+        switch (gDeckEdit.subPhase) {
+        case LIST_FILTER_PHASE_FILTER:
+            if (gDeckEdit.inputLock == 13) {
+                gDeckEdit.inputLock = 0;
+                gDeckEdit.anims.anims[gDeckEdit.filterSel].active = ANIM_HIDDEN;
                 REG_DISPCNT &= 0xFDFF;
                 REG_DISPCNT |= 0x100;
-                switch (FM.filterSel) {
+                switch (gDeckEdit.filterSel) {
                 case 4:
                 case 5:
-                    FM.filter[FM.cursor] = FM.filterSel;
-                    FM.dirty = 3;
-                    FM.sort[FM.cursor] = FM.sortSel;
-                    FM.dirty = 3;
-                    FM.timer = 0;
+                    gDeckEdit.commandMenu.filter[gDeckEdit.curList] = gDeckEdit.filterSel;
+                    gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
+                    gDeckEdit.commandMenu.sort[gDeckEdit.curList] = gDeckEdit.sortSel;
+                    gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
+                    gDeckEdit.inputLock = 0;
                     ListFilter_ShowNowFiltering();
-                    FM.phase = 2;
+                    gDeckEdit.subPhase = LIST_FILTER_PHASE_APPLY;
                     break;
                 default:
-                    FM.phase = 1;
-                    FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0;
+                    gDeckEdit.subPhase = LIST_FILTER_PHASE_SORT;
+                    gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_FINISHED;
                     break;
                 }
-            } else if (++FM.timer <= 11) {
-                ListFilter_DrawCursorFlash(FM.filterSel);
+            } else if (++gDeckEdit.inputLock <= 11) {
+                ListFilter_DrawCursorFlash(gDeckEdit.filterSel);
             }
             break;
-        case 1:
-            if (FM.timer == 13) {
-                FM.filter[FM.cursor] = FM.filterSel;
-                FM.dirty = 3;
-                FM.sort[FM.cursor] = FM.sortSel;
-                FM.dirty = 3;
-                FM.timer = 0;
-                FM.objs[gListSortOptionAnims[FM.sortSel]].mark = 0xFF;
+        case LIST_FILTER_PHASE_SORT:
+            if (gDeckEdit.inputLock == 13) {
+                gDeckEdit.commandMenu.filter[gDeckEdit.curList] = gDeckEdit.filterSel;
+                gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
+                gDeckEdit.commandMenu.sort[gDeckEdit.curList] = gDeckEdit.sortSel;
+                gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
+                gDeckEdit.inputLock = 0;
+                gDeckEdit.anims.anims[gListSortOptionAnims[gDeckEdit.sortSel]].active = ANIM_HIDDEN;
                 ListFilter_ShowNowFiltering();
-                FM.phase = 2;
-            } else if (++FM.timer <= 11) {
-                ListFilter_DrawCursorFlash(gListSortOptionAnims[FM.sortSel]);
+                gDeckEdit.subPhase = LIST_FILTER_PHASE_APPLY;
+            } else if (++gDeckEdit.inputLock <= 11) {
+                ListFilter_DrawCursorFlash(gListSortOptionAnims[gDeckEdit.sortSel]);
             }
             break;
-        case 2:
+        case LIST_FILTER_PHASE_APPLY:
             break;
         }
     }
-    if (FM.transitionState == 2) {
-        FM.f1C48 = 4;
-        FM.dirty = 3;
+    if (gDeckEdit.fade.state == FADE_STATE_FADED_OUT) {
+        gDeckEdit.exitMode = DECKEDIT_EXIT_LIST_VIEW;
+        gDeckEdit.commandMenu.anim = CMDMENU_REFRESH;
         return 1;
     }
-    if (FM.transitionState == 3) {
+    if (gDeckEdit.fade.state == FADE_STATE_FADED_IN) {
         REG_BLDCNT = 0x3F44;
         SetBldAlpha(0x10);
         REG_DISPCNT |= 0x400;
-        FM.transitionState = 0;
-        FM.blendStep = -1;
-        FM.fading = 1;
+        gDeckEdit.fade.state = FADE_STATE_IDLE;
+        gDeckEdit.panelAlphaStep = -1;
+        gDeckEdit.panelShown = 1;
     }
-    if (FM.blendStep != 0) {
-        FM.blend += FM.blendStep;
-        if (FM.blend == 8)
-            FM.blendStep = 0;
-        if (FM.blend == 16) {
+    if (gDeckEdit.panelAlphaStep != 0) {
+        gDeckEdit.panelAlpha += gDeckEdit.panelAlphaStep;
+        if (gDeckEdit.panelAlpha == 8)
+            gDeckEdit.panelAlphaStep = 0;
+        if (gDeckEdit.panelAlpha == 16) {
             REG_DISPCNT &= 0xFBFF;
-            FadeStart(0, 0x180, 0, FM.transition);
-            FM.blendStep = 0;
-            FM.fading = 0;
+            FadeStart(0, 0x180, 0, &gDeckEdit.fade);
+            gDeckEdit.panelAlphaStep = 0;
+            gDeckEdit.panelShown = 0;
         }
-        SetBldAlpha(FM.blend);
+        SetBldAlpha(gDeckEdit.panelAlpha);
     }
-    AnimBlockTick(FM.objs);
-    AnimBlockDraw(FM.objs, 0, 0, 0, 0, 0, 3, 0, 0, &gDeckEdit);
-    OamListFlush(&gDeckEdit);
-    OamListClear(&gDeckEdit);
+    AnimBlockTick((u8 *)&gDeckEdit.anims);
+    AnimBlockDraw((u8 *)&gDeckEdit.anims, 0, 0, 0, 0, 0, 3, 0, 0, (u32)&gDeckEdit.oamList);
+    OamListFlush(&gDeckEdit.oamList);
+    OamListClear((u8 *)&gDeckEdit.oamList);
     return 0;
 }

@@ -1,279 +1,299 @@
-#include "global.h"
-#include "gba.h"
-
 /*
- * Booster-pack scene helpers ("Get a pack" debug entry 0x08063AF8), card-key
- * lookup and the duelist-progress checks used for unlocks.
- * See wiki/functions/code-08063a28.md
+ * booster_get_pack (0x08063A28-0x08064AE8): the Get-a-pack scene runner and pack list, the New Game
+ * starter-deck choice, and the save progress predicates behind the opponent and pack unlocks
+ * (wiki/functions/booster-get-pack-c.md).
+ *
+ * CB_GetPack and GetRewardPack run the gGetPackSteps table indexed by gMain.seqIndex1 (enum GetPackStep
+ * in booster.h): the list, generation and reveal steps live in booster_pack.c and card_canvas.c, while
+ * GetPack_RestoreScene and GetPack_FadeInAndResume here rebuild the reveal scene around the step-7 card
+ * detail. The pack list and the starter-deck screen (StarterDeckSelect_Run, New Game's "select an Initial
+ * Deck") share the gSceneWork area (struct PackListWork and struct StarterDeckSelectWork in booster.h) and
+ * the PackList_* video and drawing helpers. The rest of the unit is read-only checks over the save mirror:
+ * IsCampaignLevel2Unlocked to IsCampaignLevel5Unlocked test the duel records of one league,
+ * IsOpponentUnlocked and IsPackUnlocked gate the campaign opponents and the packs, GetCampaignLevel folds
+ * the league checks into a tier, and IsCardCollectionComplete tests for a full collection.
  */
+#include "global.h"
+#include "gba.h"                    /* REG_DISPCNT, REG_BG0CNT to REG_BG3CNT, REG_IE, REG_IME, REG_MOSAIC,
+                                     * REG_BLDCNT, REG_BLDALPHA, A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
+#include "card_data.h"              /* CARD_NUMBER_ALT_ART; gCardNumberToId is read through CARD_ID_OF below */
+#include "constants/game.h"         /* enum DuelistId, enum BoosterPackId */
+#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
+#include "main.h"                   /* struct Main gMain: newKeys, vblankFlags, vblankCallback, seqIndex1,
+                                     * seqState1, seqState2, rewardPack */
+#include "sprite.h"                 /* AddSprite */
 
-/* Per-duelist record, 4 bytes at save+0x20D0 + idx*4 (hypothesis: idx is a duelist/opponent index). */
-struct DuelistRec {
-    u16 a : 11;
-    u16 rest : 5;
-    u16 hi;
-};
-/* Per-card collection record, 4 bytes at save+8 + id*4 (see wiki/functions/code-0807717c.md). */
-struct CardCount {
-    u16 count : 10;                 /* copies owned */
-    u16 rest : 6;
-    u16 unkA;
-};
-struct CardBits {                   /* byte view of +1 of the record */
-    u8 unk0;
-    u8 pad : 2;
-    u8 n1 : 2;
-    u8 n2 : 2;
-    u8 n3 : 2;
-    u16 unkA;
-};
-union CardEntry {
-    struct CardCount c;
-    struct CardBits b;
+/* ---- BEGIN header subset (pre-H0) ----
+ * The parts of save.h and sound.h this unit uses, with the headers' names and layouts. include/save.h and
+ * include/sound.h still hold the legacy headers until the header switch (H0,
+ * build/readability/HEADERS.md): the legacy sound.h does not declare PlaySE, and save.h's struct
+ * DuelRecord declares the win count in a u32 container where the checks below load it from the low
+ * halfword, so the record keeps the u16 view. After H0, replace the block (BEGIN to END) with the include
+ * lines of save.h and sound.h, in that order (build/readability/issues/booster_get_pack.md). */
+
+/* One card of the collection, gSaveData.trunk[cardId] (4 bytes per card id): the trunk copies plus the
+ * copies placed in the three saved decks. */
+struct TrunkEntry {
+    u16 count:10;                   /* +0x0 bits 0-9: copies in the trunk */
+    u16 deckCopies:2;               /* +0x0 bits 10-11: copies in the saved Deck */
+    u16 sideCopies:2;               /* +0x0 bits 12-13: copies in the saved Side Deck */
+    u16 fusionCopies:2;             /* +0x0 bits 14-15: copies in the saved Fusion Deck */
+    u8 flag0:1;                     /* +0x2 bit 0: no reader found */
+    u8 passwordUsed:1;              /* +0x2 bit 1: this card's password was redeemed */
+    u8 unk2_2:6;                    /* +0x2 bits 2-7 */
+    u8 unk3;                        /* +0x3 */
 };
 
-struct Save {
-    u8 pad0[8];
-    union CardEntry cards[0x800];   /* +0x0008 */
-    u8 pad2008[0xC8];
-    struct DuelistRec rec[0x20];    /* +0x20D0 */
-    u8 pad2150[0x12];
-    u8 unk2162;                     /* +0x2162 saturating counter */
+/* Win/loss/draw counts against one opponent, gSaveData.duelRecords[DuelistId] (4 bytes). The canonical
+ * struct DuelRecord splits one u32 as wins:11, losses:11, draws:10; this view keeps the same fields in
+ * u16 containers (see the block comment above). */
+struct DuelRecord {
+    u16 wins:11;                    /* bits 0-10: duels won against this opponent */
+    u16 lossesLow:5;                /* bits 11-15: low half of losses */
+    u16 unk2;                       /* +0x02: high half of losses and the draws */
 };
-extern struct Save gSaveData;
 
-/* Pack scene state at 0x02015160. */
-struct PackScene {
-    u8 pad0[0x102];
-    u16 ids[5];                     /* +0x102 */
-    u8 bytes[5];                    /* +0x10C */
+/* The save image fields this unit reads. */
+struct SaveData {
+    u8 unk0[8];                             /* +0x0000 */
+    struct TrunkEntry trunk[0x800];         /* +0x0008: the collection, indexed by card id */
+    u8 unk2008[0x20D0 - 0x2008];
+    struct DuelRecord duelRecords[32];      /* +0x20D0: indexed by enum DuelistId */
+    u8 unk2150[0x2162 - 0x2150];
+    u8 championshipWins;                    /* +0x2162: National Championship titles (saturating) */
+    u8 unk2163[0x2170 - 0x2163];
 };
-extern struct PackScene gPackOpenWork;
 
-extern const u16 gCardNumberToId[];
+extern struct SaveData gSaveData;           /* 0x02011C20 */
+
+/* Reset gSaveData to a new game (save.h). */
+void InitSaveData(void);
+/* Write gSaveData to SRAM and verify it (save.h). */
+void SaveGame(void);
+
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(u32 seId);
+/* ---- END header subset ---- */
+
+#include "booster.h"                /* struct PackOpenWork, PackListWork, StarterDeckSelectWork, PackInfo,
+                                     * gPackOpenWork, gPackInfo, and the prototypes of the functions
+                                     * defined here (plus GetPack_InitScene and the card_canvas.c helpers) */
+
+/* gSceneWork (0x02020310) under the pack-list view; the starter-deck screen uses the second view of the
+ * same area. */
+extern struct PackListWork gSceneWork;
+extern struct StarterDeckSelectWork gStarterDeckSelectWork __asm__("gSceneWork");
+
+/* ---- ROM data used only here ---- */
+
+extern u16 (*const gGetPackSteps[])(void);          /* 0x081A572C: the Get-a-pack steps (enum GetPackStep) */
+extern const u16 gUnlockablePackIds[];              /* 0x081A5758: the 27 unlockable packs, in list order */
+/* = gCardNumberToId[CARD_TOON_WORLD] (card_data.h): IsOpponentUnlocked reads Toon World's card ID through
+ * its own symbol, as the ROM loads it. */
 extern const u16 gUnk_08624568[];
+/* = gCardIdToNumber[821], the padding entry (card_data.h): IsCardCollectionComplete loads it once as its
+ * gate value, as the ROM does. */
+extern const u16 gUnk_0862311E[];
+extern const u8 gStarterDeckBgImage[];              /* 0x0863CF3C */
+extern const u8 gStarterDeckBoxBlackImage[];        /* 0x0863D12C */
+extern const u8 gStarterDeckBoxRedImage[];          /* 0x0863E39C */
+extern const u8 gStarterDeckBoxGreenImage[];        /* 0x0863F54C */
+extern const u8 gHandCursorPal[];                   /* 0x0867793C */
+extern const u8 gHandCursorGfx[];                   /* 0x0867797C */
+/* = &gSceneWork.packCount: PackList_DrawCovers loads the count through its own symbol, as the ROM does
+ * (see the local views below). */
+extern u16 gUnk_0202037C;                           /* 0x0202037C */
+/* BG tilemap buffer in IWRAM, 32 columns (= &gMain.bgMapBuffer[3][0]; other units read it by this name). */
+extern u16 gUnk_03001C5C[];                         /* 0x03001C5C */
+/* Tile map at the start of gMain.bgMapBuffer, written by PackList_DrawCoverTiles. */
+extern u16 gUnk_0300045C[];                         /* 0x0300045C */
+
+/* The interrupt vector table at the start of IWRAM; entry 1 is the HBlank handler (cleared while the
+ * interrupt registers are rewritten, as in booster_pack.c). */
+struct IntrTable {
+    u32 unk0;                           /* +0x00 */
+    void (*hblankCallback)(void);       /* +0x04 */
+};
+extern struct IntrTable IntrTable;      /* 0x03000000 */
+
+/* ---- Local views kept for matching (build/readability/issues/booster_get_pack.md) ---- */
+
+/* The pack-list tile maps of gMain as one view starting at bgMapBuffer[1]: PackList_DrawCovers derives
+ * the second clear address from the first map pointer, which is the form the matched code takes. */
+struct PackMainMaps {
+    u8 unk0[0xC1C];
+    u16 maps[4][0x400];                 /* +0x0C1C: gMain.bgMapBuffer[1] to [4] */
+    u8 unk2C1C[0x442A - 0x2C1C];
+    u16 bgHofs1;                        /* +0x442A: gMain.bgHofs[1] */
+};
+extern struct PackMainMaps packMainMaps __asm__("gMain");
+
+/* Matching: the ROM reloads the table base on every lookup, so gCardNumberToId is read through its
+ * address instead of the symbol (which the compiler would hoist out of the loop). */
+#define CARD_ID_OF(number)  (((const u16 *)0x08623DF4)[(number)])
+
+/* bg.h prototypes LoadBgImageMap1 with four parameters; StarterDeckSelect_DrawBackground calls it with
+ * three (no image pointer), so the declaration stays unprototyped here. */
+void LoadBgImageMap1();
+void ResetVideo(void);                  /* bg.h */
+void ResetBgScroll(void);
+
+/* palette.h declares the fades returning u32; the two callers here test the result as a u16, so the
+ * prototypes stay u16 (the operands are narrowed at the call). */
+void SetBrightnessBlack(void);          /* palette.h */
+u16 FadeFromBlack(u32 step);
+u16 FadeToBlack(u32 step);
+
+/* libgcc signed modulo, called by the %= in PackList_DrawCovers. */
+extern s32 __modsi3(s32 a, s32 b);
+
+/* The unlock predicates defined below, called before their definitions. */
 u16 IsCampaignLevel2Unlocked(void);
 u16 IsCampaignLevel3Unlocked(void);
 u16 IsCampaignLevel4Unlocked(void);
 u16 IsCampaignLevel5Unlocked(void);
 u16 IsCardCollectionComplete(void);
-extern const u16 gUnk_0862311E[];
-/* gMain (0x03000040): step index of the running sequence at +0x4859, sub-counters at +0x485A/+0x485B. */
-struct Main {
-    u8 pad0[6];
-    u16 keysNew;                    /* +0x06 newly pressed keys (hypothesis) */
-    u8 pad8[0x40E - 8];
-    u16 vblankFlags;                /* +0x40E */
-    u8 pad410[4];
-    u32 unk414;                     /* +0x414 */
-    u8 pad418[0x442A - 0x418];
-    u16 unk442A;                    /* +0x442A */
-    u8 pad442C[0x4859 - 0x442C];
-    u8 step;                        /* +0x4859 */
-    u8 sub1;                        /* +0x485A */
-    u8 sub2;                        /* +0x485B */
-    u8 pad485C[0x4876 - 0x485C];
-    u16 unk4876;                    /* +0x4876 */
-};
-extern struct Main gMain;
-extern u16 (*const gGetPackSteps[])(void);
-/* Cursor/scroll state at 0x02020310 (hypothesis: menu cursor slide animation). */
-struct Slide {
-    s32 state;                      /* +0x00 */
-    s32 unk4;                       /* +0x04 */
-    s32 target;                     /* +0x08 */
-    s32 current;                    /* +0x0C */
-    s32 frames;                     /* +0x10 */
-    u8 pad14[4];
-    u8 flags;                       /* +0x18 */
-    u8 pad19[0x2C - 0x19];
-    u16 list[0x20];                 /* +0x2C (0x0202033C) */
-};
-extern struct Slide gSceneWork;
-/* Pack list state at 0x0202033C: row indices of the pack info table plus a count at +0x40. */
-extern const u8 gPackListPal[], gPackListBgTiles[], gUnk_0863CEBC[], gUnk_0863CEFC[];
-extern u16 gUnk_0202037C;
-extern u16 gUnk_0202033C[];       /* count, list of u16 at -0x40 */
-struct PackInfo {
-    u16 id;
-    u8 pad2[2];
-    const u8 *image;                /* +0x04 cover art */
-    u8 name[0x40];
-};
-extern struct PackInfo gPackInfo[];
-/* Start of IWRAM (hypothesis: interrupt/vblank state). */
-struct Irq {
-    u32 unk0;
-    u32 unk4;
-};
-extern struct Irq IntrTable;
-extern u16 gUnk_03001C5C[];
-void LoadBgImageMap1();
-void StarterDeckSelect_DrawBackground(s32 a, s32 b, u16 c, const void *src);
-void PackList_InitVideo(void);
-void StarterDeckSelect_ClearWork(void);
-u16 StarterDeckSelect_Init(void);
-u16 StarterDeckSelect_HandleInput(void);
-u16 StarterDeckSelect_FadeOut(void);
-void InitSaveData(void);
-void BuildStarterDeck(u32 a);
-void SaveGame(void);
-void StarterDeckSelect_DrawCursor(void);
-extern const u8 gStarterDeckBgImage[], gStarterDeckBoxBlackImage[], gStarterDeckBoxRedImage[], gStarterDeckBoxGreenImage[], gHandCursorPal[], gHandCursorGfx[];
-void ResetVideo(void);
-void SetBrightnessBlack(void);
-void ResetBgScroll(void);
-void AddSprite(u32 a, u32 b, u32 c);
-u16 IsPackUnlocked(u32 a);
-extern const u16 gUnlockablePackIds[];
-void PackList_AddPack(u32 a);
-u32 GetPack_InitScene(void);
-void PackList_LoadCoverGfx(u16 a, u16 b);
-void PackList_DrawCoverTiles(u32 a, u32 b, u32 c);
-extern s32 __modsi3(s32 a, s32 b);
-void GetPack_ScrollBg(void);
-void GetPack_DrawCardSprites(void);
-u16 FadeFromBlack(u32 a);
-void PlaySE(u32 id);
-u16 FadeToBlack(u32 a);
-void GetPack_DrawCardRow(u32 idx, u32 key);
+u16 IsPackUnlocked(u32 packId);
 
-/* BEGIN GetPack_RestoreScene */
-/* Map the 5 card ids in the pack scene to their base-card keys and register them. */
+/* Card number to base-card key: alt-art numbers (CARD_NUMBER_ALT_ART + n) take the next ID after card n,
+ * and 0xFFFF (no card) is key 0. Static inline, as in the matched code. */
 static inline int IdToKey(u16 id)
 {
     int key;
     if (id == 0xFFFF)
         key = 0;
-    else if (id <= 0x7CF)
-        key = ((const u16 *)0x08623DF4)[id & 0x7FF];
+    else if (id <= CARD_NUMBER_ALT_ART - 1)
+        key = CARD_ID_OF(id & 0x7FF);
     else
-        key = ((const u16 *)0x08623DF4)[(id - 0x7D0) & 0x7FF] + 1;
+        key = CARD_ID_OF((id - CARD_NUMBER_ALT_ART) & 0x7FF) + 1;
     return key;
 }
+
+/* Step 8 (GETPACK_STEP_RESTORE_SCENE): rebuild the reveal scene with every card settled, after the card
+ * detail. Maps the 5 card numbers of the pack to their base-card keys and draws each row. */
 u32 GetPack_RestoreScene(void) {
     s32 i;
     GetPack_InitScene();
     for (i = 0; i <= 4; i++) {
-        gPackOpenWork.bytes[i] = 0x18;
-        GetPack_DrawCardRow(i, (u16)IdToKey(gPackOpenWork.ids[i]));
+        gPackOpenWork.revealFrame[i] = PACK_REVEAL_DONE;
+        GetPack_DrawCardRow(i, (u16)IdToKey(gPackOpenWork.cardNumbers[i]));
     }
     return 1;
 }
-/* END GetPack_RestoreScene */
-/* BEGIN GetPack_FadeInAndResume */
-/* Pack scene init step: enable BG/OBJ layers in DISPCNT, run the two setup routines, step back by 5 if 0x08075AE4(4) succeeds. */
+
+/* Step 9 (GETPACK_STEP_RESUME): turn all layers on, scroll and draw the cards, and once the fade-in is
+ * done go back 5 steps to GETPACK_STEP_INPUT. Always returns 0. */
 u32 GetPack_FadeInAndResume(void) {
     REG_DISPCNT |= 0x1F00;
     GetPack_ScrollBg();
     GetPack_DrawCardSprites();
     if (FadeFromBlack(4))
-        gMain.step -= 5;
+        gMain.seqIndex1 -= 5;
     return 0;
 }
-/* END GetPack_FadeInAndResume */
-/* BEGIN CB_GetPack */
-/* "Get a pack" debug runner: call step gGetPackSteps[gMain.step]; when it returns non-zero go to the next step. Returns 1 at the end of the table. */
+
+/* The "Get a pack" runner behind the debug-menu entry: run gGetPackSteps[gMain.seqIndex1]; a step that
+ * returns non-zero advances the sequence. Returns 1 at the NULL end of the table. */
 u32 CB_GetPack(void) {
-    if (gGetPackSteps[gMain.step] != 0) {
-        if (gGetPackSteps[gMain.step]()) {
-            gMain.step++;
-            gMain.sub1 = 0;
-            gMain.sub2 = 0;
+    if (gGetPackSteps[gMain.seqIndex1] != 0) {
+        if (gGetPackSteps[gMain.seqIndex1]()) {
+            gMain.seqIndex1++;
+            gMain.seqState1 = 0;
+            gMain.seqState2 = 0;
         }
         return 0;
     }
     return 1;
 }
-/* END CB_GetPack */
-/* BEGIN GetRewardPack */
-/* Same runner, but first stores `arg` in gMain+0x4876. */
-u32 GetRewardPack(u32 arg) {
-    gMain.unk4876 = arg;
-    if (gGetPackSteps[gMain.step] != 0) {
-        if (gGetPackSteps[gMain.step]()) {
-            gMain.step++;
-            gMain.sub1 = 0;
-            gMain.sub2 = 0;
+
+/* As CB_GetPack, but first stores the given pack in gMain.rewardPack (a reward pack skips the list). */
+u32 GetRewardPack(u32 packId) {
+    gMain.rewardPack = packId;
+    if (gGetPackSteps[gMain.seqIndex1] != 0) {
+        if (gGetPackSteps[gMain.seqIndex1]()) {
+            gMain.seqIndex1++;
+            gMain.seqState1 = 0;
+            gMain.seqState2 = 0;
         }
         return 0;
     }
     return 1;
 }
-/* END GetRewardPack */
-/* BEGIN GetPack_UnusedReturnTrue */
+
+/* Returns 1. No callers. */
 u32 GetPack_UnusedReturnTrue(void) {
     return 1;
 }
-/* END GetPack_UnusedReturnTrue */
-/* BEGIN IsCampaignLevel2Unlocked */
-/* 1 if records 1..5 all have a > 1 (hypothesis: the 5 opponents of the first league beaten twice). */
+
+/* 1 if the duel records of the first league (opponents 1 to 5) all have more than 1 win. The signed
+ * copies are the matched form (an 11-bit bitfield compares unsigned otherwise). */
 u16 IsCampaignLevel2Unlocked(void) {
-    struct Save *s = &gSaveData;
-    s32 a;
-    a = s->rec[1].a; if (a <= 1) return 0;
-    a = s->rec[2].a; if (a <= 1) return 0;
-    a = s->rec[3].a; if (a <= 1) return 0;
-    a = s->rec[4].a; if (a <= 1) return 0;
-    a = s->rec[5].a; if (a <= 1) return 0;
+    struct SaveData *s = &gSaveData;
+    s32 wins;
+    wins = s->duelRecords[1].wins; if (wins <= 1) return 0;
+    wins = s->duelRecords[2].wins; if (wins <= 1) return 0;
+    wins = s->duelRecords[3].wins; if (wins <= 1) return 0;
+    wins = s->duelRecords[4].wins; if (wins <= 1) return 0;
+    wins = s->duelRecords[5].wins; if (wins <= 1) return 0;
     return 1;
 }
-/* END IsCampaignLevel2Unlocked */
-/* BEGIN IsCampaignLevel3Unlocked */
-/* Records 6..10 all > 2. */
+
+/* Records 6 to 10 all have more than 2 wins. */
 u16 IsCampaignLevel3Unlocked(void) {
-    struct Save *s = &gSaveData;
-    s32 a;
-    a = s->rec[6].a; if (a <= 2) return 0;
-    a = s->rec[7].a; if (a <= 2) return 0;
-    a = s->rec[8].a; if (a <= 2) return 0;
-    a = s->rec[9].a; if (a <= 2) return 0;
-    a = s->rec[10].a; if (a <= 2) return 0;
+    struct SaveData *s = &gSaveData;
+    s32 wins;
+    wins = s->duelRecords[6].wins; if (wins <= 2) return 0;
+    wins = s->duelRecords[7].wins; if (wins <= 2) return 0;
+    wins = s->duelRecords[8].wins; if (wins <= 2) return 0;
+    wins = s->duelRecords[9].wins; if (wins <= 2) return 0;
+    wins = s->duelRecords[10].wins; if (wins <= 2) return 0;
     return 1;
 }
-/* END IsCampaignLevel3Unlocked */
-/* BEGIN IsCampaignLevel4Unlocked */
-/* Records 11..15 all > 3. */
+
+/* Records 11 to 15 all have more than 3 wins. */
 u16 IsCampaignLevel4Unlocked(void) {
-    struct Save *s = &gSaveData;
-    s32 a;
-    a = s->rec[11].a; if (a <= 3) return 0;
-    a = s->rec[12].a; if (a <= 3) return 0;
-    a = s->rec[13].a; if (a <= 3) return 0;
-    a = s->rec[14].a; if (a <= 3) return 0;
-    a = s->rec[15].a; if (a <= 3) return 0;
+    struct SaveData *s = &gSaveData;
+    s32 wins;
+    wins = s->duelRecords[11].wins; if (wins <= 3) return 0;
+    wins = s->duelRecords[12].wins; if (wins <= 3) return 0;
+    wins = s->duelRecords[13].wins; if (wins <= 3) return 0;
+    wins = s->duelRecords[14].wins; if (wins <= 3) return 0;
+    wins = s->duelRecords[15].wins; if (wins <= 3) return 0;
     return 1;
 }
-/* END IsCampaignLevel4Unlocked */
-/* BEGIN IsCampaignLevel5Unlocked */
-/* Records 16..20 all > 4. */
+
+/* Records 16 to 20 all have more than 4 wins. */
 u16 IsCampaignLevel5Unlocked(void) {
-    struct Save *s = &gSaveData;
-    s32 a;
-    a = s->rec[16].a; if (a <= 4) return 0;
-    a = s->rec[17].a; if (a <= 4) return 0;
-    a = s->rec[18].a; if (a <= 4) return 0;
-    a = s->rec[19].a; if (a <= 4) return 0;
-    a = s->rec[20].a; if (a <= 4) return 0;
+    struct SaveData *s = &gSaveData;
+    s32 wins;
+    wins = s->duelRecords[16].wins; if (wins <= 4) return 0;
+    wins = s->duelRecords[17].wins; if (wins <= 4) return 0;
+    wins = s->duelRecords[18].wins; if (wins <= 4) return 0;
+    wins = s->duelRecords[19].wins; if (wins <= 4) return 0;
+    wins = s->duelRecords[20].wins; if (wins <= 4) return 0;
     return 1;
 }
-/* END IsCampaignLevel5Unlocked */
-/* BEGIN IsCardCollectionComplete */
+
+/* 1 if every counted card is owned: over card ids 1 to 0x334 (820 cards), an id counts when the gate
+ * value is a non-token number, and owned means trunk copies, Deck copies or Side Deck copies; a copy
+ * only in the Fusion Deck does not count. */
 u16 IsCardCollectionComplete(void)
 {
     s32 have = 0;
-    /* FAKEMATCH: retain ROM counter registers and rematerialized loop bound. */
+    /* Matching: retain ROM counter registers and rematerialized loop bound. */
     register s32 total __asm__("r4") = 0;
     register s32 id __asm__("r3") = 1;
     u16 key = gUnk_0862311E[0];
     u32 limit = 0x77F;
-    struct Save *s = &gSaveData;
-    union CardEntry *e = &s->cards[1];
+    struct SaveData *s = &gSaveData;
+    struct TrunkEntry *e = &s->trunk[1];
     register s32 bound __asm__("r0");
     do {
         if (key <= limit) {
             u32 v;
             total++;
+            /* Matching: the ROM tests the fields with shifts, not bitfield masks: count != 0, then the
+             * Deck and Side Deck copies out of byte +1. */
             v = *(u16 *)e;
             if ((v << 22) != 0) {
                 have++;
@@ -291,36 +311,36 @@ u16 IsCardCollectionComplete(void)
         return 1;
     return 0;
 }
-/* END IsCardCollectionComplete */
-/* BEGIN IsOpponentUnlocked */
-/* Achievement/unlock condition check for entry `id` (1..24); returns 1 when fulfilled. */
+
+/* Unlock condition for opponent `id` (enum DuelistId, 1 to 24); returns 1 when fulfilled. */
 u16 IsOpponentUnlocked(u16 id) {
     switch (id) {
-    case 6:
-    case 7:
-    case 8:
-    case 9:
-    case 10:
+    case DUELIST_REX:
+    case DUELIST_ESPA_ROBA:
+    case DUELIST_WEEVIL:
+    case DUELIST_MAKO:
+    case DUELIST_MAI:
         return IsCampaignLevel2Unlocked();
-    case 11:
-    case 12:
-    case 13:
-    case 14:
-    case 15:
+    case DUELIST_RARE_HUNTER:
+    case DUELIST_ARKANA:
+    case DUELIST_STRINGS:
+    case DUELIST_UMBRA_LUMIS:
+    case DUELIST_MARIK:
         return IsCampaignLevel3Unlocked();
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-    case 20:
+    case DUELIST_KAIBA:
+    case DUELIST_ISHIZU:
+    case DUELIST_SHADI:
+    case DUELIST_YAMI_BAKURA:
+    case DUELIST_YAMI_YUGI:
         return IsCampaignLevel4Unlocked();
-    case 22: {
+    case DUELIST_SIMON: {
         u32 r = 0;
-        if (gSaveData.unk2162 > 1)
+        if (gSaveData.championshipWins > 1)
             r = 1;
         return r;
     }
-    case 23: {
+    case DUELIST_PEGASUS: {
+        /* Toon World owned, the same trunk test as IsCardCollectionComplete. */
         u8 *base = (u8 *)&gSaveData;
         u8 *p = base + gUnk_08624568[0] * 4;
         u32 v = *(u16 *)(p + 8);
@@ -332,23 +352,22 @@ u16 IsOpponentUnlocked(u16 id) {
             return 1;
         return 0;
     }
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
+    case DUELIST_YUGI:
+    case DUELIST_TEA:
+    case DUELIST_JOEY:
+    case DUELIST_TRISTAN:
+    case DUELIST_BAKURA:
         return 1;
-    case 24:
+    case DUELIST_GRANDPA:
         return IsCardCollectionComplete();
-    case 21:
+    case DUELIST_DUEL_COMPUTER:
         return IsCampaignLevel5Unlocked();
     default:
         return 0;
     }
 }
-/* END IsOpponentUnlocked */
-/* BEGIN GetCampaignLevel */
-/* Highest fulfilled tier (1..5) of the duelist-progress checks. */
+
+/* The campaign tier (1 to 5): the highest of the league checks that passes. */
 u32 GetCampaignLevel(void) {
     u32 tier = 1;
     if (IsCampaignLevel2Unlocked())
@@ -361,152 +380,154 @@ u32 GetCampaignLevel(void) {
         tier = 5;
     return tier;
 }
-/* END GetCampaignLevel */
-/* Progress predicates for the booster-pack ids; save record values are compared as signed integers. */
-u16 IsPackUnlocked(u32 arg)
+
+/* Whether pack `packId` (enum BoosterPackId) is unlocked, from the duel records: a league predicate, one
+ * league's wins summed over 9, every win count of a league over 9, one record over 19, or Simon's record
+ * nonzero. The case bodies stay in ROM order (the switch layout follows the source order). */
+u16 IsPackUnlocked(u32 packId)
 {
-    u16 id = arg;
+    u16 id = packId;
     switch (id) {
-    case 1:
-    case 2:
-    case 3:
+    case PACK_VOL_1:
+    case PACK_VOL_2:
+    case PACK_VOL_3:
         return 1;
-    case 0x1F6:
+    case PACK_EXPERT_2:
         return IsCampaignLevel2Unlocked();
-    case 0x1FB:
+    case PACK_EXPERT_4:
         return IsCampaignLevel3Unlocked();
-    case 0x21:
+    case PACK_PREMIUM_3:
         return IsCampaignLevel4Unlocked();
-    case 0x1F5: {
+    case PACK_EXPERT_1: {
         int result = 0;
-        struct Save *s = &gSaveData;
-        int sum = s->rec[1].a + s->rec[2].a + s->rec[3].a + s->rec[4].a + s->rec[5].a;
+        struct SaveData *s = &gSaveData;
+        int sum = s->duelRecords[1].wins + s->duelRecords[2].wins + s->duelRecords[3].wins + s->duelRecords[4].wins + s->duelRecords[5].wins;
         if (sum > 9)
             result = 1;
         return result;
     }
-    case 4: {
+    case PACK_VOL_4: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[1].a) > 9 && (value = s->rec[2].a) > 9 && (value = s->rec[3].a) > 9 && (value = s->rec[4].a) > 9 && (value = s->rec[5].a) > 9)
+        if ((value = s->duelRecords[1].wins) > 9 && (value = s->duelRecords[2].wins) > 9 && (value = s->duelRecords[3].wins) > 9 && (value = s->duelRecords[4].wins) > 9 && (value = s->duelRecords[5].wins) > 9)
             result = 1;
         return result;
     }
-    case 5: {
+    case PACK_VOL_5: {
         int result = 0;
-        struct Save *s = &gSaveData;
-        int sum = s->rec[6].a + s->rec[7].a + s->rec[8].a + s->rec[9].a + s->rec[10].a;
+        struct SaveData *s = &gSaveData;
+        int sum = s->duelRecords[6].wins + s->duelRecords[7].wins + s->duelRecords[8].wins + s->duelRecords[9].wins + s->duelRecords[10].wins;
         if (sum > 9)
             result = 1;
         return result;
     }
-    case 6: {
+    case PACK_VOL_6: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[6].a) > 9 && (value = s->rec[7].a) > 9 && (value = s->rec[8].a) > 9 && (value = s->rec[9].a) > 9 && (value = s->rec[10].a) > 9)
+        if ((value = s->duelRecords[6].wins) > 9 && (value = s->duelRecords[7].wins) > 9 && (value = s->duelRecords[8].wins) > 9 && (value = s->duelRecords[9].wins) > 9 && (value = s->duelRecords[10].wins) > 9)
             result = 1;
         return result;
     }
-    case 0x15: {
+    case PACK_MAGIC_RULER: {
         int result = 0;
-        struct Save *s = &gSaveData;
-        int sum = s->rec[11].a + s->rec[12].a + s->rec[13].a + s->rec[14].a + s->rec[15].a;
+        struct SaveData *s = &gSaveData;
+        int sum = s->duelRecords[11].wins + s->duelRecords[12].wins + s->duelRecords[13].wins + s->duelRecords[14].wins + s->duelRecords[15].wins;
         if (sum > 9)
             result = 1;
         return result;
     }
-    case 0x29: {
+    case PACK_CELEMONY: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[11].a) > 9 && (value = s->rec[12].a) > 9 && (value = s->rec[13].a) > 9 && (value = s->rec[14].a) > 9 && (value = s->rec[15].a) > 9)
+        if ((value = s->duelRecords[11].wins) > 9 && (value = s->duelRecords[12].wins) > 9 && (value = s->duelRecords[13].wins) > 9 && (value = s->duelRecords[14].wins) > 9 && (value = s->duelRecords[15].wins) > 9)
             result = 1;
         return result;
     }
-    case 0x1F8: {
+    case PACK_DUELIST_PACK: {
         int result = 0;
-        struct Save *s = &gSaveData;
-        int sum = s->rec[16].a + s->rec[17].a + s->rec[18].a + s->rec[19].a + s->rec[20].a;
+        struct SaveData *s = &gSaveData;
+        int sum = s->duelRecords[16].wins + s->duelRecords[17].wins + s->duelRecords[18].wins + s->duelRecords[19].wins + s->duelRecords[20].wins;
         if (sum > 9)
             result = 1;
         return result;
     }
-    case 0x1F9: {
+    case PACK_THE_FINAL_DUELIST: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[16].a) > 9 && (value = s->rec[17].a) > 9 && (value = s->rec[18].a) > 9 && (value = s->rec[19].a) > 9 && (value = s->rec[20].a) > 9)
+        if ((value = s->duelRecords[16].wins) > 9 && (value = s->duelRecords[17].wins) > 9 && (value = s->duelRecords[18].wins) > 9 && (value = s->duelRecords[19].wins) > 9 && (value = s->duelRecords[20].wins) > 9)
             result = 1;
         return result;
     }
-    case 11: {
+    case PACK_LOB_EWD: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[1].a) > 19)
+        if ((value = s->duelRecords[1].wins) > 19)
             result = 1;
         return result;
     }
-    case 12: {
+    case PACK_PHANTOM_OF_G: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[3].a) > 19)
+        if ((value = s->duelRecords[3].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x1F7: {
+    case PACK_EXPERT_3: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[9].a) > 19)
+        if ((value = s->duelRecords[9].wins) > 19)
             result = 1;
         return result;
     }
-    case 7: {
+    case PACK_VOL_7: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[10].a) > 19)
+        if ((value = s->duelRecords[10].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x1FC: {
+    case PACK_EXPERT_5: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[14].a) > 19)
+        if ((value = s->duelRecords[14].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x16: {
+    case PACK_PHARAOHS_SERVANT: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[15].a) > 19)
+        if ((value = s->duelRecords[15].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x1FA: {
+    case PACK_RARE_SELECTIONS: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[16].a) > 19)
+        if ((value = s->duelRecords[16].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x17: {
+    case PACK_CURSE_OF_ANUBIS: {
         int result = 0;
-        struct Save *s = &gSaveData;
+        struct SaveData *s = &gSaveData;
         s32 value;
-        if ((value = s->rec[20].a) > 19)
+        if ((value = s->duelRecords[20].wins) > 19)
             result = 1;
         return result;
     }
-    case 0x1FD: {
-        int value = gSaveData.rec[22].a;
+    case PACK_LIMITED_COLLECTION: {
+        int value = gSaveData.duelRecords[DUELIST_SIMON].wins;
         if (value != 0)
             value = 1;
         return value;
@@ -516,8 +537,7 @@ u16 IsPackUnlocked(u32 arg)
     }
 }
 
-/* BEGIN PackList_AddUnlockedPacks */
-/* Run the unlock check for each of the 27 entries in gUnlockablePackIds and apply the ones that pass. */
+/* Run the unlock check for each of the 27 entries in gUnlockablePackIds and add the ones that pass. */
 void PackList_AddUnlockedPacks(void) {
     u32 i;
     const u16 *p;
@@ -526,9 +546,10 @@ void PackList_AddUnlockedPacks(void) {
             PackList_AddPack(*p);
     }
 }
-/* END PackList_AddUnlockedPacks */
-/* BEGIN PackList_InitVideo */
-/* Scene init: video registers, IRQ enables (HBLANK off), clear the vblank flag. */
+
+/* Video setup shared by the pack list and the starter-deck screen: mode 0 with the BG map assignments
+ * of the list, then blank the screen, reset the scrolls and take the HBlank interrupt off (twice, around
+ * clearing its handler). */
 void PackList_InitVideo(void) {
     gMain.vblankFlags = 0x21;
     REG_DISPCNT = 0x40;
@@ -540,60 +561,59 @@ void PackList_InitVideo(void) {
     REG_MOSAIC = 0;
     SetBrightnessBlack();
     ResetBgScroll();
-    gMain.unk414 = 0;
+    gMain.vblankCallback = 0;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
     {
-        struct Irq *irq = &IntrTable;
-        irq->unk4 = 0;
+        struct IntrTable *irq = &IntrTable;
+        irq->hblankCallback = 0;
     }
     REG_IME = 1;
 }
-/* END PackList_InitVideo */
-/* BEGIN StarterDeckSelect_DrawBackground */
-/* Fill rows a..b-1 of the 32x32 tile map at 0x03001C5C with c/2 after clearing 0xC80 bytes. */
-void StarterDeckSelect_DrawBackground(s32 a, s32 b, u16 c, const void *src) {
+
+/* Load the deck-select background image at map cell 0xC80, then fill rows rowStart..rowEnd-1 of the
+ * 32-column tile map buffer with tileBase / 2. The image argument is not passed on to the loader. */
+void StarterDeckSelect_DrawBackground(s32 rowStart, s32 rowEnd, u16 tileBase, const void *image) {
     s32 i;
     s32 j;
-    LoadBgImageMap1(0xC80, 0, c);
-    for (i = a; i < b; ) {
+    LoadBgImageMap1(0xC80, 0, tileBase);
+    for (i = rowStart; i < rowEnd; ) {
         u16 x;
         j = 0;
         x = i;
         i++;
         for (; j <= 0x1F; j++)
-            gUnk_03001C5C[(u16)j + (x << 5)] = c >> 1;
+            gUnk_03001C5C[(u16)j + (x << 5)] = tileBase >> 1;
     }
 }
-/* END StarterDeckSelect_DrawBackground */
-/* BEGIN StarterDeckSelect_DrawCursor */
-/* Slide a sprite between two 80-pixel slots over 4 frames (hypothesis: menu cursor). */
+
+/* Draw the hand cursor sprite at the slot cursorSlot is sliding to: slots are 80 pixels wide and the
+ * slide runs 4 frames per slot. */
 void StarterDeckSelect_DrawCursor(void) {
-    s32 c;
+    s32 frames;
     s32 pos;
-    if (gSceneWork.current != gSceneWork.target && gSceneWork.frames == 0)
-        gSceneWork.frames = 4;
-    c = gSceneWork.frames;
-    if (c > 0) {
-        s32 from = gSceneWork.current * 80;
-        s32 to = gSceneWork.target * 80;
+    if (gStarterDeckSelectWork.cursorSlot != gStarterDeckSelectWork.choice && gStarterDeckSelectWork.slideFrames == 0)
+        gStarterDeckSelectWork.slideFrames = 4;
+    frames = gStarterDeckSelectWork.slideFrames;
+    if (frames > 0) {
+        s32 from = gStarterDeckSelectWork.cursorSlot * 80;
+        s32 to = gStarterDeckSelectWork.choice * 80;
         s32 base = to + 0x20;
-        s32 d = (to - from) * c;
+        s32 d = (to - from) * frames;
         pos = base - d / 4;
-        gSceneWork.frames = c - 1;
-        if (gSceneWork.frames == 0)
-            gSceneWork.current = gSceneWork.target;
+        gStarterDeckSelectWork.slideFrames = frames - 1;
+        if (gStarterDeckSelectWork.slideFrames == 0)
+            gStarterDeckSelectWork.cursorSlot = gStarterDeckSelectWork.choice;
     } else {
-        pos = gSceneWork.target * 80 + 0x20;
+        pos = gStarterDeckSelectWork.choice * 80 + 0x20;
     }
     AddSprite(pos | 0x580000, 0x80, 0x100);
 }
-/* END StarterDeckSelect_DrawCursor */
-/* BEGIN StarterDeckSelect_ClearWork */
-/* Clear the 0x70-byte slide state at 0x02020310 with DMA3. */
+
+/* Zero the 0x8070-byte starter-deck work area in gSceneWork with a DMA3 fill. */
 void StarterDeckSelect_ClearWork(void) {
     vu16 zero = 0;
     vu32 *dma = (vu32 *)0x040000D4;
@@ -605,21 +625,22 @@ void StarterDeckSelect_ClearWork(void) {
     while (dma[2] & 0x80000000)
         ;
 }
-/* END StarterDeckSelect_ClearWork */
-/* BEGIN StarterDeckSelect_Init */
-/* Slide-in scene step: 0 = init state, 1 = load tile maps, palettes and graphics, 2+ = animate. */
+
+/* Step 1 (StarterDeckInitState): state 0 places the cursor on the middle deck (STARTER_DECK_RED) and sets
+ * up the video, state 1 loads the background, the three deck-box images and the cursor graphics, and
+ * state 2 turns the layers on and fades in. */
 u16 StarterDeckSelect_Init(void) {
-    u32 state = gSceneWork.state;
+    u32 state = gStarterDeckSelectWork.state;
     switch (state) {
-    case 0:
-        gSceneWork.target = 1;
-        gSceneWork.current = 1;
-        gSceneWork.frames = state;
+    case STARTERDECK_INIT_VIDEO:
+        gStarterDeckSelectWork.choice = 1;
+        gStarterDeckSelectWork.cursorSlot = 1;
+        gStarterDeckSelectWork.slideFrames = state;
         PackList_InitVideo();
         gMain.vblankFlags |= 2;
-        gSceneWork.state++;
+        gStarterDeckSelectWork.state++;
         return 0;
-    case 1:
+    case STARTERDECK_INIT_GFX:
         StarterDeckSelect_DrawBackground(2, 0x10, 0x200, gStarterDeckBgImage);
         LoadBgImageMap1(0x82, 0, 0x20, gStarterDeckBoxBlackImage);
         LoadBgImageMap1(0x8C, 0, 0xAC, gStarterDeckBoxRedImage);
@@ -642,7 +663,7 @@ u16 StarterDeckSelect_Init(void) {
             while (dma[2] & 0x80000000)
                 ;
         }
-        gSceneWork.state++;
+        gStarterDeckSelectWork.state++;
         return 0;
     default:
         REG_DISPCNT |= 0x1640;
@@ -650,39 +671,39 @@ u16 StarterDeckSelect_Init(void) {
         return FadeFromBlack(2);
     }
 }
-/* END StarterDeckSelect_Init */
-/* BEGIN StarterDeckSelect_HandleInput */
-/* Menu input for the slide cursor: A confirms (returns 1), LEFT/RIGHT move the target slot 0..2. */
+
+/* Step 2: while the cursor is settled, A confirms (SE_CONFIRM, returns 1) and LEFT/RIGHT move the choice
+ * over the three decks (SE_CURSOR). */
 u16 StarterDeckSelect_HandleInput(void) {
     StarterDeckSelect_DrawCursor();
-    if (gSceneWork.frames == 0) {
-        if (gMain.keysNew & 1) {
-            PlaySE(1);
+    if (gStarterDeckSelectWork.slideFrames == 0) {
+        if (gMain.newKeys & A_BUTTON) {
+            PlaySE(SE_CONFIRM);
             return 1;
         }
-        if (gMain.keysNew & 0x20) {
-            if (gSceneWork.target > 0) {
-                PlaySE(0);
-                gSceneWork.target--;
+        if (gMain.newKeys & DPAD_LEFT) {
+            if (gStarterDeckSelectWork.choice > 0) {
+                PlaySE(SE_CURSOR);
+                gStarterDeckSelectWork.choice--;
             }
         }
-        if (gMain.keysNew & 0x10) {
-            if (gSceneWork.target <= 1) {
-                PlaySE(0);
-                gSceneWork.target++;
+        if (gMain.newKeys & DPAD_RIGHT) {
+            if (gStarterDeckSelectWork.choice <= 1) {
+                PlaySE(SE_CURSOR);
+                gStarterDeckSelectWork.choice++;
             }
         }
     }
     return 0;
 }
-/* END StarterDeckSelect_HandleInput */
-/* BEGIN StarterDeckSelect_FadeOut */
-/* Slide-out step: blink for 0x3C frames (every 4th frame draws), then fade and hide layers; returns 1 when done. */
+
+/* Step 3: blink the cursor for 60 frames (drawn every other group of 4), then fade to black and hide the
+ * layers; returns 1 once faded. */
 u16 StarterDeckSelect_FadeOut(void) {
-    if (gSceneWork.state <= 0x3B) {
-        if ((gSceneWork.state >> 2) & 1)
+    if (gStarterDeckSelectWork.state <= 0x3B) {
+        if ((gStarterDeckSelectWork.state >> 2) & 1)
             StarterDeckSelect_DrawCursor();
-        gSceneWork.state++;
+        gStarterDeckSelectWork.state++;
         return 0;
     }
     StarterDeckSelect_DrawCursor();
@@ -692,54 +713,54 @@ u16 StarterDeckSelect_FadeOut(void) {
     }
     return 0;
 }
-/* END StarterDeckSelect_FadeOut */
-/* BEGIN StarterDeckSelect_Run */
-/* Slide-cursor scene main callback (steps 0..4). Returns 1 when the scene is finished. */
+
+/* The starter-deck screen (enum StarterDeckSelectStep on gMain.seqIndex1). The last step builds the
+ * chosen deck and starts the new game; returns 1 then and for unknown steps. */
 u16 StarterDeckSelect_Run(void) {
-    switch (gMain.step) {
-    case 0:
+    switch (gMain.seqIndex1) {
+    case STARTERDECK_STEP_CLEAR:
         StarterDeckSelect_ClearWork();
         goto advance;
-    case 1:
+    case STARTERDECK_STEP_INIT:
         if (StarterDeckSelect_Init())
             goto advance;
         break;
-    case 2:
+    case STARTERDECK_STEP_INPUT:
         if (StarterDeckSelect_HandleInput())
             goto advance;
         break;
-    case 3:
+    case STARTERDECK_STEP_FADE_OUT:
         if (StarterDeckSelect_FadeOut())
             goto advance;
         break;
-    case 4:
+    case STARTERDECK_STEP_FINISH:
         goto last;
     default:
         return 1;
     }
     return 0;
 advance:
-    gSceneWork.state = 0;
-    gSceneWork.unk4 = 0;
-    gMain.step++;
+    gStarterDeckSelectWork.state = 0;
+    gStarterDeckSelectWork.unused4 = 0;
+    gMain.seqIndex1++;
     return 0;
 last:
     InitSaveData();
-    BuildStarterDeck(gSceneWork.target);
+    BuildStarterDeck(gStarterDeckSelectWork.choice);
     SaveGame();
     return 1;
 }
-/* END StarterDeckSelect_Run */
-/* BEGIN PackList_FlushVram */
-/* Copy slide graphics and tilemaps to VRAM in eight DMA blocks each. */
+
+/* Copy the cover tile buffer to BG char block 1 and the BG map buffers to VRAM, eight DMA blocks each,
+ * then clear the redraw flag. */
 void PackList_FlushVram(void)
 {
-    /* FAKEMATCH: retain ROM iterator, DMA temporaries, and constant scheduling. */
+    /* Matching: retain ROM iterator, DMA temporaries, and constant scheduling. */
     register s32 i __asm__("r4") = 0;
-    struct Slide *s = &gSceneWork;
+    struct PackListWork *s = &gSceneWork;
     vu32 *dma = (vu32 *)0x040000D4;
     u32 dst = 0x06004000;
-    u32 src = (u32)s + 0x6E;
+    u32 src = (u32)s->bgTiles;
     do {
         register u32 count __asm__("r0");
         register u32 mask __asm__("r1");
@@ -799,9 +820,9 @@ void PackList_FlushVram(void)
         s->flags = flags;
     }
 }
-/* END PackList_FlushVram */
-/* BEGIN PackList_ClearWork */
-/* Clear the 0x70-byte slide state at 0x02020310 with DMA3 (same as 0x080643E4). */
+
+/* Zero the 0x8070-byte pack-list work area in gSceneWork with a DMA3 fill (same code as
+ * StarterDeckSelect_ClearWork). */
 void PackList_ClearWork(void) {
     vu16 zero = 0;
     vu32 *dma = (vu32 *)0x040000D4;
@@ -813,14 +834,14 @@ void PackList_ClearWork(void) {
     while (dma[2] & 0x80000000)
         ;
 }
-/* END PackList_ClearWork */
-/* BEGIN PackList_AddPack */
-/* Find pack `id` in the pack info table (0x48-byte rows) and append its row index to the list at 0x0202033C (count at 0x0202037C). */
+
+/* Append the gPackInfo row of pack `id` to the pack list (packRows, counted by packCount); nothing for
+ * an unknown id. */
 void PackList_AddPack(u32 id) {
     u32 i = 0;
-    u16 *cnt = &gUnk_0202037C;
+    u16 *cnt = &gSceneWork.packCount;
     u16 *list = cnt - 0x20;
-    struct PackInfo *row = gPackInfo;
+    const struct PackInfo *row = gPackInfo;
     do {
         if (row->id == id) {
             list[*cnt] = i;
@@ -831,17 +852,17 @@ void PackList_AddPack(u32 id) {
         i++;
     } while (i <= 0x16);
 }
-/* END PackList_AddPack */
-/* BEGIN PackList_DrawBackground */
-extern u8 gUnk_0202037E[];
-/* Load the pack-list palette and 3 label graphics via DMA3, then fill the 32x20 tile map: rows a..b-1 use tile c, others c + 1. */
-void PackList_DrawBackground(s32 a, s32 b, u16 c) {
+
+/* Load gPackListPal and the three background tiles tile..tile + 2 into the tile buffer by DMA3, then
+ * fill the 32x20 tile map: rows rowStart..rowEnd-1 take tile, the others tile + 1. The DMA sources stay
+ * integer addresses and the scopes stay separate: both are the matched form. */
+void PackList_DrawBackground(s32 rowStart, s32 rowEnd, u16 tile) {
     s32 i;
     s32 j;
     s32 next;
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = 0x0863CC7C;
+        dma[0] = 0x0863CC7C; /* gPackListPal */
         dma[1] = 0x05000000;
         dma[2] = 0x80000100;
         dma[2];
@@ -853,8 +874,8 @@ void PackList_DrawBackground(s32 a, s32 b, u16 c) {
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = 0x0863CE7C;
-        dma[1] = (u32)&gUnk_0202037E[c << 6];
+        dma[0] = 0x0863CE7C; /* gPackListBgTiles */
+        dma[1] = (u32)&gSceneWork.bgTiles[tile << 6];
         dma[2] = 0x80000020;
         dma[2];
     }
@@ -865,8 +886,8 @@ void PackList_DrawBackground(s32 a, s32 b, u16 c) {
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = 0x0863CEBC;
-        dma[1] = (u32)&gUnk_0202037E[(c + 1) << 6];
+        dma[0] = 0x0863CEBC; /* gPackListBgTiles + 0x40 */
+        dma[1] = (u32)&gSceneWork.bgTiles[(tile + 1) << 6];
         dma[2] = 0x80000020;
         dma[2];
     }
@@ -877,8 +898,8 @@ void PackList_DrawBackground(s32 a, s32 b, u16 c) {
     }
     {
         vu32 *dma = (vu32 *)0x040000D4;
-        dma[0] = 0x0863CEFC;
-        dma[1] = (u32)&gUnk_0202037E[(c + 2) << 6];
+        dma[0] = 0x0863CEFC; /* gPackListBgTiles + 0x80 */
+        dma[1] = (u32)&gSceneWork.bgTiles[(tile + 2) << 6];
         dma[2] = 0x80000020;
         dma[2];
     }
@@ -891,49 +912,47 @@ void PackList_DrawBackground(s32 a, s32 b, u16 c) {
         u16 x = i;
         next = i + 1;
         for (j = 0; j <= 0x1F; j++) {
-            if (a <= i && i < b)
-                gUnk_03001C5C[(u16)j + (x << 5)] = c;
+            if (rowStart <= i && i < rowEnd)
+                gUnk_03001C5C[(u16)j + (x << 5)] = tile;
             else
-                gUnk_03001C5C[(u16)j + (x << 5)] = c + 1;
+                gUnk_03001C5C[(u16)j + (x << 5)] = tile + 1;
         }
     }
 }
-/* END PackList_DrawBackground */
-/* BEGIN GetPackCoverGfx */
-/* Cover image of pack `id` from the pack info table, or 0. */
+
+/* The cover graphics of pack `id` from the pack info table, or NULL for an unknown id. */
 const u8 *GetPackCoverGfx(u16 id) {
     u32 i;
     for (i = 0; i <= 0x16; i++) {
         if (gPackInfo[i].id == id)
-            return gPackInfo[i].image;
+            return gPackInfo[i].coverGfx;
     }
     return 0;
 }
-/* END GetPackCoverGfx */
-/* BEGIN PackList_UnusedReturnFalse */
+
+/* Returns 0. No callers. */
 u32 PackList_UnusedReturnFalse(void) {
     return 0;
 }
-/* END PackList_UnusedReturnFalse */
-/* BEGIN PackList_SetCoverAlpha */
-/* Alpha blend: BLDCNT = 0x442 (OBJ+BG1? 1st target, alpha mode), BLDALPHA = (16 - a) << 8 | a. */
-void PackList_SetCoverAlpha(u32 a) {
+
+/* Blend the covers over the background at eva/16: BLDCNT 0x442 (alpha mode), BLDALPHA eva with the
+ * complementary (16 - eva) as the other coefficient. */
+void PackList_SetCoverAlpha(u32 eva) {
     REG_BLDCNT = 0x442;
-    REG_BLDALPHA = ((0x10 - a) << 8) | a;
+    REG_BLDALPHA = ((0x10 - eva) << 8) | eva;
 }
-/* END PackList_SetCoverAlpha */
-/* BEGIN PackList_LoadCoverGfx */
-/* DMA the cover image of pack `b` into the 64-byte-row pack graphics buffer at slot 0x62 * a + 0x10. */
-void PackList_LoadCoverGfx(u16 a, u16 b) {
-    const u8 *src = GetPackCoverGfx(b);
-    u16 slot = a * 0x62;
-    slot += 0x10;
+
+/* Copy the cover of pack `packId` into the tile buffer at slot `slot` (tile 0x10 + slot * 0x62). */
+void PackList_LoadCoverGfx(u16 slot, u16 packId) {
+    const u8 *src = GetPackCoverGfx(packId);
+    u16 tile = slot * 0x62;
+    tile += 0x10;
     if (src) {
         /* an SDK-style DMA macro (do { ... } while (0)) */
         do {
             vu32 *dma = (vu32 *)0x040000D4;
             dma[0] = (u32)src;
-            dma[1] = 0x0202037E + (slot << 6);
+            dma[1] = 0x0202037E + (tile << 6); /* gSceneWork.bgTiles */
             dma[2] = 0x80000C40;
             dma[2];
             while (dma[2] & 0x80000000)
@@ -942,14 +961,12 @@ void PackList_LoadCoverGfx(u16 a, u16 b) {
     }
 }
 
-/* END PackList_LoadCoverGfx */
-/* BEGIN PackList_DrawCoverTiles */
-extern u16 gUnk_0300045C[];
-/* Fill a 7x14 block of the tile map at 0x0300045C with consecutive tile numbers starting at 0x62 * c + 0x10. */
+/* Fill a 7-wide, 14-tall block of the tile map buffer at mapPos with the consecutive tile numbers of
+ * slot cArg (from tile 0x10 + slot * 0x62). */
 void PackList_DrawCoverTiles(u32 a, u32 bArg, u32 cArg)
 {
     u32 b = (u16)bArg;
-    /* FAKEMATCH: retain the ROM's tile-value and inner-loop counter registers. */
+    /* Matching: retain the ROM's tile-value and inner-loop counter registers. */
     register u32 c __asm__("r4") = (u16)cArg;
     u32 shifted;
     s32 next;
@@ -969,13 +986,9 @@ void PackList_DrawCoverTiles(u32 a, u32 bArg, u32 cArg)
         b = shifted >> 16;
     }
 }
-/* END PackList_DrawCoverTiles */
-/* BEGIN PackList_DrawCovers */
-/* helpers for the parked PackList_DrawCovers draft */
-struct PackMainMaps { u8 pad0[0xC1C]; u16 maps[4][0x400]; u8 pad2[0x442A - 0x2C1C]; u16 scroll; };
-extern struct PackMainMaps packMainMaps __asm__("gMain");
-/* Clear the pack-list tile maps, then draw three pack covers (rows sel, sel+1, sel+2 mod count) at
- * tile columns 0x62 + 10*i and highlight the current one; finally set the redraw flag. */
+
+/* Clear the cover tile maps, then draw the covers of list entries first..first+2 (mod the count) at
+ * tile columns 0x62 + 10*i, highlight the centre slot, and set the redraw flag for PackList_FlushVram. */
 void PackList_DrawCovers(s32 arg) {
     vu16 zero;
     s32 sel;
@@ -1002,12 +1015,12 @@ void PackList_DrawCovers(s32 arg) {
     { vu32 *dma = (vu32 *)0x040000D4;
       while (dma[2] & 0x80000000) ;
     }
-    packMainMaps.scroll = 0;
+    packMainMaps.bgHofs1 = 0;
     cnt = &gUnk_0202037C;   /* hoisted: the ROM rematerialises it in the loop */
     for (i = 0; i <= 2; i++) {
-        PackList_LoadCoverGfx(i, gPackInfo[gSceneWork.list[sel]].id);
+        PackList_LoadCoverGfx(i, gPackInfo[gSceneWork.packRows[sel]].id);
         PackList_DrawCoverTiles(1, (u16)(i * 10 + 0x62), (u16)i);
-        if (gSceneWork.current == i)
+        if (gSceneWork.centerSlot == i)
             PackList_DrawCoverTiles(4, (u16)(i * 10 + 0x62), (u16)i);
         sel++;
         sel %= *cnt;
@@ -1019,4 +1032,3 @@ void PackList_DrawCovers(s32 arg) {
         gSceneWork.flags = f;
     }
 }
-/* END PackList_DrawCovers */

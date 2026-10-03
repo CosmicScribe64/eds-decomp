@@ -1,64 +1,115 @@
-#include "global.h"
-#include "sound.h"
+/*
+ * sound_driver (0x0807D3D0-0x0807EACF): the Konami sound driver (wiki/functions/sound-driver.md).
+ *
+ * PSG/PCM playback for BGM and sound effects, driven once per VBlank by SoundVBlank: SoundSequencerTick
+ * advances the ten BGM tracks and the six SE tracks of gSoundDriver, programs the PSG registers and
+ * starts PCM voices; the ARM mixer (asm/sound_mixer_arm.s, copied to IWRAM by SoundDmaInit) renders the
+ * PCM voices into the FIFO ring buffers. The game-side wrappers (PlayBGM/PlaySE,
+ * wiki/functions/sound-api.md) call the request functions at the bottom of this file; everything here
+ * is the driver itself. All 30 functions are byte-matching C.
+ */
+#include "global.h" /* u8/s8/u16/s16/u32/s32, vu8/vu16/vu32 */
+#include "sound.h"  /* struct SoundDriver, struct SoundTrack, struct SoundPcmVoice, gSoundDriver, gSoundSeTracks, gSoundPcmChannels */
+#include "gba.h"    /* REG_IE */
 
-/* Konami sound driver, compiled with agbcc -O2 -fprologue-bugfix.
- * The sequencer and mixer retain their assembly until they match in C. */
-#define REG_SOUND3CNT_L (*(vu16 *)0x04000070)
-#define REG_WAVE_RAM0 (*(vu32 *)0x04000090)
+/* Sound hardware registers. include/gba.h names the LCD/DMA/timer/interrupt registers but not the
+ * sound ones, so the SOUND* macros live here, in the GBA register map order. */
+#define REG_SOUND1CNT_L (*(vu16 *)0x04000060) /* ch1 sweep */
+#define REG_SOUND1CNT_H (*(vu16 *)0x04000062) /* ch1 duty/length/envelope */
+#define REG_SOUND1CNT_X (*(vu16 *)0x04000064) /* ch1 frequency/control */
+#define REG_SOUND2CNT_L (*(vu16 *)0x04000068) /* ch2 duty/length/envelope */
+#define REG_SOUND2CNT_H (*(vu16 *)0x0400006C) /* ch2 frequency/control */
+#define REG_SOUND3CNT_L (*(vu16 *)0x04000070) /* ch3 wave bank/play control */
+#define REG_SOUND3CNT_H (*(vu16 *)0x04000072) /* ch3 length/volume */
+#define REG_SOUND3CNT_X (*(vu16 *)0x04000074) /* ch3 frequency/control */
+#define REG_SOUND4CNT_L (*(vu16 *)0x04000078) /* ch4 length/envelope */
+#define REG_SOUND4CNT_H (*(vu16 *)0x0400007C) /* ch4 frequency/control */
+#define REG_SOUNDCNT_L (*(vu16 *)0x04000080)  /* PSG volume / channel enables */
+#define REG_SOUNDCNT_H (*(vu16 *)0x04000082)  /* PCM FIFO volume/reset */
+#define REG_SOUNDCNT_X (*(vu16 *)0x04000084)  /* master sound enable */
+#define REG_WAVE_RAM0 (*(vu32 *)0x04000090)   /* ch3 wave RAM (bank selected by REG_SOUND3CNT_L) */
 #define REG_WAVE_RAM1 (*(vu32 *)0x04000094)
 #define REG_WAVE_RAM2 (*(vu32 *)0x04000098)
 #define REG_WAVE_RAM3 (*(vu32 *)0x0400009C)
-extern const u32 gWaveRamPatterns[][4];
+#define REG_FIFO_A (*(vu32 *)0x040000A0) /* PCM FIFO A */
+#define REG_FIFO_B (*(vu32 *)0x040000A4) /* PCM FIFO B */
+
+/* Bits of struct SoundDriver.flags (include/sound.h). Compound clear masks stay literal at the use
+ * sites: they are load-bearing literal-pool constants, noted there. */
+#define SND_FLAG_STOP_BGM 0x1        /* stop all BGM tracks (also set by a song's end command) */
+#define SND_FLAG_STOP_SE 0x4         /* stop all SE tracks */
+#define SND_FLAG_VOLUME_DIRTY 0x8    /* master volume changed this tick: re-output the channels */
+#define SND_FLAG_SE_ACTIVE 0x40      /* the SE tracks run this tick */
+#define SND_FLAG_BGM_PLAYING 0x80    /* a song is loaded and playing */
+#define SND_FLAG_BGM_PAUSED 0x100    /* BGM paused (fading to zero, SoundPauseBGM) */
+#define SND_FLAG_WAVE_BANK 0x200     /* selected wave RAM bank (toggled by SoundLoadWaveRam) */
+#define SND_FLAG_PARTIAL_MUTE 0x400  /* (hypothesis) volume sits at a nonzero low level */
+#define SND_FLAG_TICK_PAUSED 0x2000  /* SoundVBlank skips sequencer and mixer (SoundSeekBGM) */
+#define SND_FLAG_SEQ_STARTED 0x4000  /* sequencer reset has run for the current song */
+
+extern const u32 gWaveRamPatterns[][4]; /* 0x08139550: 16-byte PSG ch3 wave patterns */
+/* Driver entry points defined below, called before their definitions within this unit. */
 void SoundDmaInit(void);
 void SoundDma1Intr(void);
 void SoundSequencerTick(struct SoundDriver *p);
-void __sub_0807EAD0_from_thumb(void);
+void __sub_0807EAD0_from_thumb(void); /* linker veneer to the ARM mixer entry in IWRAM */
 void SoundStartPendingSE(void);
 void SoundMain(void);
 void SoundRequestBGM(s32 id);
 void SoundRequestSE(s32 id);
 void SoundSeekBGM(s32 id, s32 ticks);
 
+/* PCM sample header (gPcmSampleTable / gPcmSampleTable2 entries point at these in ROM). */
 struct SoundSample {
-    s32 rate;
-    u32 length;
-    s32 loopStart;
-    s8 data[1];
+    s32 rate;      /* +0x0: base rate, scaled by gSoundPitchTable in SoundPcmStart */
+    u32 length;    /* +0x4: sample length */
+    s32 loopStart; /* +0x8: loop point; negative = one-shot */
+    s8 data[1];    /* +0xC: sample data */
 };
-extern const struct SoundSample *const gPcmSampleTable2[];
-extern const struct SoundSample *const gPcmSampleTable[];
-extern const u16 gSoundPitchTable[];
+extern const struct SoundSample *const gPcmSampleTable2[]; /* 0x08088A20: sample ids with bit 15 set */
+extern const struct SoundSample *const gPcmSampleTable[];  /* 0x0811B420: sample ids with bit 15 clear */
+extern const u16 gSoundPitchTable[];                       /* 0x081A960C: pitch step per note */
+/* FIFO DMA ring positions: two (current, previous) pairs, one per FIFO buffer. */
 struct SoundDmaState {
-    u16 position;
-    u16 unk2;
-    u16 previousPosition;
-    u16 unk6;
+    u16 position;         /* +0x0: current write position in the ring */
+    u16 unk2;             /* +0x2 */
+    u16 previousPosition; /* +0x4: position before the last advance */
+    u16 unk6;             /* +0x6 */
 };
-extern struct SoundDmaState gSoundDmaPos;
-extern s8 gSoundPcmBuffer[0x640];
-struct SoundDmaRegs {
-    volatile u32 source;
-    volatile u32 destination;
-    u16 count;
-    volatile u16 flags;
-};
-struct SoundSong {
-    u16 dataLo;
-    u16 dataHi;
-    u16 offset[10];
-};
-extern const struct SoundSong gSongTable[];
-extern u32 gSoundMixCodeRam[];
-void SoundMixChannel(void);
-struct SoundEffect {
-    const u8 *tracks[6];
-    u8 priority;
-    u8 slots;
-    u16 lock;
-};
-extern const struct SoundEffect gSeTable[];
-extern const u8 gSeVariantTrackMap[];
+extern struct SoundDmaState gSoundDmaPos;  /* 0x0300540C */
+extern s8 gSoundPcmBuffer[0x640];          /* 0x03005414: 2 x 0x320 FIFO ring buffers (A, B) */
 
+/* One DMA channel's register block (0x040000BC = DMA1, 0x040000C8 = DMA2). */
+struct SoundDmaRegs {
+    volatile u32 source;      /* +0x0 SAD */
+    volatile u32 destination; /* +0x4 DAD */
+    u16 count;                /* +0x8 CNT_L */
+    volatile u16 flags;       /* +0xA CNT_H */
+};
+
+/* One gSongTable entry: the song data pointer, then the ten tracks' offsets into it.
+ * SoundMain walks the entry as u16s (header[0] | header[1] << 16), so the pointer stays split. */
+struct SoundSong {
+    u16 dataLo;    /* +0x00 */
+    u16 dataHi;    /* +0x02 */
+    u16 offset[10]; /* +0x04: per-track bytecode offsets */
+};
+extern const struct SoundSong gSongTable[]; /* 0x080E09D0: 58 songs */
+extern u32 gSoundMixCodeRam[];              /* 0x03005A54: IWRAM copy of SoundMixChannel */
+void SoundMixChannel(void);                 /* the ARM mixer (asm/sound_mixer_arm.s) */
+
+/* One gSeTable entry (0x1C bytes): an SE's per-slot bytecode streams and arbitration data. */
+struct SoundSeDef {
+    const u8 *tracks[6]; /* +0x00: bytecode stream per SE slot */
+    u8 priority;         /* +0x18: slot arbitration priority */
+    u8 slots;            /* +0x19: bitmask of the slots this SE wants */
+    u16 lock;            /* +0x1A: copied to SoundDriver.sePriority while the SE runs */
+};
+extern const struct SoundSeDef gSeTable[];  /* 0x08087FD0 */
+extern const u8 gSeVariantTrackMap[];       /* 0x081A79F9: slot -> track map per SE variant */
+
+/* SoundDmaInit (wiki): configures Timer0, the FIFO DMAs and their interrupts, copies the ARM mixer
+ * to IWRAM and clears the PCM voices and ring buffers. */
 void SoundDmaInit(void)
 {
   struct SoundPcmVoice *voice;
@@ -66,8 +117,10 @@ void SoundDmaInit(void)
   s8 *buffer;
   int i;
   u32 zero;
-  *((vu16 *) 0x04000200) &= 0xF9F7;
+  REG_IE &= 0xF9F7; /* mask the Timer0/DMA1/DMA2 interrupts while setting up */
   {
+    /* DMA1/DMA2 CNT_H (base + 0xA): disable both FIFO DMAs. The read/modify/write stays in this
+     * vu16* form; a volatile struct-field access makes agbcc emit an extra load (wiki). */
     vu16 *dma1 = (vu16 *) 0x040000BC;
     vu16 *dma2;
     dma1[5] &= 0xC5FF;
@@ -78,10 +131,10 @@ void SoundDmaInit(void)
     dma2[5] &= 0x7FFF;
     dma2[5];
   }
-  *((vu32 *) 0x040000C4) = 0;
-  *((vu32 *) 0x040000D0) = 0;
+  *((vu32 *) 0x040000C4) = 0; /* DMA1CNT */
+  *((vu32 *) 0x040000D0) = 0; /* DMA2CNT */
   {
-    vu32 *dma = (vu32 *) 0x040000D4;
+    vu32 *dma = (vu32 *) 0x040000D4; /* DMA3: copy the mixer code to IWRAM */
     dma[0] = (u32) SoundMixChannel;
     dma[1] = (u32) gSoundMixCodeRam;
     dma[2] = 0x84000038;
@@ -115,7 +168,7 @@ void SoundDmaInit(void)
   *((u32 *) state) = 0;
   *((u32 *) (&state->previousPosition)) = 0;
   {
-    vu32 *dma = (vu32 *) 0x040000D4;
+    vu32 *dma = (vu32 *) 0x040000D4; /* DMA3: zero the PCM ring buffers */
     zero = 0;
     dma[0] = (u32) (&zero);
     dma[1] = (u32) buffer;
@@ -130,67 +183,73 @@ void SoundDmaInit(void)
     }
 
   }
-  *((vu8 *) 0x04000083) = 0xBB;
+  *((vu8 *) 0x04000083) = 0xBB; /* SOUNDCNT_H high byte: FIFO A/B setup and reset */
   i = 8;
   do
   {
-    *((vu32 *) 0x040000A0) = 0;
-    *((vu32 *) 0x040000A4) = 0;
+    REG_FIFO_A = 0; /* drain both FIFOs */
+    REG_FIFO_B = 0;
   }
   while ((--i) != 0);
   {
+    /* DMA1/DMA2: stream the two ring halves into FIFO_A/FIFO_B. Matching: the do-while(0) scope
+     * preserves the final pointer arithmetic and allocation (wiki). */
     vu32 *dma = (vu32 *) 0x040000BC;
     do {
       dma[0] = (u32) buffer;
-      dma[1] = 0x040000A0;
+      dma[1] = 0x040000A0; /* FIFO_A */
       dma[2] = 0xF6000004;
       dma[2];
       dma += 3;
     } while (0);
     dma[0] = (u32) (buffer + 0x320);
-    dma[1] = 0x040000A4;
+    dma[1] = 0x040000A4; /* FIFO_B */
     dma[2] = 0xF6000004;
     dma[2];
   }
-  *((vu16 *) 0x04000200) |= 0x208;
-  *((vu32 *) 0x04000100) = 0x0080FCB9;
+  REG_IE |= 0x208; /* enable the Timer0 and DMA1 interrupts */
+  *((vu32 *) 0x04000100) = 0x0080FCB9; /* TM0CNT_L/H in one write: reload 0xFCB9, timer on */
 }
-void SoundLoadWaveRam(struct SoundDriver *p, u32 a, u32 b)
+/* SoundLoadWaveRam (wiki): loads the four wave-RAM words of pattern (wave, variant), toggles
+ * SND_FLAG_WAVE_BANK and selects the next wave bank in REG_SOUND3CNT_L. */
+void SoundLoadWaveRam(struct SoundDriver *p, u32 wave, u32 variant)
 {
-    const u32 *src = gWaveRamPatterns[a * 16 + b];
+    const u32 *src = gWaveRamPatterns[wave * 16 + variant];
     u16 bank;
     REG_WAVE_RAM0 = src[0];
     REG_WAVE_RAM1 = src[1];
     REG_WAVE_RAM2 = src[2];
     REG_WAVE_RAM3 = src[3];
     bank = 0;
-    if (!(p->flags & 0x200))
+    if (!(p->flags & SND_FLAG_WAVE_BANK))
         bank = 0x40;
-    p->flags ^= 0x200;
+    p->flags ^= SND_FLAG_WAVE_BANK;
     REG_SOUND3CNT_L = bank | 0x80;
 }
 
+/* SoundInit (wiki): initializes the sound hardware and driver state, optionally installs the DMA1
+ * handler through dma1Slot, clears the tracks, and calls the DMA setup. */
 void SoundInit(void (**dma1Slot)(void))
 {
     struct SoundDriver *p;
     struct SoundTrack *track;
     int i;
 
-    *(vu16 *)0x04000084 = 0x80;
-    *(vu16 *)0x04000060 = 0;
-    *(vu16 *)0x04000062 = 0;
-    *(vu16 *)0x04000064 = 0x8000;
-    *(vu16 *)0x04000068 = 0;
-    *(vu16 *)0x0400006C = 0x8000;
-    *(vu16 *)0x04000070 = 0;
-    *(vu16 *)0x04000072 = 0x2000;
-    *(vu16 *)0x04000074 = 0;
-    *(vu16 *)0x04000078 = 0;
-    *(vu16 *)0x0400007C = 0;
-    *(vu16 *)0x04000200 &= 0xF9F7;
-    *(vu16 *)0x04000080 = 0xFF77;
-    *(vu16 *)0x04000082 = 0xE;
-    *(vu16 *)0x04000088 = (*(vu16 *)0x04000088 & 0x3FFF) | 0x4000;
+    REG_SOUNDCNT_X = 0x80; /* master sound enable */
+    REG_SOUND1CNT_L = 0;
+    REG_SOUND1CNT_H = 0;
+    REG_SOUND1CNT_X = 0x8000;
+    REG_SOUND2CNT_L = 0;
+    REG_SOUND2CNT_H = 0x8000;
+    REG_SOUND3CNT_L = 0;
+    REG_SOUND3CNT_H = 0x2000;
+    REG_SOUND3CNT_X = 0;
+    REG_SOUND4CNT_L = 0;
+    REG_SOUND4CNT_H = 0;
+    REG_IE &= 0xF9F7;
+    REG_SOUNDCNT_L = 0xFF77;
+    REG_SOUNDCNT_H = 0xE;
+    *(vu16 *)0x04000088 = (*(vu16 *)0x04000088 & 0x3FFF) | 0x4000; /* BIAS: set amplitude resolution */
     if (dma1Slot != 0)
         *dma1Slot = SoundDma1Intr;
     p = &gSoundDriver;
@@ -218,10 +277,12 @@ void SoundInit(void (**dma1Slot)(void))
         track--;
     } while (--i >= 0);
     SoundLoadWaveRam(p, 0, 0);
-    *(vu16 *)0x04000074 = 0x8000;
+    REG_SOUND3CNT_X = 0x8000; /* start channel 3 */
     SoundDmaInit();
 }
 
+/* The packed channel state is read and written both as a halfword (commands 0xA0-0xEF) and as
+ * separate flag/volume bytes; the union keeps both views. */
 union SoundSeChannelState {
     u16 packed;
     struct {
@@ -230,32 +291,35 @@ union SoundSeChannelState {
     } __attribute__((packed)) bytes;
 } __attribute__((packed, aligned(2)));
 
-/* SE-specific view of the shared 0x18-byte track. */
+/* SE-specific view of the shared 0x18-byte track (struct SoundTrack in sound.h): the same slots
+ * carry SE meanings here (+0x8..+0xB are basePitch/channel where the BGM view has its own fields). */
 struct SoundSeTrack {
-    const u8 *data;
-    const u8 *returnData;
-    u16 basePitch;
-    union SoundSeChannelState channel;
-    u16 delay;
-    s16 soundId;
-    u8 priority;
-    u8 slotMask;
-    u8 loopCounter;
-    u8 flags;
-    u8 volume;
-    s8 linkedTracks;
-    u8 unk16[2];
+    const u8 *data;                    /* +0x00: bytecode cursor */
+    const u8 *returnData;              /* +0x04: return cursor for calls */
+    u16 basePitch;                     /* +0x08 */
+    union SoundSeChannelState channel; /* +0x0A: packed flags/volume written to the output record */
+    u16 delay;                         /* +0x0C: ticks until the next command */
+    s16 soundId;                       /* +0x0E */
+    u8 priority;                       /* +0x10 */
+    u8 slotMask;                       /* +0x11 */
+    u8 loopCounter;                    /* +0x12 */
+    u8 flags;                          /* +0x13: bit 7 = active, bit 6 = initialized, bit 3 = stopping, bits 0-1 = note-off pending */
+    u8 volume;                         /* +0x14: track volume, scales the output volume */
+    s8 linkedTracks;                   /* +0x15: chained tracks started with this one */
+    u8 unk16[2];                       /* +0x16 */
 };
 
+/* Per-tick output record for one channel, filled by SoundSeTrackTick and consumed by
+ * SoundSequencerTick (which programs the PSG/PCM hardware from it). */
 struct SoundChannelParams {
-    u16 pitch;
-    u8 envelope;
-    u8 volume;
-    u8 dirty;
-    u8 command;
-    s16 sampleId;
+    u16 pitch;    /* +0 */
+    u8 envelope;  /* +2 */
+    u8 volume;    /* +3 */
+    u8 dirty;     /* +4: the channel state changed this tick */
+    u8 command;   /* +5: 0x40 = note off, 0x80 = PCM start, 2 = pitch/envelope update */
+    s16 sampleId; /* +6 */
 };
-extern const u8 gSeTrackPcmChannel[];
+extern const u8 gSeTrackPcmChannel[]; /* 0x081A79E8: SE track -> PCM channel map */
 typedef char se_track_size_check[sizeof(struct SoundSeTrack) == 0x18 ? 1 : -1];
 typedef char channel_params_size_check[sizeof(struct SoundChannelParams) == 8 ? 1 : -1];
 typedef char se_channel_state_size_check[sizeof(union SoundSeChannelState) == 2 ? 1 : -1];
@@ -287,7 +351,7 @@ void SoundSeTrackTick(s32 idx, struct SoundChannelParams *out) {
         track->flags = 0;
         goto stop;
     }
-    if (driver->flags & 4) {
+    if (driver->flags & SND_FLAG_STOP_SE) {
         track->flags |= 8;
         goto clear_linked;
     }
@@ -538,37 +602,38 @@ scale:
     out->volume = (out->volume * track->volume) >> 4;
 }
 
+/* BGM-specific view of the shared 0x18-byte track (struct SoundTrack in sound.h). */
 struct SoundBgmTrack {
-    u16 pitch;
-    u8 instrument;
-    u8 channelVolume;
-    u16 songOffset;
-    u16 position;
-    u16 returnPosition;
-    u16 returnSongOffset;
-    u16 delay;
-    u8 vibratoPhase;
-    u8 vibratoDepth;
-    u8 flags;
-    s8 fadeCounter;
-    u8 fadeVolume;
-    u8 loopCounter;
-    u8 routing;
-    u8 unk15[3];
+    u16 pitch;          /* +0x00 */
+    u8 instrument;      /* +0x02: wave/sample number */
+    u8 channelVolume;   /* +0x03 */
+    u16 songOffset;     /* +0x04: offset of the track's bytecode in the song data */
+    u16 position;       /* +0x06: bytecode position within the track */
+    u16 returnPosition; /* +0x08: loop return position */
+    u16 returnSongOffset; /* +0x0A: loop return offset */
+    u16 delay;          /* +0x0C: ticks until the next command */
+    u8 vibratoPhase;    /* +0x0E */
+    u8 vibratoDepth;    /* +0x0F */
+    u8 flags;           /* +0x10: bit 7 = active, bit 5 = vibrato on, bit 2 = fading */
+    s8 fadeCounter;     /* +0x11 */
+    u8 fadeVolume;      /* +0x12 */
+    u8 loopCounter;     /* +0x13 */
+    u8 routing;         /* +0x14: SOUNDCNT_L routing bits for this channel */
+    u8 unk15[3];        /* +0x15 */
 };
 /* Channel output record built per tick; same layout as SoundChannelParams with
  * the signed pitch and unsigned sample id this function reads. */
 struct SoundTickOut {
-    s16 pitch;
-    u8 envelope;
-    u8 volume;
-    u8 dirty;
-    u8 command;
-    u16 sampleId;
+    s16 pitch;    /* +0 */
+    u8 envelope;  /* +2 */
+    u8 volume;    /* +3 */
+    u8 dirty;     /* +4 */
+    u8 command;   /* +5 */
+    u16 sampleId; /* +6 */
 };
-extern const u16 gNoiseTable[];
-extern const u16 gPsgFreqTable[];
-extern const s16 gVibratoSineTable[];
+extern const u16 gNoiseTable[];      /* 0x08139F50: ch4 noise frequencies */
+extern const u16 gPsgFreqTable[];    /* 0x081AA20C: PSG frequency register values per pitch */
+extern const s16 gVibratoSineTable[]; /* 0x081ABC4C */
 void SoundSeTrackTick(s32 index, struct SoundChannelParams *output);
 void SoundPcmStart(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note);
 /* The driver keeps the NR51 routing byte right after struct SoundDriver. */
@@ -600,7 +665,7 @@ void SoundSequencerTick(struct SoundDriver *p)
 
     a = p->targetVolume << 8;
     b = a - *(u16 *)&p->fadeTimer;
-    p->flags &= 0xFBF7;
+    p->flags &= 0xFBF7; /* clear SND_FLAG_VOLUME_DIRTY | SND_FLAG_PARTIAL_MUTE (pool constant) */
     oldVolume = p->volume;
     if (b != 0) {
         if (b > 0) {
@@ -614,12 +679,12 @@ void SoundSequencerTick(struct SoundDriver *p)
         }
         *(u16 *)&p->fadeTimer = a - b;
         if (oldVolume != p->volume)
-            p->flags |= 8;
+            p->flags |= SND_FLAG_VOLUME_DIRTY;
     } else if (oldVolume & 0xF) {
-        p->flags |= 0x400;
+        p->flags |= SND_FLAG_PARTIAL_MUTE;
     }
 
-    if ((p->flags & 0x100) && oldVolume == 0) {
+    if ((p->flags & SND_FLAG_BGM_PAUSED) && oldVolume == 0) {
         o = &out[9];
         for (i = 9; i >= 0; i--) {
             ((u32 *)o)[0] = 0;
@@ -630,7 +695,7 @@ void SoundSequencerTick(struct SoundDriver *p)
         flags = p->flags;
         songData = p->songData;
         track = (struct SoundBgmTrack *)p->bgmTracks;
-        if (flags & 1) {
+        if (flags & SND_FLAG_STOP_BGM) {
             o = out;
             for (i = 9; i >= 0; i--) {
                 track->flags = 0;
@@ -641,16 +706,17 @@ void SoundSequencerTick(struct SoundDriver *p)
                 o++;
             }
             {
-                /* FAKEMATCH: int temporary keeps the AND in SImode (0xFFFFBF7E pool constant) */
+                /* FAKEMATCH: int temporary keeps the AND in SImode (0xFFFFBF7E pool constant);
+                 * clears SND_FLAG_SEQ_STARTED | SND_FLAG_BGM_PLAYING | SND_FLAG_STOP_BGM */
                 s32 t = flags & ~0x4081;
                 p->flags = t;
             }
             p->status = -1;
         } else {
-            if (!(flags & 0xC0))
+            if (!(flags & (SND_FLAG_BGM_PLAYING | SND_FLAG_SE_ACTIVE)))
                 return;
-            if (!(flags & 0x4000)) {
-                p->flags = flags | 0x4000;
+            if (!(flags & SND_FLAG_SEQ_STARTED)) {
+                p->flags = flags | SND_FLAG_SEQ_STARTED;
             reset:
                 p->status = 0;
                 track = (struct SoundBgmTrack *)p->bgmTracks;
@@ -660,8 +726,8 @@ void SoundSequencerTick(struct SoundDriver *p)
                 track[3].routing = 0x88;
                 /* the chained order reproduces the ROM's store order (9, 7, 5, 8, 6, 4) */
                 track[4].routing = track[6].routing = track[8].routing = track[5].routing = track[7].routing = track[9].routing = 0x33;
-                *(vu8 *)0x04000081 = 0xFF;
-                *(vu16 *)0x04000082 = 0x330E;
+                *(vu8 *)0x04000081 = 0xFF; /* SOUNDCNT_L high byte: route every channel to both outputs */
+                REG_SOUNDCNT_H = 0x330E;
                 for (i = 0; i < 10; i++) {
                     /* FAKEMATCH: a plain byte store here avoids the field-store zero that loop.c hoists */
                     *(u8 *)&track->flags &= 0xFE;
@@ -678,7 +744,7 @@ void SoundSequencerTick(struct SoundDriver *p)
                 o = 0;
                 ((struct SoundBgmTrack *)p->bgmTracks)[1].instrument = 0x80;
                 ((struct SoundBgmTrack *)p->bgmTracks)[0].instrument = 0x80;
-                *(vu16 *)0x04000072 = (u32)o;
+                REG_SOUND3CNT_H = (u32)o;
                 SoundLoadWaveRam(p, 0, 0);
             }
             p->status++;
@@ -701,7 +767,7 @@ void SoundSequencerTick(struct SoundDriver *p)
                             a = cmdp[0];
                             if (a > 0xFC) {
                                 if (a == 0xFF) {
-                                    p->flags |= 1;
+                                    p->flags |= SND_FLAG_STOP_BGM;
                                 } else if (a == 0xFE) {
                                     goto reset;
                                 } else {
@@ -863,7 +929,7 @@ void SoundSequencerTick(struct SoundDriver *p)
                     }
                 }
                 o->volume = (track->channelVolume * p->volume) >> 4;
-                if ((p->flags & 0x408) && track->channelVolume != 0) {
+                if ((p->flags & 0x408) && track->channelVolume != 0) { /* VOLUME_DIRTY | PARTIAL_MUTE */
                     if (o->command == 0)
                         o->pitch = track->pitch;
                     o->envelope = track->instrument;
@@ -876,7 +942,7 @@ void SoundSequencerTick(struct SoundDriver *p)
         }
     }
 
-    if (p->flags & 0x40) {
+    if (p->flags & SND_FLAG_SE_ACTIVE) {
         struct SoundTrack *se;
         if ((s8)--p->sePriority < 0)
             p->sePriority = 0;
@@ -894,12 +960,12 @@ void SoundSequencerTick(struct SoundDriver *p)
         }
         if (!(b & 0x80)) {
             p->sePriority = 0;
-            p->flags &= 0xFFBF;
+            p->flags &= 0xFFBF; /* clear SND_FLAG_SE_ACTIVE (pool constant) */
         }
     } else {
         p->sePriority = 0;
     }
-    *(vu8 *)0x04000081 = ((struct SoundDriverTick *)p)->routing;
+    *(vu8 *)0x04000081 = ((struct SoundDriverTick *)p)->routing; /* SOUNDCNT_L high byte: channel routing */
 
     o = out;
     if (*(u16 *)&o[0].dirty != 0) {
@@ -908,11 +974,11 @@ void SoundSequencerTick(struct SoundDriver *p)
             {
                 /* FAKEMATCH: value computed before the MMIO address is loaded */
                 s32 t = (o[0].volume << 12) | o[0].envelope;
-                *(vu16 *)0x04000062 = t;
+                REG_SOUND1CNT_H = t;
             }
-            *(vu16 *)0x04000064 = b;
+            REG_SOUND1CNT_X = b;
         } else {
-            *(vu16 *)0x04000064 = b & 0x7FF;
+            REG_SOUND1CNT_X = b & 0x7FF;
         }
     }
     if ((b = *(u16 *)&o[1].dirty) != 0) {
@@ -924,31 +990,31 @@ void SoundSequencerTick(struct SoundDriver *p)
         if (o[1].dirty != 0) {
             {
                 s32 t = (o[1].volume << 12) | o[1].envelope;
-                *(vu16 *)0x04000068 = t;
+                REG_SOUND2CNT_L = t;
             }
-            *(vu16 *)0x0400006C = b;
+            REG_SOUND2CNT_H = b;
         } else {
-            *(vu16 *)0x0400006C = b & 0x7FF;
+            REG_SOUND2CNT_H = b & 0x7FF;
         }
     }
     if (*(u16 *)&o[2].dirty != 0) {
         b = gPsgFreqTable[o[2].pitch] & 0x7FF;
         if (o[2].volume == 0) {
-            *(vu16 *)0x04000072 = 0;
+            REG_SOUND3CNT_H = 0;
         } else {
             SoundLoadWaveRam(p, o[2].envelope, o[2].volume);
-            *(vu16 *)0x04000072 = 0x2000;
+            REG_SOUND3CNT_H = 0x2000;
         }
-        *(vu16 *)0x04000074 = b;
+        REG_SOUND3CNT_X = b;
     }
     if ((b = *(u16 *)&o[3].dirty) != 0) {
         a = o[3].volume << 12;
         if (!(b & 0x202)) {
-            *(vu16 *)0x04000078 = a;
-            *(vu16 *)0x0400007C = gNoiseTable[o[3].pitch];
+            REG_SOUND4CNT_L = a;
+            REG_SOUND4CNT_H = gNoiseTable[o[3].pitch];
         } else {
-            *(vu16 *)0x04000078 = a;
-            *(vu16 *)0x0400007C = o[3].pitch;
+            REG_SOUND4CNT_L = a;
+            REG_SOUND4CNT_H = o[3].pitch;
         }
     }
 
@@ -980,6 +1046,8 @@ void SoundSequencerTick(struct SoundDriver *p)
     }
 }
 
+/* SoundDma1Intr (wiki): DMA1 IRQ handler. Advances the read position by 16 and, at the 0x2C0-byte
+ * wrap, restarts both FIFO DMAs at the two ring buffer halves. */
 void SoundDma1Intr(void)
 {
     struct SoundDmaState *state = &gSoundDmaPos;
@@ -987,6 +1055,8 @@ void SoundDma1Intr(void)
     if (position > 0x2BF) {
         struct SoundDmaRegs *dma1 = (struct SoundDmaRegs *)0x040000BC;
         struct SoundDmaRegs *dma2;
+        /* Matching: the CNT_H read/modify/writes go through (u8 *)dma + 10 vu16 accesses, not the
+         * struct's volatile flags field (the field form emits an extra load; see the wiki notes). */
         *(vu16 *)((u8 *)dma1 + 10) &= 0xC5FF;
         *(vu16 *)((u8 *)dma1 + 10) &= 0x7FFF;
         *(vu16 *)((u8 *)dma1 + 10);
@@ -995,11 +1065,11 @@ void SoundDma1Intr(void)
         *(vu16 *)((u8 *)dma2 + 10) &= 0x7FFF;
         *(vu16 *)((u8 *)dma2 + 10);
         dma1->source = (u32)gSoundPcmBuffer;
-        dma1->destination = 0x040000A0;
+        dma1->destination = 0x040000A0; /* FIFO_A */
         *(vu32 *)&dma1->count = 0xF6000004;
         *(vu32 *)&dma1->count;
         dma2->source = (u32)(gSoundPcmBuffer + 0x320);
-        dma2->destination = 0x040000A4;
+        dma2->destination = 0x040000A4; /* FIFO_B */
         *(vu32 *)&dma2->count = 0xF6000004;
         *(vu32 *)&dma2->count;
         position = 0;
@@ -1008,19 +1078,23 @@ void SoundDma1Intr(void)
     state->position = position;
 }
 
+/* SoundVBlank (wiki): the per-frame entry. Runs the sequencer and the ARM mixer unless
+ * SND_FLAG_TICK_PAUSED (a SoundSeekBGM fast-forward) suppresses them. */
 void SoundVBlank(void)
 {
     struct SoundDriver *p = &gSoundDriver;
-    if (!(p->flags & 0x2000)) {
+    if (!(p->flags & SND_FLAG_TICK_PAUSED)) {
         SoundSequencerTick(p);
         __sub_0807EAD0_from_thumb();
     }
 }
 
+/* SoundStartPendingSE (wiki): starts the pending SE, arbitrating slot masks and priorities against
+ * the running SE tracks; overlapping lower-priority tracks are marked stopping. */
 void SoundStartPendingSE(void)
 {
     struct SoundDriver *p = &gSoundDriver;
-    const struct SoundEffect *effect;
+    const struct SoundSeDef *effect;
     s32 metadata;
     int priority;
     int slots;
@@ -1100,12 +1174,14 @@ void SoundStartPendingSE(void)
             overlap >>= 1;
         } while (overlap != 0);
     }
-    p->flags = (p->flags & 0xFFFB) | 0x40;
+    p->flags = (p->flags & 0xFFFB) | 0x40; /* clear SND_FLAG_STOP_SE, set SND_FLAG_SE_ACTIVE */
     asm volatile ("" : : "r"(id));
 done:
     p->pendingSe = 0xFFFF;
 }
 
+/* SoundMain (wiki): processes the pending SE, handles BGM fade-out, loads a requested song into
+ * gSoundDriver and initializes its ten tracks. */
 void SoundMain(void)
 {
     struct SoundDriver *p;
@@ -1117,7 +1193,7 @@ void SoundMain(void)
         struct SoundTrack *track;
         const u16 *header;
         /* Re-read the request for the compare to retain the ROM's register lifetimes. */
-        if ((p->flags & 0x80) && p->currentBgm != p->pendingBgm) {
+        if ((p->flags & SND_FLAG_BGM_PLAYING) && p->currentBgm != p->pendingBgm) {
             if (p->volume != 0) {
                 p->fadeSpeed = 0x10;
                 p->targetVolume = 0;
@@ -1148,10 +1224,11 @@ void SoundMain(void)
             track++;
         } while (song != 0);
         p->pendingBgm = 0xFFFF;
-        p->flags = (p->flags & 0xBFFF) | 0x80;
+        p->flags = (p->flags & 0xBFFF) | 0x80; /* clear SND_FLAG_SEQ_STARTED, set SND_FLAG_BGM_PLAYING */
     }
 }
 
+/* SoundRequestBGM (wiki): sets a BGM request and clears its requested fade speed. */
 void SoundRequestBGM(s32 id)
 {
     struct SoundDriver *p = &gSoundDriver;
@@ -1159,34 +1236,39 @@ void SoundRequestBGM(s32 id)
     p->bgmFadeSpeed = 0;
 }
 
-void SoundRequestBGMFadeIn(s32 id, s32 b)
+/* SoundRequestBGMFadeIn (wiki): sets a BGM request and the supplied fade speed. */
+void SoundRequestBGMFadeIn(s32 id, s32 fadeSpeed)
 {
     struct SoundDriver *p = &gSoundDriver;
     p->pendingBgm = id;
-    p->bgmFadeSpeed = b;
+    p->bgmFadeSpeed = fadeSpeed;
 }
 
+/* SoundIsBGMPlaying (wiki): whether SND_FLAG_BGM_PLAYING is set and the current song is `id`. */
 int SoundIsBGMPlaying(s32 id)
 {
     struct SoundDriver *p = &gSoundDriver;
-    if (p->flags & 0x80)
+    if (p->flags & SND_FLAG_BGM_PLAYING)
         return p->currentBgm == id;
     return 0;
 }
 
+/* SoundRequestBGMIfNotPlaying (wiki): requests a song if it is not already playing. */
 void SoundRequestBGMIfNotPlaying(s32 id)
 {
     struct SoundDriver *p = &gSoundDriver;
-    if (!(p->flags & 0x80) || p->currentBgm != id) {
+    if (!(p->flags & SND_FLAG_BGM_PLAYING) || p->currentBgm != id) {
         p->pendingBgm = id;
         p->bgmFadeSpeed = 0;
     }
 }
 
+/* SoundSetBGMVolume (wiki): sets the playing BGM's target volume and fade speed 0x40;
+ * returns the song id, or -1 if no BGM is active. */
 int SoundSetBGMVolume(s32 volume)
 {
     struct SoundDriver *p = &gSoundDriver;
-    if (p->flags & 0x80) {
+    if (p->flags & SND_FLAG_BGM_PLAYING) {
         p->targetVolume = volume;
         p->fadeSpeed = 0x40;
         return p->currentBgm;
@@ -1195,35 +1277,41 @@ int SoundSetBGMVolume(s32 volume)
     }
 }
 
-void SoundFadeOutBGM(s32 vol)
+/* SoundFadeOutBGM (wiki): sets the target volume to zero with the supplied fade speed. */
+void SoundFadeOutBGM(s32 fadeSpeed)
 {
     struct SoundDriver *p = &gSoundDriver;
     p->targetVolume = 0;
-    p->fadeSpeed = vol;
+    p->fadeSpeed = fadeSpeed;
 }
 
-void SoundPauseBGM(s32 vol)
+/* SoundPauseBGM (wiki): sets SND_FLAG_BGM_PAUSED, target volume zero, and the fade speed. */
+void SoundPauseBGM(s32 fadeSpeed)
 {
     struct SoundDriver *p = &gSoundDriver;
-    p->flags |= 0x100;
+    p->flags |= SND_FLAG_BGM_PAUSED;
     p->targetVolume = 0;
-    p->fadeSpeed = vol;
+    p->fadeSpeed = fadeSpeed;
 }
 
-void SoundResumeBGM(s32 vol)
+/* SoundResumeBGM (wiki): clears SND_FLAG_BGM_PAUSED and fades back toward volume 0x10. */
+void SoundResumeBGM(s32 fadeSpeed)
 {
     struct SoundDriver *p = &gSoundDriver;
-    p->flags &= ~0x100;
+    p->flags &= ~SND_FLAG_BGM_PAUSED;
     p->targetVolume = 0x10;
-    p->fadeSpeed = vol;
+    p->fadeSpeed = fadeSpeed;
 }
 
+/* SoundIsBGMFadeDone (wiki): whether current and target volume are equal. */
 int SoundIsBGMFadeDone(void)
 {
     struct SoundDriver *p = &gSoundDriver;
     return p->volume == p->targetVolume;
 }
 
+/* SoundRequestSE (wiki): queues an SE with full volume and variant zero; an id with bit 15 set is
+ * suppressed when an identical SE is already active. */
 void SoundRequestSE(s32 id)
 {
     struct SoundDriver *p = &gSoundDriver;
@@ -1241,6 +1329,7 @@ void SoundRequestSE(s32 id)
     p->seVariant = 0;
 }
 
+/* SoundStartSEVariant (wiki): requests an SE, sets its variant (& 3) and starts it immediately. */
 void SoundStartSEVariant(s32 id, s32 variant)
 {
     SoundRequestSE(id);
@@ -1248,6 +1337,8 @@ void SoundStartSEVariant(s32 id, s32 variant)
     SoundStartPendingSE();
 }
 
+/* SoundReleaseSE (wiki): marks active SE tracks with this id for stopping; delayed tracks are
+ * woken by clearing flag 1 and setting delay 1. */
 void SoundReleaseSE(s32 id)
 {
     struct SoundTrack *track = gSoundSeTracks;
@@ -1264,6 +1355,7 @@ void SoundReleaseSE(s32 id)
     } while (--i != 0);
 }
 
+/* SoundReleaseAllSE (wiki): the SoundReleaseSE stop operation applied to every active SE track. */
 void SoundReleaseAllSE(void)
 {
     struct SoundTrack *track = gSoundSeTracks;
@@ -1280,6 +1372,8 @@ void SoundReleaseAllSE(void)
     } while (--i != 0);
 }
 
+/* SoundPcmStart (wiki): starts a PCM voice, calculating its pitch step and loop flags from the
+ * sample header. `note` is reused for the calculated step; the operand order is load-bearing. */
 void SoundPcmStart(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note)
 {
     const struct SoundSample *sample;
@@ -1296,11 +1390,12 @@ void SoundPcmStart(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note)
     voice->data = sample->data;
     voice->sampleId = id & ~0x7000;
     voice->volume = volume;
-    voice->flags = 0x80;
+    voice->flags = 0x80; /* active */
     if (sample->loopStart >= 0)
-        voice->flags = 0xC0;
+        voice->flags = 0xC0; /* active + looping */
 }
 
+/* SoundCountActivePcm (wiki): counts the six PCM voices whose active flag is set. */
 int SoundCountActivePcm(void)
 {
     struct SoundPcmVoice *voice = gSoundPcmChannels;
@@ -1314,51 +1409,58 @@ int SoundCountActivePcm(void)
     return count;
 }
 
+/* SoundGetBGMTick (wiki): returns the driver status word (sequencer tick counter). */
 u32 SoundGetBGMTick(void)
 {
     return gSoundDriver.status;
 }
 
-void SoundSeekBGM(s32 a, s32 b)
+/* SoundSeekBGM (wiki): pauses normal ticks, optionally starts a song, advances the requested
+ * number of sequencer ticks by hand, and restores the target volume. */
+void SoundSeekBGM(s32 id, s32 ticks)
 {
     struct SoundDriver *p = &gSoundDriver;
     u8 v;
-    p->flags |= 0x2000;
+    p->flags |= SND_FLAG_TICK_PAUSED;
     v = p->targetVolume;
-    if (a >= 0) {
-        SoundRequestBGM(a);
+    if (id >= 0) {
+        SoundRequestBGM(id);
         SoundMain();
         p->targetVolume = 0;
         *(u16 *)&p->fadeTimer = 0;
         v = 0x10;
     }
-    while (--b >= 0)
+    while (--ticks >= 0)
         SoundSequencerTick(p);
     p->targetVolume = v;
-    p->flags &= ~0x2000;
+    p->flags &= ~SND_FLAG_TICK_PAUSED;
 }
 
-void SoundSeekBGMFadeIn(s32 a, s32 b, s32 c)
+/* SoundSeekBGMFadeIn (wiki): seeks with SoundSeekBGM, then fades in from volume zero. */
+void SoundSeekBGMFadeIn(s32 id, s32 ticks, s32 fadeSpeed)
 {
     struct SoundDriver *p = &gSoundDriver;
-    SoundSeekBGM(a, b);
-    p->fadeSpeed = c;
+    SoundSeekBGM(id, ticks);
+    p->fadeSpeed = fadeSpeed;
     p->targetVolume = 0x10;
     p->volume = 0;
     p->fadeTimer = 0;
 }
 
+/* SoundStopAllSE (wiki): sets SND_FLAG_STOP_SE; the sequencer stops the SE tracks next tick. */
 void SoundStopAllSE(void)
 {
-    gSoundDriver.flags |= 4;
+    gSoundDriver.flags |= SND_FLAG_STOP_SE;
 }
 
+/* SoundStopBGM (wiki): sets SND_FLAG_STOP_BGM; the sequencer stops the BGM tracks next tick. */
 void SoundStopBGM(void)
 {
-    gSoundDriver.flags |= 1;
+    gSoundDriver.flags |= SND_FLAG_STOP_BGM;
 }
 
+/* SoundStopAll (wiki): sets both stop flags. */
 void SoundStopAll(void)
 {
-    gSoundDriver.flags |= 5;
+    gSoundDriver.flags |= SND_FLAG_STOP_BGM | SND_FLAG_STOP_SE;
 }

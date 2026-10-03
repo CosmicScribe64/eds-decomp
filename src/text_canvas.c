@@ -1,116 +1,136 @@
-#include "global.h"
-#include "gba.h"
-
 /*
- * Debug menu (unused), link-cable helpers, text rendering.
- * See wiki/functions/code-080740bc.md
+ * text_canvas (0x080740BC-0x080750E0): the multi-player SIO link step, the unused debug menu
+ * and the text canvas glyph renderers (wiki/functions/text-canvas-c.md).
+ *
+ * LinkSioMain / LinkSioStartTransfer / LinkSioSetSendData / LinkSioCheckRecvData are the
+ * per-frame step of the multi-player SIO driver (struct LinkSio in link.h, modelled on the
+ * SDK's MultiSio): the GBA with SI low becomes the parent and clocks the transfers from
+ * Timer3. Every frame moves one 10-halfword frame per player; word 1 is the negated
+ * checksum, so a valid frame sums to 0xFFFF.
+ *
+ * CB_DebugMenu runs the unreferenced developer menu (gDebugMenuSteps): DebugMenu_Init sets
+ * up the screen, DebugMenu_DrawAndFadeIn draws the build number, the item list, the save's
+ * language, today's date and its calendar events, DebugMenu_HandleInput moves the cursor
+ * (Left/Right/L/R also change gSaveData.days), and DebugMenu_Launch installs the picked
+ * item's callback. The CB_Debug* functions are the menu items themselves (cheats and the
+ * Exodia / Destiny Board scene players).
+ *
+ * The Text* functions plot 1bpp font glyphs into the 8bpp tile-ordered canvas gTextCanvas
+ * (0x02000000): TextPlotRow8 / TextPlotRow16 write one glyph row, the glyph renderers pick
+ * the 8/10/12(/16) px font from the size byte of the sizeColor argument, and the string
+ * renderers word-wrap (Japanese kinsoku rules on the Shift-JIS path) and track the drawn
+ * extents in the canvas header. gSaveData.sjisText selects the Shift-JIS path; the USA game
+ * always draws Latin.
  */
+#include "global.h"
+#include "gba.h"                    /* REG_SIOCNT, REG_TM3CNT_L/H, REG_IE, REG_IF, REG_IME, REG_DISPCNT,
+                                   REG_BG0CNT, CpuSet, A_BUTTON, B_BUTTON, DPAD_UP/DOWN/LEFT/RIGHT,
+                                   R_BUTTON, L_BUTTON */
+#include "calendar.h"               /* struct Date, GetCurrentDate, GetHolidayFlags, GetCalendarEvents, GetDayOfWeek */
+#include "constants/game.h"         /* enum Language */
+#include "debug.h"                  /* struct DebugMenuItem, struct CalendarEventName, CB_Debug* / DebugMenu_* (defined here) */
+#include "link.h"                   /* struct LinkSio gLinkSio, enum LinkSioPacketType / LinkSioType / LinkSioStatus,
+                                   LinkSioMain / LinkSioStartTransfer / LinkSioSetSendData / LinkSioCheckRecvData (defined here) */
+#include "main.h"                   /* struct Main gMain (newKeys, vblankFlags, seqIndexCampaign, seqIndex1, seqState0..2) */
+#include "save.h"                   /* struct SaveData gSaveData (language, sjisText, days), InitSaveData, RecordDuelWin */
 
-#define REG_SIOMLT_SEND REG16(0x12A)
+/* The debug menu's tables (debug.h: used by one unit each, so they stay local externs here). */
+extern struct DebugMenuItem gDebugMenuItems[];          /* 0x081A73A0: label + scene callback per item */
+extern u16 (*gDebugMenuSteps[])(void);                  /* 0x081A768C: the menu step functions */
+extern struct CalendarEventName gCalendarEventNames[];  /* 0x08087720: event bit -> debug label */
 
-struct LinkSio {
-    u8 pad0[0xA1E];
-    u8 unkA1E;              /* 8 when the multi-player handshake succeeded (hypothesis: master flag) */
-    u8 unkA1F;              /* stage 0/1 */
-    u8 unkA20;
-    u8 unkA21;
-    u16 unkA22;             /* per-slot receive status bits */
-    u8 unkA24;
-    u8 padA25[7];
-    s32 unkA2C;             /* state, -3..10 (see main) */
-    u32 unkA30;
-    u16 *unkA34;
-    u16 *unkA38;
-    u16 txBuf[14];          /* +0xA3C */
-    u8 padA58[0xAFC - 0xA58];
-    s32 unkAFC;
-    s32 unkB00;
-    u32 unkB04;
-    u16 *unkB08;
-    u32 unkB0C;
-    u16 unkB10;
-    u16 unkB12;
-    u16 unkB14;
-};
-extern struct LinkSio gLinkSio;
+/* Debug menu text (ROM strings). */
+extern u8 gStrDebugDateTemplate[];  /* 0x08087B34 */
+extern u8 gStrRareHunterComing[];   /* 0x08087B40 */
+extern u8 gStrLangEnglish[];        /* 0x08087B58 */
+extern u8 gStrLangJapanese[];       /* 0x08087B60 */
+extern u8 gStrLangGerman[];         /* 0x08087B68 */
+extern u8 gStrLangFrench[];         /* 0x08087B70 */
+extern u8 gStrLangItalian[];        /* 0x08087B78 */
 
-struct Main {
-    u8 pad0[6];
-    u16 newKeys;            /* +6 */
-    u8 pad06[0x40E - 8];
-    u16 unk40E;
-    u8 pad1[0x4857 - 0x410];
-    u8 unk4857;
-    u8 unk4858;
-    u8 unk4859;
-    u8 unk485A;
-    u8 unk485B;
-};
-extern struct Main gMain;
-
+/* The two win scenes the debug items play, and the campaign unlock checks of 'Next Level'. */
 extern u16 ExodiaScene_Run(void);
+/* Matching: duel_scenes.h declares a u32 return; this unit tests the narrowed u16 result. */
 extern u16 DestinyBoardScene_Run(void);
-extern void InitSaveData(void);
-extern void DebugGetAllCards(void);
 extern u32 IsCampaignLevel2Unlocked(void);
 extern u32 IsCampaignLevel3Unlocked(void);
 extern u32 IsCampaignLevel4Unlocked(void);
 extern u32 IsCampaignLevel5Unlocked(void);
-extern void RecordDuelWin(u32 id);
+
+/* Video setup of DebugMenu_Init, the BG text writers and the main-callback setter. */
 extern void ResetVideo(void);
 extern void ResetBgScroll(void);
 extern void SetBrightnessBlack(void);
 extern void LoadSystemGfx(void);
-extern void GetCurrentDate(void *);
-extern void GetHolidayFlags(u32, u32, u32);
-extern void GetDayOfWeek(u32, u32, u32);
+extern void ClearBgMapBuffer0(void);
+extern void SetMainCallback(void *);
+/* Matching: text.h declares these with u16 cell/colors/tile and a u32 SetTextArea pair of
+ * cells; the debug menu passes packed full-width arguments (e.g. 0x08070033), so the wide
+ * views stay here (build/readability/issues/text_canvas.md). */
 extern void DrawBgString(u32, u32, u32, const void *);
 extern void DrawBgDecimal(u32, u32, u32, u32);
-extern u8 gStrDebugDateTemplate[], gStrRareHunterComing[], gStrLangEnglish[], gStrLangJapanese[], gStrLangGerman[], gStrLangFrench[], gStrLangItalian[];
-struct DebugItem { char name[0x40]; void *cb; };
-extern struct DebugItem gDebugMenuItems[];
-struct FlagRow { u32 mask; char name[0x20]; };
-extern struct FlagRow gCalendarEventNames[];
-struct Save {
-    u8 pad0[4];
-    u8 mode : 7;
-    u8 jpFont : 1;
-    u8 pad5[0x2150 - 5];
-    u16 unk2150;
-};
+extern void SetTextArea(u32, u32);
+/* Matching: palette.h declares a u32 return; DebugMenu_DrawAndFadeIn returns the narrowed
+ * u16 step result (same form as link_sio.c). */
+extern u16 FadeFromBlack(u32);
+/* Matching: sprite.h declares AddSprite(u32, u16, u16); the cursor call passes full-width
+ * packed coordinates, so the wide view stays here. */
 extern void AddSprite(u32, u32, u32);
-extern u16 (*gDebugMenuSteps[])(void);
-extern const u16 gAsciiToSjisTable[];
 extern void MemClear16(void *, u32);
-extern void LinkSioStartTransfer(void);
-extern u16 LinkSioCheckRecvData(u8 *rx);
+extern u32 __umodsi3(u32, u32);
+
+extern u8 gDuelScene[];             /* 0x02017A30 (struct DuelScene in duel_scenes.h; only byte +0xB,
+                                       the scene step, is written here) */
+/* &gLinkSio.rxWork, declared by the original unit and never used (link.h); kept as declared. */
+extern u8 *gUnk_03006598;           /* 0x03006598 */
+
+/* ---- Local views kept for matching (build/readability/issues/text_canvas.md) ----
+ * text.h cannot be included here: its `extern struct TextCanvas gTextCanvas` conflicts with
+ * the byte view below, and DrawBgString / DrawBgDecimal / SetTextArea and the kinsoku tests
+ * are called through the wider views above. The Text* prototypes are therefore repeated
+ * here as defined (identical to text.h); the renderers are defined below. */
+
+/* The text canvas as bytes: gTextCanvas[0x10000 + n] reaches the header (width, height,
+ * right, bottom, layout) with base + separate offset literal like the ROM; a struct view
+ * would fold the two into one literal (text.h). */
+extern u8 gTextCanvas[];            /* 0x02000000 */
+extern const u16 gAsciiToSjisTable[];   /* 0x081A76A0: ASCII 0x20..0x7E -> full-width Shift-JIS */
+
+/* 1bpp fonts (bit 7 / bit 15 = leftmost pixel); addressed as u16 rows by the glyph renderers. */
+extern u16 gFontKanji8x8[];         /* 0x081C0000 */
+extern u16 gFontKanji10x10[];       /* 0x081D0200 */
+extern u16 gFontKanji12x12[];       /* 0x081F8700 */
+extern u16 gFontLatin8x8[];         /* 0x08228D00 */
+extern u16 gFontLatin8x10[];        /* 0x08229500 */
+extern u16 gFontLatin8x12[];        /* 0x08229F00 */
+extern u16 gFontLatin8x16[];        /* 0x0822AB00 */
+
+/* Shift-JIS helpers (defined in text_render.c / text_bg.c). Matching: text.h declares
+ * IsLineStartForbidden / IsLineEndForbidden as int(u16 sjis); the word-wrap code below tests
+ * the full u32 character, so the u32 views stay here. */
 extern u32 SjisToGlyphIndex(u16);
 extern u32 IsLineStartForbidden(u32);
 extern u32 IsLineEndForbidden(u32);
-extern u8 TextWordLength(const u8 *);
-extern void TextDrawLatinGlyph(u8 ch, s32 x, s32 y, u16 sc);
-extern void TextDrawSjisString(s32 x, s32 y, u16 sc, const u8 *str);
-extern void TextDrawLatinString(s32 x, s32 y, u16 sc, const u8 *str);
-extern void TextDrawSjisGlyph(u16 sjis, s32 x, s32 y, u16 sc);
-extern void TextPlotRow8(u8 bits, s32 x, s32 y, u32 color);
-extern void TextPlotRow16(u16 bits, s32 x, s32 y, u32 color);
-extern u16 gFontKanji8x8[], gFontKanji10x10[], gFontKanji12x12[];
-extern u16 gFontLatin8x8[], gFontLatin8x10[], gFontLatin8x12[], gFontLatin8x16[];
-extern u8 gTextCanvas[];
-extern u8 gUnk_02010000;
-extern struct Save gSaveData;
-extern u32 __umodsi3(u32, u32);
-extern void ClearBgMapBuffer0(void);
-extern void SetTextArea(u32, u32);
-extern u16 FadeFromBlack(u32);
-extern void SetMainCallback(void *);
-struct DateBits { u32 a : 12; u32 b : 4; u32 c : 5; };
-extern u32 GetCalendarEvents(u32, u32, u32);
-extern u8 gDuelScene[];
-extern u8 *gUnk_03006598;
-extern void CpuSet(const void *src, void *dst, u32 cnt);
 
-/* SIOCNT in multi-player mode (+ SIOMLT_SEND), as the SDK's SioMultiCnt bitfield struct. */
+/* The canvas and glyph renderers (defined below; prototypes as in text.h). */
+u8 TextWordLength(const u8 *);
+void TextCanvasInit(u32 w, u32 h);
+void TextCanvasInitEx(u32 w, u32 h, u16 flag, u32 val);
+void TextPlotRow8(u8 bits, s32 x, s32 y, u32 color);
+void TextPlotRow16(u16 bits, s32 x, s32 y, u32 color);
+void TextDrawSjisGlyph(u16 sjis, s32 x, s32 y, u16 sc);
+void TextDrawLatinGlyph(u8 ch, s32 x, s32 y, u16 sc);
+void TextDrawGlyph(u16 ch, s32 x, s32 y, u16 sc);
+void TextDrawSjisString(s32 x, s32 y, u16 sc, const u8 *str);
+void TextDrawLatinString(s32 x, s32 y, u16 sc, const u8 *str);
+void TextDrawString(s32 x, s32 y, u16 sc, const u8 *str);
+void TextDrawSjisNumber(s32 x, s32 y, u16 sc, s32 value);
+void TextDrawLatinNumber(s32 x, s32 y, u16 sc, s32 value);
+
+/* SIOCNT in multi-player mode (+ SIOMLT_SEND), as the SDK's SioMultiCnt bitfield struct.
+ * The bitfield form is load-bearing: it reproduces the ROM's folded bit tests in
+ * LinkSioMain (wiki/functions/text-canvas-c.md). LINK_SIOCNT_BAK is gLinkSio.sioCnt
+ * (link.h) seen in that layout. */
 struct SioMultiCnt {
     u16 baudRate : 2;
     u16 si : 1;
@@ -124,17 +144,17 @@ struct SioMultiCnt {
     u16 unused2 : 1;
     u16 data;
 };
-#define LINK_SIOCNT_BAK (*(struct SioMultiCnt *)&gLinkSio.unkB0C)
+#define LINK_SIOCNT_BAK (*(struct SioMultiCnt *)&gLinkSio.sioCnt)
 
 /* Link main step (MultiSioMain-like): stage 0 snapshots SIOCNT; when SD is high and no transfer runs it
  * becomes the parent if SI is low and the IRQ state reached 0xC (Timer3 IRQ instead of serial IRQ),
  * then stage 1 runs LinkSioCheckRecvData each frame. Returns the receive flags | 0x80 when parent. */
 u16 LinkSioMain(u8 *rx) {
-    switch (gLinkSio.unkA1F) {
+    switch (gLinkSio.stage) {
     case 0:
         *(u32 *)&LINK_SIOCNT_BAK = *(vu32 *)&REG_SIOCNT;
         if (LINK_SIOCNT_BAK.sd == 1 && LINK_SIOCNT_BAK.enable == 0) {
-            if (LINK_SIOCNT_BAK.si == 0 && gLinkSio.unkA2C == 0xC) {
+            if (LINK_SIOCNT_BAK.si == 0 && gLinkSio.state == 0xC) {
                 REG_IME = 0;
                 REG_IE &= 0xFF7F;
                 REG_IE |= 0x40;
@@ -142,28 +162,28 @@ u16 LinkSioMain(u8 *rx) {
                 ((volatile struct SioMultiCnt *)&REG_SIOCNT)->ifEnable = 0;
                 REG_IF = 0xC0;
                 *(vu32 *)&REG_TM3CNT_L = 0xB1FC;
-                gLinkSio.unkA1E = 8;
-                gLinkSio.unkA24 = 1;
+                gLinkSio.master = LINK_SIO_PARENT;
+                gLinkSio.transferEnabled = 1;
             }
             if (gLinkSio.txBuf[2] == 0)
-                gLinkSio.txBuf[2] = 0x1000;
-            gLinkSio.unkA1F = 1;
+                gLinkSio.txBuf[2] = LINKSIO_PKT_IDLE;
+            gLinkSio.stage = 1;
         } else {
             break;
         }
         /* fallthrough */
     case 1:
-        gLinkSio.unkB14 = LinkSioCheckRecvData(rx);
-        if ((gLinkSio.unkB14 & 3) == 0 && gLinkSio.unkA1E == 8)
+        gLinkSio.stepResult = LinkSioCheckRecvData(rx);
+        if ((gLinkSio.stepResult & 3) == 0 && gLinkSio.master == LINK_SIO_PARENT)
             LinkSioStartTransfer();
         break;
     }
-    gLinkSio.unkB14 |= (gLinkSio.unkA1E == 8) << 7;
-    return gLinkSio.unkB14;
+    gLinkSio.stepResult |= (gLinkSio.master == LINK_SIO_PARENT) << 7;
+    return gLinkSio.stepResult;
 }
 
 void LinkSioStartTransfer(void) {
-    if (gLinkSio.unkA1F != 0 && gLinkSio.unkA24 != 0) {
+    if (gLinkSio.stage != 0 && gLinkSio.transferEnabled != 0) {
         vu16 *sio = &REG_SIOCNT;
         u16 v = 0xFEFE;
         sio[1] = v;
@@ -184,53 +204,53 @@ void LinkSioSetSendData(void *src) {
     gLinkSio.txBuf[1] = ~sum;
 }
 
-/* Link receive step: rotates the RX double buffer (+0xA34/+0xA38, via +0xB08), validates each of the 2 received packets in the last buffer by its 0xFFFF checksum, copies good ones out to rx + slot*16, clears them, and returns the per-slot status bits. */
+/* Link receive step: rotates the RX double buffer (rxDone/rxWork, via tmpFrame), validates each of the 2 received packets in the last buffer by its 0xFFFF checksum, copies good ones out to rx + slot*16, clears them, and returns the per-slot status bits (gLinkSio.rxStatus). */
 u16 LinkSioCheckRecvData(u8 *rx) {
     u32 zero;
     REG_IME = 0;
-    gLinkSio.unkB08 = gLinkSio.unkA38;
-    gLinkSio.unkA38 = gLinkSio.unkA34;
-    gLinkSio.unkA34 = gLinkSio.unkB08;
-    gLinkSio.unkB10 = gLinkSio.unkA21;
-    gLinkSio.unkA21 = 0;
+    gLinkSio.tmpFrame = (u16 *)gLinkSio.rxWork;
+    gLinkSio.rxWork = gLinkSio.rxDone;
+    gLinkSio.rxDone = (u16 (*)[12])gLinkSio.tmpFrame;
+    gLinkSio.tmp0 = gLinkSio.dataReady;
+    gLinkSio.dataReady = 0;
     REG_IME = 1;
-    gLinkSio.unkA22 = 0;
-    if (gLinkSio.unkB10 != 0) {
-        for (gLinkSio.unkAFC = 0; gLinkSio.unkAFC < 2; gLinkSio.unkAFC++) {
-            gLinkSio.unkB08 = (u16 *)((u8 *)gLinkSio.unkA38 + gLinkSio.unkAFC * 24);
-            gLinkSio.unkB12 = 0;
-            for (gLinkSio.unkB00 = 0; (u32)gLinkSio.unkB00 < 10; gLinkSio.unkB00++)
-                gLinkSio.unkB12 += gLinkSio.unkB08[gLinkSio.unkB00];
-            if (gLinkSio.unkB12 == 0xFFFF) {
-                CpuSet(gLinkSio.unkB08 + 2, rx + gLinkSio.unkAFC * 16, 8);
-                gLinkSio.unkA22 |= 1 << gLinkSio.unkAFC;
+    gLinkSio.rxStatus = 0;
+    if (gLinkSio.tmp0 != 0) {
+        for (gLinkSio.i = 0; gLinkSio.i < 2; gLinkSio.i++) {
+            gLinkSio.tmpFrame = (u16 *)((u8 *)gLinkSio.rxWork + gLinkSio.i * 24);
+            gLinkSio.tmp1 = 0;
+            for (gLinkSio.j = 0; (u32)gLinkSio.j < 10; gLinkSio.j++)
+                gLinkSio.tmp1 += gLinkSio.tmpFrame[gLinkSio.j];
+            if (gLinkSio.tmp1 == 0xFFFF) {
+                CpuSet(gLinkSio.tmpFrame + 2, rx + gLinkSio.i * 16, 8);
+                gLinkSio.rxStatus |= 1 << gLinkSio.i;
             } else {
-                gLinkSio.unkA22 |= 1 << (gLinkSio.unkAFC + 4);
+                gLinkSio.rxStatus |= 1 << (gLinkSio.i + 4);
             }
             zero = 0;
-            CpuSet(&zero, gLinkSio.unkB08 + 2, 0x05000004);
+            CpuSet(&zero, gLinkSio.tmpFrame + 2, 0x05000004);
         }
     }
-    gLinkSio.unkA20 |= gLinkSio.unkA22;
-    return gLinkSio.unkA22;
+    gLinkSio.rxStatusAccum |= gLinkSio.rxStatus;
+    return gLinkSio.rxStatus;
 }
 
 u32 CB_DebugExodiaScene(void) {
     struct Main *m = &gMain;
-    u8 *step = &m->unk4859;
+    u8 *step = &m->seqIndex1;
     switch (*step) {
     case 0:
-        m->unk485A = 0;
+        m->seqState1 = 0;
         gDuelScene[0xB] = 0;
         (*step)++;
         return 0;
     case 1:
-        m->unk485A++;
-        if (m->unk485A <= 7) {
-            m->unk40E &= 0xFFFE;
+        m->seqState1++;
+        if (m->seqState1 <= 7) {
+            m->vblankFlags &= 0xFFFE;
         } else {
-            m->unk40E |= 1;
-            m->unk485A = 0;
+            m->vblankFlags |= 1;
+            m->seqState1 = 0;
             if (ExodiaScene_Run() != 0)
                 (*step)++;
         }
@@ -242,7 +262,7 @@ u32 CB_DebugExodiaScene(void) {
 
 u32 CB_DebugDestinyBoardScene(void) {
     struct Main *m = &gMain;
-    u8 *step = &m->unk4859;
+    u8 *step = &m->seqIndex1;
     switch (*step) {
     case 0:
         gDuelScene[0xB] = 0;
@@ -314,7 +334,7 @@ u32 CB_DebugNextLevel(void) {
 }
 
 u32 DebugMenu_Init(void) {
-    gMain.unk40E = 3;
+    gMain.vblankFlags = 3;
     REG_DISPCNT = 0x140;
     ResetVideo();
     REG_BG0CNT = 5;
@@ -325,27 +345,27 @@ u32 DebugMenu_Init(void) {
 }
 
 void DebugMenu_DrawDate(void) {
-    struct DateBits d;
+    struct Date d;
     GetCurrentDate(&d);
-    GetHolidayFlags(d.a, d.b, d.c);
-    GetCalendarEvents(d.a, d.b, d.c);
-    GetDayOfWeek(d.a, d.b, d.c);
+    GetHolidayFlags(d.year, d.month, d.day);
+    GetCalendarEvents(d.year, d.month, d.day);
+    GetDayOfWeek(d.year, d.month, d.day);
     DrawBgString(0x33, 0x807, 0x3C0, gStrDebugDateTemplate);
-    DrawBgDecimal(0x08070033, 0x000403C0, d.a, 1);
-    DrawBgDecimal(0x08070038, 0x000203C5, d.b, 1);
-    DrawBgDecimal(0x0807003B, 0x000203C8, d.c, 1);
+    DrawBgDecimal(0x08070033, 0x000403C0, d.year, 1);
+    DrawBgDecimal(0x08070038, 0x000203C5, d.month, 1);
+    DrawBgDecimal(0x0807003B, 0x000203C8, d.day, 1);
 }
 
 /* Draw the date/time-dependent flag lines of the debug menu. */
 void DebugMenu_DrawCalendarEvents(void) {
     s32 line = 2;
     u16 y = 0x3A0;
-    struct DateBits d;
+    struct Date d;
     u32 mask;
     u32 i;
     GetCurrentDate(&d);
-    mask = GetCalendarEvents(d.a, d.b, d.c);
-    if (gSaveData.unk2150 != 0 && (u16)__umodsi3(gSaveData.unk2150, 0x3C) == 0) {
+    mask = GetCalendarEvents(d.year, d.month, d.day);
+    if (gSaveData.days != 0 && (u16)__umodsi3(gSaveData.days, 0x3C) == 0) {
         DrawBgString(0x42, 0x802, y, gStrRareHunterComing);
         line = 3;
         y += 0x20;
@@ -360,20 +380,20 @@ void DebugMenu_DrawCalendarEvents(void) {
 }
 
 void DebugMenu_DrawLanguage(void) {
-    switch (gSaveData.mode) {
-    case 1:
+    switch (gSaveData.language) {
+    case LANGUAGE_ENGLISH:
         DrawBgString(0x21, 0x805, 0x3F0, gStrLangEnglish);
         break;
-    case 0:
+    case LANGUAGE_JAPANESE:
         DrawBgString(0x21, 0x805, 0x3F0, gStrLangJapanese);
         break;
-    case 2:
+    case LANGUAGE_GERMAN:
         DrawBgString(0x21, 0x805, 0x3F0, gStrLangGerman);
         break;
-    case 3:
+    case LANGUAGE_FRENCH:
         DrawBgString(0x21, 0x805, 0x3F0, gStrLangFrench);
         break;
-    case 4:
+    case LANGUAGE_ITALIAN:
         DrawBgString(0x21, 0x805, 0x3F0, gStrLangItalian);
         break;
     }
@@ -382,10 +402,10 @@ void DebugMenu_DrawLanguage(void) {
 /* Debug menu step 0: draw the item list; step 1: enable BG0/BG3; then fade in. */
 u16 DebugMenu_DrawAndFadeIn(void) {
     struct Main *m = &gMain;
-    switch (m->unk4859) {
+    switch (m->seqIndex1) {
     case 0: {
         s32 i;
-        struct DebugItem *it, *first;
+        struct DebugMenuItem *it, *first;
         u32 y;
         ClearBgMapBuffer0();
         DebugMenu_DrawLanguage();
@@ -393,7 +413,7 @@ u16 DebugMenu_DrawAndFadeIn(void) {
         SetTextArea(0, 0x27D);
         i = 0;
         first = gDebugMenuItems;
-        if (first->cb != 0) {
+        if (first->callback != 0) {
             it = first;
             y = 0x20;
             do {
@@ -408,82 +428,82 @@ u16 DebugMenu_DrawAndFadeIn(void) {
                 it++;
                 y += 0x10;
                 i++;
-            } while (it->cb != 0);
+            } while (it->callback != 0);
         }
         DebugMenu_DrawDate();
         DebugMenu_DrawCalendarEvents();
-        gMain.unk4859++;
+        gMain.seqIndex1++;
         return 0;
     }
     case 1:
         REG_DISPCNT |= 0x1100;
-        m->unk4859++;
+        m->seqIndex1++;
         return 0;
     default:
         return FadeFromBlack(4);
     }
 }
 
-/* Debug menu input: up/down move the cursor, A selects, B goes to the last item, left/right/L/R change the value at save+0x2150. */
+/* Debug menu input: up/down move the cursor, A selects, B jumps to the Title item, left/right/L/R change gSaveData.day (and step the menu back to redraw the date). */
 u32 DebugMenu_HandleInput(void) {
     struct Main *m;
     u8 *step;
     u32 col;
     s32 row;
-    if (gMain.newKeys & 0x80) {
-        gMain.unk4859++;
-        if (gDebugMenuItems[gMain.unk4859].cb == 0)
-            gMain.unk4859 = 0;
+    if (gMain.newKeys & DPAD_DOWN) {
+        gMain.seqIndex1++;
+        if (gDebugMenuItems[gMain.seqIndex1].callback == 0)
+            gMain.seqIndex1 = 0;
     }
-    if (gMain.newKeys & 0x40) {
-        if (gMain.unk4859 == 0) {
-            if (gDebugMenuItems[gMain.unk4859].cb != 0) {
+    if (gMain.newKeys & DPAD_UP) {
+        if (gMain.seqIndex1 == 0) {
+            if (gDebugMenuItems[gMain.seqIndex1].callback != 0) {
                 do {
-                    gMain.unk4859++;
-                } while (gDebugMenuItems[gMain.unk4859].cb != 0);
+                    gMain.seqIndex1++;
+                } while (gDebugMenuItems[gMain.seqIndex1].callback != 0);
             }
         }
-        gMain.unk4859--;
+        gMain.seqIndex1--;
     }
     col = 1;
     m = &gMain;
-    step = &m->unk4859;
+    step = &m->seqIndex1;
     row = *step * 2 + 4;
     if (row > 0x13) {
         col = 0xF;
         row -= 0x10;
     }
     AddSprite((col << 3) | (row << 19), 0, 2);
-    if (m->newKeys & 1)
+    if (m->newKeys & A_BUTTON)
         return 1;
-    if (m->newKeys & 2) {
-        *step = 9;
+    if (m->newKeys & B_BUTTON) {
+        *step = DEBUG_ITEM_TITLE; /* enum DebugMenuItemId (debug.h) */
         return 1;
     }
-    if (m->newKeys & 0x10) {
-        gSaveData.unk2150++;
-        m->unk4857--;
+    if (m->newKeys & DPAD_RIGHT) {
+        gSaveData.days++;
+        m->seqIndexCampaign--;
         ClearBgMapBuffer0();
         DebugMenu_DrawDate();
     }
-    if (gMain.newKeys & 0x20) {
-        if (gSaveData.unk2150 != 0) {
-            gSaveData.unk2150--;
-            gMain.unk4857--;
+    if (gMain.newKeys & DPAD_LEFT) {
+        if (gSaveData.days != 0) {
+            gSaveData.days--;
+            gMain.seqIndexCampaign--;
             ClearBgMapBuffer0();
             DebugMenu_DrawDate();
         }
     }
-    if (gMain.newKeys & 0x100) {
-        gSaveData.unk2150 += 0x1E;
+    if (gMain.newKeys & R_BUTTON) {
+        gSaveData.days += 0x1E;
         ClearBgMapBuffer0();
         DebugMenu_DrawDate();
     }
-    if (gMain.newKeys & 0x200) {
-        if (gSaveData.unk2150 > 0x1E)
-            gSaveData.unk2150 -= 0x1E;
+    if (gMain.newKeys & L_BUTTON) {
+        if (gSaveData.days > 0x1E)
+            gSaveData.days -= 0x1E;
         else
-            gSaveData.unk2150 = 0;
+            gSaveData.days = 0;
         ClearBgMapBuffer0();
         DebugMenu_DrawDate();
     }
@@ -498,10 +518,10 @@ u32 DebugMenu_Launch(void) {
     REG_DISPCNT = 0;
     items = (u8 *)gDebugMenuItems;
     m = &gMain;
-    off = m->unk4859 * 0x44;
+    off = m->seqIndex1 * 0x44;
     items += 0x40;
     SetMainCallback(*(void **)(off + (u32)items));
-    m->unk4857 = 0;
+    m->seqIndexCampaign = 0;
     gDuelScene[0xB] = 0;
     return 0;
 }
@@ -510,17 +530,17 @@ u32 DebugMenu_Launch(void) {
 u32 CB_DebugMenu(void) {
     u16 (**tbl)(void) = gDebugMenuSteps;
     struct Main *m = &gMain;
-    u8 *idx = &m->unk4857;
+    u8 *idx = &m->seqIndexCampaign;
     u16 (*cb)(void) = tbl[*idx];
     if (cb != 0) {
         u16 r = cb();
         if (r != 0) {
             u32 s = *idx;
             if (s <= 1) {
-                m->unk4858 = 0;
-                m->unk4859 = 0;
-                m->unk485A = 0;
-                m->unk485B = 0;
+                m->seqState0 = 0;
+                m->seqIndex1 = 0;
+                m->seqState1 = 0;
+                m->seqState2 = 0;
             }
             *idx = s + 1;
         }
@@ -700,9 +720,9 @@ void TextDrawLatinGlyph(u8 ch, s32 x, s32 y, u16 sc) {
     }
 }
 
-/* Draw a glyph: Shift-JIS renderer when the save's Japanese-font flag is set, otherwise the Latin one. */
+/* Draw a glyph: Shift-JIS renderer when gSaveData.sjisText is set, otherwise the Latin one. */
 void TextDrawGlyph(u16 ch, s32 x, s32 y, u16 sc) {
-    if (gSaveData.jpFont != 0)
+    if (gSaveData.sjisText != 0)
         TextDrawSjisGlyph(ch, x, y, sc);
     else
         TextDrawLatinGlyph(ch, x, y, sc);
@@ -773,9 +793,9 @@ void TextDrawLatinString(s32 x0, s32 y0, u16 sc, const u8 *str) {
     }
 }
 
-/* Draw a string: Shift-JIS path when the save's Japanese-font flag is set, otherwise Latin. */
+/* Draw a string: Shift-JIS path when gSaveData.sjisText is set, otherwise Latin. */
 void TextDrawString(s32 x, s32 y, u16 sc, const u8 *str) {
-    if (gSaveData.jpFont != 0)
+    if (gSaveData.sjisText != 0)
         TextDrawSjisString(x, y, sc, str);
     else
         TextDrawLatinString(x, y, sc, str);

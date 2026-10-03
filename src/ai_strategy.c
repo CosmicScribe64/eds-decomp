@@ -1,108 +1,229 @@
+/*
+ * ai_strategy (0x0805C508-0x0805D58C): the CPU's scripted combo strategies
+ * (wiki/functions/ai-strategy-c.md).
+ *
+ * AiChooseStrategy (ai_steps.c) scans the CPU's hand and field for one of the nine scripted combos of
+ * enum AiStrategy and stores (strategy << 1) | 1 in gAiWork (strategyActive, strategy). While a strategy
+ * is active, step AI_STEP_STRATEGY runs AiStepRunStrategy, which dispatches to the matching handler below
+ * every frame instead of the generic main-phase steps. Every handler is a small sub-step machine on
+ * gAiState.stepState: it returns 0 while running and 1 for an invalid sub-step.
+ *
+ * The handlers play their cards through the same card menu the human uses: the "commit" idiom writes the
+ * chosen hand card into gDuel.cardMenuCard / gDuel.cardMenu (see the local view below) and the handler
+ * then waits for the menu's confirmed bit, or queues the play directly (QueueNormalSummon,
+ * QueueSpecialSummonFromHand, DuelCmd_Push + Chain_AddPending). A handler that finishes or gives up
+ * clears gAiWork.strategyActive; AiStepRunStrategy then resets the AI step state and the normal steps
+ * resume at AI_STEP_SIMPLE_SPELLS.
+ *
+ * Several strategies key on effect-table numbers that are not EDS cards (CARD_1245, CARD_1314,
+ * CARD_1514, CARD_1515), so this ROM never picks them. Players: 0 is the human, 1 the CPU.
+ */
 #include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, gCardStats, gCardIdToNumber */
+#include "constants/cards.h"        /* CARD_* card numbers */
 
-/* CPU duel state machine, part 3: see wiki/functions/code-0805c508.md and code-0805b3f4.md. */
-struct AiState {
-    u8 f0;
-    u8 step;    /* +1 */
-    u8 f2, f3, f4, f5;
-    u8 f6;
-    u8 f7, f8, f9;
-    u8 phase;   /* +0xA */
-    u8 f_idx;   /* +0xB */
-};
-extern struct AiState gAiState;
-#define S gAiState
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit uses, with the header's names, types
+ * and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that ai.h's
+ * DuelPlayer uses resolve against these declarations. After H0, replace the block (BEGIN to END) with the
+ * include line of duel.h (build/readability/issues/ai_strategy.md). */
+#define GUARD_DUEL_H
 
-struct AiWork2 {
-    u8 pad[0x1B24];
-    /* Direct byte fields keep target at +0x1B25 under old_agbcc. */
-    u8 foundFlag : 1;
-    u8 strategy : 7;
-    u8 target;
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-extern struct AiWork2 gAiWork;
 
-/* State block written when the AI commits to a hand card (at 0x0201AE08..0x0201AE18). */
-struct CommitBlk {
-    u16 cardId;                                             /* +0x00 */
-    u8 pad2[2];
-    union { u8 raw; struct { u8 a : 1; u8 b : 1; u8 c : 6; } bf; } f4;   /* +0x04 bit 1 */
-    struct { u16 a : 2; u16 b : 8; u16 c : 6; u8 pad; u8 f3; } s8;      /* +0x08 */
-    struct { u16 a : 1; u16 idx : 8; u16 c : 7; u16 pad; } sC;         /* +0x0C */
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 flag6_0:1;                   /* +0x06 bit 0: face-down? (hypothesis; units disagree on bits 0/1) */
+    u8 flag6_1:1;                   /* +0x06 bit 1 */
+    u8 counter6:4;                  /* +0x06 bits 2-5 */
+    u8 unk6_6:2;
+    u8 unk7;                        /* +0x07 */
+    u8 unk8[2];                     /* +0x08 */
+    u16 links[32];                  /* +0x0A */
+    u16 linkKinds[32];              /* +0x4A */
+    u16 numLinks;                   /* +0x8A */
+    u8 unk8C[8];                    /* +0x8C */
 };
-/* Fields of the duel globals at 0x020192E0 that the AI state machine uses. */
-struct DuelGlobals {
-    u8 pad0[0x13EC];
-    u32 hand1[80];          /* +0x13EC player 1 hand (card words, id = low 12 bits) */
-    u8 pad1[0x1B14 - 0x152C];
-    union {
+
+/* The card command menu (gDuel.cardMenu, 0xC bytes): the human's card pick in a response window. */
+struct CardMenu {
+    u16 open:1;                     /* bit 0: menu open, the caller runs CardMenu_Update */
+    u16 confirmed:1;                /* bit 1: a command was chosen */
+    u16 command:4;                  /* bits 2-5: enum CardMenuCommand */
+    u16 slide:4;                    /* bits 6-9: slide/zoom animation step 0-8 */
+    u32 available:16;               /* bits 10-25: enum CardMenuCommandMask bits */
+    u32 state:8;                    /* bits 26-33: CardMenu_Update state */
+    u32 step:8;                     /* bits 34-41: step of the command handler */
+    u8 summonSeq:4;                 /* bits 42-45 */
+    u32 tributeSources:4;           /* bits 46-49 */
+    u16 timer:7;                    /* bits 50-56: pulse timer of the selected icon */
+    u16 player:1;                   /* bit 57: player of the confirmed command */
+    u32 area:7;                     /* bits 58-64: enum DuelArea of the cursor at confirm */
+    u32 index:8;                    /* bits 65-72: zone index (field) or hand index (hand) */
+    u32 placeZone:8;                /* bits 73-80 */
+    u32 unk0A_1:15;
+};
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003: entries in deck[] */
+    u8 graveCount;                  /* +0x004: entries in graveyard[] */
+    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
+    u8 countB84;                    /* +0x006: entries in listB84[] (banished? hypothesis) */
+    u8 deckOut:1;                   /* +0x007 bit 0 */
+    u8 winA:1;                      /* +0x007 bit 1 */
+    u8 winExodia:1;                 /* +0x007 bit 2 */
+    u8 flag7_3:1;                   /* +0x007 bit 3 */
+    u8 flag7_4:1;
+    u8 flag7_5:1;
+    u8 turns7_6:2;                  /* +0x007 bits 6-7 */
+    u8 unk8;                        /* +0x008 */
+    u8 unk9;                        /* +0x009 */
+    u8 unkA;                        /* +0x00A */
+    u8 unkB_0:3;                    /* +0x00B bits 0-2 */
+    u8 flagB_3:1;                   /* +0x00B bit 3 */
+    u8 unkB_4:4;
+    u8 flagsC;                      /* +0x00C */
+    u8 unkD[0x19];                  /* +0x00D */
+    u16 zoneMask;                   /* +0x026 */
+    struct DuelZone zones[11];      /* +0x028 */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 (hypothesis: deck, from deckCount) */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 (hypothesis, from fusionCount) */
+    struct DuelCard listB84[80];    /* +0xB84 */
+    u16 arrCC4[80];                 /* +0xCC4 */
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 linkError:1;                 /* +0x1B12 bit 5 */
+    u8 result:2;                    /* +0x1B12 bits 6-7 */
+    u8 unk1B13[0x1B28 - 0x1B13];
+    u16 cardMenuCard;               /* +0x1B28: card ID under the cursor when the command was confirmed */
+    u16 summonTributes;             /* +0x1B2A */
+    struct CardMenu cardMenu;       /* +0x1B2C */
+    u8 unk1B38[0x1B78 - 0x1B38];
+};
+
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
+};
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* struct AiState, struct AiWork, gAiState, gAiWork, enum AiStrategy,
+                                       AiTryPlaySpellTrap, AiPickTributeMonster */
+
+/* ---- ROM data used only here ---- */
+extern const u16 gUnk_0862448E[];   /* 0x0862448E: card id table (hypothesis; first entry is the id
+                                       AiStrategyValkyrion summons) */
+
+/* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
+
+/*
+ * Matching: gDuel as this unit reads it. Same layout as struct DuelState in the fields it names, but
+ * hand1 is the raw card words (the strategies test them with CARD_ID below) and the commit block at
+ * +0x1B28 (cardMenuCard, cardMenu) is declared with the u8 and u16 bitfield containers the ROM's byte and
+ * halfword accesses use: clearing the menu step is a halfword store and setting the menu's player bit is a
+ * byte OR. Fields after a member run on at that member's own address; all offsets are pinned by the use
+ * sites. See the Matching tricks in wiki/functions/ai-strategy-c.md.
+ */
+struct DuelAiView {
+    u8 unk0[0x13EC];
+    u32 hand1[80];                  /* +0x13EC: gDuel.players[1].hand as card words (id = low 12 bits) */
+    u8 unk152C[0x1B14 - 0x152C];
+    union {                         /* +0x1B14: two views of the same two halfwords */
         struct { u32 lo:9, first:8, hi:15; } w;
         struct { u16 skip; u16 lo:1, second:8, hi:7; } h;
     } counters;
-    u8 padCounters[0x1B28 - 0x1B18];
-    struct CommitBlk c;
+    u8 unk1B18[0x1B28 - 0x1B18];
+    struct {                        /* +0x1B28: cardMenuCard and cardMenu (16 bytes) */
+        u16 cardId;                 /* +0x00: cardMenuCard, the committed hand card's id */
+        union {                     /* +0x04: cardMenu word 0 */
+            u8 raw;
+            struct { u8 a:1, confirmed:1, c:6; } bf;    /* bit 1 = cardMenu.confirmed */
+        } f4;
+        struct {                    /* +0x08: cardMenu words 1-2 */
+            u16 a:2, b:8, c:6;      /* b = cardMenu.step */
+            u8 pad;
+            u8 f3;                  /* +0x0B: bit 1 = cardMenu.player */
+        } s8;
+        struct {                    /* +0x0C: cardMenu words 2-3 */
+            u16 a:1, idx:8, c:7;    /* idx = cardMenu.index */
+            u16 pad;
+        } sC;
+    } commit;
 };
-extern struct DuelGlobals gDuel;
-/* Same block seen through the player-array symbol at 0x020192E4. */
-struct DuelGlobals4 {
-    u8 pad0[0xD66];
-    u8 handCount;           /* +0xD66 player 1 hand size */
-    u8 padD67[0xD6C - 0xD67];
-    u8 fD6C;                /* +0xD6C flag bits (bit 4) */
-    u8 pad1[0x13E8 - 0xD6D];
-    u32 hand1[80];          /* +0x13E8 player 1 hand */
-};
-extern struct DuelGlobals4 gDuelPlayers;
-struct DuelZone {
-    u32 card;               /* id = low 12 bits */
-    u8 rest[0x94 - 4];
-};
-extern struct DuelZone gDuelZonesP1[];
-extern const u16 gCardIdToNumber[];
-extern const u32 gCardStats[];
-extern u32 gDuelHandP1[];
-int CountFaceUpMonstersByNumber(int, u16);
-int CountActiveCardsOnField(int, u16);
-int FindFaceUpMonsterByNumber(int, u16);
-void DuelCmd_Push(u16, u16, u16, u16);
-void Chain_AddPending(u32, int);
-#define CARD_ID(w) (((w) << 20) >> 20)
-void CardMenu_PlaySpellTrapFromHand(int, int, int);
-int AiTryPlaySpellTrap(u16);
 
-int AiStrategyCyberStein(void);
-int AiStrategyValkyrion(void);
-int AiStrategyFourTokensCannonSoldier(void);
-int AiStrategyElegantEgotist(void);
-int AiStrategyDoubleMachineAtk(void);
-int AiStrategyNone(void);
-int AiStrategyBanishThreeSummon(void);
-int AiStrategyBanishTwoSummon(void);
-int AiStrategyToonWorld(void);
+#define gCommitDuel ((struct DuelAiView *)&gDuel)
+#define S gAiState
 
+/* gDuel access forms the matched code loads from their own literal-pool entries (see duel_response.c). */
+extern struct DuelZone gDuelZonesP1[];          /* 0x0201A070 = gDuelZones[1].zones */
+extern u32 gDuelHandP1[];                       /* 0x0201A6CC = gDuelPlayers[1].hand (card words) */
+extern u32 gCardListViewCards[];                /* 0x0201D81C = gCardListView.cards */
 
+/* Board queries, summons and the card menu, with this unit's parameter types (duel_cmd.h, chain.h,
+ * card_menu.h, summon.h, duel_actions.h and effect.h declare some of them more narrowly; including them
+ * would change the code). */
+int CountFaceUpMonstersByNumber(int player, u16 number);
+int CountActiveCardsOnField(int player, u16 number);
+int FindFaceUpMonsterByNumber(int player, u16 number);
 int CountSpellTrapsFiltered(int player, u16 a, u16 b, u16 c);
 int CountMonsters(int player);
-int CanSummonFromHand(int player, u16 id);
-void TributeMonster(int player, int zone);
-void DiscardHandCard(int player, int index, u16 a, u16 b);
-void QueueSpecialSummonFromHand(int player, int index, int zone, int tribute, int faceUp);
+int CanSummonFromHand(int player, u16 cardId);
 int FindFreeMonsterZone(int player);
-extern const u16 gUnk_0862448E[];
+int GetFaceUpFieldMagicNumber(void);
+int HasFaceUpToonWorld(int player);
+u32 IsToonMonster(u16 number);
+int CollectEffectTargets(int player, int cardNumber, int param);
+void DuelCmd_Push(u16 cmd, u16 arg2, u16 arg4, u16 arg6);
+void Chain_AddPending(u32 packed, int arg);
+void CardMenu_PlaySpellTrapFromHand(int activate, int asChainLink, int unused);
+void TributeMonster(int player, int zone);
+void DiscardHandCard(int player, int handIdx, u16 a, u16 b);
+void BanishGraveyardCard(int player, u32 *card);
+void QueueNormalSummon(int player, int handIdx, int zone, u16 tributes, u16 faceUp);
+void QueueSpecialSummonFromHand(int player, int handIdx, int zone, int tributes, int faceUp);
+
+/* The low 12 bits of a card word (struct DuelCard.id, with the owner bit shifted out). */
+#define CARD_ID(w) (((w) << 20) >> 20)
+
 /* Use one literal-address view in both searches so their pool entry is shared. */
 static inline u16 StrategyCardNumber(u32 id)
 {
-    return ((const u16 *)0x08622AB4)[id & 0x7FF];
+    return ((const u16 *)0x08622AB4)[id & CARD_ID_MASK];    /* 0x08622AB4 = gCardIdToNumber */
 }
+
 #define STRATEGY_COMMIT() do { \
     struct AiState *st = &S; \
-    gDuel.c.cardId = CARD_ID(gDuel.hand1[st->f_idx]); \
-    gDuel.c.s8.f3 |= 2; \
-    gDuel.c.sC.idx = st->f_idx; \
-    gDuel.c.f4.bf.b = 1; \
-    st->f2++; \
+    gCommitDuel->commit.cardId = CARD_ID(gCommitDuel->hand1[st->cardIndex]); \
+    gCommitDuel->commit.s8.f3 |= 2; \
+    gCommitDuel->commit.sC.idx = st->cardIndex; \
+    gCommitDuel->commit.f4.bf.confirmed = 1; \
+    st->stepState++; \
 } while (0)
 
+/* Strategy 1 (Valkyrion): clear the opponent's field, send the three Magnet Warriors to the graveyard
+ * for Valkyrion, use its effect, then play Premature Burial or Monster Reborn. */
 int AiStrategyValkyrion(void)
 {
     int i, j;
@@ -110,29 +231,29 @@ int AiStrategyValkyrion(void)
     register int number asm("r6");
     int found;
     u32 target;
-    switch (S.f2) {
+    switch (S.stepState) {
     case 0:
         if (CountSpellTrapsFiltered(0, 0, 0, 0) > 0) {
-            if (AiTryPlaySpellTrap(0x29F)) {
-                gDuel.c.s8.b = 0;
+            if (AiTryPlaySpellTrap(CARD_HARPIES_FEATHER_DUSTER)) {
+                gCommitDuel->commit.s8.b = 0;
                 STRATEGY_COMMIT();
                 return 0;
             }
-            if (AiTryPlaySpellTrap(0x425) || AiTryPlaySpellTrap(0x438))
+            if (AiTryPlaySpellTrap(CARD_HEAVY_STORM) || AiTryPlaySpellTrap(CARD_GIANT_TRUNADE))
                 goto commit;
         }
-        S.f2 += 2;
+        S.stepState += 2;
         return 0;
     case 1:
     case 3:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if (!(gDuel.c.f4.raw & 2)) S.f2--;
+        if (!(gCommitDuel->commit.f4.raw & 2)) S.stepState--;
         return 0;
     case 2:
         if (CountMonsters(0) > 0) {
-            if (AiTryPlaySpellTrap(0x14F) || AiTryPlaySpellTrap(0x150)) goto commit;
+            if (AiTryPlaySpellTrap(CARD_DARK_HOLE) || AiTryPlaySpellTrap(CARD_RAIGEKI)) goto commit;
         }
-        S.f2 += 2;
+        S.stepState += 2;
         return 0;
     case 4:
         if (!CanSummonFromHand(1, gUnk_0862448E[0])) {
@@ -152,9 +273,9 @@ int AiStrategyValkyrion(void)
         for (i=0;i<3;i++) {
             found=0;
             switch(i) {
-            case 0: number=0x2E1; break;
-            case 1: number=0x2F4; break;
-            case 2: number=0x320; break;
+            case 0: number=CARD_ALPHA_THE_MAGNET_WARRIOR; break;
+            case 1: number=CARD_BETA_THE_MAGNET_WARRIOR; break;
+            case 2: number=CARD_GAMMA_THE_MAGNET_WARRIOR; break;
             }
             for(j=0;j<5 && !found;j++) {
                 u32 id=CARD_ID(*(u32 *)(j*0x94+(u32)gDuelZonesP1));
@@ -163,7 +284,8 @@ int AiStrategyValkyrion(void)
                     found=1;
                 }
             }
-            for(j=0;j<gDuelPlayers.handCount && !found;j++) {
+            for(j=0;j<gDuelPlayers[1].handCount && !found;j++) {
+                /* Matching: index term first, then the hand base (the ROM computes j*4 before loading it). */
                 u32 id=CARD_ID(*(u32 *)(j*4+(u32)gDuelHandP1));
                 if(id && StrategyCardNumber(id)==number) {
                     DiscardHandCard(1, j, 0, 0);
@@ -182,7 +304,7 @@ int AiStrategyValkyrion(void)
           u32 countOffset = 0xD66;
           int n = *(u8 *)((u32)players + countOffset);
           if(i<n) {
-            u32 needle=0x34D;
+            u32 needle=CARD_VALKYRION_THE_MAGNA_WARRIOR;
             int bound;
             u32 off=0x13E8;
             u32 *cards;
@@ -192,18 +314,18 @@ int AiStrategyValkyrion(void)
             asm("" : "+r"(players));
             bound=*(u8 *)((u32)players+countOffset);
             cards=(u32 *)((u32)players+off);
-            mask=0x7FF; table=(const u16 *)0x08622AB4;
+            mask=CARD_ID_MASK; table=(const u16 *)0x08622AB4;
             do {
               if(table[CARD_ID(*cards)&mask]==needle)goto queue;
               cards++; i++;
             }while(i<bound);
           }
         }
-        gAiWork.foundFlag=0;
+        gAiWork.strategyActive=0;
         return 0;
     case 5:
-        DuelCmd_Push(0x8008, 1, gAiWork.target << 8, 0);
-        target=gAiWork.target;
+        DuelCmd_Push(0x8008, 1, gAiWork.strategyZone << 8, 0);
+        target=gAiWork.strategyZone;
         {
           /* FAKEMATCH: initialized packing temporaries preserve the OR order. */
           register u32 mask asm("r1") = 0x1F;
@@ -212,31 +334,31 @@ int AiStrategyValkyrion(void)
           {
           u32 lo=CARD_ID(*(u32 *)(target*0x94+(u32)gDuelZonesP1));
           lo |= 0x80400000;
-          
+
           hi |= lo;
           Chain_AddPending(hi, 0);
           }
         }
         goto next;
     case 6:
-        if(AiTryPlaySpellTrap(0x488) || AiTryPlaySpellTrap(0x3F0)) {
+        if(AiTryPlaySpellTrap(CARD_PREMATURE_BURIAL) || AiTryPlaySpellTrap(CARD_MONSTER_REBORN)) {
         commit:
-            gDuel.c.s8.b=0;
+            gCommitDuel->commit.s8.b=0;
             STRATEGY_COMMIT();
             return 0;
         }
-        gAiWork.foundFlag=0;
+        gAiWork.strategyActive=0;
         return 0;
     case 7:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if (!(gDuel.c.f4.raw & 2)) {
-            gDuel.counters.w.first=0;
-            gDuel.counters.h.second=0;
-            S.f2++;
+        if (!(gCommitDuel->commit.f4.raw & 2)) {
+            gCommitDuel->counters.w.first=0;
+            gCommitDuel->counters.h.second=0;
+            S.stepState++;
         }
         return 0;
     case 8:
-        gAiWork.foundFlag=0;
+        gAiWork.strategyActive=0;
         return 0;
     queue:
         {
@@ -245,7 +367,7 @@ int AiStrategyValkyrion(void)
             QueueSpecialSummonFromHand(1, i, work[0x1B25], 0, 1);
         }
     next:
-        S.f2++;
+        S.stepState++;
         return 0;
     default:
         return 1;
@@ -253,7 +375,8 @@ int AiStrategyValkyrion(void)
 }
 #undef STRATEGY_COMMIT
 
-/* Strategy 2: commit 0x4DD, wait, then find a zone numbered 0x780..0x7CF. */
+/* Strategy 2: play key 1245 (four tokens) and feed them to Cannon Soldier (never chosen in EDS):
+ * commit CARD_1245, wait, then find a zone numbered 0x780..0x7CF. */
 int AiStrategyFourTokensCannonSoldier(void)
 {
     struct AiState *st = &S;
@@ -262,13 +385,13 @@ int AiStrategyFourTokensCannonSoldier(void)
     /* FAKEMATCH: initialized before the zone scan, retained across found calls. */
     register struct DuelZone *base asm("r5");
 
-    switch (st->f2) {
+    switch (st->stepState) {
     case 0:
-        if (CountFaceUpMonstersByNumber(1, 0x1FF) == 0)
+        if (CountFaceUpMonstersByNumber(1, CARD_CANNON_SOLDIER) == 0)
             goto fail;
-        if (AiTryPlaySpellTrap(0x4DD) != 0) {
+        if (AiTryPlaySpellTrap(CARD_1245) != 0) {
             {
-                struct DuelGlobals *duel = &gDuel;
+                struct DuelAiView *duel = gCommitDuel;
                 {
                     /* FAKEMATCH: initialized address terms preserve ADD order. */
                     register u32 baseAddr asm("r2") = (u32)duel;
@@ -283,24 +406,24 @@ int AiStrategyFourTokensCannonSoldier(void)
                         *p = mask & old;
                     }
                 }
-                duel->c.cardId = CARD_ID(duel->hand1[st->f_idx]);
-                duel->c.s8.f3 |= 2;
-                duel->c.sC.idx = st->f_idx;
-                duel->c.f4.bf.b = 1;
+                duel->commit.cardId = CARD_ID(duel->hand1[st->cardIndex]);
+                duel->commit.s8.f3 |= 2;
+                duel->commit.sC.idx = st->cardIndex;
+                duel->commit.f4.bf.confirmed = 1;
             }
             goto inc;
         }
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     case 1:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if ((gDuel.c.f4.raw & 2) == 0) {
+        if ((gCommitDuel->commit.f4.raw & 2) == 0) {
         inc:
-            st->f2++;
+            st->stepState++;
         }
         return 0;
     case 2:
-        k = 0x58A;
+        k = CARD_1418;
         if (CountActiveCardsOnField(0, k) > 0)
             goto fail;
         if (CountActiveCardsOnField(1, k) > 0) {
@@ -320,14 +443,14 @@ int AiStrategyFourTokensCannonSoldier(void)
             }
             return 0;
         }
-        if (CountFaceUpMonstersByNumber(1, 0x1FF) == 0) {
+        if (CountFaceUpMonstersByNumber(1, CARD_CANNON_SOLDIER) == 0) {
         fail:
-            gAiWork.foundFlag = 0;
+            gAiWork.strategyActive = 0;
             return 0;
         }
         base = gDuelZonesP1;
         {
-            u32 mask = 0x7FF;
+            u32 mask = CARD_ID_MASK;
             struct DuelZone *zone = base;
             u32 span = 0x94 * 4;
             /* FAKEMATCH: initialized end pointer and range offset keep scratch registers. */
@@ -335,7 +458,8 @@ int AiStrategyFourTokensCannonSoldier(void)
             const u16 *table = gCardIdToNumber;
 
             do {
-                u32 id = CARD_ID(zone->card);
+                /* Matching: whole-word load of the card word, not a halfword field load of card.id. */
+                u32 id = CARD_ID(*(u32 *)&zone->card);
                 if (id) {
                     u32 n = table[id & mask];
                     register int off asm("r6");
@@ -349,15 +473,15 @@ int AiStrategyFourTokensCannonSoldier(void)
         }
         {
             u32 zero = 0;
-            S.f2 = zero;
+            S.stepState = zero;
         }
         return 0;
     found:
-        r = FindFaceUpMonsterByNumber(1, 0x1FF);
+        r = FindFaceUpMonsterByNumber(1, CARD_CANNON_SOLDIER);
         DuelCmd_Push(0x8008, 1, ((u32)r << 24) >> 16, 0);
         {
             u32 hi = (r & 0x1F) << 16;
-            u32 lo = CARD_ID(base[r].card);
+            u32 lo = CARD_ID(*(u32 *)&base[r].card);
             lo |= 0x80400000;
             Chain_AddPending(hi | lo, 0);
         }
@@ -367,22 +491,20 @@ int AiStrategyFourTokensCannonSoldier(void)
     }
 }
 
-int GetFaceUpFieldMagicNumber(void);
-void QueueNormalSummon(int, int, int, u16, u16);
-
-/* Strategy using card 0x13D / 0x4E1 / 0x3D / 0x468: picks a hand card, commits it and queues the play. */
+/* Strategy 3 (Elegant Egotist): Harpie Lady, Elegant Egotist, then Rising Air Current: picks a hand
+ * card, commits it and queues the play. */
 int AiStrategyElegantEgotist(void)
 {
     int j;
     struct AiState *st;
     u8 *targetPtr;
-    struct AiWork2 *work;
+    struct AiWork *work;
 
-    switch (S.f2) {
+    switch (S.stepState) {
     case 0:
-        if (AiTryPlaySpellTrap(0x13D) != 0)
+        if (AiTryPlaySpellTrap(CARD_ELEGANT_EGOTIST) != 0)
             goto inc;
-        if ((gDuelPlayers.fD6C & 0x10) != 0)
+        if ((gDuelPlayers[1].unk8 & 0x10) != 0)
             goto fail;
         if (FindFreeMonsterZone(1) == -1) {
             {
@@ -398,7 +520,7 @@ int AiStrategyElegantEgotist(void)
             }
             return 0;
         }
-        gAiWork.target = FindFreeMonsterZone(1);
+        gAiWork.strategyZone = FindFreeMonsterZone(1);
         j=0;
         {
           u32 offset = 0xD66;
@@ -409,7 +531,7 @@ int AiStrategyElegantEgotist(void)
             int bound=n;
             u32 off=0x13E8;
             u32 *cards=(u32 *)((u32)&gDuelPlayers+off);
-            u32 mask=0x7FF;
+            u32 mask=CARD_ID_MASK;
             const u16 *table=gCardIdToNumber;
             do {
               if (table[CARD_ID(*cards) & mask] == needle)
@@ -437,53 +559,53 @@ int AiStrategyElegantEgotist(void)
             asm("" : "+r"(players));
             bound=*(u8 *)((u32)players+offset);
             cards=(u32 *)((u32)players+off);
-            mask=0x7FF; table=gCardIdToNumber;
+            mask=CARD_ID_MASK; table=gCardIdToNumber;
             do {
-              if (table[CARD_ID(*cards) & mask] == 0x3D)
+              if (table[CARD_ID(*cards) & mask] == CARD_HARPIE_LADY)
                 goto queue2;
               cards++;
               j++;
             } while (j < bound);
           }
         }
-        work->foundFlag=0;
+        work->strategyActive=0;
         return 0;
     case 1:
-        if (AiTryPlaySpellTrap(0x13D) == 0)
+        if (AiTryPlaySpellTrap(CARD_ELEGANT_EGOTIST) == 0)
             goto fail;
-        gDuel.c.s8.b = 0;
+        gCommitDuel->commit.s8.b = 0;
         st = &S;
-        gDuel.c.cardId = CARD_ID(gDuel.hand1[st->f_idx]);
-        gDuel.c.s8.f3 |= 2;
-        gDuel.c.sC.idx = st->f_idx;
-        gDuel.c.f4.bf.b = 1;
-        st->f2++;
+        gCommitDuel->commit.cardId = CARD_ID(gCommitDuel->hand1[st->cardIndex]);
+        gCommitDuel->commit.s8.f3 |= 2;
+        gCommitDuel->commit.sC.idx = st->cardIndex;
+        gCommitDuel->commit.f4.bf.confirmed = 1;
+        st->stepState++;
         return 0;
     fail:
-        gAiWork.foundFlag=0;
+        gAiWork.strategyActive=0;
         return 0;
     case 2:
     case 4:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if ((gDuel.c.f4.raw & 2) == 0)
-            S.f2++;
+        if ((gCommitDuel->commit.f4.raw & 2) == 0)
+            S.stepState++;
         return 0;
     case 3:
-        if (GetFaceUpFieldMagicNumber() == 0x468)
+        if (GetFaceUpFieldMagicNumber() == CARD_RISING_AIR_CURRENT)
             goto reset;
-        if (AiTryPlaySpellTrap(0x468) == 0)
+        if (AiTryPlaySpellTrap(CARD_RISING_AIR_CURRENT) == 0)
             goto reset;
-        gDuel.c.s8.b = 0;
+        gCommitDuel->commit.s8.b = 0;
         st = &S;
-        gDuel.c.cardId = CARD_ID(gDuel.hand1[st->f_idx]);
-        gDuel.c.s8.f3 |= 2;
-        gDuel.c.sC.idx = st->f_idx;
-        gDuel.c.f4.bf.b = 1;
-        st->f2++;
+        gCommitDuel->commit.cardId = CARD_ID(gCommitDuel->hand1[st->cardIndex]);
+        gCommitDuel->commit.s8.f3 |= 2;
+        gCommitDuel->commit.sC.idx = st->cardIndex;
+        gCommitDuel->commit.f4.bf.confirmed = 1;
+        st->stepState++;
         return 0;
     case 5:
     reset:
-        S.f2 = 0;
+        S.stepState = 0;
         return 0;
     queue1:
         {
@@ -497,45 +619,46 @@ int AiStrategyElegantEgotist(void)
     send:
         QueueNormalSummon(1, j, *targetPtr, 0, 1);
     inc:
-        S.f2++;
+        S.stepState++;
         return 0;
     default:
         return 1;
     }
 }
 
-/* Sub-step machine for the strategy using card 0x522: commits the chosen hand card, then waits for the commit flag. */
+/* Strategy 4: play key 1314 (double the Machines' ATK; never chosen in EDS): commits the chosen hand
+ * card, then waits for the commit flag. */
 int AiStrategyDoubleMachineAtk(void)
 {
     struct AiState *st = &S;
 
-    switch (st->f2) {
+    switch (st->stepState) {
     case 0:
-        if (AiTryPlaySpellTrap(0x522) != 0) {
-            gDuel.c.s8.b = 0;
-            gDuel.c.cardId = CARD_ID(gDuel.hand1[st->f_idx]);
-            gDuel.c.s8.f3 |= 2;
-            gDuel.c.sC.idx = st->f_idx;
-            gDuel.c.f4.bf.b = 1;
-            st->f2++;
+        if (AiTryPlaySpellTrap(CARD_1314) != 0) {
+            gCommitDuel->commit.s8.b = 0;
+            gCommitDuel->commit.cardId = CARD_ID(gCommitDuel->hand1[st->cardIndex]);
+            gCommitDuel->commit.s8.f3 |= 2;
+            gCommitDuel->commit.sC.idx = st->cardIndex;
+            gCommitDuel->commit.f4.bf.confirmed = 1;
+            st->stepState++;
             return 0;
         }
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     case 1:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if ((gDuel.c.f4.raw & 2) == 0)
-            st->f2++;
+        if ((gCommitDuel->commit.f4.raw & 2) == 0)
+            st->stepState++;
         return 0;
     case 2:
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     default:
         return 1;
     }
 }
 /* Value of a card for the "sacrifice the weakest" choice: 0 for type 0x15-0x17, 4000 for 0x18, else 10 * a 9-bit stats field. */
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])   /* 0x08621DE0 = gCardStats */
 static inline int CardValue(u32 id)
 {
     int r;
@@ -555,14 +678,10 @@ static inline int CardValue(u32 id)
     }
     return r;
 }
-extern u32 gCardListViewCards[];
-int CollectEffectTargets(int, int, int);
-void BanishGraveyardCard(int, u32 *);
-void QueueSpecialSummonFromHand(int, int, int, int, int);
-int FindFreeMonsterZone(int);
 
+/* Strategy 6: banish 3 graveyard monsters to Special Summon key 1514 (never chosen in EDS). */
 /* FAKEMATCH: count in r6 and candidate base in r8 steer old_agbcc allocation.
- * The initialized r3 mask input stages the loop-invariant 0x7FF before the base;
+ * The initialized r3 mask input stages the loop-invariant CARD_ID_MASK before the base;
  * it emits no instruction and does not change the card-value calculation. */
 int AiStrategyBanishThreeSummon(void)
 {
@@ -572,17 +691,17 @@ int AiStrategyBanishThreeSummon(void)
     int i;
     u32 id;
 
-    switch (S.f2) {
+    switch (S.stepState) {
     case 0:
-        S.f3 = 3;
-        S.f2++;
+        S.stepIndex = 3;
+        S.stepState++;
     case 1:
-        count = CollectEffectTargets(1, 0x5EA, 0);
+        count = CollectEffectTargets(1, CARD_1514, 0);
         best = -1;
         bestValue = 9999;
         i = 0;
         if (i < count) {
-            register u32 loadMask __asm__("r3") = 0x7FF;
+            register u32 loadMask __asm__("r3") = CARD_ID_MASK;
             register u32 *cards __asm__("r8");
             __asm__ volatile("" : : "r"(loadMask));
             cards = gCardListViewCards;
@@ -598,22 +717,22 @@ int AiStrategyBanishThreeSummon(void)
         if (best < 0)
             goto fail;
         BanishGraveyardCard(1, &gCardListViewCards[best]);
-        if (--S.f3 == 0)
-            S.f2++;
+        if (--S.stepIndex == 0)
+            S.stepState++;
         return 0;
     case 2:
         i = 0;
         {
             u32 *cards;
-            int n = gDuelPlayers.handCount;
+            int n = gDuelPlayers[1].handCount;
             if (i < n) {
-                u32 needle = 0x5EA;
+                u32 needle = CARD_1514;
                 int bound = n;
                 u32 offset = 0x13E8;
                 u32 mask;
                 const u16 *table;
                 cards = (u32 *)((u32)&gDuelPlayers + offset);
-                mask = 0x7FF;
+                mask = CARD_ID_MASK;
                 table = gCardIdToNumber;
                 do {
                     if (table[CARD_ID(*cards) & mask] == needle) {
@@ -625,18 +744,19 @@ int AiStrategyBanishThreeSummon(void)
                 } while (i < bound);
             }
         }
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     fail:
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     default:
         return 1;
     }
 }
 
+/* Strategy 7: as strategy 6 with 2 monsters and key 1515 (no CARD_ name; never chosen in EDS). */
 /* FAKEMATCH: count in r6 and candidate base in r8 steer old_agbcc allocation.
- * The initialized r3 mask input stages the loop-invariant 0x7FF before the base;
+ * The initialized r3 mask input stages the loop-invariant CARD_ID_MASK before the base;
  * it emits no instruction and does not change the card-value calculation. */
 int AiStrategyBanishTwoSummon(void)
 {
@@ -646,17 +766,17 @@ int AiStrategyBanishTwoSummon(void)
     int i;
     u32 id;
 
-    switch (S.f2) {
+    switch (S.stepState) {
     case 0:
-        S.f3 = 2;
-        S.f2++;
+        S.stepIndex = 2;
+        S.stepState++;
     case 1:
         count = CollectEffectTargets(1, 0x5EB, 0);
         best = -1;
         bestValue = 9999;
         i = 0;
         if (i < count) {
-            register u32 loadMask __asm__("r3") = 0x7FF;
+            register u32 loadMask __asm__("r3") = CARD_ID_MASK;
             register u32 *cards __asm__("r8");
             __asm__ volatile("" : : "r"(loadMask));
             cards = gCardListViewCards;
@@ -672,14 +792,14 @@ int AiStrategyBanishTwoSummon(void)
         if (best < 0)
             goto fail;
         BanishGraveyardCard(1, &gCardListViewCards[best]);
-        if (--S.f3 == 0)
-            S.f2++;
+        if (--S.stepIndex == 0)
+            S.stepState++;
         return 0;
     case 2:
         i = 0;
         {
             u32 *cards;
-            int n = gDuelPlayers.handCount;
+            int n = gDuelPlayers[1].handCount;
             if (i < n) {
                 u32 needle = 0x5EB;
                 int bound = n;
@@ -687,7 +807,7 @@ int AiStrategyBanishTwoSummon(void)
                 u32 mask;
                 const u16 *table;
                 cards = (u32 *)((u32)&gDuelPlayers + offset);
-                mask = 0x7FF;
+                mask = CARD_ID_MASK;
                 table = gCardIdToNumber;
                 do {
                     if (table[CARD_ID(*cards) & mask] == needle) {
@@ -699,20 +819,15 @@ int AiStrategyBanishTwoSummon(void)
                 } while (i < bound);
             }
         }
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     fail:
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     default:
         return 1;
     }
 }
-
-int HasFaceUpToonWorld(int);
-u32 IsToonMonster(u16);
-int CanSummonFromHand(int, u16);
-int AiPickTributeMonster(int, u16);
 
 /* FAKEMATCH: initialized address terms retain the loop-tail count load. */
 static inline u8 StrategyHandCount(void)
@@ -723,7 +838,7 @@ static inline u8 StrategyHandCount(void)
     return *(u8 *)((u32)base + off);
 }
 
-/* Strategy 7: commit 0x3BA, then queue cards 0x2D7 / 0x2D8 / 0x2FE. */
+/* Strategy 8 (Toon World): play Toon World, then summon the Toon monsters of the hand. */
 int AiStrategyToonWorld(void)
 {
     struct AiState *st = &S;
@@ -733,47 +848,48 @@ int AiStrategyToonWorld(void)
     u32 id;
     const u16 *p;
 
-    switch (st->f2) {
+    switch (st->stepState) {
     case 0:
         if (HasFaceUpToonWorld(1) != 0) {
-            st->f2 = 2;
+            st->stepState = 2;
             return 0;
         }
-        if (AiTryPlaySpellTrap(0x3BA) != 0) {
-            gDuel.c.s8.b = 0;
-            gDuel.c.cardId = CARD_ID(gDuel.hand1[st->f_idx]);
-            gDuel.c.s8.f3 |= 2;
-            gDuel.c.sC.idx = st->f_idx;
-            gDuel.c.f4.bf.b = 1;
+        if (AiTryPlaySpellTrap(CARD_TOON_WORLD) != 0) {
+            gCommitDuel->commit.s8.b = 0;
+            gCommitDuel->commit.cardId = CARD_ID(gCommitDuel->hand1[st->cardIndex]);
+            gCommitDuel->commit.s8.f3 |= 2;
+            gCommitDuel->commit.sC.idx = st->cardIndex;
+            gCommitDuel->commit.f4.bf.confirmed = 1;
             goto inc;
         }
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     case 1:
         CardMenu_PlaySpellTrapFromHand(1, 0, 0);
-        if ((gDuel.c.f4.raw & 2) == 0) {
+        if ((gCommitDuel->commit.f4.raw & 2) == 0) {
         inc:
-            st->f2++;
+            st->stepState++;
         }
         return 0;
     case 2:
         if (HasFaceUpToonWorld(1) != 0)
             goto inc;
-        gAiWork.foundFlag = 0;
+        gAiWork.strategyActive = 0;
         return 0;
     case 3:
         j = 0;
-        if (j < gDuelPlayers.handCount) {
+        if (j < gDuelPlayers[1].handCount) {
             do {
                 {
-                    /* FAKEMATCH: initialized raw word stays in the load scratch. */
+                    /* FAKEMATCH: initialized raw word stays in the load scratch.
+                     * Matching: index term first, then the hand base. */
                     register u32 raw asm("r0") = *(u32 *)(j * 4 + (u32)gDuelHandP1);
                     raw <<= 20;
                     id = raw >> 20;
                 }
                 {
                     /* FAKEMATCH: retain the initialized mask copy before scaling id. */
-                    register u32 mask asm("r0") = 0x7FF;
+                    register u32 mask asm("r0") = CARD_ID_MASK;
                     asm("" : : "r"(mask));
                     {
                         register u32 saved asm("r1") = mask;
@@ -795,11 +911,11 @@ int AiStrategyToonWorld(void)
                         continue;
                 }
                 switch (*p) {
-                case 0x2D7:
+                case CARD_TOON_MERMAID:
                     QueueSpecialSummonFromHand(1, j, FindFreeMonsterZone(1), 0, 1);
-                    S.f2--;
+                    S.stepState--;
                     return 0;
-                case 0x2D8:
+                case CARD_TOON_SUMMONED_SKULL:
                     a = AiPickTributeMonster(-1, 0);
                     if (a == -1)
                         break;
@@ -808,9 +924,9 @@ int AiStrategyToonWorld(void)
                         packed |= a;
                         QueueSpecialSummonFromHand(1, j, a, packed, 1);
                     }
-                    S.f2--;
+                    S.stepState--;
                     return 0;
-                case 0x2FE:
+                case CARD_BLUE_EYES_TOON_DRAGON:
                     a = AiPickTributeMonster(-1, 0);
                     b = AiPickTributeMonster(a, 0);
                     if (a == -1 || b == -1)
@@ -827,7 +943,7 @@ int AiStrategyToonWorld(void)
                             QueueSpecialSummonFromHand(1, j, a, (lo | hi) >> 16, 1);
                         }
                     }
-                    S.f2--;
+                    S.stepState--;
                     return 0;
                 }
             } while (++j < StrategyHandCount());
@@ -851,14 +967,15 @@ int AiStrategyToonWorld(void)
     }
 }
 
-/* Clears the "candidate found" flag. */
+/* Strategy 5: give up at once (never chosen): clears the "candidate found" flag. */
 int AiStrategyNone(void)
 {
-    gAiWork.foundFlag = 0;
+    gAiWork.strategyActive = 0;
     return 0;
 }
 
-/* Dispatches to the handler of the strategy chosen by AiChooseStrategy (index in 0x02017A24 bits 1+). */
+/* Step 8: run the handler of gAiWork.strategy; when it clears strategyActive, continue with the normal
+ * steps at AI_STEP_SIMPLE_SPELLS. */
 int AiStepRunStrategy(void)
 {
     u16 r = 1;
@@ -892,12 +1009,12 @@ int AiStepRunStrategy(void)
         r = AiStrategyToonWorld();
         break;
     }
-    if (gAiWork.foundFlag == 0) {
+    if (gAiWork.strategyActive == 0) {
         S.step = 1;
-        S.f2 = 0;
-        S.f3 = 0;
-        S.f4 = 0;
-        S.f5 = 0;
+        S.stepState = 0;
+        S.stepIndex = 0;
+        S.unk4 = 0;
+        S.flipZone = 0;
         return 0;
     }
     return r;

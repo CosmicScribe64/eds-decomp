@@ -7,9 +7,14 @@
 A matching decompilation of *Yu-Gi-Oh! The Eternal Duelist Soul* for the Game Boy Advance (USA, `AY5E`).
 The C and assembly in this repository rebuild a ROM that is byte-for-byte identical to the original.
 
-As of October 2026, 1,704 of the game's 1,976 functions (86%) are written in matching C or authored
-assembly, which covers about 61% of the code by size. The rest is still included as disassembly, so the
-build always matches.
+Only the USA release is covered. The Japanese release (*Yu-Gi-Oh! Duel Monsters 5 Expert 1*, `AY5J`) is
+not a translation of this game: its duel engine and data model were reworked, it has 928 cards instead of
+821, and it links a Mobile Adapter GB library the USA build lacks. A matching Japanese build would be a
+separate project; [`wiki/rom/rom-versions.md`](wiki/rom/rom-versions.md) has the full comparison.
+
+As of October 2026 the decompilation is complete: all 1,976 of the game's functions are written in
+matching C, and the built ROM is byte-for-byte identical to the original. The work now is readability:
+shared headers, harmonized symbol names and per-unit cleanup, all while keeping the match.
 
 **This repository contains no game data.** You supply your own copy of the game, and a setup step extracts
 its graphics, text, card data, fonts and sound into a local `assets/` folder that the build reads.
@@ -39,22 +44,26 @@ After setup, the build reads only `assets/` and the source code, so it no longer
 
 ### The assets folder
 
-`make setup` writes every byte of the game's data into `assets/`, using editable formats where the format is
-understood:
+`make setup` writes every byte of the game's data into `assets/`. Every asset converts to an editable
+format and builds back byte-identical; the only raw bytes left are the Nintendo logo inside the cartridge
+header, which the BIOS checks.
 
 | What | Format |
 |---|---|
 | Card names and descriptions | `assets/cards/names.json`, `descriptions.json` |
 | Card stats (ATK, DEF, level, type, attribute) | `assets/cards/stats.csv` |
 | Card art, 821 images with their palettes | `assets/cards/art/NNN.png` (indexed, 64 colours) |
+| Card passwords | `assets/cards/passwords.csv` |
 | Dialogue and duelist names | `assets/text/dialogue.json`, `duelists.json` |
 | Fonts (Latin and Japanese) | `assets/fonts/*.png` |
-| System palette and tiles | `assets/gfx/system.pal`, `system_tiles.png` |
-| Sound, scene graphics and other tables | `.bin` files, until their formats are documented |
+| Sound | WAV samples plus text-format music and sound-effect tracks in `assets/sound/` |
+| Scene graphics and graphics banks | editable PNGs in `assets/gfx/` |
+| Game tables (deck lists, effect handlers, pointers) | JSON in `assets/tables/` |
 
 Edit a file and run `tools/dr make` to build a ROM with your change. `make compare` reports a mismatch once
-you've changed something, which is expected. `config/assets.tsv` lists every asset and its address range, and
-`tools/assets.py` does the conversions.
+you've changed something, which is expected. There are 83 assets in total; `config/assets.tsv` lists every
+one with its address range, `tools/assets.py` does the conversions, and
+[`wiki/tools/assets.md`](wiki/tools/assets.md) documents each format.
 
 ## Progress
 
@@ -66,9 +75,11 @@ The report doesn't need the ROM. CI generates it on every push (`.github/workflo
 
 ## Working on it
 
-The code is split into units, listed in link order in `units.txt`. Each unit is `src/<unit>.c`. A function
-that doesn't match yet is pulled in from `asm/nonmatching/` with `INCLUDE_ASM`, often with a C attempt parked
-above it.
+The code is split into units, listed in link order in `units.txt`. Each unit is `src/<unit>.c`, and every
+unit is now matching C (no `INCLUDE_ASM` remains). The original disassembly stays in
+`asm/nonmatching/` as the comparison target. Shared types and constants live in `include/` and
+`include/constants/`; `wiki/concepts/shared-headers.md` explains how units use them and which local
+views remain.
 
 - `tools/dr python3 tools/check.py <unit> [--diff FUNC] [--norm]` compares one unit with its original bytes.
 - `tools/dr python3 tools/check_all.py` checks every unit. CI runs the same check.

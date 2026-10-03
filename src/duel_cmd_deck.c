@@ -1,150 +1,196 @@
 #include "global.h"
-#include "duel.h"
+#include "constants/duel.h"         /* enum DuelArea, ZONE_LINK_EQUIP, DUEL_LOC */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER */
 
 /*
- * Duel "script command" handlers. The dispatcher DuelCmd_Dispatch switches on
- * (gDuelCmd.cmd & 0xFFF) - 1 and calls one of these; each handler reads
- * its operands from the command block at 0x020185C0 and clears the
- * "command running" flag (bit 5 of byte 0x020185C0+0x80D) when it is done.
+ * Duel command handlers for the deck and for zone state (wiki/functions/duel-cmd-deck-c.md).
+ *
+ * DuelCmd_Dispatch calls the handler of gDuelCmd.cmd once per frame while gDuelCmd.running is set. A handler
+ * reads its operands from gDuelCmd (cmd bit 15: the acting player; arg2, arg4, arg6) and clears running
+ * when it is done.
+ *  - Zone-state commands (0x83-0x8F): one-frame updates of a zone's links, turn counter, declared value and
+ *    card bits, and of the Prohibition list in gDuel.
+ *  - Deck commands (0x60-0x68, 0xDD): shuffle, draw, send or banish the top cards, and move one given card
+ *    out of the deck or the fusion deck. They are step machines on gDuelCmd.step: scroll the field, animate
+ *    the card with DuelAnim_MoveCard, then make the move in the duel state. A single card is given as a
+ *    card word (struct DuelCard) split over two operands: arg2 | arg4 << 16.
  */
 
-/* Command block at 0x020185C0 (hypothesis: current duel command). */
-struct DuelCmd {
-    u16 cmd;            /* 0x000: bits 0-11 command id, bit 15 acting player */
-    u16 arg2;           /* 0x002: usually a zone/slot index */
-    u16 arg4;           /* 0x004 */
-    u16 arg6;           /* 0x006 */
-    u8 filler8[0x80A - 0x8];
-    u16 step:7;         /* 0x80A bits 0-6: multi-frame handler state */
-    u16 counter:7;      /* 0x80A bits 7-13 */
-    u16 unk80A_14:2;
-    u8 unk80C;
-    u8 unk80D_0:5;
-    u8 running:1;       /* 0x80D bit 5: command in progress */
-    u8 unk80D_6:2;
-    u8 filler80E[0x814 - 0x80E];
-    u8 card[4];         /* 0x814 struct DuelCard: card being moved (u8 so the block stays 2-aligned) */
+/* ---- BEGIN duel.h subset (pre-H0) ---- */
+/*
+ * The part of include/duel.h this unit uses, with the header's tags, field names and bitfield containers.
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
+ * so this block stands in for it. It defines GUARD_DUEL_H so that duel_cmd.h, duel_screen.h and duel_link.h
+ * (below) do not include the legacy file. After H0, replace this block (BEGIN to END) with
+ *     #include "duel.h"
+ *     #include "sound.h"
+ * Checked: with the staged duel.h and sound.h that gives assembly identical to this file.
+ */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:9;
+    u32 destroyedByOpponent:1;      /* bit 22 */
+    u32 unk23:9;
 };
 
-/* Card location for the card-move animation DuelAnim_MoveCard (4 bytes; see duel_cmd_hand). */
-struct CardLoc {
-    u16 player:1;       /* bit 0 */
-    u16 area:4;         /* bits 1-4: 0 monster zone, 5 spell/trap, 10 field, 11 hand, 13, 14, 15 */
-    u16 index:9;        /* bits 5-13 */
-    u16 flag14:1;
-    u16 flag15:1;
+struct DuelLoc {
+    u16 player:1;                   /* bit 0: side of the field */
+    u16 area:4;                     /* bits 1-4: enum DuelArea */
+    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
+    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
+    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
     u16 unk2;
 };
 
-/*
- * Local views kept because the canonical declarations in duel.h differ from what
- * this unit needs to match (duel.h is shared, so it is not changed here):
- *
- * - struct DuelZoneWord4 (below): canonical struct DuelZone declares +0x04 as `u16
- *   serial` and +0x06 as the u8 bitfields flag6_0/flag6_1/counter6; this unit reads and
- *   writes +0x04 as one u32 bitfield container (its counter sits at bits 18-21, i.e.
- *   +0x06 bits 2-5), so DuelCmd_AddZoneTurnCounter and DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue keep this view.
- * - struct DuelCardBit22 (below): canonical struct DuelCard has flag20 at bit 20 and
- *   unk21:11 for bits 21-31, so the bit-22 flag DuelCmd_SetDestroyedByOpponentFlag writes has no canonical
- *   field name.
- * - struct DuelZone90 (below): canonical struct DuelZone stops at +0x8C (unk8C[8]), but
- *   DuelCmd_SetZoneDeclaredValue and DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue write the u32 bitfield at +0x90 bits 13-17.
- */
-struct DuelZoneWord4 {
-    u8 filler[4];
-    u32 unk4_0:18;
-    u32 unk4_18:4;      /* 0x06 bits 2-5 (canonical counter6) */
-    u32 unk4_22:10;
-};
-
-struct DuelCardBit22 {
-    u32 unk0_0:22;      /* 0x00 bits 0-21: card id and flags */
-    u32 flag0_22:1;     /* 0x02 bit 6 */
-    u32 unk0_23:9;
-};
-
-struct DuelZone90 {
-    u8 filler[0x90];
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0 */
+    u8 isFaceUp:1;                  /* +0x06 bit 1 */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u8 unk6_6:2;
+    u8 unk7[3];
+    u16 links[32];                  /* +0x0A */
+    u16 linkKinds[32];              /* +0x4A */
+    u16 numLinks;                   /* +0x8A */
+    u8 unk8C[4];
     u32 unk90_0:13;
-    u32 unk90_13:5;     /* 0x90 bits 13-17 */
-    u32 unk90_18:14;
+    u32 declaredValue:5;            /* +0x91 bits 5-9 */
+    u32 unk92_2:14;
 };
 
-/* struct DuelPlayerFlags: canonical struct DuelPlayer declares +0x07 as the bitfields
- * deckOut/winA/...; DuelCmd_DrawCards sets it with a plain `|= 1` (ldrb/orrs/strb), so a
- * whole-byte view matches. */
-struct DuelPlayerFlags {
-    u8 filler[7];
-    u8 flags7;
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002 */
+    u8 deckCount;                   /* +0x003 */
+    u8 graveCount;                  /* +0x004 */
+    u8 fusionCount;                 /* +0x005 */
+    u8 banishedCount;               /* +0x006 */
+    u8 deckOut:1;                   /* +0x007 bit 0 */
+    u8 unk7_1:7;
+    u8 unk8[0x20];
+    struct DuelZone zones[11];      /* +0x028 */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4 */
 };
 
-extern struct DuelCmd gDuelCmd;
-
-#define CMD_PLAYER (gDuelCmd.cmd >> 15)
-#define CMD_CARD ((struct DuelCard *)gDuelCmd.card)
-/* Halfword at cmd +0x80C seen as bitfields (padded past 4 bytes so it is accessed with ldrh/strh). */
-struct Cmd80C {
-    u16 unk0:5;
-    u16 unk5:7;         /* bits 5-11: cleared by DuelCmd_DrawCards (hypothesis: animation counter) */
-    u16 unk12:4;
-    u8 pad[4];
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004 */
+    u8 unk1ACC;
+    u8 unk1ACD_0:7;
+    u32 prohibitionCount:4;         /* +0x1ACD bit 7 .. +0x1ACE bit 2 */
+    u32 unk1ACE_3:13;
+    u16 prohibitionZones[16];       /* +0x1AD0 */
+    u16 prohibitedCards[16];        /* +0x1AF0 */
+    u16 turnCount;                  /* +0x1B10 */
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1 */
+    u8 phase:3;
+    u8 linkError:1;
+    u8 result:2;
+    u8 unk1B13[0x1B78 - 0x1B13];
 };
-#define CMD_80C (*(struct Cmd80C *)&gDuelCmd.unk80C)
-/* card id of a zone: low 12 bits of its first word */
-#define ZONE_CARD_ID(z) ((*(u32 *)(z) << 20) >> 20)
-#define ZONE_CARD(p, s) ZONE_CARD_ID(ZONE(p, s))
-#define ZONE(p, s) ((struct DuelZone *)((s) * 0x94 + (p) * 0xD64 + (u8 *)gDuelZones))
 
-void AddZoneLink(u16, u16, u16);
-void RemoveZoneLink(u16, u16, u16);
-void DuelScreen_DrawCursorInfo(void);
-int RemoveCardFromDeck(u32 player, void *card);
-void CopyDuelCard(struct DuelCard *dst, void *src);
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+
+void CopyDuelCard(u32 *dst, u32 *src);
+void PlaceMonsterCard(int player, int zone, struct DuelCard *card, u16 defense, u16 faceUp);
+void ShuffleDeck(int player, int passes);
+u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out);
+int RemoveCardFromDeck(int player, struct DuelCard *card);
+int RemoveCardFromFusionDeck(int player, struct DuelCard *card);
 void AddCardToGraveyard(struct DuelCard *card);
-int TakeDeckCardAt(u32 player, u32 a, struct DuelCard *card);
-void PlaceMonsterCard(u32 player, u32 zone, struct DuelCard *card, u32 a, u32 b);
 void AddCardToBanished(struct DuelCard *card);
-void DuelDrawCard(u32 player, u16 a);
-void AddCardToHand(u32 player, void *card);
-int RemoveCardFromFusionDeck(u32 player, void *card);
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void DuelCursor_Select(u32 player, u32 area, u32 index);
-void DuelAnim_MoveCard(u32 id, struct CardLoc *from, struct CardLoc *to);
-void DrawAllAreaTiles(void);
-void DuelScreen_StartScroll(u32 a);
-void DuelSprAnim_Load(const void *a);
-void ShuffleDeck(u32 player, u32 a);
-void DuelSprAnim_DrawAt(u32 a, u32 b, u32 c);
-void PlaySE(u16 se);                        /* PlaySE */
-void DuelSprAnim_Rewind(void);
-void LoadDuelUiGfx(void);
-void DuelLink_SendDeck(u32 player);
-extern const u8 gDeckShuffleAnim[];
-/* Duel screen state at 0x0201CFB0 (see duel_cmd_moves); only the field used here. */
-struct DuelScreen {
-    u8 filler0[0x852];
-    u16 unk852;         /* 0x852: nonzero while busy (hypothesis) */
-};
-extern struct DuelScreen gDuelScreen;
-extern u8 gDuelCtrl[];      /* byte 1 bit 0: link duel (hypothesis) */
-/* Link state at 0x02017FB0 (see duel_prompts; u32 bitfield containers). */
-struct Unk02017FB0 {
-    u8 filler0[0x304];
-    u32 unk304:8;
-    u32 dirtyHand:1;    /* +0x305 bit 0 (hypothesis, per duel_prompts) */
-    u32 dirtyDeck:1;    /* +0x305 bit 1 */
-    u32 unk305_2:22;
-};
-extern struct Unk02017FB0 gLinkState;
-void MemCopy16(void *dst, const void *src, u32 size);
+void AddCardToHand(int player, struct DuelCard *card);
+void AddZoneLink(u16 loc, u16 target, u16 kind);
+void RemoveZoneLink(u16 loc, u16 target, u16 kind);
 
+void PlaySE(u32 seId);                          /* sound.h */
+/* ---- END duel.h subset ---- */
+
+#include "duel_cmd.h"       /* gDuelCmd, gDuelCmdT16; the DuelCmd_* handlers defined here */
+#include "duel_screen.h"    /* gDuelScreen, DuelScreen_*, DuelCursor_Select, DuelAnim_MoveCard, DuelSprAnim_* */
+#include "duel_link.h"      /* gLinkState, DuelLink_SendDeck */
+#include "duel_flow.h"      /* gDuelCtrl */
+#include "util.h"           /* MemCopy16 */
+
+/* Shuffle animation (sprite.h SprAnim stream, 6 frames of a card stack being cut), played in
+ * gDuelScreen.sprAnim by DuelCmd_ShuffleDeck. Used only here. */
+extern const u8 gDeckShuffleAnim[];             /* 0x08694EA8 */
+
+/* ---- Local views kept for matching ---- */
+
+/* DuelDrawCard is defined with one parameter; this unit passes gDuelCmd.arg2 as a second argument (r1),
+ * which the function ignores. */
+void DuelDrawCard2(int player, u16 unused) asm("DuelDrawCard");
+
+/* TakeDeckCardAt returns u16; this unit tests the result as an int (no narrowing after the call). */
+int TakeDeckCardAtInt(int player, int idx, struct DuelCard *out) asm("TakeDeckCardAt");
+
+/* The turn counter as bits 18-21 of the u32 at zone +0x04 (= DuelZone.turnCounter, +0x06 bits 2-5).
+ * DuelCmd_AddZoneTurnCounter adds through this container; with duel.h's u8 container the operands of the
+ * add come out swapped. */
+struct DuelZoneTurnCounterWord {
+    struct DuelCard card;
+    u32 unk4_0:18;                  /* serial, isDefense, isFaceUp */
+    u32 turnCounter:4;
+    u32 unk6_6:10;
+};
+
+/* Card ID of a zone or of gDuelCmd.card, read through a struct DuelCard pointer: that loads the whole card
+ * word (ldr; lsl #20; lsr #20) as the ROM does. A direct member read (zone->card.id) loads a halfword. */
+#define ZONE_CARD_ID(zone) (((struct DuelCard *)(zone))->id)
+#define CMD_CARD_ID (((struct DuelCard *)&gDuelCmd.card)->id)
+
+/* ---- Helpers ---- */
+
+/* The acting player of the command (bit 15 of the command id, DUEL_CMD_PLAYER). */
+#define CMD_PLAYER (gDuelCmd.cmd >> 15)
+
+/* &gDuelZones[player].zones[zone], summed in the ROM's order (zone offset + player offset + base). */
+#define CMD_ZONE(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelZonesPlayer) \
+                         + (u8 *)gDuelZones))
+
+/* Fill a struct DuelLoc for DuelAnim_MoveCard; the moving card is never drawn in defense position. */
+#define SET_LOC(loc, player_, area_, index_, faceUp_) \
+    ((loc).player = (player_), (loc).area = (area_), (loc).index = (index_), (loc).isDefense = 0, \
+     (loc).isFaceUp = (faceUp_))
+
+/* FAKEMATCH: the value x hidden from the optimizer by an empty asm volatile, so that loop.c does not hoist
+ * it out of the loop (DuelCmd_RemoveProhibition). */
+#define OPAQUE(x) ({ int opaque_ = (x); asm volatile("" : "+r"(opaque_)); opaque_; })
+
+/* ======== Zone-state commands (one frame each) ======== */
+
+/* 0x83 DUEL_CMD_ADD_EQUIP_LINK: arg2 = DUEL_LOC of an equip card, arg4 = DUEL_LOC of the monster it
+ * equips. The monster's zone gets a ZONE_LINK_EQUIP link to the equip card. */
 void DuelCmd_AddEquipLink(void)
 {
-    AddZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, 1);
+    AddZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, ZONE_LINK_EQUIP);
     DuelScreen_DrawCursorInfo();
     DrawAllAreaTiles();
     gDuelCmd.running = 0;
 }
+
+/* 0x85 DUEL_CMD_ADD_ZONE_LINK: the zone at DUEL_LOC arg4 gets a link of kind arg6 (enum ZoneLinkKind) to
+ * target arg2. */
 void DuelCmd_AddZoneLink(void)
 {
     AddZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, gDuelCmd.arg6);
@@ -152,6 +198,8 @@ void DuelCmd_AddZoneLink(void)
     DrawAllAreaTiles();
     gDuelCmd.running = 0;
 }
+
+/* 0x86 DUEL_CMD_REMOVE_ZONE_LINK: remove the kind-arg6 link to target arg2 from the zone at DUEL_LOC arg4. */
 void DuelCmd_RemoveZoneLink(void)
 {
     RemoveZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, gDuelCmd.arg6);
@@ -159,142 +207,186 @@ void DuelCmd_RemoveZoneLink(void)
     DrawAllAreaTiles();
     gDuelCmd.running = 0;
 }
+
+/* 0x87 DUEL_CMD_SET_ZONE_DECLARED_VALUE: declaredValue of the acting player's zone (u8)arg2 = arg4, with
+ * no occupancy check. It is the choice made when the card resolved (DNA Surgery's type, 7 Completed's
+ * 1 = ATK / 2 = DEF, an attribute); GetZoneCardStats reads it. */
 void DuelCmd_SetZoneDeclaredValue(void)
 {
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, (u8)gDuelCmd.arg2);
-    ((struct DuelZone90 *)zone)->unk90_13 = gDuelCmd.arg4;
+    struct DuelZone *zone = CMD_ZONE(player, (u8)gDuelCmd.arg2);
+
+    zone->declaredValue = gDuelCmd.arg4;
     DrawAllAreaTiles();
     gDuelCmd.running = 0;
 }
+
+/* 0x8B DUEL_CMD_SET_DESTROYED_BY_OPPONENT_FLAG: destroyedByOpponent (card bit 22) of the card in the acting
+ * player's zone arg2 = arg4. Pushed just before an effect destroys a card its controller does not own. */
 void DuelCmd_SetDestroyedByOpponentFlag(void)
 {
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, gDuelCmd.arg2);
-    ((struct DuelCardBit22 *)zone)->flag0_22 = gDuelCmd.arg4;
+    struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
+
+    zone->card.destroyedByOpponent = gDuelCmd.arg4;
     gDuelCmd.running = 0;
 }
+
+/* 0x8A DUEL_CMD_ADD_ZONE_TURN_COUNTER: if the acting player's zone arg2 holds a card, add arg4 to its turn
+ * counter (4 bits, wraps). Swords of Revealing Light and similar cards count their turns with it. */
 void DuelCmd_AddZoneTurnCounter(void)
 {
-    u16 val = gDuelCmd.arg4;
+    u16 amount = gDuelCmd.arg4;
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, gDuelCmd.arg2);
+    struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
+
     if (ZONE_CARD_ID(zone))
-        ((struct DuelZoneWord4 *)zone)->unk4_18 = val + ((struct DuelZoneWord4 *)zone)->unk4_18;
+        ((struct DuelZoneTurnCounterWord *)zone)->turnCounter
+            = amount + ((struct DuelZoneTurnCounterWord *)zone)->turnCounter;
     gDuelCmd.running = 0;
 }
+
+/* 0x89 DUEL_CMD_SET_ZONE_TURN_COUNTER: if the acting player's zone arg2 holds a card, its turn counter =
+ * arg4. */
 void DuelCmd_SetZoneTurnCounter(void)
 {
-    u16 val = gDuelCmd.arg4;
+    u16 value = gDuelCmd.arg4;
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, gDuelCmd.arg2);
-    u8 old = ((struct DuelZoneWord4 *)zone)->unk4_18;
+    struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
+    /* FAKEMATCH: unused read. The ROM loads the counter byte before the occupancy test and reuses it for
+     * the store below; without this read the load moves inside the if. */
+    u8 oldCounter = zone->turnCounter;
+
     if (ZONE_CARD_ID(zone))
-        ((struct DuelZoneWord4 *)zone)->unk4_18 = val;
+        zone->turnCounter = value;
     gDuelCmd.running = 0;
 }
+
+/* 0x88 DUEL_CMD_RESET_ZONE_TURN_COUNTER_AND_SET_DECLARED_VALUE: if the acting player's zone arg2 holds a
+ * card, its turn counter = 0 and its declaredValue = arg4. */
 void DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue(void)
 {
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, gDuelCmd.arg2);
+    struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
+
     if (ZONE_CARD_ID(zone)) {
-        ((struct DuelZoneWord4 *)zone)->unk4_18 = 0;
-        ((struct DuelZone90 *)zone)->unk90_13 = gDuelCmd.arg4;
+        zone->turnCounter = 0;
+        zone->declaredValue = gDuelCmd.arg4;
     }
     gDuelCmd.running = 0;
 }
+
+/* 0x8C DUEL_CMD_CLEAR_ZONE_LINKS: drop every link of the acting player's zone arg2 (Relinquished clears
+ * its zone before it absorbs a monster). */
 void DuelCmd_ClearZoneLinks(void)
 {
     u32 player = CMD_PLAYER;
-    struct DuelZone *zone = ZONE(player, gDuelCmd.arg2);
+    struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
+
     zone->numLinks = 0;
     gDuelCmd.running = 0;
 }
+
+/* 0x8D DUEL_CMD_MOVE_ZONE_LINKS: move every link of the acting player's zone arg2 to zone arg4. Magical
+ * Hats parks a monster's links in the field zone while the hats are shuffled, then moves them to the
+ * monster's new zone. */
 void DuelCmd_MoveZoneLinks(void)
 {
-    struct DuelZone *base = (struct DuelZone *)((u8 *)gDuelZones + CMD_PLAYER * 0xD64);
-    struct DuelZone *src = base + gDuelCmd.arg2;
+    struct DuelZone *zones = (struct DuelZone *)((u8 *)gDuelZones + CMD_PLAYER * sizeof(struct DuelZonesPlayer));
+    struct DuelZone *src = zones + gDuelCmd.arg2;
     struct DuelZone *dst;
 
+    /* FAKEMATCH: clobbering r6 here makes global-alloc put src in r5 and dst in r6 as in the ROM
+     * (tools/regoracle.py: src lacks one reference, or one instruction less of live range, to win r5). */
     __asm__("" : : : "r6");
-    dst = base + gDuelCmd.arg4;
-    MemCopy16(dst->links, src->links, 0x40);
-    MemCopy16(dst->linkKinds, src->linkKinds, 0x40);
+    dst = zones + gDuelCmd.arg4;
+    MemCopy16(dst->links, src->links, sizeof(dst->links));
+    MemCopy16(dst->linkKinds, src->linkKinds, sizeof(dst->linkKinds));
     dst->numLinks = src->numLinks;
     src->numLinks = 0;
     gDuelCmd.running = 0;
 }
+
+/* 0x8E DUEL_CMD_ADD_PROHIBITION: record a Prohibition in gDuel: its zone (the acting player's zone arg2) and
+ * the card ID it declared (arg4; nothing is recorded for 0). IsCardProhibited checks this list. */
 void DuelCmd_AddProhibition(void)
 {
     if (gDuelCmd.arg4 != 0) {
-        gDuel.queueZone[gDuel.queueCount] = ((u8)gDuelCmd.arg2 << 8) | CMD_PLAYER;
-        gDuel.queueArg[gDuel.queueCount] = gDuelCmd.arg4;
-        gDuel.queueCount++;
+        gDuel.prohibitionZones[gDuel.prohibitionCount] = DUEL_LOC(CMD_PLAYER, (u8)gDuelCmd.arg2);
+        gDuel.prohibitedCards[gDuel.prohibitionCount] = gDuelCmd.arg4;
+        gDuel.prohibitionCount++;
     }
     gDuelCmd.running = 0;
 }
-/*
- * Remove the marked-card queue entries whose zone word equals (arg2 << 8) | player.
- * The (u16) cast on the key is what makes the else arm recompute arg2 << 8
- * (combine splits the zero-extension off the shared shift).
- */
+
+/* 0x8F DUEL_CMD_REMOVE_PROHIBITION: remove every Prohibition entry of the acting player's zone arg2 (the
+ * card left the field), closing the gap in both lists. */
 void DuelCmd_RemoveProhibition(void)
 {
     s32 i, j;
-    for (i = 0; i < gDuel.queueCount; i++) {
-        /* FAKEMATCH: the ROM keeps the 0x8000 mask and the AND inside the loop (only the
-           cmd load is hoisted); the empty asm volatile stops loop.c from hoisting the
-           constant in its second pass. */
-        if (gDuel.queueZone[i]
-            == (u16)(((u8)gDuelCmd.arg2 << 8)
-                     | ((gDuelCmd.cmd & ({ int mask = 0x8000; asm volatile("" : "+r"(mask)); mask; })) ? 1 : 0))) {
-            gDuel.queueCount = (u16)(gDuel.queueCount - 1);
-            for (j = i; j < gDuel.queueCount; j++) {
-                gDuel.queueZone[j] = gDuel.queueZone[j + 1];
-                gDuel.queueArg[j] = gDuel.queueArg[j + 1];
+
+    for (i = 0; i < gDuel.prohibitionCount; i++) {
+        /* The key is DUEL_LOC(player, zone). The (u16) cast makes the else arm recompute arg2 << 8 (combine
+         * splits the zero-extension off the shared shift). OPAQUE keeps the 0x8000 mask and the AND inside
+         * the loop as in the ROM (only the cmd load is hoisted). */
+        if (gDuel.prohibitionZones[i]
+            == (u16)DUEL_LOC((gDuelCmd.cmd & OPAQUE(DUEL_CMD_PLAYER)) ? 1 : 0, (u8)gDuelCmd.arg2)) {
+            /* FAKEMATCH: the (u16) cast; prohibitionCount-- compiles differently. */
+            gDuel.prohibitionCount = (u16)(gDuel.prohibitionCount - 1);
+            for (j = i; j < gDuel.prohibitionCount; j++) {
+                gDuel.prohibitionZones[j] = gDuel.prohibitionZones[j + 1];
+                gDuel.prohibitedCards[j] = gDuel.prohibitedCards[j + 1];
             }
         }
     }
     gDuelCmd.running = 0;
 }
+
+/* ======== Deck commands (step machines on gDuelCmd.step) ======== */
+
+/* 0x60 DUEL_CMD_SHUFFLE_DECK: shuffle the acting player's deck while the shuffle animation plays four
+ * times. In a link duel, the GBA whose turn it is (turnPlayer 0: each GBA is player 0 on its own side, the
+ * partner's commands arrive mirrored) then sends the new deck order to the partner and waits for its
+ * acknowledgement, so both GBAs hold the same order. */
 void DuelCmd_ShuffleDeck(void)
 {
     int player = CMD_PLAYER;
 
     switch (gDuelCmd.step) {
-    case 0:
-        DuelScreen_StartScroll(0x50);
+    case 0:     /* scroll to the middle of the field (80 px, the scroll target of the monster rows) */
+        DuelScreen_StartScroll(80);
         gDuelCmd.step++;
         break;
-    case 1:
-        DuelSprAnim_Load(gDeckShuffleAnim);
+    case 1:     /* load the animation (it replaces the duel UI's OBJ tiles) */
+        DuelSprAnim_Load((u32)gDeckShuffleAnim);
         gDuelCmd.counter = 0;
         gDuelCmd.step++;
         /* fallthrough */
-    case 2:
-        ShuffleDeck(player, 3);
-        DuelSprAnim_DrawAt(0, 0, 1);
-        if (gDuelScreen.unk852 != 0)
+    case 2:     /* every frame: shuffle and draw; frameIndex is back at 0 when a loop of the animation ends */
+        ShuffleDeck(player, 3);             /* 3 x deckCount random swaps per frame */
+        DuelSprAnim_DrawAt(0, 0, 1);        /* draw at (0, 0) and advance one frame */
+        if (gDuelScreen.sprAnim.frameIndex != 0)
             break;
         gDuelCmd.counter++;
+        /* FAKEMATCH: (s8) gives the ROM's signed compare; the counter is 0-127, so the value is the same. */
         if ((s8)gDuelCmd.counter <= 3) {
-            PlaySE(7);
+            PlaySE(7);      /* SE 7: the shuffle sound (no name in constants/sound.h yet) */
             DuelSprAnim_Rewind();
         } else {
             gDuelCmd.step++;
         }
         break;
-    case 3:
+    case 3:     /* restore the UI graphics; in a link duel on our turn, send the deck */
         LoadDuelUiGfx();
-        if ((gDuelCtrl[1] & 1) && !(gDuel.linkSkip)) {
+        if (gDuelCtrl.isLinkDuel && !gDuel.turnPlayer) {
             DuelLink_SendDeck(player);
             gDuelCmd.step = 10;
         } else {
             gDuelCmd.running = 0;
         }
         break;
-    case 10:
-        if (gLinkState.dirtyDeck)
+    case 10:    /* wait until the partner acknowledges the deck list */
+        if (gLinkState.deckAcked)
             gDuelCmd.running = 0;
         break;
     default:
@@ -302,92 +394,79 @@ void DuelCmd_ShuffleDeck(void)
         break;
     }
 }
-/* Draw arg4 cards for the acting player (deck to hand animation,
- * DuelDrawCard(player, arg2) per card). With an empty deck, set player flag +7
- * bit 0 and stop. */
+
+/* 0x61 DUEL_CMD_DRAW_CARDS: the acting player draws arg4 cards, one animation each (arg2 is passed to
+ * DuelDrawCard, which ignores it). A player who has to draw from an empty deck gets deckOut and loses the
+ * duel (Duel_CheckWin). */
 void DuelCmd_DrawCards(void)
 {
-    struct CardLoc from, to;
-    int player = gDuelCmd.cmd >> 15;
+    struct DuelLoc from, to;
+    int player = CMD_PLAYER;
 
     switch (gDuelCmd.step) {
-    case 0:
-        DuelScreen_ScrollToZone(player, 11);
+    case 0:     /* scroll to the hand; an empty deck ends the command */
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         if (gDuelPlayers[player].deckCount != 0)
             break;
-        ((struct DuelPlayerFlags *)&gDuelPlayers[player])->flags7 |= 1;
+        gDuelPlayers[player].deckOut = 1;
         gDuelCmd.running = 0;
         break;
-    case 1:
-        from.player = player;
-        from.area = 13;
-        from.index = 0;
-        from.flag14 = 0;
-        from.flag15 = 0;
-        to.player = player;
-        to.area = 11;
-        to.index = gDuelPlayers[player & 1].handCount;
-        to.flag14 = 0;
-        to.flag15 = 0;
-        DuelAnim_MoveCard(0, &from, &to);
+    case 1:     /* the top card flies face down from the deck to the next hand slot */
+        SET_LOC(from, player, DUEL_AREA_DECK, 0, FALSE);
+        SET_LOC(to, player, DUEL_AREA_HAND, gDuelPlayers[player & 1].handCount, FALSE);
+        DuelAnim_MoveCard(0, &from, &to);   /* no card ID: it moves face down */
         gDuelCmd.step++;
         break;
-    case 2:
-        DuelDrawCard(player, gDuelCmd.arg2);
+    case 2:     /* draw it; repeat from step 1 while cards remain */
+        DuelDrawCard2(player, gDuelCmd.arg2);
         gDuelCmd.arg4--;
         if (gDuelCmd.arg4 != 0) {
-            ((struct Cmd80C *)&gDuelCmd.unk80C)->unk5 = 0;
+            gDuelCmdT16.timer = 0;
             gDuelCmd.step--;
             break;
         }
         /* fallthrough */
-    default:
-        DuelCursor_Select(player, 11, gDuelPlayers[player].handCount - 1);
+    default:    /* point the cursor at the last card drawn */
+        DuelCursor_Select(player, DUEL_AREA_HAND, gDuelPlayers[player].handCount - 1);
         DrawAllAreaTiles();
         gDuelCmd.running = 0;
         break;
     }
 }
-/* Repeat arg2 times: take a card for the acting player with TakeDeckCardAt(player, 0, &cmd card) and
- * animate it from area 13 to area 14, then commit with AddCardToGraveyard. */
+
+/* 0x62 DUEL_CMD_SEND_TOP_DECK_CARDS_TO_GRAVEYARD: send the top arg2 cards of the acting player's deck to
+ * the graveyard, one at a time (arg2 counts down). Stops early when the deck is empty. */
 void DuelCmd_SendTopDeckCardsToGraveyard(void)
 {
-    struct CardLoc from, to;
-    u32 player = gDuelCmd.cmd >> 15;
-    int p2 = player;
+    struct DuelLoc from, to;
+    u32 player = CMD_PLAYER;
+    /* FAKEMATCH: a second copy of the player; the ROM keeps it in two registers (r5 for the calls, r8). */
+    int player2 = player;
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         break;
-    case 1:
+    case 1:     /* take the top card into gDuelCmd.card and animate it face up to the graveyard */
         if (gDuelCmd.arg2 == 0) {
             gDuelCmd.running = 0;
             break;
         }
-        if (TakeDeckCardAt(player, 0, CMD_CARD)) {
-            from.player = p2;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = p2;
-            to.area = 14;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
+        if (TakeDeckCardAtInt(player, 0, &gDuelCmd.card)) {
+            SET_LOC(from, player2, DUEL_AREA_DECK, 0, TRUE);
+            SET_LOC(to, player2, DUEL_AREA_GRAVEYARD, 0, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
             gDuelCmd.step++;
         } else {
-            DuelCursor_Select(p2, 13, 0);
+            DuelCursor_Select(player2, DUEL_AREA_DECK, 0);
             DrawAllAreaTiles();
             gDuelCmd.running = 0;
         }
         break;
-    case 2:
-        AddCardToGraveyard(CMD_CARD);
+    case 2:     /* put it in the graveyard; repeat from step 1 while cards remain */
+        AddCardToGraveyard(&gDuelCmd.card);
         DrawAllAreaTiles();
         gDuelCmd.arg2--;
         if (gDuelCmd.arg2 != 0)
@@ -400,52 +479,45 @@ void DuelCmd_SendTopDeckCardsToGraveyard(void)
         break;
     }
 }
-#if 0 /* NONMATCHING: case 0: ROM tests the stored counter by extracting it (lsl #18; lsr #25; cmp), this compiles to an and-mask test */
-/* Repeat arg2 times (counter at cmd +0x80A bits 7-13): take a card for the acting player with
- * TakeDeckCardAt(player, 0, &cmd card), animate it from area 13 to area 15, commit with AddCardToBanished. */
+
+/* 0x63 DUEL_CMD_BANISH_TOP_DECK_CARDS: banish the top arg2 cards of the acting player's deck, one at a
+ * time (counted down in gDuelCmd.counter). Stops early when the deck is empty. */
 void DuelCmd_BanishTopDeckCards(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    u32 player = gDuelCmd.cmd >> 15;
-    int p2 = player;
+    struct DuelLoc from, to;
+    u32 player = CMD_PLAYER;
+    u32 player2 = player;   /* FAKEMATCH: second copy of the player, as in DuelCmd_SendTopDeckCardsToGraveyard */
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
-        cmd->counter = cmd->arg2;
-        if (!(cmd->counter > 0)) {
-            cmd->running = 0;
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
+        gDuelCmd.counter = gDuelCmd.arg2;
+        /* FAKEMATCH: the cast makes the ROM's re-extraction of the stored counter (lsl; lsr; cmp) */
+        if ((s8)gDuelCmd.counter == 0) {
+            gDuelCmd.running = 0;
             break;
         }
-        cmd->step++;
+        gDuelCmd.step++;
         break;
-    case 1:
-        if (TakeDeckCardAt(player, 0, CMD_CARD)) {
-            from.player = p2 & 1;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = p2 & 1;
-            to.area = 15;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
-            cmd->step++;
+    case 1:     /* take the top card into gDuelCmd.card and animate it face up to the banished pile */
+        if (TakeDeckCardAtInt(player, 0, &gDuelCmd.card)) {
+            SET_LOC(from, player2 & 1, DUEL_AREA_DECK, 0, TRUE);
+            SET_LOC(to, player2 & 1, DUEL_AREA_BANISHED, 0, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            gDuelCmd.step++;
         } else {
-            DuelCursor_Select(p2, 13, 0);
+            DuelCursor_Select(player2, DUEL_AREA_DECK, 0);
             DrawAllAreaTiles();
-            cmd->running = 0;
+            gDuelCmd.running = 0;
         }
         break;
-    case 2:
-        AddCardToBanished(CMD_CARD);
+    case 2:     /* banish it; repeat from step 1 while the counter is positive */
+        AddCardToBanished(&gDuelCmd.card);
         DrawAllAreaTiles();
-        cmd->counter--;
-        if (cmd->counter > 0) {
-            cmd->step--;
+        gDuelCmd.counter--;
+        /* FAKEMATCH: (s8) gives the ROM's signed compare (ble); the counter is 0-127 */
+        if ((s8)gDuelCmd.counter > 0) {
+            gDuelCmd.step--;
             break;
         }
         /* fallthrough */
@@ -454,278 +526,184 @@ void DuelCmd_BanishTopDeckCards(void)
         break;
     }
 }
-#endif
-/* Repeat arg2 times (counter at cmd +0x80A bits 7-13): take a card for the acting player with
- * TakeDeckCardAt(player, 0, &cmd card), animate it from area 13 to area 15, commit with AddCardToBanished. */
-void DuelCmd_BanishTopDeckCards(void)
-{
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    u32 player = gDuelCmd.cmd >> 15;
-    u32 p2 = player;
 
-    switch (gDuelCmd.step) {
-    case 0:
-        DuelScreen_ScrollToZone(player, 11);
-        cmd->counter = cmd->arg2;
-        if ((s8)cmd->counter == 0) {
-            cmd->running = 0;
-            break;
-        }
-        cmd->step++;
-        break;
-    case 1:
-        if (TakeDeckCardAt(player, 0, CMD_CARD)) {
-            from.player = p2 & 1;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = p2 & 1;
-            to.area = 15;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
-            cmd->step++;
-        } else {
-            DuelCursor_Select(p2, 13, 0);
-            DrawAllAreaTiles();
-            cmd->running = 0;
-        }
-        break;
-    case 2:
-        AddCardToBanished(CMD_CARD);
-        DrawAllAreaTiles();
-        cmd->counter--;
-        if ((s8)cmd->counter > 0) {
-            cmd->step--;
-            break;
-        }
-        /* fallthrough */
-    default:
-        gDuelCmd.running = 0;
-        break;
-    }
-}
-/* Return card word (arg2 | arg4 << 16) from area 13 to the acting player's
- * hand. If its owner accepts it (RemoveCardFromDeck), animate it from area 13 to the
- * hand (area 11) and add it with AddCardToHand. */
+/* 0x64 DUEL_CMD_ADD_DECK_CARD_TO_HAND: search the card word arg2 | arg4 << 16 out of its owner's deck into
+ * the acting player's hand. */
 void DuelCmd_AddDeckCardToHand(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    u32 player = cmd->cmd >> 15;
-    u32 w = cmd->arg2 | (cmd->arg4 << 16);
+    struct DuelLoc from, to;
+    u32 player = CMD_PLAYER;
+    u32 cardWord = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
 
-    switch (cmd->step) {
+    switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
-        cmd->step++;
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
+        gDuelCmd.step++;
         break;
-    case 1:
-        if (RemoveCardFromDeck(((struct DuelCard *)&w)->owner, &w) == 0) {
-            cmd->running = 0;
+    case 1:     /* finish if the card is not in the deck; else animate it face down to the next hand slot */
+        if (RemoveCardFromDeck(((struct DuelCard *)&cardWord)->owner, (struct DuelCard *)&cardWord) == 0) {
+            gDuelCmd.running = 0;
             break;
         }
-        from.player = player;
-        from.area = 13;
-        from.index = 0;
-        from.flag14 = 0;
-        from.flag15 = 0;
-        to.player = player;
-        to.area = 11;
-        to.index = gDuelPlayers[player & 1].handCount;
-        to.flag14 = 0;
-        to.flag15 = 0;
-        DuelAnim_MoveCard(((struct DuelCard *)cmd->card)->id, &from, &to);
-        cmd->step++;
+        SET_LOC(from, player, DUEL_AREA_DECK, 0, FALSE);
+        SET_LOC(to, player, DUEL_AREA_HAND, gDuelPlayers[player & 1].handCount, FALSE);
+        /* the id is gDuelCmd.card's, which this command does not set; the card moves face down, so only
+         * its back is drawn */
+        DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+        gDuelCmd.step++;
         break;
     default:
-        AddCardToHand(player, &w);
+        AddCardToHand(player, (struct DuelCard *)&cardWord);
         DrawAllAreaTiles();
-        DuelCursor_Select(player, 11, 0);
-        cmd->running = 0;
+        DuelCursor_Select(player, DUEL_AREA_HAND, 0);
+        gDuelCmd.running = 0;
         break;
     }
 }
-/* Calls RemoveCardFromDeck(player, card word arg2 | arg4 << 16). */
+
+/* 0x65 DUEL_CMD_REMOVE_CARD_FROM_DECK: remove the card word arg2 | arg4 << 16 from the acting player's
+ * deck, without animation (the pusher handles where the card goes). */
 void DuelCmd_RemoveCardFromDeck(void)
 {
     u32 player = CMD_PLAYER;
-    u32 w = (gDuelCmd.arg4 << 16) | gDuelCmd.arg2;
+    u32 cardWord = (gDuelCmd.arg4 << 16) | gDuelCmd.arg2;
 
-    RemoveCardFromDeck(player, &w);
+    RemoveCardFromDeck(player, (struct DuelCard *)&cardWord);
     gDuelCmd.running = 0;
 }
-/* Move card word (arg2 | arg4 << 16) of the acting player, if RemoveCardFromDeck accepts it,
- * from area 13 to monster zone arg6 (animation), then place it there with PlaceMonsterCard. */
+
+/* 0x66 DUEL_CMD_SUMMON_FROM_DECK: Special Summon the card word arg2 | arg4 << 16 from the acting player's
+ * deck to monster zone arg6, face-up attack position. */
 void DuelCmd_SummonFromDeck(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    u32 player = gDuelCmd.cmd >> 15;
-    u32 w = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
+    struct DuelLoc from, to;
+    u32 player = CMD_PLAYER;
+    u32 cardWord = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
     u32 zone = gDuelCmd.arg6;
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         break;
-    case 1:
-        if (RemoveCardFromDeck(player, &w) != 0) {
-            CopyDuelCard(CMD_CARD, &w);
-            from.player = player;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = player;
-            to.area = 0;
-            to.index = zone;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
+    case 1:     /* take the card out of the deck and animate it face up to the zone */
+        if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
+            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            SET_LOC(from, player, DUEL_AREA_DECK, 0, TRUE);
+            SET_LOC(to, player, DUEL_AREA_MONSTER, zone, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
             gDuelCmd.step++;
             break;
         }
-        goto done;
-    default:
-        PlaceMonsterCard(player, zone, CMD_CARD, 0, 1);
-        DuelCursor_Select(player, 0, zone);
-        DrawAllAreaTiles();
-        cmd->running = 0;
+        DrawAllAreaTiles();     /* the card was not in the deck */
+        gDuelCmd.running = 0;
         break;
-    done:
+    default:    /* place it in attack position, face up */
+        PlaceMonsterCard(player, zone, &gDuelCmd.card, FALSE, TRUE);
+        DuelCursor_Select(player, DUEL_AREA_MONSTER, zone);
         DrawAllAreaTiles();
-        cmd->running = 0;
+        gDuelCmd.running = 0;
         break;
     }
 }
-/* Move card word (arg2 | arg4 << 16) of the acting player, if RemoveCardFromDeck accepts it,
- * from area 13 to area 14 (animation), then commit with AddCardToGraveyard. */
+
+/* 0x67 DUEL_CMD_SEND_DECK_CARD_TO_GRAVEYARD: send the card word arg2 | arg4 << 16 from the acting player's
+ * deck to the graveyard. */
 void DuelCmd_SendDeckCardToGraveyard(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    int player = gDuelCmd.cmd >> 15;
-    u32 w = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
+    struct DuelLoc from, to;
+    int player = CMD_PLAYER;
+    u32 cardWord = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         break;
-    case 1:
-        if (RemoveCardFromDeck(player, &w) != 0) {
-            CopyDuelCard(CMD_CARD, &w);
-            from.player = player & 1;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = player & 1;
-            to.area = 14;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
+    case 1:     /* take the card out of the deck and animate it face up to the graveyard */
+        if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
+            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            SET_LOC(from, player & 1, DUEL_AREA_DECK, 0, TRUE);
+            SET_LOC(to, player & 1, DUEL_AREA_GRAVEYARD, 0, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
             gDuelCmd.step++;
             break;
         }
-        DrawAllAreaTiles();
-        cmd->running = 0;
+        DrawAllAreaTiles();     /* the card was not in the deck */
+        gDuelCmd.running = 0;
         break;
     default:
-        AddCardToGraveyard(CMD_CARD);
-        DuelCursor_Select(player, 14, 0);
+        AddCardToGraveyard(&gDuelCmd.card);
+        DuelCursor_Select(player, DUEL_AREA_GRAVEYARD, 0);
         DrawAllAreaTiles();
-        cmd->running = 0;
+        gDuelCmd.running = 0;
         break;
     }
 }
-/* Move card word (arg2 | arg4 << 16) of the acting player, if RemoveCardFromDeck accepts it,
- * from area 13 to area 15 (animation), then commit with AddCardToBanished. */
+
+/* 0x68 DUEL_CMD_BANISH_DECK_CARD: banish the card word arg2 | arg4 << 16 from the acting player's deck. */
 void DuelCmd_BanishDeckCard(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    int player = gDuelCmd.cmd >> 15;
-    u32 w = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
+    struct DuelLoc from, to;
+    int player = CMD_PLAYER;
+    u32 cardWord = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         break;
-    case 1:
-        if (RemoveCardFromDeck(player, &w) != 0) {
-            CopyDuelCard(CMD_CARD, &w);
-            from.player = player & 1;
-            from.area = 13;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = player & 1;
-            to.area = 15;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
+    case 1:     /* take the card out of the deck and animate it face up to the banished pile */
+        if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
+            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            SET_LOC(from, player & 1, DUEL_AREA_DECK, 0, TRUE);
+            SET_LOC(to, player & 1, DUEL_AREA_BANISHED, 0, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
             gDuelCmd.step++;
             break;
         }
-        DrawAllAreaTiles();
-        cmd->running = 0;
+        DrawAllAreaTiles();     /* the card was not in the deck */
+        gDuelCmd.running = 0;
         break;
     default:
-        AddCardToBanished(CMD_CARD);
+        AddCardToBanished(&gDuelCmd.card);
         DrawAllAreaTiles();
-        DuelCursor_Select(player, 15, 0);
-        cmd->running = 0;
+        DuelCursor_Select(player, DUEL_AREA_BANISHED, 0);
+        gDuelCmd.running = 0;
         break;
     }
 }
-/* Move card word (arg2 | arg4 << 16) of the acting player, if RemoveCardFromFusionDeck accepts it,
- * from area 12 to area 14 (animation), then commit with AddCardToGraveyard. */
+
+/* 0xDD DUEL_CMD_SEND_FUSION_DECK_CARD_TO_GRAVEYARD: send the card word arg2 | arg4 << 16 from the acting
+ * player's fusion deck to the graveyard. */
 void DuelCmd_SendFusionDeckCardToGraveyard(void)
 {
-    struct CardLoc from, to;
-    struct DuelCmd *cmd = &gDuelCmd;
-    int player = gDuelCmd.cmd >> 15;
-    u32 w = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
+    struct DuelLoc from, to;
+    int player = CMD_PLAYER;
+    u32 cardWord = gDuelCmd.arg2 | (gDuelCmd.arg4 << 16);
 
     switch (gDuelCmd.step) {
     case 0:
-        DuelScreen_ScrollToZone(player, 11);
+        DuelScreen_ScrollToZone(player, DUEL_AREA_HAND);
         gDuelCmd.step++;
         break;
-    case 1:
-        if (RemoveCardFromFusionDeck(player, &w) != 0) {
-            CopyDuelCard(CMD_CARD, &w);
-            from.player = player & 1;
-            from.area = 12;
-            from.index = 0;
-            from.flag14 = 0;
-            from.flag15 = 1;
-            to.player = player & 1;
-            to.area = 14;
-            to.index = 0;
-            to.flag14 = 0;
-            to.flag15 = 1;
-            DuelAnim_MoveCard(CMD_CARD->id, &from, &to);
+    case 1:     /* take the card out of the fusion deck and animate it face up to the graveyard */
+        if (RemoveCardFromFusionDeck(player, (struct DuelCard *)&cardWord) != 0) {
+            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            SET_LOC(from, player & 1, DUEL_AREA_FUSION_DECK, 0, TRUE);
+            SET_LOC(to, player & 1, DUEL_AREA_GRAVEYARD, 0, TRUE);
+            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
             gDuelCmd.step++;
             break;
         }
-        DrawAllAreaTiles();
-        cmd->running = 0;
+        DrawAllAreaTiles();     /* the card was not in the fusion deck */
+        gDuelCmd.running = 0;
         break;
     default:
-        AddCardToGraveyard(CMD_CARD);
+        AddCardToGraveyard(&gDuelCmd.card);
         DrawAllAreaTiles();
-        DuelCursor_Select(player, 12, 0);
-        cmd->running = 0;
+        DuelCursor_Select(player, DUEL_AREA_FUSION_DECK, 0);
+        gDuelCmd.running = 0;
         break;
     }
 }

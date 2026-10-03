@@ -1,526 +1,565 @@
+/*
+ * Coin toss helpers and the die-roll scene.
+ *
+ * The first seven functions finish the coin toss of duel_field_view.c (DUEL_SCENE_COIN_TOSS: Time Wizard,
+ * Goddess of Whim, Barrel Dragon). Once every coin has landed, the coins showing the called face glint; these
+ * functions start and animate that glint, count the coins still to resolve, and run the pool of 32 sparkles
+ * that trails behind the flying coins.
+ *
+ * The rest is the die roll on gDiceScreen, played for Skull Dice (DUEL_SCENE_DICE_SKULL), Graceful Dice
+ * (DUEL_SCENE_DICE_GRACEFUL) and a plain die (DUEL_SCENE_DICE_PLAIN, no character). The card's character
+ * swings in holding the die and throws it; the die bounces once, then rolls for ten frames and stops on the
+ * face the effect has already rolled (gDuelScene.arg). The scene fades out and writes the face to
+ * gDuelScene.result. The Skull Dice scene handler is here too; the other two are in dice_scene.c.
+ *
+ * Die-roll steps (gDiceScreen.step, enum DiceStep) run by DiceScreen_Update:
+ *   DICE_STEP_ENTER   DiceScreen_CharacterEnter   the character comes down with the die
+ *   DICE_STEP_HOLD    DiceScreen_HoldDie          a 15-frame wait (the plain die starts here)
+ *   DICE_STEP_THROW   DiceScreen_ThrowDie         the throw: a high arc with the tumble frames
+ *   DICE_STEP_BOUNCE  DiceScreen_ThrowDie         a lower hop rolling along a random axis
+ *   DICE_STEP_ROLL    DiceScreen_RollToResult     the final roll to the result face, the character leaves
+ */
 #include "global.h"
-#include "gba.h"
+#include "gba.h"            /* REG_*, CpuSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, A_BUTTON */
+#include "main.h"           /* gMain */
+#include "util.h"           /* MemClear16, Random, gSineTable, struct Ease, Ease_Init/Start/Tick */
+#include "palette.h"        /* struct Fade, FadeStart, FadeTick, FADE_STATE_FADED_OUT */
+#include "bg.h"             /* CopyTileSheetTo2D, TILE_COLORS_16 */
+#include "sprite.h"         /* struct OamList / OamListEntry / AnimSeq / AnimState, OamList*, AnimStateTick */
+#include "duel_scenes.h"    /* gDuelScene, gCoinTossWork, gDiceScreen, struct Coin / SparklePool, enums */
+#include "turn_order.h"     /* gEgyptCorridorBitmap, gEgyptCorridorPal */
 
-/* One token of the toss screen (12 bytes), see duel_field_view. */
-struct TossSlot {
-    u8 timer;           /* +0x0 */
-    u8 frame;           /* +0x1: animation frame / result face */
-    u8 state;           /* +0x2: 1 = flying, 2 = landed, 3 = winner */
-    u8 unk3;
-    s16 y;              /* +0x4 */
-    u16 t;              /* +0x6 */
-    u8 resultTimer;     /* +0x8 */
-    u8 resultFrame;     /* +0x9: 0-4 */
-    u8 resultState;     /* +0xA: 1 = animating, 2 = done */
-    u8 unkB;
-};
+/* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
 
-/* Sparkle particle (8 bytes). */
-struct Sparkle {
-    u32 active:1;       /* +0 bit 0 (u32 container: tested with lsl #31) */
-    u8 timer:2;         /* +0 bits 1-2 */
-    u8 frame:5;         /* +0 bits 3-7: index into gCoinSparkleTiles (0 entry ends) */
-    u8 unk1[3];
-    u8 x;               /* +4 */
-    u8 y;               /* +5 */
-    u8 unk6[2];
-};
+/* Values as in the new gba.h and main.h; skipped once they are installed (then delete the block). */
+#ifndef DISPCNT_MODE_4
+#define DISPCNT_MODE_4          0x0004
+#define DISPCNT_BG_ALL_ON       0x0F00
+#define DISPCNT_OBJ_ON          0x1000
+#define BLDCNT_EFFECT_BLEND     0x0040
+#define BLDCNT_TGT2_ALL         0x3F00
+#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
+#define OAM_ATTR0_BLEND         0x0400
+#define VBLANK_COPY_OAM         0x1
+#endif
 
-/* Sparkle pool at 0x02015DD0 (= toss work area +0xB50). */
-struct Sparkles {
-    struct Sparkle p[32];
-    u8 next;            /* +0x100: next slot (mod 32) */
-};
+/* The legacy sound.h does not declare PlaySE (the new one does, with this prototype). */
+void PlaySE(u32 seId);
 
-extern u8 gCoinTossWork[];          /* toss work area (OAM builder argument) */
-extern const u16 gCoinSparkleTiles[];   /* sparkle tile per frame, 0-terminated */
+/* ---- Local views kept on purpose (matching choices, see build/readability/HEADERS.md) ---- */
 
-/* Sprite group: list of 4-halfword OAM templates. */
-struct SprGroup {
-    u32 unk0;
-    u16 *list;          /* +0x4: count entries of 4 halfwords */
-    u32 unk8;
-    u8 count;           /* +0xC */
-    u8 unkD;
-    u8 unkE;            /* +0xE */
-    u8 unkF;
-};
-/* Value ramp driven by Ease_Init/Ease_Start (init) and Ease_Tick (tick). */
-struct Ramp {
-    u8 state;           /* +0: 2 = finished */
-    u8 unk1;
-    s16 cur;            /* +2 */
-    s16 target;         /* +4 */
-    s16 unk6;
-};
+/* OamListAddSprite as CoinToss_DrawSparkles calls it: the tile number is passed without narrowing (the
+ * definition takes u16), and the blend bit is ORed into attr0 through the entry's first word (u32). */
+extern u32 *OamListAddSpriteWideTile(u8 layer, u32 tile, u16 x, int y, u8 width, u8 height, u8 bpp, u8 palette,
+                                     u32 unused, u16 attr0Flags, u8 attr1Bits, u8 priority, struct OamList *list)
+    asm("OamListAddSprite");
 
-/* Screen work area at 0x0201F820 (0xAF0 bytes, fields used here). */
-struct Work1F820 {
-    u8 unk0[0x618];
-    u8 unk618[0x918 - 0x618];   /* +0x618: ObjAffineInit */
-    struct SprGroup grp918;     /* +0x918: die sprite (hypothesis) */
-    u8 filler928[4];
-    struct SprGroup grp92C;     /* +0x92C */
-    u8 filler93C[0xABC - 0x93C];
-    u8 unkABC[6];       /* +0xABC: object for FadeTick */
-    u8 unkAC2;          /* +0xAC2: 2 = finished */
-    u8 unkAC3;
-    u8 step;            /* +0xAC4: index into gDiceScreenSteps / gPlainDieScreenSteps */
-    u8 unkAC5;
-    u8 unkAC6;
-    u8 unkAC7;
-    u8 unkAC8;
-    u8 unkAC9;
-    u8 result;          /* +0xACA: copied to 0x02017A30+8 at the end */
-    u8 unkACB;
-    u8 unkACC;
-    u8 unkACD;          /* +0xACD */
-    u8 unkACE[2];
-    struct Ramp rampAD0;    /* +0xAD0 */
-    struct Ramp rampAD8;    /* +0xAD8 */
-    struct Ramp rampAE0;    /* +0xAE0 */
-    u16 unkAE8;
-    u8 unkAEA;          /* +0xAEA: mode 0/1/2 (2 = no sprites) */
-    u8 unkAEB;
-    u16 unkAEC;
-    u16 unkAEE;
-};
-extern struct Work1F820 gDiceScreen;
+/* MulFix8 with int parameters and result: the ROM neither narrows the arguments nor sign-extends the result
+ * (util.h: s16 MulFix8(s16, s16)). */
+extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
 
-/* Message/sequence block at 0x02017A30 (fields used here). */
-struct DuelMsg {
-    u8 unk0[6];
-    u16 opts;           /* +0x6 */
-    u16 arg8;           /* +0x8 */
-    u8 unkA;
-    u8 step;            /* +0xB */
-};
-extern struct DuelMsg gDuelScene;
+/* Ease values: util.h's struct Ease has a u16 cur, but this unit does signed arithmetic on it (ldrsh), so
+ * those reads are written (s16)gDiceScreen.xxxEase.cur. Reads that only take the low byte are left alone. */
 
+/* ---- ROM data used only here ---- */
 
-/* gMain (0x03000040): only the fields used here. */
-struct Main {
-    u32 rngState;       /* +0x000 */
-    u16 heldKeys;       /* +0x004 */
-    u16 newKeys;        /* +0x006 */
-    u8 unk8[0x40E - 8];
-    u16 unk40E;         /* +0x40E */
-};
-extern struct Main gMain;
-#define gMain gMain
-
+/* 0x08081FA4: OBJ tile (before + 0x200) of each sparkle frame, 0-terminated (22 frames). */
+extern const u16 gCoinSparkleTiles[];
+/* 0x08082308: for each face 1-6, two {axis, quarter} places in gDieAxisFaces where the face shows. */
 extern const u8 gDieFacePaths[6][2][2];
+/* 0x080822FC: the face (1-6) at each quarter of each roll axis: one ring of four faces of a die per axis. */
 extern const u8 gDieAxisFaces[][4];
-void MemClear16(void *dst, u32 size); /* MemClear16 */
-void ObjAffineInit(void *p);
-void Ease_Init(u32 a, u32 b, u32 c, struct Ramp *ramp);
-void Ease_Tick(struct Ramp *ramp);
-s32 MulFix8(s32 a, s32 b);     /* 8.8 fixed-point multiply */
-extern const s16 gSineTable[];   /* sine table, 256 entries */
-struct DieFrame { u8 unk0; u8 count; u16 unk2; u16 *list; };
-extern struct DieFrame *const gDieRollFrames[];
-extern const struct DieFrame gDieTumbleFrames[];
-extern const u8 gSkullDiceCharAnims[];
-extern const u8 gGracefulDiceCharAnims[];
-extern const u8 gEgyptCorridorBitmap[];
-extern const u8 gEgyptCorridorPal[];
-extern const u8 gDiceSceneObjTilesLeft[];
-extern const u8 gDiceSceneObjTilesRight[];
+/* 0x081999EC: per roll axis (0-2), a 20-frame strip of the die rolling (4 faces x 5 frames). */
+extern const struct AnimSeq *const gDieRollFrames[];
+/* 0x08081FD4: 8 frames of the die tumbling during the throw. */
+extern const struct AnimSeq gDieTumbleFrames[];
+/* 0x081999F8 / 0x08199A04: NULL-terminated animation lists of the Skull Dice and Graceful Dice characters:
+ * [0] hovering and throwing, [1] the result pose. Not const: AnimBlockInit takes a struct AnimSeq **. */
+extern struct AnimSeq *gSkullDiceCharAnims[];
+extern struct AnimSeq *gGracefulDiceCharAnims[];
+/* 0x086B2168 / 0x086B4168: the two 128x128 halves of the OBJ sheet (dice, the characters' pieces; not const:
+ * CopyTileSheetTo2D takes a u8 *), and 0x086B6168 its 16 OBJ palettes (palette 2 for Skull Dice's die). */
+extern u8 gDiceSceneObjTilesLeft[];
+extern u8 gDiceSceneObjTilesRight[];
 extern const u8 gDiceSceneObjPal[];
-void AnimBlockInit(const void *a, void *b);
-void FadeStart(u32 a, u32 b, u32 c, void *p);
-void CopyTileSheetTo2D(const void *src, void *dst, u32 n);
-void PlaySE(u32 se);
-void Ease_Start(u32 a, u32 b, u32 c, struct Ramp *ramp);
+/* 0x08199A10 / 0x08199A28: the steps of DiceScreen_Update (enum DiceStep), with and without a character. */
 extern u16 (*const gDiceScreenSteps[])(void);
 extern u16 (*const gPlainDieScreenSteps[])(void);
+/* 0x08199A40: the outer steps of the Skull Dice scene (PrepareRoll, Init, SetupSkullDice, LoadGraphics,
+ * Update, NULL). */
 extern u16 (*const gSkullDiceSceneSteps[])(void);
-u16 *OamListAlloc(u8 a, void *work);
-void AnimStateTick(void *p);
-void FadeTick(void *p);
-void OamListFlush(void *p);
-void OamListClear(void *p);
-s32 Random(void);             /* random */
-u32 *OamListAddSprite(u32 a, u32 tile, s32 x, s32 y, u32 w, u32 h, u32 a6, u32 a7, u32 a8,
-                  u32 a9, u32 a10, u32 a11, void *work);
 
+/* The die and the character are drawn relative to these screen positions. */
+#define DIE_BASE_X      0x68    /* die and character x */
+#define DIE_FLOOR_Y     0x64    /* die y when it touches the floor */
+#define OBJ_TILE_BITMAP 0x200   /* first OBJ tile usable in the bitmap modes (OBJ VRAM + 0x4000) */
 
-void CoinToss_AnimateHighlights(struct TossSlot *s, u8 n)
+/* ---- Coin toss: glints and sparkles ---- */
+
+/* Advances the glint of each coin whose glint is playing: one frame every 7 frames; after frame 4 it wraps
+ * to 0 and the coin is resolved (COIN_HIGHLIGHT_DONE). */
+void CoinToss_AnimateHighlights(struct Coin *coins, u8 count)
 {
     u8 i;
 
-    for (i = 0; i < n; i++) {
-        if (s[i].resultState == 1) {
-            if (s[i].resultTimer == 0) {
-                s[i].resultTimer = 6;
-                if (++s[i].resultFrame == 5) {
-                    s[i].resultFrame = 0;
-                    s[i].resultState++;
+    for (i = 0; i < count; i++) {
+        if (coins[i].glintState == COIN_HIGHLIGHT_ANIMATING) {
+            if (coins[i].glintTimer == 0) {
+                coins[i].glintTimer = 6;
+                if (++coins[i].glintFrame == 5) {
+                    coins[i].glintFrame = 0;
+                    coins[i].glintState++;
                 }
             } else {
-                s[i].resultTimer--;
+                coins[i].glintTimer--;
             }
         }
     }
 }
 
-void CoinToss_MarkMatchingCoins(struct TossSlot *s, u8 n, u8 face)
+/* Once no coin is in the air any more (every state is COIN_STATE_LANDED), the coins showing calledFace start
+ * their glint and become COIN_STATE_MATCHED; the others are resolved at once. A matched coin no longer counts
+ * as landed, so this fires only once. */
+void CoinToss_MarkMatchingCoins(struct Coin *coins, u8 count, u8 calledFace)
 {
-    u8 flying = 0;
+    u8 notLanded = 0;
     u8 i;
 
-    for (i = 0; i < n; i++) {
-        if (s[i].state != 2)
-            flying++;
+    for (i = 0; i < count; i++) {
+        if (coins[i].state != COIN_STATE_LANDED)
+            notLanded++;
     }
-    if (flying == 0) {
-        for (i = 0; i < n; i++) {
-            if (s[i].frame == face) {
-                s[i].resultState = 1;
-                s[i].state = 3;
+    if (notLanded == 0) {
+        for (i = 0; i < count; i++) {
+            if (coins[i].frame == calledFace) {
+                coins[i].glintState = COIN_HIGHLIGHT_ANIMATING;
+                coins[i].state = COIN_STATE_MATCHED;
             } else {
-                s[i].resultState = 2;
+                coins[i].glintState = COIN_HIGHLIGHT_DONE;
             }
         }
     }
 }
 
-u8 CoinToss_CountUnfinished(struct TossSlot *s, u8 n)
+/* Returns the number of coins not resolved yet (glintState != COIN_HIGHLIGHT_DONE): still flying, landed but
+ * not marked, or glinting. */
+u8 CoinToss_CountUnfinished(struct Coin *coins, u8 count)
 {
-    u8 count = 0;
+    u8 unfinished = 0;
     u8 i;
 
-    for (i = 0; i < n; i++) {
-        if (s[i].resultState != 2)
-            count++;
+    for (i = 0; i < count; i++) {
+        if (coins[i].glintState != COIN_HIGHLIGHT_DONE)
+            unfinished++;
     }
-    return count;
+    return unfinished;
 }
 
-u32 CoinToss_SpawnSparkle(u8 x, u8 y, struct Sparkles *sp)
+/* Starts a sparkle at (x + Random() % 16, y) in the next slot of the pool (a ring of 32); returns 1. */
+u32 CoinToss_SpawnSparkle(u8 x, u8 y, struct SparklePool *pool)
 {
-    u8 k = sp->next++ % 32;
-    s32 r = Random();
-    struct Sparkle *p = &sp->p[k];
+    u8 slot = pool->next++ % 32;
+    s32 rnd = Random();
+    struct Sparkle *sparkle = &pool->sparkles[slot];
 
-    p->x = x + r % 16;
-    p->y = y;
-    p->active = 1;
-    p->timer = 0;
-    p->frame = 0;
+    sparkle->x = x + rnd % 16;
+    sparkle->y = y;
+    sparkle->active = 1;
+    sparkle->timer = 0;
+    sparkle->frame = 0;
     return 1;
 }
 
-u32 CoinToss_UpdateSparkles(struct Sparkles *sp)
+/* Advances every active sparkle; it ends at the 0 entry of gCoinSparkleTiles. The 2-bit timer goes from 0
+ * to 3 on every decrement, so the frame advances every frame. Declared u32, returns nothing. */
+u32 CoinToss_UpdateSparkles(struct SparklePool *pool)
 {
     u8 i;
 
     for (i = 0; i < 32; i++) {
-        struct Sparkle *p = &sp->p[i];
-        if (p->active) {
-            if (--p->timer == 3) {
-                p->timer = 0;
-                if (gCoinSparkleTiles[++p->frame] == 0)
-                    p->active = 0;
+        struct Sparkle *sparkle = &pool->sparkles[i];
+        if (sparkle->active) {
+            if (--sparkle->timer == 3) {
+                sparkle->timer = 0;
+                if (gCoinSparkleTiles[++sparkle->frame] == 0)
+                    sparkle->active = 0;
             }
         }
     }
 }
 
-u32 CoinToss_DrawSparkles(struct Sparkles *sp)
+/* Adds every active sparkle to the coin toss OAM list (layer 1) as a semi-transparent 16x16 4bpp sprite with
+ * palette 1. Declared u32, returns nothing. */
+u32 CoinToss_DrawSparkles(struct SparklePool *pool)
 {
     u8 i;
 
     for (i = 0; i < 32; i++) {
-        struct Sparkle *p = &sp->p[i];
-        if (p->active) {
-            u32 *oam = OamListAddSprite(1, gCoinSparkleTiles[p->frame] + 0x200, p->x, p->y,
-                                    16, 16, 4, 1, 0, 0, 0, 0, gCoinTossWork);
-            *oam |= 0x400;
+        struct Sparkle *sparkle = &pool->sparkles[i];
+        if (sparkle->active) {
+            u32 *entry = OamListAddSpriteWideTile(1, gCoinSparkleTiles[sparkle->frame] + OBJ_TILE_BITMAP,
+                                                  sparkle->x, sparkle->y, 16, 16, 4, 1, 0, 0, 0, 0,
+                                                  &gCoinTossWork.oamList);
+            *entry |= OAM_ATTR0_BLEND;
         }
     }
 }
 
-void CoinToss_ClearSparkles(struct Sparkles *sp)
+/* Deactivates all 32 sparkles and resets the next slot. */
+void CoinToss_ClearSparkles(struct SparklePool *pool)
 {
     u8 i;
 
     for (i = 0; i < 32; i++)
-        sp->p[i].active = 0;
-    sp->next = 0;
+        pool->sparkles[i].active = 0;
+    pool->next = 0;
 }
 
-/* K&R definition: callers pass the u16/u8 arguments without narrowing them. */
-u16 *DiceScreen_AddOamPiece(src, a, x, y, pal, tileBase, work)
-    u16 *src;
-    u8 a;
+/* ---- Die roll ---- */
+
+/* Allocates an OAM entry on `layer` of `list` (a struct OamList) and fills it from the 4-halfword sprite
+ * piece (struct OamTemplate) placed at (x, y): attr0 Y and attr1 X are offset with wrap-around; the tile is
+ * tileBase + the piece's sheet row (attr2 bits 4-7) * 32 + its column (bits 0-3), + 16 for a piece of the
+ * sheet's right half (bit 8); `palette` is used only if the piece has none. Returns the entry.
+ * K&R definition: the callers in this unit pass their u8/u16 arguments without narrowing them. */
+u16 *DiceScreen_AddOamPiece(piece, layer, x, y, palette, tileBase, list)
+    u16 *piece;
+    u8 layer;
     u16 x;
     u16 y;
-    u16 pal;
+    u16 palette;
     u16 tileBase;
-    void *work;
+    void *list;
 {
-    u16 *oam = OamListAlloc(a, work);
-    u16 *ret = oam;
+    struct OamListEntry *entry = OamListAlloc(layer, list);
+    /* Matching: the returned pointer is kept in its own variable (the ROM's mov ip, r7 copy). */
+    u16 *ret = (u16 *)entry;
 
-    oam[0] = (src[0] & 0xFF00) | ((y + (src[0] & 0xFF)) & 0xFF);
-    oam[1] = (src[1] & 0xFE00) | ((x + (src[1] & 0x1FF)) & 0x1FF);
-    oam[2] = (src[2] & 0xFC0F) | (tileBase + ((src[2] & 0xF0) << 1));
-    if (src[2] & 0x100)
-        oam[2] += 0x10;
-    if ((src[2] & 0xF000) == 0)
-        oam[2] |= pal << 12;
+    entry->attr0 = (piece[0] & 0xFF00) | ((y + (piece[0] & 0xFF)) & 0xFF);
+    entry->attr1 = (piece[1] & 0xFE00) | ((x + (piece[1] & 0x1FF)) & 0x1FF);
+    entry->attr2 = (piece[2] & 0xFC0F) | (tileBase + ((piece[2] & 0xF0) << 1));
+    if (piece[2] & 0x100)
+        entry->attr2 += 0x10;
+    if ((piece[2] & 0xF000) == 0)
+        entry->attr2 |= palette << 12;
     return ret;
 }
 
-void DiceScreen_DrawCharacter(g, x, y, attr0)
-    struct SprGroup *g;
+/* Draws every piece of the current frame of `anim` at (x, y) on OAM layer 1, OR-ing attr0Flags into attr0
+ * (OAM_ATTR0_BLEND = semi-transparent). Nothing for the plain die, which has no character.
+ * K&R definition, as DiceScreen_AddOamPiece. */
+void DiceScreen_DrawCharacter(anim, x, y, attr0Flags)
+    struct AnimState *anim;
     u16 x;
     u16 y;
-    u16 attr0;
+    u16 attr0Flags;
 {
     u8 i;
 
-    if (gDiceScreen.unkAEA != 2) {
-        for (i = 0; i < g->count; i++) {
-            u16 *oam = DiceScreen_AddOamPiece(g->list + i * 4, 1, x, y, 0, 0x200, &gDiceScreen);
-            *oam |= attr0;
+    if (gDiceScreen.variant != DICE_VARIANT_PLAIN) {
+        for (i = 0; i < anim->pieceCount; i++) {
+            u16 *attrs = DiceScreen_AddOamPiece((u16 *)&anim->pieces[i], 1, x, y, 0, OBJ_TILE_BITMAP,
+                                                &gDiceScreen.oamList);
+            *attrs |= attr0Flags;
         }
     }
 }
 
-void DiceScreen_TickCharacter(void *p)
+/* AnimStateTick(anim) unless the scene is the plain die. */
+void DiceScreen_TickCharacter(void *anim)
 {
-    if (gDiceScreen.unkAEA != 2)
-        AnimStateTick(p);
+    if (gDiceScreen.variant != DICE_VARIANT_PLAIN)
+        AnimStateTick(anim);
 }
+
+/* Outer step 1: VBlank copies only OAM, BG1-3 scroll reset, BGs and sprites off; clears the OAM list, the
+ * affine records and the step counters, and sets up the eases (enterEase runs 0 -> 0x100 by 2) and the
+ * character's fade and exit spiral. Returns 1. */
 u32 DiceScreen_Init(void)
 {
-    gMain.unk40E = 1;
+    gMain.vblankFlags = VBLANK_COPY_OAM;
     REG_BG1VOFS = 0;
     REG_BG1HOFS = 0;
     REG_BG2VOFS = 0;
     REG_BG2HOFS = 0;
     REG_BG3VOFS = 0;
     REG_BG3HOFS = 0;
-    REG_DISPCNT &= 0xE0FF;
-    OamListClear(&gDiceScreen);
-    ObjAffineInit(gDiceScreen.unk618);
-    gDiceScreen.step = 0;
-    gDiceScreen.unkAC5 = 0;
-    gDiceScreen.unkAC6 = 0;
-    gDiceScreen.unkACB = 0xFF;
-    gDiceScreen.unkACC = 0;
-    Ease_Init(0, 0, 0, &gDiceScreen.rampAD0);
-    Ease_Start(0, 0x100, 2, &gDiceScreen.rampAD8);
-    Ease_Init(0, 0, 0, &gDiceScreen.rampAE0);
-    gDiceScreen.unkAE8 = 0x1600;
-    gDiceScreen.unkAEC = 0x4000;
-    gDiceScreen.unkAEE = 0x2B0;
+    REG_DISPCNT &= 0xE0FF;      /* ~(DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON) */
+    OamListClear((u8 *)&gDiceScreen.oamList);
+    ObjAffineInit(gDiceScreen.affine);
+    gDiceScreen.step = DICE_STEP_ENTER;
+    gDiceScreen.spinTimer = 0;
+    gDiceScreen.rollAxis = 0;
+    gDiceScreen.resultTimer = 0xFF;
+    gDiceScreen.throwStarted = 0;
+    Ease_Init(0, 0, 0, &gDiceScreen.dieEase);
+    Ease_Start(0, 0x100, 2, &gDiceScreen.enterEase);
+    Ease_Init(0, 0, 0, &gDiceScreen.holdEase);
+    gDiceScreen.charFade = 0x1600;
+    gDiceScreen.orbitAngle = 0x4000;
+    gDiceScreen.orbitSpeed = 0x2B0;
     return 1;
 }
+
+/* Outer step 3: the character animations for the variant (the plain die loads Graceful Dice's but never draws
+ * them, and skips the entry: enterEase at its end, holdEase started, step DICE_STEP_HOLD); a fade in from
+ * black; the corridor bitmap and palette, both halves of the OBJ sheet and the OBJ palettes; Mode 4 with all
+ * layers on. Returns 1. */
 u32 DiceScreen_LoadGraphics(void)
 {
-    switch (gDiceScreen.unkAEA) {
-    case 0:
-        AnimBlockInit(gSkullDiceCharAnims, &gDiceScreen.grp918);
+    switch (gDiceScreen.variant) {
+    case DICE_VARIANT_SKULL:
+        AnimBlockInit(gSkullDiceCharAnims, (u8 *)gDiceScreen.anims);
         break;
-    case 1:
-        AnimBlockInit(gGracefulDiceCharAnims, &gDiceScreen.grp918);
+    case DICE_VARIANT_GRACEFUL:
+        AnimBlockInit(gGracefulDiceCharAnims, (u8 *)gDiceScreen.anims);
         break;
-    case 2:
-        AnimBlockInit(gGracefulDiceCharAnims, &gDiceScreen.grp918);
-        gDiceScreen.rampAD8.cur = 0x100;
-        gDiceScreen.rampAD8.target = 0x100;
-        gDiceScreen.rampAD8.state = 0;
-        Ease_Start(0, 0xF, 1, &gDiceScreen.rampAE0);
-        gDiceScreen.step = 1;
+    case DICE_VARIANT_PLAIN:
+        AnimBlockInit(gGracefulDiceCharAnims, (u8 *)gDiceScreen.anims);
+        gDiceScreen.enterEase.cur = 0x100;
+        gDiceScreen.enterEase.end = 0x100;
+        gDiceScreen.enterEase.state = TICK_IDLE;
+        Ease_Start(0, 15, 1, &gDiceScreen.holdEase);
+        gDiceScreen.step = DICE_STEP_HOLD;
         break;
     }
-    FadeStart(0, -0x180, 0, gDiceScreen.unkABC);
-    CpuSet(gEgyptCorridorBitmap, (void *)0x06000000, 0x4B00);
-    CpuSet(gEgyptCorridorPal, (void *)0x05000000, 0x100);
-    CopyTileSheetTo2D(gDiceSceneObjTilesLeft, (void *)0x06014000, 0x10);
-    CopyTileSheetTo2D(gDiceSceneObjTilesRight, (void *)0x06014200, 0x10);
-    CpuSet(gDiceSceneObjPal, (void *)0x05000200, 0x100);
-    REG_DISPCNT = 0x1F04;
+    FadeStart(FADE_BLACK, -0x180, 0, &gDiceScreen.fade);
+    /* The Egyptian corridor backdrop (also behind the coin toss); CpuSet counts are in halfwords. */
+    CpuSet(gEgyptCorridorBitmap, (void *)VRAM, 240 * 160 / 2);
+    CpuSet(gEgyptCorridorPal, (void *)BG_PLTT, 256);
+    /* The two halves side by side from OBJ tile 0x200 (2D mapping: the right half starts 16 tiles further). */
+    CopyTileSheetTo2D(gDiceSceneObjTilesLeft, (u8 *)(OBJ_VRAM0 + OBJ_TILE_BITMAP * 32), TILE_COLORS_16);
+    CopyTileSheetTo2D(gDiceSceneObjTilesRight, (u8 *)(OBJ_VRAM0 + OBJ_TILE_BITMAP * 32 + 16 * 32), TILE_COLORS_16);
+    CpuSet(gDiceSceneObjPal, (void *)OBJ_PLTT, 256);
+    REG_DISPCNT = DISPCNT_MODE_4 | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON;
     return 1;
 }
+
+/*
+ * DICE_STEP_THROW and DICE_STEP_BOUNCE: the die flies while the character hovers with a sine bob.
+ * The throw (first call) starts dieEase 0 -> 10000 by 4 and draws the 8 tumble frames on a high arc; when it
+ * lands, the bounce starts along a random axis (0 or 1) on a lower arc with that axis's roll frames. When the
+ * bounce lands, the final roll starts: dieEase rollStart -> rollStart + 10 by 1 on finalAxis. The end value
+ * 10000 is never reached: the die lands first (dieY > 0, after about 46 and 38 frames). Each landing plays
+ * SE 0x1F and enables alpha blending (BLDALPHA 16/16) for the semi-transparent character of DICE_STEP_ROLL.
+ * Returns 1 on landing.
+ */
 u32 DiceScreen_ThrowDie(void)
 {
-    u16 x, y;
-    s16 z;
+    u16 swayX, charY;
+    s16 dieY;
     s32 bob;
-    struct SprGroup *g;
+    struct AnimState *anim;
     u8 i;
 
-    x = MulFix8(0x100, gSineTable[gDiceScreen.rampAD8.cur & 0xFF]) >> 4;
-    y = (gDiceScreen.rampAD8.cur - 0xBE) / 2
-        + (MulFix8(0x80, gSineTable[((gDiceScreen.rampAD8.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
-    if (gDiceScreen.unkACC == 0) {
-        Ease_Start(0, 10000, 4, &gDiceScreen.rampAD0);
-        gDiceScreen.step = 2;
-        gDiceScreen.unkACC = 1;
+    /* The character's position from enterEase, as in DiceScreen_CharacterEnter (a sideways sway of +-16 px,
+     * a height of (cur - 0xBE) / 2 plus a +-8 px wave); enterEase has ended at 0x100 here. */
+    swayX = MulFix8Int(0x100, gSineTable[gDiceScreen.enterEase.cur & 0xFF]) >> 4;
+    charY = ((s16)gDiceScreen.enterEase.cur - 0xBE) / 2
+        + (MulFix8Int(0x80, gSineTable[(((s16)gDiceScreen.enterEase.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
+    if (gDiceScreen.throwStarted == 0) {
+        Ease_Start(0, 10000, 4, &gDiceScreen.dieEase);
+        gDiceScreen.step = DICE_STEP_THROW;
+        gDiceScreen.throwStarted = 1;
     }
-    if (gDiceScreen.rampAD0.state)
-        gDiceScreen.unkAC5++;
-    if (gDiceScreen.step == 2) {
-        z = -60 - ((gDiceScreen.rampAD0.cur * (100 - gDiceScreen.rampAD0.cur)) >> 8);
-        for (i = 0; i < gDieTumbleFrames[(gDiceScreen.unkAC5 >> 2) & 7].count; i++)
-            DiceScreen_AddOamPiece(gDieTumbleFrames[(gDiceScreen.unkAC5 >> 2) & 7].list + i * 4,
-                         0, 0x68, z + 0x64, gDiceScreen.unkACD, 0x200, &gDiceScreen);
+    if (gDiceScreen.dieEase.state != TICK_IDLE)
+        gDiceScreen.spinTimer++;
+    /* dieY: the die's y relative to the floor (negative = in the air): parabolas in dieEase.cur. */
+    if (gDiceScreen.step == DICE_STEP_THROW) {
+        dieY = -60 - (((s16)gDiceScreen.dieEase.cur * (100 - (s16)gDiceScreen.dieEase.cur)) >> 8);
+        for (i = 0; i < gDieTumbleFrames[(gDiceScreen.spinTimer >> 2) & 7].pieceCount; i++)
+            DiceScreen_AddOamPiece((u16 *)&gDieTumbleFrames[(gDiceScreen.spinTimer >> 2) & 7].pieces[i],
+                                   0, DIE_BASE_X, dieY + DIE_FLOOR_Y, gDiceScreen.diePalette, OBJ_TILE_BITMAP,
+                                   &gDiceScreen.oamList);
     } else {
-        z = -((gDiceScreen.rampAD0.cur * (150 - gDiceScreen.rampAD0.cur)) >> 8);
-        for (i = 0; i < gDieRollFrames[gDiceScreen.unkAC6][(gDiceScreen.unkAC5 >> 2) & 7].count; i++)
-            DiceScreen_AddOamPiece(gDieRollFrames[gDiceScreen.unkAC6][(gDiceScreen.unkAC5 >> 2) & 7].list + i * 4,
-                         0, 0x68, z + 0x64, gDiceScreen.unkACD, 0x200, &gDiceScreen);
+        dieY = -(((s16)gDiceScreen.dieEase.cur * (150 - (s16)gDiceScreen.dieEase.cur)) >> 8);
+        for (i = 0; i < gDieRollFrames[gDiceScreen.rollAxis][(gDiceScreen.spinTimer >> 2) & 7].pieceCount; i++)
+            DiceScreen_AddOamPiece(
+                (u16 *)&gDieRollFrames[gDiceScreen.rollAxis][(gDiceScreen.spinTimer >> 2) & 7].pieces[i],
+                0, DIE_BASE_X, dieY + DIE_FLOOR_Y, gDiceScreen.diePalette, OBJ_TILE_BITMAP, &gDiceScreen.oamList);
     }
-    g = &gDiceScreen.grp918;
-    g->unkE = 1;
-    DiceScreen_TickCharacter(g);
-    bob = (MulFix8(0x100, gSineTable[(gDiceScreen.unkAC5 * 2 + 0x20) & 0xFF]) >> 4) + 8;
-    DiceScreen_DrawCharacter(g, x + 0x68, y - bob, 0);
-    Ease_Tick(&gDiceScreen.rampAD0);
-    if (z > 0) {
-        gDiceScreen.rampAD0.cur = 0;
-        gDiceScreen.rampAD0.state = 0;
-        if (gDiceScreen.step == 2) {
-            Ease_Start(0, 10000, 4, &gDiceScreen.rampAD0);
-            gDiceScreen.unkAC6 = Random() % 2;
+    anim = &gDiceScreen.anims[0];
+    anim->active = ANIM_PLAYING;    /* loop the hover animation */
+    DiceScreen_TickCharacter(anim);
+    /* Matching: the bob needs its own variable (written inline in the call, the code differs). */
+    bob = (MulFix8Int(0x100, gSineTable[(gDiceScreen.spinTimer * 2 + 0x20) & 0xFF]) >> 4) + 8;
+    DiceScreen_DrawCharacter(anim, swayX + DIE_BASE_X, charY - bob, 0);
+    Ease_Tick(&gDiceScreen.dieEase);
+    if (dieY > 0) {
+        /* Landed: start the bounce, or after the bounce the final roll. */
+        gDiceScreen.dieEase.cur = 0;
+        gDiceScreen.dieEase.state = TICK_IDLE;
+        if (gDiceScreen.step == DICE_STEP_THROW) {
+            Ease_Start(0, 10000, 4, &gDiceScreen.dieEase);
+            gDiceScreen.rollAxis = Random() % 2;
         } else {
-            gDiceScreen.unkAC8 = gDiceScreen.unkAC9;
-            gDiceScreen.unkAC6 = gDiceScreen.unkAC7;
-            Ease_Start(gDiceScreen.unkAC8, gDiceScreen.unkAC8 + 10, 1, &gDiceScreen.rampAD0);
+            gDiceScreen.rollStart = gDiceScreen.finalRollStart;
+            gDiceScreen.rollAxis = gDiceScreen.finalAxis;
+            Ease_Start(gDiceScreen.rollStart, gDiceScreen.rollStart + 10, 1, &gDiceScreen.dieEase);
         }
         PlaySE(0x1F);
-        REG_BLDALPHA = 0x1010;
+        REG_BLDALPHA = BLDALPHA_BLEND(16, 16);
         REG_BLDY = 8;
-        REG_BLDCNT = 0x3F40;
+        REG_BLDCNT = BLDCNT_TGT2_ALL | BLDCNT_EFFECT_BLEND;
         return 1;
     }
     return 0;
 }
+
+/*
+ * DICE_STEP_ROLL: the die rolls 10 frames of the final axis's strip, 2 px lower each frame, and stops on the
+ * result face; SE 0x1F every 3 frames. The character is drawn semi-transparent. Once the roll is done
+ * (dieEase TICK_DONE) it shows its result pose (anims[1]) and its blend weight runs down (BLDALPHA EVA =
+ * charFade >> 8); the Graceful Dice character also spirals away. On A (at any time in this step), or 256
+ * frames after the roll (resultTimer), it starts the fade-out and returns 1.
+ */
 u32 DiceScreen_RollToResult(void)
 {
-    u16 x, y;
-    u16 dx;
-    struct SprGroup *g;
-    u16 dy;
-    s32 sx, sx2;
+    u16 swayX, charY;
+    u16 orbitX;
+    struct AnimState *anim;     /* Matching: declared between orbitX and orbitY (picks the stack slots) */
+    u16 orbitY;
+    s32 baseX, charX;
     s32 bob;
     u8 i;
 
-    x = MulFix8(0x100, gSineTable[gDiceScreen.rampAD8.cur & 0xFF]) >> 4;
-    y = (gDiceScreen.rampAD8.cur - 0xBE) / 2
-        + (MulFix8(0x80, gSineTable[((gDiceScreen.rampAD8.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
-    if (gMain.newKeys & 1) {
-        FadeStart(0, 0x180, 0, gDiceScreen.unkABC);
+    swayX = MulFix8Int(0x100, gSineTable[gDiceScreen.enterEase.cur & 0xFF]) >> 4;
+    /* Dead store, recomputed below; the ROM keeps its MulFix8 call. */
+    charY = ((s16)gDiceScreen.enterEase.cur - 0xBE) / 2
+        + (MulFix8Int(0x80, gSineTable[(((s16)gDiceScreen.enterEase.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
+    if (gMain.newKeys & A_BUTTON) {
+        FadeStart(FADE_BLACK, 0x180, 0, &gDiceScreen.fade);
         return 1;
     }
-    if (gDiceScreen.rampAD0.state == 0) {
-        FadeStart(0, 0x180, 0, gDiceScreen.unkABC);
+    if (gDiceScreen.dieEase.state == TICK_IDLE) {
+        FadeStart(FADE_BLACK, 0x180, 0, &gDiceScreen.fade);
         return 1;
     }
-    if (gDiceScreen.rampAD0.state == 2) {
-        if (--gDiceScreen.unkACB == 0xFF)
-            gDiceScreen.rampAD0.state = 0;
+    if (gDiceScreen.dieEase.state == TICK_DONE) {
+        /* The result is showing: when the countdown wraps, the next call leaves (state TICK_IDLE). */
+        if (--gDiceScreen.resultTimer == 0xFF)
+            gDiceScreen.dieEase.state = TICK_IDLE;
     }
-    for (i = 0; i < gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].count; i++)
-        DiceScreen_AddOamPiece(gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].list + i * 4,
-                     0, 0x68, (gDiceScreen.rampAD0.cur - gDiceScreen.unkAC8) * 2 + 0x64,
-                     gDiceScreen.unkACD, 0x200, &gDiceScreen);
-    dx = 0;
-    dy = 0;
-    if (gDiceScreen.rampAD0.state == 2) {
-        g = &gDiceScreen.grp92C;
-        if (gDiceScreen.unkAE8 != 0) {
-            if (gDiceScreen.unkAE8 <= 0x1000)
-                REG_BLDALPHA = gDiceScreen.unkAE8 >> 8;
-            gDiceScreen.unkAE8 -= 0x18;
+    for (i = 0; i < gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieceCount; i++)
+        DiceScreen_AddOamPiece(
+            (u16 *)&gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieces[i],
+            0, DIE_BASE_X, ((s16)gDiceScreen.dieEase.cur - gDiceScreen.rollStart) * 2 + DIE_FLOOR_Y,
+            gDiceScreen.diePalette, OBJ_TILE_BITMAP, &gDiceScreen.oamList);
+    orbitX = 0;
+    orbitY = 0;
+    if (gDiceScreen.dieEase.state == TICK_DONE) {
+        anim = &gDiceScreen.anims[1];
+        /* charFade starts at 0x1600 (8.8), so BLDALPHA follows it only once it is down to 16. */
+        if (gDiceScreen.charFade != 0) {
+            if (gDiceScreen.charFade <= 0x1000)
+                REG_BLDALPHA = gDiceScreen.charFade >> 8;
+            gDiceScreen.charFade -= 0x18;
         }
-        if (gDiceScreen.unkAEA == 1) {
-            gDiceScreen.unkAEC += gDiceScreen.unkAEE;
-            gDiceScreen.unkAEE += 8;
-            dx = MulFix8(0x2000, gSineTable[(gDiceScreen.unkAEC >> 8) + 0x40]) >> 8;
-            dy = (MulFix8(0x1400, gSineTable[gDiceScreen.unkAEC >> 8]) >> 8) - 0x14;
+        if (gDiceScreen.variant == DICE_VARIANT_GRACEFUL) {
+            /* Exit spiral: an ellipse of 32 x 20 px radii around (0, -20), the angle step growing by 8 each
+             * frame. */
+            gDiceScreen.orbitAngle += gDiceScreen.orbitSpeed;
+            gDiceScreen.orbitSpeed += 8;
+            orbitX = MulFix8Int(0x2000, gSineTable[(gDiceScreen.orbitAngle >> 8) + 0x40]) >> 8;
+            orbitY = (MulFix8Int(0x1400, gSineTable[gDiceScreen.orbitAngle >> 8]) >> 8) - 0x14;
         }
-    } else if (gDiceScreen.rampAD0.state != 0) {
-        g = &gDiceScreen.grp918;
-        if (gDiceScreen.rampAD0.cur % 3 == 0)
+    } else if (gDiceScreen.dieEase.state != TICK_IDLE) {
+        anim = &gDiceScreen.anims[0];
+        if ((s16)gDiceScreen.dieEase.cur % 3 == 0)
             PlaySE(0x1F);
     }
-    g->unkE = 1;
-    y = (gDiceScreen.rampAD8.cur - 0xBE) / 2
-        + (MulFix8(0x80, gSineTable[((gDiceScreen.rampAD8.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
-    if (gDiceScreen.rampAD0.state) {
-        DiceScreen_TickCharacter(g);
-        sx = dx + 0x68;
-        sx2 = x + sx;
-        bob = (MulFix8(0x100, gSineTable[(gDiceScreen.unkAC5 * 2 + 0x20) & 0xFF]) >> 4) + 8;
-        DiceScreen_DrawCharacter(g, sx2, y - bob + dy, 0x400);
+    /* On the frame the countdown ends the state is already TICK_IDLE: neither branch sets anim, and this
+     * store goes through an uninitialised pointer (a bug of the original code; nothing is drawn). */
+    anim->active = ANIM_PLAYING;
+    charY = ((s16)gDiceScreen.enterEase.cur - 0xBE) / 2
+        + (MulFix8Int(0x80, gSineTable[(((s16)gDiceScreen.enterEase.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
+    if (gDiceScreen.dieEase.state != TICK_IDLE) {
+        DiceScreen_TickCharacter(anim);
+        /* Matching: the x sum in two steps gives the ROM's operand order. */
+        baseX = orbitX + DIE_BASE_X;
+        charX = swayX + baseX;
+        bob = (MulFix8Int(0x100, gSineTable[(gDiceScreen.spinTimer * 2 + 0x20) & 0xFF]) >> 4) + 8;
+        DiceScreen_DrawCharacter(anim, charX, charY - bob + orbitY, OAM_ATTR0_BLEND);
     }
-    Ease_Tick(&gDiceScreen.rampAD0);
+    Ease_Tick(&gDiceScreen.dieEase);
     return 0;
 }
+
+/* DICE_STEP_ENTER: the character comes down from above the screen with a sideways sway (enterEase 0 ->
+ * 0x100), holding the die (the current roll frame) under it. When enterEase is done, starts holdEase (15
+ * frames) and returns 1. */
 u32 DiceScreen_CharacterEnter(void)
 {
-    u16 x, y;
-    struct SprGroup *g;
+    u16 swayX, charY;
+    struct AnimState *anim;
     u8 i;
 
-    x = MulFix8(0x100, gSineTable[gDiceScreen.rampAD8.cur & 0xFF]) >> 4;
-    y = (gDiceScreen.rampAD8.cur - 0xBE) / 2
-        + (MulFix8(0x80, gSineTable[((gDiceScreen.rampAD8.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
-    g = &gDiceScreen.grp918;
-    g->unkE = 1;
-    DiceScreen_TickCharacter(g);
-    DiceScreen_DrawCharacter(g, x + 0x68, y - 8, 0);
-    for (i = 0; i < gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].count; i++)
-        DiceScreen_AddOamPiece(gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].list + i * 4,
-                     0, x + 0x68, y + 0x14, gDiceScreen.unkACD, 0x200, &gDiceScreen);
-    Ease_Tick(&gDiceScreen.rampAD8);
-    if (gDiceScreen.rampAD8.state == 2) {
-        gDiceScreen.rampAD8.state = 0;
-        Ease_Start(0, 0xF, 1, &gDiceScreen.rampAE0);
+    swayX = MulFix8Int(0x100, gSineTable[gDiceScreen.enterEase.cur & 0xFF]) >> 4;
+    charY = ((s16)gDiceScreen.enterEase.cur - 0xBE) / 2
+        + (MulFix8Int(0x80, gSineTable[(((s16)gDiceScreen.enterEase.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
+    anim = &gDiceScreen.anims[0];
+    anim->active = ANIM_PLAYING;
+    DiceScreen_TickCharacter(anim);
+    DiceScreen_DrawCharacter(anim, swayX + DIE_BASE_X, charY - 8, 0);
+    /* The die, 0x14 px below the character. */
+    for (i = 0; i < gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieceCount; i++)
+        DiceScreen_AddOamPiece(
+            (u16 *)&gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieces[i],
+            0, swayX + DIE_BASE_X, charY + 0x14, gDiceScreen.diePalette, OBJ_TILE_BITMAP, &gDiceScreen.oamList);
+    Ease_Tick(&gDiceScreen.enterEase);
+    if (gDiceScreen.enterEase.state == TICK_DONE) {
+        gDiceScreen.enterEase.state = TICK_IDLE;
+        Ease_Start(0, 15, 1, &gDiceScreen.holdEase);
         return 1;
     }
     return 0;
 }
+
+/* DICE_STEP_HOLD: draws the character (not for the plain die) and the die it holds at the end position of the
+ * entry, and ticks holdEase. When it is done, plays the throw sound (SE 0x1F) and returns 1. */
 u32 DiceScreen_HoldDie(void)
 {
-    u16 x, y;
-    struct SprGroup *g;
+    u16 swayX, charY;
+    struct AnimState *anim;
     u8 i;
 
-    x = MulFix8(0x100, gSineTable[gDiceScreen.rampAD8.cur & 0xFF]) >> 4;
-    y = (gDiceScreen.rampAD8.cur - 0xBE) / 2
-        + (MulFix8(0x80, gSineTable[((gDiceScreen.rampAD8.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
-    if (gDiceScreen.unkAEA != 2) {
-        g = &gDiceScreen.grp918;
-        g->unkE = 1;
-        DiceScreen_TickCharacter(g);
-        for (i = 0; i < g->count; i++)
-            DiceScreen_AddOamPiece(g->list + i * 4, 1, x + 0x68, y - 8, 0, 0x200, &gDiceScreen);
+    swayX = MulFix8Int(0x100, gSineTable[gDiceScreen.enterEase.cur & 0xFF]) >> 4;
+    charY = ((s16)gDiceScreen.enterEase.cur - 0xBE) / 2
+        + (MulFix8Int(0x80, gSineTable[(((s16)gDiceScreen.enterEase.cur * 2) & 0xFF) + 0x40]) >> 4) - 8;
+    if (gDiceScreen.variant != DICE_VARIANT_PLAIN) {
+        anim = &gDiceScreen.anims[0];
+        anim->active = ANIM_PLAYING;
+        DiceScreen_TickCharacter(anim);
+        for (i = 0; i < anim->pieceCount; i++)
+            DiceScreen_AddOamPiece((u16 *)&anim->pieces[i], 1, swayX + DIE_BASE_X, charY - 8, 0, OBJ_TILE_BITMAP,
+                                   &gDiceScreen.oamList);
     }
-    for (i = 0; i < gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].count; i++)
-        DiceScreen_AddOamPiece(gDieRollFrames[gDiceScreen.unkAC6][gDiceScreen.rampAD0.cur % 20].list + i * 4,
-                     0, x + 0x68, y + 0x14, gDiceScreen.unkACD, 0x200, &gDiceScreen);
-    Ease_Tick(&gDiceScreen.rampAE0);
-    if (gDiceScreen.rampAE0.state == 2) {
-        gDiceScreen.rampAE0.state = 0;
+    for (i = 0; i < gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieceCount; i++)
+        DiceScreen_AddOamPiece(
+            (u16 *)&gDieRollFrames[gDiceScreen.rollAxis][(s16)gDiceScreen.dieEase.cur % 20].pieces[i],
+            0, swayX + DIE_BASE_X, charY + 0x14, gDiceScreen.diePalette, OBJ_TILE_BITMAP, &gDiceScreen.oamList);
+    Ease_Tick(&gDiceScreen.holdEase);
+    if (gDiceScreen.holdEase.state == TICK_DONE) {
+        gDiceScreen.holdEase.state = TICK_IDLE;
         PlaySE(0x1F);
         return 1;
     }
     return 0;
 }
+
+/* Outer step 4, every frame: ticks the fade. Once the fade-out is complete, stores the face in
+ * gDuelScene.result and returns 1. Otherwise runs gDiceScreenSteps[step] (gPlainDieScreenSteps for the plain
+ * die), advancing when the step returns non-zero, and flushes the OAM list. */
 u32 DiceScreen_Update(void)
 {
-    FadeTick(gDiceScreen.unkABC);
-    if (gDiceScreen.unkAC2 == 2) {
-        gDuelScene.arg8 = gDiceScreen.result;
+    FadeTick(&gDiceScreen.fade);
+    if (gDiceScreen.fade.state == FADE_STATE_FADED_OUT) {
+        gDuelScene.result = gDiceScreen.result;
         return 1;
     }
-    if (gDiceScreen.unkAEA == 2) {
+    /* Matching: two copies of the call with identical tails (cross-jumped in the ROM); a table pointer chosen
+     * first gets if-converted. */
+    if (gDiceScreen.variant == DICE_VARIANT_PLAIN) {
         if (gPlainDieScreenSteps[gDiceScreen.step]) {
             if (gPlainDieScreenSteps[gDiceScreen.step]())
                 gDiceScreen.step++;
@@ -531,61 +570,77 @@ u32 DiceScreen_Update(void)
                 gDiceScreen.step++;
         }
     }
-    OamListFlush(&gDiceScreen);
-    OamListClear(&gDiceScreen);
+    OamListFlush(&gDiceScreen.oamList);
+    OamListClear((u8 *)&gDiceScreen.oamList);
     return 0;
 }
 
+/* Outer step 2 of the Skull Dice scene: variant DICE_VARIANT_SKULL, die palette 2. Returns 1. */
 u32 DiceScreen_SetupSkullDice(void)
 {
-    gDiceScreen.unkAEA = 0;
-    gDiceScreen.unkACD = 2;
+    gDiceScreen.variant = DICE_VARIANT_SKULL;
+    gDiceScreen.diePalette = 2;
     return 1;
 }
 
+/* Outer step 2 of the Graceful Dice scene: variant DICE_VARIANT_GRACEFUL, die palette 0. Returns 1. */
 u32 DiceScreen_SetupGracefulDice(void)
 {
-    gDiceScreen.unkAEA = 1;
-    gDiceScreen.unkACD = 0;
+    gDiceScreen.variant = DICE_VARIANT_GRACEFUL;
+    gDiceScreen.diePalette = 0;
     return 1;
 }
 
+/* Outer step 2 of the plain-die scene: variant DICE_VARIANT_PLAIN (no character), die palette 0. Returns 1. */
 u32 DiceScreen_SetupPlainDie(void)
 {
-    gDiceScreen.unkAEA = 2;
-    gDiceScreen.unkACD = 0;
+    gDiceScreen.variant = DICE_VARIANT_PLAIN;
+    gDiceScreen.diePalette = 0;
     return 1;
 }
+
+/*
+ * Outer step 0: clears gDiceScreen and picks the final roll for the face n = gDuelScene.arg (1-6). A roll strip
+ * has four quarters of 5 frames, one per face of its ring. Each face lies on two rings (gDieFacePaths[n - 1]);
+ * one is picked at random: finalAxis is its axis, and the roll starts two quarters before the face's quarter,
+ * at frame startQuarter * 5 + 2, so that the 10-frame roll stops on the face. result is then
+ * gDieAxisFaces[finalAxis][(startQuarter + 2) % 4], which is n again. Returns 1.
+ */
 u32 DiceScreen_PrepareRoll(void)
 {
-    struct Work1F820 *w = &gDiceScreen;
-    u8 side;
-    u16 n;
-    u8 t;
-    u8 raw;
-    int sum;
+    struct DiceScreen *work = &gDiceScreen;
+    u8 path;
+    u16 face;
+    u8 startQuarter;
+    u8 faceQuarter;
+    int sum;    /* Matching: the + 2 in its own signed variable (the ROM's add before the signed % 4) */
     u8 *result;
-    MemClear16(w, sizeof(*w));
-    side = Random() % 2;
-    n = gDuelScene.opts;
-    result = &w->result;
-    *result = n;
-    w->unkAC7 = gDieFacePaths[(n - 1) % 6][side][0];
-    raw = gDieFacePaths[(*result - 1) % 6][side][1];
-    sum = raw + 2;
-    t = sum % 4;
-    w->unkAC9 = t * 5 + 2;
-    *result = gDieAxisFaces[w->unkAC7][(t + 2) % 4];
-    /* FAKEMATCH: keep the initialized result address live through the last store. */
+
+    MemClear16(work, sizeof(*work));
+    path = Random() % 2;
+    face = gDuelScene.arg;
+    result = &work->result;
+    *result = face;
+    work->finalAxis = gDieFacePaths[(face - 1) % 6][path][0];
+    faceQuarter = gDieFacePaths[(*result - 1) % 6][path][1];
+    sum = faceQuarter + 2;
+    startQuarter = sum % 4;
+    work->finalRollStart = startQuarter * 5 + 2;
+    *result = gDieAxisFaces[work->finalAxis][(startQuarter + 2) % 4];
+    /* FAKEMATCH: one more reference keeps &work->result in a register through the last store (the ROM keeps
+     * the work base in r7 and &result in r6; tools/regoracle.py: result needs refs 4 -> 5 to be allocated
+     * before work). */
     asm volatile ("" : : "r"(result));
     return 1;
 }
 
+/* Scene handler of DUEL_SCENE_DICE_SKULL: runs gSkullDiceSceneSteps[gDuelScene.sceneStep], advancing when the
+ * step returns non-zero; returns 1 at the NULL end of the table. */
 u32 DuelScene_SkullDice(void)
 {
-    if (gSkullDiceSceneSteps[gDuelScene.step]) {
-        if (gSkullDiceSceneSteps[gDuelScene.step]())
-            gDuelScene.step++;
+    if (gSkullDiceSceneSteps[gDuelScene.sceneStep]) {
+        if (gSkullDiceSceneSteps[gDuelScene.sceneStep]())
+            gDuelScene.sceneStep++;
         return 0;
     }
     return 1;

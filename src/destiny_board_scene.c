@@ -1,171 +1,193 @@
+/*
+ * Destiny Board win scene, and the sprite helpers of the pre-duel turn-order screen.
+ *
+ * Destiny Board (DUEL_SCENE_DESTINY_BOARD_WIN): when Destiny Board wins the duel, the duel screen gives way to
+ * a Ouija board over scrolling, wavy BG layers. A ghost-hand animation plays, then the letters F-I-N-A-L
+ * appear and fly off one by one, and the scene fades to black. The scene
+ * handler DestinyBoardScene_Run runs gDestinyBoardSceneSteps (enum DestinyBoardSceneStep) on gSceneWork,
+ * whose own data is gSceneWork.u.destinyBoard (struct DestinyBoardSceneWork):
+ *   DESTINY_STEP_INIT            DestinyBoardScene_Init           clear the work area, scroll layers
+ *   DESTINY_STEP_LOAD            DestinyBoardScene_Load           graphics, HBlank wave, music, fade-in
+ *   DESTINY_STEP_UPDATE          DestinyBoardScene_Update         every frame until the fade-out is done
+ *   DESTINY_STEP_DISABLE_HBLANK  DestinyBoardScene_DisableHBlank  mask the HBlank IRQ again
+ * The VBlank/HBlank handlers, the scroll layers (ScrollLayer_*) and the letter drawer are in dice_scene.c.
+ *
+ * The rest of the unit draws the turn-order screen (turn_order.h; work area gSceneWork.u.turnOrder):
+ * the link "Wait" sign, the 4-byte scrollers that turn the hand-card carousel and slide the opponent's card,
+ * the rock/scissors/paper carousel, the result banners, the opponent's card and the FIRST/SECOND banners.
+ */
 #include "global.h"
-#include "gba.h"
+#include "gba.h"                /* REG_*, CpuSet, CpuFastSet, VRAM addresses */
+#include "main.h"               /* gMain */
+#include "sound.h"              /* PlaySE, PlayBGM (new sound.h) */
+#include "util.h"               /* gSineTable */
+#include "palette.h"            /* struct Fade, FadeStart, FadeTick */
+#include "bg.h"                 /* CopyMapRect, CopyTileSheetTo2D, TILE_COLORS_16 */
+#include "sprite.h"             /* struct AnimSeq / AnimState / ObjAffine, OamList*, AnimBlock*, ObjAffine* */
+#include "duel_scenes.h"        /* gDuelScene, gSceneWork, struct DestinyBoardSceneWork, Destiny Board steps */
+#include "turn_order.h"         /* turn-order enums, sprite helpers defined here, tile tables */
 
-/* Four-byte scroller entry (toss work area +0xB14, see duel_field_view). */
-struct Scroller {
-    u8 pos;             /* +0 */
-    s8 speed;           /* +1 */
-    u8 stop;            /* +2: index of the stop position reached */
-    u8 unk3;
+/* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
+
+/* Values and prototypes as in the new headers; this block compiles away once they are installed. */
+#ifndef INTR_FLAG_HBLANK
+#define BG_VRAM                 0x06000000
+#define BG_CHAR_SIZE            0x4000
+#define BG_SCREEN_SIZE          0x800
+#define BG_CHAR_ADDR(n)         (BG_VRAM + BG_CHAR_SIZE * (n))
+#define BG_SCREEN_ADDR(n)       (BG_VRAM + BG_SCREEN_SIZE * (n))
+#define DISPCNT_MODE_0          0x0000
+#define DISPCNT_BG0_ON          0x0100
+#define DISPCNT_BG_ALL_ON       0x0F00
+#define DISPCNT_OBJ_ON          0x1000
+#define BGCNT_PRIORITY(n)       (n)
+#define BGCNT_SCREENBASE(n)     ((n) << 8)
+#define BLDCNT_TGT1_BG0         0x0001
+#define BLDCNT_EFFECT_BLEND     0x0040
+#define BLDCNT_TGT2_ALL         0x3F00
+#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
+#define INTR_FLAG_HBLANK        0x0002
+#define CPU_SET_SRC_FIXED       0x01000000
+#define CPU_SET_16BIT           0x00000000
+#define CPU_FAST_SET_SRC_FIXED  0x01000000
+#define OAM_ATTR0_AFFINE_DOUBLE 0x0300
+#define OAM_ATTR0_BLEND         0x0400
+#define OAM_ATTR1_MATRIX(n)     ((n) << 9)
+#define INTR_SLOT_HBLANK        1
+#define VBLANK_COPY_OAM         0x1
+extern void (*IntrTable[16])(void);
+void PlaySE(u32 seId);
+void PlayBGM(u32 songId);
+#endif
+
+/* The two 16-bit halves of the BG2X and BG3Y reference points (gba.h names them only as 32-bit registers). */
+#define REG_BG2X_L REG16(0x028)
+#define REG_BG2X_H REG16(0x02A)
+#define REG_BG3Y_L REG16(0x03C)
+#define REG_BG3Y_H REG16(0x03E)
+
+/* OamListAddSprite returns the entry; these drawers OR attr0 and attr1 into its first word in one go. */
+#define OAM_ATTR01(attr0, attr1) (((attr1) << 16) | (attr0))
+
+/* ---- Local views kept on purpose (matching choices, see build/readability/HEADERS.md) ---- */
+
+/* OamListAddSprite as this unit calls it: every argument as a full word (the definition narrows to u8/u16,
+ * which would add narrowing at these call sites), and the entry returned as a u32 * so attr0 and attr1 can be
+ * ORed in as one word. */
+extern u32 *OamListAddSpriteWide(u32 layer, u32 tile, s32 x, s32 y, u32 width, u32 height, u32 bpp, u32 palette,
+                                 u32 unused, u32 attr0Flags, u32 attr1Bits, u32 priority, struct OamList *list)
+    asm("OamListAddSprite");
+
+/* MulFix8 with int parameters and result: the ROM neither narrows the arguments nor sign-extends the result
+ * (util.h: s16 MulFix8(s16, s16)). */
+extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
+
+/* AnimBlockDraw and DestinyBoardScene_DrawFinalLetters with an unnarrowed y: the ROM passes the computed
+ * position as it is (the definitions take u16). */
+extern void AnimBlockDrawWideY(u8 *block, u32 layer, u32 priority, u32 tileOffset, u32 palette, u32 format,
+                               u32 mode, u32 x, s32 y, struct OamList *oam) asm("AnimBlockDraw");
+extern void DestinyBoardScene_DrawFinalLettersWideY(u32 unused, u32 x, s32 y)
+    asm("DestinyBoardScene_DrawFinalLetters");
+
+/* ---- ROM data used only here ---- */
+
+/* One ScrollLayer_Init argument set (gDestinyBoardLayerInit, 0x08199DCC). */
+struct ScrollLayerInit {
+    u8 *srcMap;     /* +0x0: tall source map (30 entries per row); none for BG0 */
+    u8 *bgMap;      /* +0x4: BG screen block it streams into */
+    s16 speed;      /* +0x8: 12.4 pixels per frame */
+    s16 target;     /* +0xA: 12.4 stop position */
 };
 
-/* Reel/marker object (0x14 bytes), initialised by ScrollLayer_Init. */
-struct Obj14 {
-    u8 state:3;         /* +0x0 bits 0-2 */
-    u8 unk0_3:5;
-    u8 unk1;
-    s16 unk2;           /* +0x2 */
-    u8 unk4[2];
-    s16 pos;            /* +0x6: 12.4 fixed (>> 4) */
-    u8 unk8[0xC];
-};
-
-/* Work area at 0x02020310 (0xB24 bytes, fields used here). */
-struct Work20310 {
-    u8 unk0[0x618];
-    struct {
-        u16 scaleX;     /* +0x0 (0x100 = 1.0) */
-        u16 scaleY;     /* +0x2 */
-        u16 angle;      /* +0x4 */
-        u8 unk6[0x12];
-    } aff[6];           /* +0x618: OBJ affine parameter sets (ObjAffineInit) */
-    u8 filler6A8[0x918 - 0x6A8];
-    struct {
-        u8 unk0[0xC];
-        union {
-            u32 frame;  /* +0xC: animation frame word (masked with 0xFF00FF00) */
-            struct {
-                u8 b0;
-                u8 b1;
-                u8 ctl;  /* +0xE: 0 = finished, 0xFF = stopped, 1 = play */
-                u8 b3;
-            } f;
-        } u;
-        u8 unk10[4];
-    } grp[5];           /* +0x918: sprite groups (AnimBlockInit on [0]) */
-    u8 filler97C[0xAAC - 0x97C];
-    u8 unkAAC[8];       /* +0xAAC: object for FadeStart/FadeTick (+6 == 2: finished) */
-    struct Obj14 objs[4];   /* +0xAB4 */
-    u8 unkB04;
-    u8 unkB05;
-    u8 unkB06[2];
-    u8 timer;           /* +0xB08: frames until next tick */
-    u8 tick;            /* +0xB09 */
-    u8 fillerB0A[2];
-    struct {
-        u8 pos;         /* +0 ([2].pos is tested for 0x60) */
-        u8 count;       /* +1 */
-        u8 unk2[2];
-    } counters[5];      /* +0xB0C */
-    u8 unkB20;          /* +0xB20 */
-};
-extern struct Work20310 gSceneWork;
-#define gWork gSceneWork
-
-/* Message/sequence block at 0x02017A30 (fields used here). */
-struct DuelMsg {
-    u8 unk0[0xB];
-    u8 step;            /* +0xB */
-};
-extern struct DuelMsg gDuelScene;
-
-extern const s8 gFinalLetterLaunchOrder[];    /* counter index per tick (-1 = none) */
-extern const u8 gHandCarouselStops[];    /* 3 stop positions */
+/* 0x08199DFC: the scene steps (Init, Load, Update, DisableHBlank, NULL). */
 extern u16 (*const gDestinyBoardSceneSteps[])(void);
-void PlaySE(u32 se);
-struct Main {
-    u8 unk0[0x40E];
-    u16 unk40E;         /* +0x40E */
-    u8 filler410[4];
-    void (*vblankCallback)(void);   /* +0x414 */
-};
-struct IntrVectors {
-    u32 unk0;
-    void (*hblankCallback)(void);
-};
-extern struct IntrVectors IntrTable;
-void DestinyBoardScene_VBlank(void);
-void DestinyBoardScene_HBlank(void);
-void ScrollLayer_StreamRow(struct Obj14 *obj);
-void DestinyBoardScene_AdvanceWave(void);
-void ScrollLayer_Move(struct Obj14 *obj);
-void DestinyBoardScene_DrawFinalLetters(u32 a, u32 b, s32 y);
-void FadeTick(void *p);
-void AnimBlockTick(void *p);
-void AnimBlockDraw(void *grp, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, u32 g, s32 y, void *work);
-void ObjAffineApply(void *aff);
-void OamListFlush(void *p);
-void DestinyBoardScene_LaunchLetters(void);
-extern const u8 gFinalLetterTiles[];
-void CopyMapRect(const void *src, void *dst, u32 w, u32 h);
-void CopyTileSheetTo2D(const void *src, void *dst, u32 n);
-void PlayBGM(u16 bgm);
-extern const u8 gDestinyBoardBg2Map[], gDestinyBoardBg1Map[], gDestinyBoardWaveMap[];
-extern const u8 gDestinyBoardBgTiles0[], gDestinyBoardBgTiles1[], gDestinyBoardBgTiles2[], gDestinyBoardObjTiles0[];
-extern const u8 gDestinyBoardObjTiles1[], gDestinyBoardObjTiles2[], gDestinyBoardObjTiles3[], gDestinyBoardBgPal[], gDestinyBoardObjPal[];
-extern struct Main gMain;
-#define gMain gMain
-struct ObjInit {
-    u32 unk0;
-    u32 unk4;
-    s16 unk8;
-    s16 unkA;
-};
-extern const struct ObjInit gDestinyBoardLayerInit[4];
-extern const u8 gDestinyBoardAnimList[];
-extern const u16 gHandCardTileNums[];
-extern const u16 gTurnChoiceBannerTileNums[];
-extern const s16 gSineTable[];   /* sine table */
+/* 0x08199DCC: BG0-3 scroll layers. */
+extern const struct ScrollLayerInit gDestinyBoardLayerInit[4];
+/* 0x0819A698: NULL-terminated animation list; anims[0] the ghost hand, anims[3] the letters
+ * (gFinalLettersAnim). Not const: AnimBlockInit takes a struct AnimSeq **. */
+extern struct AnimSeq *gDestinyBoardAnimList[];
+/* 0x08082404: {0, 3, 1, 4, 2, -1}: letter launched at each tick of DestinyBoardScene_LaunchLetters (F, A,
+ * I, L, N), -1 = none. */
+extern const s8 gFinalLetterLaunchOrder[];
+/* Graphics (not const: CopyMapRect and CopyTileSheetTo2D take non-const pointers). */
+extern u8 gDestinyBoardBg2Map[];        /* 0x086E11A4: 30x20 map for BG2 */
+extern u8 gDestinyBoardBg1Map[];        /* 0x086E1C6C: 30x20 map for BG1 */
+extern u8 gDestinyBoardWaveMap[];       /* 0x086E21D0: 16x8 map tiled over BG0 and BG3, the waving layers */
+extern const u8 gDestinyBoardBgTiles0[];    /* 0x086D0178: BG tiles 0x000-0x0FF: the Ouija board */
+extern const u8 gDestinyBoardBgTiles1[];    /* 0x086D2178: BG tiles 0x100-0x1FF */
+extern const u8 gDestinyBoardBgTiles2[];    /* 0x086D4178: BG tiles 0x200-0x2FF: a spirit figure */
+extern u8 gDestinyBoardObjTiles0[];     /* 0x086D6178: 128x128 OBJ sheet (ghost hand), OBJ tile 0 */
+extern u8 gDestinyBoardObjTiles1[];     /* 0x086D8178: 128x128 OBJ sheet, OBJ tile 16 */
+extern u8 gDestinyBoardObjTiles2[];     /* 0x086DA178: 128x128 OBJ sheet (ghost auras), OBJ tile 512 */
+extern u8 gDestinyBoardObjTiles3[];     /* 0x086DC178: 128x128 OBJ sheet, OBJ tile 528 */
+extern u8 gFinalLetterTiles[];          /* 0x086DE178: 128x128 sheet of the F-I-N-A-L letters */
+extern const u8 gDestinyBoardBgPal[];   /* 0x086E22D0: 256-colour BG palette */
+extern const u8 gDestinyBoardObjPal[];  /* 0x086E24D0: 256-colour OBJ palette */
+
+/* 0x080826DC: {0, 86, 171}: carousel angles at which rock, scissors and paper face the player. */
+extern const u8 gHandCarouselStops[];
+/* 0x08082703: {0, 1, 2}: OBJ palette of each hand card. */
 extern const u8 gHandCardPalNums[];
+/* 0x080826EA: the two 64x32 halves (OBJ tiles) of each banner (enum TurnOrderBanner). */
 extern const u16 gTurnOrderBannerTileNums[];
+/* 0x080826FE: {4, 5, 6, 8, 7}: OBJ palette of each banner (palette 8 is never loaded: entry 3 is unused). */
 extern const u8 gTurnOrderBannerPalNums[];
-void OamListClear(void *p);
-void ObjAffineInit(void *p);
-void AnimBlockInit(const void *a, void *b);
-void ScrollLayer_Init(u32 a, u32 b, s16 c, s16 d, struct Obj14 *obj);
-s32 MulFix8(s32 a, s32 b);     /* 8.8 fixed-point multiply */
-u32 *OamListAddSprite(u32 a, u32 tile, s32 x, s32 y, u32 w, u32 h, u32 a6, u32 a7, u32 a8,
-                  u32 a9, u32 a10, u32 a11, void *work);
-void FadeStart(u32 a, u32 b, u32 c, void *p);
 
+/* The scene's own data, at gSceneWork + 0xAAC. */
+#define sBoard gSceneWork.u.destinyBoard
 
+/* Bytes of gSceneWork the scene uses (0xB24), cleared by DestinyBoardScene_Init. */
+#define DESTINY_WORK_SIZE (OFFSET_OF(struct SceneWork, u) + sizeof(struct DestinyBoardSceneWork))
+
+/* True on the last tick of step `step` of `anim` (stepIdx == step and timer == 0). Matching: the ROM reads
+ * the word at AnimState +0xC (pieceCount, stepIdx, active, timer) and masks stepIdx and timer. */
+#define ANIM_ENDING_STEP(anim, step) ((*(u32 *)&(anim).pieceCount & 0xFF00FF00) == ((step) << 8))
+
+/* ---- Destiny Board win scene ---- */
+
+/* Launches the F-I-N-A-L letters in gFinalLetterLaunchOrder, one every 21 frames (letterTimer counts 20 down
+ * through 0 to 0xFF; the first one goes at once). Once the flight progress of the middle letter N (launched
+ * last) reaches 0x60, starts the fade to black that ends the scene and hides BG0. */
 void DestinyBoardScene_LaunchLetters(void)
 {
-    if (--gWork.timer == 0xFF && gWork.tick <= 5) {
-        if (gFinalLetterLaunchOrder[gWork.tick] != -1) {
-            gWork.counters[gFinalLetterLaunchOrder[gWork.tick]].count++;
+    if (--sBoard.letterTimer == 0xFF && sBoard.letterTick <= 5) {
+        if (gFinalLetterLaunchOrder[sBoard.letterTick] != -1) {
+            sBoard.letters[gFinalLetterLaunchOrder[sBoard.letterTick]].state++; /* LETTER_AT_REST -> LETTER_FLYING */
             PlaySE(0x2F);
         }
-        gWork.timer = 20;
-        gWork.tick++;
+        sBoard.letterTimer = 20;
+        sBoard.letterTick++;
     }
-    if (gWork.counters[2].pos == 0x60) {
-        FadeStart(0, 0x60, 0, gWork.unkAAC);
-        REG_DISPCNT &= ~0x100;
+    if (sBoard.letters[2].t == 0x60) {
+        FadeStart(FADE_BLACK, 0x60, 0, &sBoard.fade);
+        REG_DISPCNT &= ~DISPCNT_BG0_ON;
     }
-} /* 0x08027580 size 0xA0 */
+}
 
+/* Puts the five letters back at rest and restarts the launch sequence. Unused: Init clears the whole work
+ * area instead. */
 void DestinyBoardScene_ResetLetters(void)
 {
     u8 i;
 
-    gWork.timer = 20;
+    sBoard.letterTimer = 20;
     for (i = 0; i < 5; i++) {
-        gWork.counters[i].pos = 0;
-        gWork.counters[i].count = 0;
+        sBoard.letters[i].t = 0;
+        sBoard.letters[i].state = LETTER_AT_REST;
     }
-    gWork.tick = 0;
+    sBoard.letterTick = 0;
 }
+
+/* DESTINY_STEP_INIT: clears the scene work, resets the BG scroll, hides every layer, and sets up the OAM list,
+ * the animations, the affine records and the four scroll layers. Returns 1. */
 u32 DestinyBoardScene_Init(void)
 {
     vu16 zero;
     int i;
-    const struct ObjInit *init;
-    int off;
 
     zero = 0;
-    CpuSet((void *)&zero, &gWork, 0x01000592);
-    gMain.unk40E = 1;
+    CpuSet((void *)&zero, &gSceneWork, CPU_SET_SRC_FIXED | CPU_SET_16BIT | (DESTINY_WORK_SIZE / 2));
+    gMain.vblankFlags = VBLANK_COPY_OAM;
     REG_BG0VOFS = 0;
     REG_BG0HOFS = 0;
     REG_BG1VOFS = 0;
@@ -174,387 +196,467 @@ u32 DestinyBoardScene_Init(void)
     REG_BG2HOFS = 0;
     REG_BG3VOFS = 0;
     REG_BG3HOFS = 0;
-    REG16(0x028) = 0;
-    REG16(0x02A) = 0;
-    REG16(0x03C) = 0;
-    REG16(0x03E) = 0;
-    REG_DISPCNT &= 0xE0FF;
-    OamListClear(&gWork);
-    AnimBlockInit(gDestinyBoardAnimList, &gWork.grp[0]);
-    ObjAffineInit(gWork.aff);
+    /* Of the affine reference points only BG2X and BG3Y are cleared, not BG2Y and BG3X. */
+    REG_BG2X_L = 0;
+    REG_BG2X_H = 0;
+    REG_BG3Y_L = 0;
+    REG_BG3Y_H = 0;
+    REG_DISPCNT &= ~(DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON);
+    OamListClear((u8 *)&gSceneWork.oamList);
+    AnimBlockInit(gDestinyBoardAnimList, (u8 *)gSceneWork.anims);
+    ObjAffineInit(gSceneWork.aff);
     for (i = 0; i < 4; i++)
-        ScrollLayer_Init(gDestinyBoardLayerInit[i].unk0, gDestinyBoardLayerInit[i].unk4, gDestinyBoardLayerInit[i].unk8,
-                     gDestinyBoardLayerInit[i].unkA, &gWork.objs[i]);
-    gWork.unkB05 = 0x62;
+        ScrollLayer_Init(gDestinyBoardLayerInit[i].srcMap, gDestinyBoardLayerInit[i].bgMap,
+                         gDestinyBoardLayerInit[i].speed, gDestinyBoardLayerInit[i].target, &sBoard.layers[i]);
+    sBoard.layerDelay = 0x62;
     return 1;
 }
+
+/* DESTINY_STEP_LOAD: starts the fade-in from black, loads the maps, tiles and palettes, turns on BG0-3 and OBJ
+ * (BG0 alpha-blended over the rest), installs the VBlank and HBlank handlers and starts the music. Returns 1. */
 u32 DestinyBoardScene_Load(void)
 {
     vu32 zero;
     u8 i, j;
 
-    FadeStart(0, -0x180, 0, gWork.unkAAC);
+    FadeStart(FADE_BLACK, -0x180, 0, &sBoard.fade);
     zero = 0;
-    CpuFastSet((void *)&zero, (void *)0x06000000, 0x01006000);
-    CopyMapRect(gDestinyBoardBg2Map, (void *)0x0600E000, 30, 20);
-    CopyMapRect(gDestinyBoardBg1Map, (void *)0x0600D000, 30, 20);
+    CpuFastSet((void *)&zero, (void *)VRAM, CPU_FAST_SET_SRC_FIXED | (0x18000 / 4));
+    CopyMapRect(gDestinyBoardBg2Map, (void *)BG_SCREEN_ADDR(28), 30, 20);
+    CopyMapRect(gDestinyBoardBg1Map, (void *)BG_SCREEN_ADDR(26), 30, 20);
+    /* BG0 and BG3: the 16x8 wave map tiled 2 across and 4 down. */
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 2; j++) {
-            CopyMapRect(gDestinyBoardWaveMap, (u16 *)0x0600C000 + (i * 256 + j * 16), 16, 8);
-            CopyMapRect(gDestinyBoardWaveMap, (u16 *)0x0600F000 + (i * 256 + j * 16), 16, 8);
+            CopyMapRect(gDestinyBoardWaveMap, (u16 *)BG_SCREEN_ADDR(24) + (i * 256 + j * 16), 16, 8);
+            CopyMapRect(gDestinyBoardWaveMap, (u16 *)BG_SCREEN_ADDR(30) + (i * 256 + j * 16), 16, 8);
         }
     }
-    CpuFastSet(gDestinyBoardBgTiles0, (void *)0x06000000, 0x800);
-    CpuFastSet(gDestinyBoardBgTiles1, (void *)0x06002000, 0x800);
-    CpuFastSet(gDestinyBoardBgTiles2, (void *)0x06004000, 0x800);
-    CopyTileSheetTo2D(gDestinyBoardObjTiles0, (void *)0x06010000, 0x10);
-    CopyTileSheetTo2D(gDestinyBoardObjTiles1, (void *)0x06010200, 0x10);
-    CopyTileSheetTo2D(gDestinyBoardObjTiles2, (void *)0x06014000, 0x10);
-    CopyTileSheetTo2D(gDestinyBoardObjTiles3, (void *)0x06014200, 0x10);
-    CpuFastSet(gDestinyBoardBgPal, (void *)0x05000000, 0x80);
-    CpuFastSet(gDestinyBoardObjPal, (void *)0x05000200, 0x80);
-    REG_BG0CNT = 0x1800;
-    REG_BG1CNT = 0x1A01;
-    REG_BG2CNT = 0x1C02;
-    REG_BG3CNT = 0x1E03;
-    REG_DISPCNT = 0x1F00;
+    CpuFastSet(gDestinyBoardBgTiles0, (void *)BG_CHAR_ADDR(0), 0x2000 / 4);
+    CpuFastSet(gDestinyBoardBgTiles1, (void *)(BG_CHAR_ADDR(0) + 0x2000), 0x2000 / 4);
+    CpuFastSet(gDestinyBoardBgTiles2, (void *)BG_CHAR_ADDR(1), 0x2000 / 4);
+    CopyTileSheetTo2D(gDestinyBoardObjTiles0, (u8 *)OBJ_VRAM0, TILE_COLORS_16);
+    CopyTileSheetTo2D(gDestinyBoardObjTiles1, (u8 *)(OBJ_VRAM0 + 0x200), TILE_COLORS_16);
+    CopyTileSheetTo2D(gDestinyBoardObjTiles2, (u8 *)(OBJ_VRAM0 + 0x4000), TILE_COLORS_16);
+    CopyTileSheetTo2D(gDestinyBoardObjTiles3, (u8 *)(OBJ_VRAM0 + 0x4200), TILE_COLORS_16);
+    CpuFastSet(gDestinyBoardBgPal, (void *)BG_PLTT, 0x200 / 4);
+    CpuFastSet(gDestinyBoardObjPal, (void *)OBJ_PLTT, 0x200 / 4);
+    REG_BG0CNT = BGCNT_SCREENBASE(24) | BGCNT_PRIORITY(0);
+    REG_BG1CNT = BGCNT_SCREENBASE(26) | BGCNT_PRIORITY(1);
+    REG_BG2CNT = BGCNT_SCREENBASE(28) | BGCNT_PRIORITY(2);
+    REG_BG3CNT = BGCNT_SCREENBASE(30) | BGCNT_PRIORITY(3);
+    REG_DISPCNT = DISPCNT_MODE_0 | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON;
     gMain.vblankCallback = DestinyBoardScene_VBlank;
+    /* The ghost hand (anims[0]) and anims[2] play; the others wait (|= 0xFF: ANIM_HIDDEN). */
     for (i = 1; i < 5; i++)
-        gWork.grp[i].u.f.ctl |= 0xFF;
-    gWork.grp[0].u.f.ctl = 1;
-    gWork.grp[2].u.f.ctl = 1;
-    ScrollLayer_StreamRow(&gWork.objs[1]);
-    ScrollLayer_StreamRow(&gWork.objs[2]);
+        gSceneWork.anims[i].active |= ANIM_HIDDEN;
+    gSceneWork.anims[0].active = ANIM_PLAYING;
+    gSceneWork.anims[2].active = ANIM_PLAYING;
+    ScrollLayer_StreamRow(&sBoard.layers[1]);
+    ScrollLayer_StreamRow(&sBoard.layers[2]);
+    /* Install the HBlank handler with the IRQ masked, then enable it. */
     REG_IME = 0;
-    REG_IE &= ~2;
-    IntrTable.hblankCallback = DestinyBoardScene_HBlank;
+    REG_IE &= ~INTR_FLAG_HBLANK;
+    IntrTable[INTR_SLOT_HBLANK] = DestinyBoardScene_HBlank;
     REG_IME = 1;
     REG_IME = 0;
-    REG_IE |= 2;
+    REG_IE |= INTR_FLAG_HBLANK;
     REG_IME = 1;
-    REG_BLDCNT = 0x3F41;
-    REG_BLDALPHA = 0x100B;
+    REG_BLDCNT = BLDCNT_TGT1_BG0 | BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_ALL;
+    REG_BLDALPHA = BLDALPHA_BLEND(11, 16);
     PlayBGM(20);
     return 1;
 }
+
+/* DESTINY_STEP_UPDATE, every frame: scrolls the layers, plays the ghost-hand and board animations, then
+ * launches and draws the letters (enum DestinyBoardAnimPhase). Returns 1 once the final fade-out is done. */
 u32 DestinyBoardScene_Update(void)
 {
     u8 i;
 
-    FadeTick(gWork.unkAAC);
+    FadeTick(&sBoard.fade);
     DestinyBoardScene_AdvanceWave();
-    if (gWork.unkB05 == 1) {
-        gWork.objs[1].state = 1;
-        gWork.objs[2].state = 1;
-        gWork.objs[3].state = 1;
+    /* After 0x62 frames layers 1-3 start to scroll. */
+    if (sBoard.layerDelay == 1) {
+        sBoard.layers[1].moving = 1;
+        sBoard.layers[2].moving = 1;
+        sBoard.layers[3].moving = 1;
     }
-    if (gWork.unkB05)
-        gWork.unkB05--;
+    if (sBoard.layerDelay)
+        sBoard.layerDelay--;
     for (i = 0; i < 4; i++)
-        ScrollLayer_Move(&gWork.objs[i]);
-    if (gWork.objs[0].state == 0 && gWork.objs[1].state == 0 && gWork.unkB05 == 0)
-        gWork.objs[3].unk2 = -2;
-    ScrollLayer_StreamRow(&gWork.objs[1]);
-    ScrollLayer_StreamRow(&gWork.objs[2]);
-    AnimBlockTick(&gWork.grp[0]);
-    switch (gWork.unkB04) {
-    case 0:
-        if ((s8)gWork.grp[0].u.f.ctl == 0) {
-            gWork.grp[0].u.f.ctl = 0xFF;
-            gWork.grp[1].u.f.ctl = 1;
-            gWork.unkB04++;
+        ScrollLayer_Move(&sBoard.layers[i]);
+    /* Once layers 0 and 1 have stopped, layer 3 keeps drifting slowly. */
+    if (sBoard.layers[0].moving == 0 && sBoard.layers[1].moving == 0 && sBoard.layerDelay == 0)
+        sBoard.layers[3].speed = -2;
+    ScrollLayer_StreamRow(&sBoard.layers[1]);
+    ScrollLayer_StreamRow(&sBoard.layers[2]);
+    AnimBlockTick((u8 *)gSceneWork.anims);
+    /* Matching: the ROM tests active as a signed byte (ldsb). */
+    switch (sBoard.animPhase) {
+    case DESTINY_PHASE_ANIM0:
+        if ((s8)gSceneWork.anims[0].active == ANIM_FINISHED) {
+            gSceneWork.anims[0].active = ANIM_HIDDEN;
+            gSceneWork.anims[1].active = ANIM_PLAYING;
+            sBoard.animPhase++;
         }
-        if ((gWork.grp[0].u.frame & 0xFF00FF00) == 0xA00)
-            CopyTileSheetTo2D(gFinalLetterTiles, (void *)0x06010000, 0x10);
-        if ((gWork.grp[0].u.frame & 0xFF00FF00) == 0x100)
+        /* At step 10 the ghost-hand sheet in OBJ VRAM is replaced by the letters. */
+        if (ANIM_ENDING_STEP(gSceneWork.anims[0], 10))
+            CopyTileSheetTo2D(gFinalLetterTiles, (u8 *)OBJ_VRAM0, TILE_COLORS_16);
+        if (ANIM_ENDING_STEP(gSceneWork.anims[0], 1))
             PlaySE(0x2D);
-        if ((gWork.grp[0].u.frame & 0xFF00FF00) == 0xB00)
+        if (ANIM_ENDING_STEP(gSceneWork.anims[0], 11))
             PlaySE(0x2E);
         break;
-    case 1:
-        if ((s8)gWork.grp[1].u.f.ctl == 0) {
-            gWork.grp[1].u.f.ctl = 0xFF;
-            gWork.grp[3].u.f.ctl = 1;
-            gWork.unkB04++;
-            gWork.unkB20 = 30;
+    case DESTINY_PHASE_ANIM1:
+        if ((s8)gSceneWork.anims[1].active == ANIM_FINISHED) {
+            gSceneWork.anims[1].active = ANIM_HIDDEN;
+            gSceneWork.anims[3].active = ANIM_PLAYING;
+            sBoard.animPhase++;
+            sBoard.pauseTimer = 30;
         }
         break;
-    case 2:
-        gWork.grp[3].u.f.ctl = 1;
-        if (--gWork.unkB20 == 0xFF)
-            gWork.unkB04 = 3;
+    case DESTINY_PHASE_PAUSE:
+        gSceneWork.anims[3].active = ANIM_PLAYING;
+        if (--sBoard.pauseTimer == 0xFF)
+            sBoard.animPhase = DESTINY_PHASE_LETTERS;
         break;
     }
-    switch (gWork.unkB04) {
-    case 0:
-    case 1:
-    case 2:
-        AnimBlockDraw(&gWork.grp[0], 0, 1, 0, 0, 0, 8, 0, 0x48 - (gWork.objs[2].pos >> 4), &gWork);
+    switch (sBoard.animPhase) {
+    case DESTINY_PHASE_ANIM0:
+    case DESTINY_PHASE_ANIM1:
+    case DESTINY_PHASE_PAUSE:
+        /* The animations move with BG2. */
+        AnimBlockDrawWideY((u8 *)gSceneWork.anims, 0, 1, 0, 0, OAM_TILES_SHEET16, OAM_GROUP_QUAD_REL_POS, 0,
+                           0x48 - (sBoard.layers[2].pos >> 4), &gSceneWork.oamList);
         break;
-    case 3:
+    case DESTINY_PHASE_LETTERS:
         DestinyBoardScene_LaunchLetters();
-        gWork.grp[3].u.f.ctl = 1;
-        DestinyBoardScene_DrawFinalLetters(3, 0, 0x48 - (gWork.objs[1].pos >> 4));
+        gSceneWork.anims[3].active = ANIM_PLAYING;
+        DestinyBoardScene_DrawFinalLettersWideY(3, 0, 0x48 - (sBoard.layers[1].pos >> 4));
         break;
     }
     for (i = 0; i < 5; i++)
-        ObjAffineApply(&gWork.aff[i]);
-    OamListFlush(&gWork);
-    OamListClear(&gWork);
-    if (gWork.unkAAC[6] == 2)
+        ObjAffineApply(&gSceneWork.aff[i]);
+    OamListFlush(&gSceneWork.oamList);
+    OamListClear((u8 *)&gSceneWork.oamList);
+    if (sBoard.fade.state == FADE_STATE_FADED_OUT)
         return 1;
     return 0;
 }
+
+/* DESTINY_STEP_DISABLE_HBLANK: masks the HBlank IRQ that DestinyBoardScene_Load enabled. Returns 1. */
 u32 DestinyBoardScene_DisableHBlank(void)
 {
     REG_IME = 0;
-    REG_IE &= ~2;
+    REG_IE &= ~INTR_FLAG_HBLANK;
     REG_IME = 1;
     return 1;
 }
 
+/* Scene handler of DUEL_SCENE_DESTINY_BOARD_WIN: runs the current step and moves to the next one when it
+ * returns non-zero. Returns 1 at the NULL end of gDestinyBoardSceneSteps. */
 u32 DestinyBoardScene_Run(void)
 {
-    if (gDestinyBoardSceneSteps[gDuelScene.step]) {
-        if (gDestinyBoardSceneSteps[gDuelScene.step]())
-            gDuelScene.step++;
+    if (gDestinyBoardSceneSteps[gDuelScene.sceneStep]) {
+        if (gDestinyBoardSceneSteps[gDuelScene.sceneStep]())
+            gDuelScene.sceneStep++;
         return 0;
     }
     return 1;
 }
 
+/* ---- Turn-order screen: sprites ---- */
+
+/* Shows the flashing link "Wait" sign (anims[0] of the turn-order screen). */
 void TurnOrder_ShowWaitSign(void)
 {
-    gWork.grp[0].u.f.ctl = 1;
+    gSceneWork.anims[0].active = ANIM_PLAYING;
 }
 
+/* Hides the "Wait" sign. */
 void TurnOrder_HideWaitSign(void)
 {
-    gWork.grp[0].u.f.ctl = 0xFF;
+    gSceneWork.anims[0].active = ANIM_HIDDEN;
 }
 
-void Scroller_Move(struct Scroller *s)
+/* Moves the four scrollers by their speed (pos wraps at 256). */
+void Scroller_Move(struct Scroller *scrollers)
 {
     u8 i;
 
     for (i = 0; i < 4; i++)
-        s[i].pos += s[i].speed;
+        scrollers[i].pos += scrollers[i].speed;
 }
 
-void Scroller_SnapToStop(struct Scroller *s)
+/* Stops the carousel at the stop position it is passing (gHandCarouselStops[i] <= pos < stop + |speed|) and
+ * stores that stop: the hand now facing the player (enum RpsHand). */
+void Scroller_SnapToStop(struct Scroller *scroller)
 {
     u8 i = 0;
-    s32 pos = s->pos;
+    s32 pos = scroller->pos;
 
     for (; i < 3; i++) {
         if (pos >= gHandCarouselStops[i]) {
-            s32 v = s->speed;
-            if (v < 0)
-                v = -v;
-            if (pos < gHandCarouselStops[i] + v) {
-                s->speed = 0;
-                s->pos = gHandCarouselStops[i];
-                s->stop = i;
+            s32 absSpeed = scroller->speed;
+            if (absSpeed < 0)
+                absSpeed = -absSpeed;
+            if (pos < gHandCarouselStops[i] + absSpeed) {
+                scroller->speed = 0;
+                scroller->pos = gHandCarouselStops[i];
+                scroller->stop = i;
             }
         }
     }
 }
 
-void Scroller_StopAtEnds(struct Scroller *s)
+/* Stops the opponent-card slide at its ends: 0x30 (fully in) and 0 (out). */
+void Scroller_StopAtEnds(struct Scroller *scroller)
 {
-    if (s->pos == 0x30)
-        s->speed = 0;
-    if (s->pos == 0)
-        s->speed = 0;
+    if (scroller->pos == 0x30)
+        scroller->speed = 0;
+    if (scroller->pos == 0)
+        scroller->speed = 0;
 }
-void TurnOrder_DrawHandCarousel(u16 *tiles, u8 *pals, u8 angle, u8 sel, u8 bump, u16 flags, u8 spread)
+
+/* Draws the three 32x64 hand cards on a ring seen from the side, using affine records 0-2: card 0 at `angle`,
+ * card 2 at angle + spread, card 1 at angle - spread - 1 (256 steps per turn). Each card sits at
+ * x = 0x58 + 0x30 * sin, y = 0x32 + 0x10 * cos and is scaled by 0.75 + cos / 4, so the front card is the
+ * largest (its matrix angle is 0x8000, half a turn). Cards in the back half (0x40 <= a < 0xC0), or all of them when blendMask has BLEND_CAROUSEL, go to
+ * OAM layer 1 and are semi-transparent. As the opponent's card slides in (`lift`), the selected card rises by
+ * lift and the others sink by 2 * lift. */
+void TurnOrder_DrawHandCarousel(u16 *tileNums, u8 *palNums, u8 angle, u8 selected, u8 lift, u16 blendMask,
+                                u8 spread)
 {
-    u8 dy[3];
-    u8 back = 0xFF - spread;
+    u8 liftY[3];
+    u8 backAngle = 0xFF - spread;
     u8 i;
-    s32 prio, front;
+    s32 layer, dim;
     s32 y;
     s32 width = 0x20, height = 0x40;
-    s16 c;
+    s16 cos;
     u32 *oam;
     u32 attr;
 
     for (i = 0; i < 3; i++) {
-        if (i == sel)
-            dy[i] = -bump;
+        if (i == selected)
+            liftY[i] = -lift;
         else
-            dy[i] = bump * 2;
+            liftY[i] = lift * 2;
     }
-    if (((angle + spread) % 256 >= 0x40 && (angle + spread) % 256 < 0xC0) || (flags & 1)) {
-        prio = 1;
-        front = 1;
+
+    /* Matching: each card's y is computed in sequence through `y` (cos * 0x10, >> 8, + 0x32, + liftY); the
+     * same sum written as one expression is scheduled differently. */
+
+    /* Card 2, matrix 1 */
+    if (((angle + spread) % 256 >= 0x40 && (angle + spread) % 256 < 0xC0) || (blendMask & BLEND_CAROUSEL)) {
+        layer = 1;
+        dim = 1;
     } else {
-        prio = 0;
-        front = 0;
+        layer = 0;
+        dim = 0;
     }
-    oam = OamListAddSprite(prio, tiles[2], (MulFix8(gSineTable[(angle + spread) % 256], 0x3000) >> 8) + 0x58,
-                       (y = MulFix8(gSineTable[(angle + spread) % 256 + 0x40], 0x1000), y >>= 8, y += 0x32, y += dy[2]),
-                       width, height, 4, pals[2], 0x200, 0, 0, 0, &gWork);
+    oam = OamListAddSpriteWide(layer, tileNums[2],
+                               (MulFix8Int(gSineTable[(angle + spread) % 256], 0x3000) >> 8) + 0x58,
+                               (y = MulFix8Int(gSineTable[(angle + spread) % 256 + 0x40], 0x1000), y >>= 8,
+                                y += 0x32, y += liftY[2]),
+                               width, height, 4, palNums[2], 0x200, 0, 0, 0, &gSceneWork.oamList);
     attr = *oam;
-    *oam = attr | (front ? 0x02000700 : 0x02000300);
-    gWork.aff[1].angle = 0x8000;
-    c = gSineTable[(angle + spread) % 256 + 0x40];
-    gWork.aff[1].scaleX = MulFix8(0x40, c) + 0xC0;
-    gWork.aff[1].scaleY = MulFix8(0x40, c) + 0xC0;
-    if (((angle + back) % 256 >= 0x40 && (angle + back) % 256 < 0xC0) || (flags & 1)) {
-        prio = 1;
-        front = 1;
+    *oam = attr | (dim ? OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(1))
+                       : OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE, OAM_ATTR1_MATRIX(1)));
+    gSceneWork.aff[1].angle = 0x8000;
+    cos = gSineTable[(angle + spread) % 256 + 0x40];
+    gSceneWork.aff[1].scaleX = MulFix8Int(0x40, cos) + 0xC0;
+    gSceneWork.aff[1].scaleY = MulFix8Int(0x40, cos) + 0xC0;
+
+    /* Card 1, matrix 2 */
+    if (((angle + backAngle) % 256 >= 0x40 && (angle + backAngle) % 256 < 0xC0) || (blendMask & BLEND_CAROUSEL)) {
+        layer = 1;
+        dim = 1;
     } else {
-        prio = 0;
-        front = 0;
+        layer = 0;
+        dim = 0;
     }
-    oam = OamListAddSprite(prio, tiles[1], (MulFix8(gSineTable[(angle + back) % 256], 0x3000) >> 8) + 0x58,
-                       (y = MulFix8(gSineTable[(angle + back) % 256 + 0x40], 0x1000), y >>= 8, y += 0x32, y += dy[1]),
-                       width, height, 4, pals[1], 0x200, 0, 0, 0, &gWork);
+    oam = OamListAddSpriteWide(layer, tileNums[1],
+                               (MulFix8Int(gSineTable[(angle + backAngle) % 256], 0x3000) >> 8) + 0x58,
+                               (y = MulFix8Int(gSineTable[(angle + backAngle) % 256 + 0x40], 0x1000), y >>= 8,
+                                y += 0x32, y += liftY[1]),
+                               width, height, 4, palNums[1], 0x200, 0, 0, 0, &gSceneWork.oamList);
     attr = *oam;
-    *oam = attr | (front ? 0x04000700 : 0x04000300);
-    gWork.aff[2].angle = 0x8000;
-    c = gSineTable[(angle + back) % 256 + 0x40];
-    gWork.aff[2].scaleX = MulFix8(0x40, c) + 0xC0;
-    gWork.aff[2].scaleY = MulFix8(0x40, c) + 0xC0;
-    if ((angle % 256 >= 0x40 && angle % 256 < 0xC0) || (flags & 1)) {
-        prio = 1;
-        front = 1;
+    *oam = attr | (dim ? OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(2))
+                       : OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE, OAM_ATTR1_MATRIX(2)));
+    gSceneWork.aff[2].angle = 0x8000;
+    cos = gSineTable[(angle + backAngle) % 256 + 0x40];
+    gSceneWork.aff[2].scaleX = MulFix8Int(0x40, cos) + 0xC0;
+    gSceneWork.aff[2].scaleY = MulFix8Int(0x40, cos) + 0xC0;
+
+    /* Card 0, matrix 0 */
+    if ((angle % 256 >= 0x40 && angle % 256 < 0xC0) || (blendMask & BLEND_CAROUSEL)) {
+        layer = 1;
+        dim = 1;
     } else {
-        prio = 0;
-        front = 0;
+        layer = 0;
+        dim = 0;
     }
-    oam = OamListAddSprite(prio, tiles[0], (MulFix8(gSineTable[angle % 256], 0x3000) >> 8) + 0x58,
-                       (y = MulFix8(gSineTable[angle % 256 + 0x40], 0x1000), y >>= 8, y += 0x32, y += dy[0]),
-                       width, height, 4, pals[0], 0x200, 0, 0, 0, &gWork);
+    oam = OamListAddSpriteWide(layer, tileNums[0],
+                               (MulFix8Int(gSineTable[angle % 256], 0x3000) >> 8) + 0x58,
+                               (y = MulFix8Int(gSineTable[angle % 256 + 0x40], 0x1000), y >>= 8,
+                                y += 0x32, y += liftY[0]),
+                               width, height, 4, palNums[0], 0x200, 0, 0, 0, &gSceneWork.oamList);
     attr = *oam;
-    *oam = attr | (front ? 0x700 : 0x300);
-    gWork.aff[0].angle = 0x8000;
-    c = gSineTable[angle % 256 + 0x40];
-    gWork.aff[0].scaleX = MulFix8(0x40, c) + 0xC0;
-    gWork.aff[0].scaleY = MulFix8(0x40, c) + 0xC0;
+    *oam = attr | (dim ? OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(0))
+                       : OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE, OAM_ATTR1_MATRIX(0)));
+    gSceneWork.aff[0].angle = 0x8000;
+    cos = gSineTable[angle % 256 + 0x40];
+    gSceneWork.aff[0].scaleX = MulFix8Int(0x40, cos) + 0xC0;
+    gSceneWork.aff[0].scaleY = MulFix8Int(0x40, cos) + 0xC0;
 }
 
-void TurnOrder_DrawBanner(u8 idx, u16 flags)
+/* Draws a 128x32 banner (enum TurnOrderBanner) from its two 64x32 halves at x 0x38 and 0x78, y 0x6E
+ * (BANNER_SELECT_CARD: y 0x2C, near the top); semi-transparent when blendMask has BLEND_BANNER. */
+void TurnOrder_DrawBanner(u8 banner, u16 blendMask)
 {
-    /* Constants held in locals declared outside the loop: CSE cannot see them inside the
-       loop, so reload rematerializes them (x0 in r7, y0 into r3), and the round-robin reload
-       register choice depends on w/h/pal being variables. */
-    s32 w = 0x40;
-    s32 h = 0x20;
+    /* Matching: the constants are locals declared outside the loop. CSE cannot see them inside the loop, so
+     * reload rematerializes them (x0 in r7, y0 into r3), and the round-robin reload register choice depends on
+     * width, height and bpp being variables. */
+    s32 width = 0x40;
+    s32 height = 0x20;
     u8 i;
-    const u16 *tbl;
+    const u16 *tileNums;
     s32 x0 = 0x38;
     s32 y0 = 0x6E;
-    s32 pal = 4;
-    u16 hflip;
+    s32 bpp = 4;
+    u16 translucent;
 
     i = 0;
-    tbl = gTurnOrderBannerTileNums;
-    hflip = flags & 4;
+    tileNums = gTurnOrderBannerTileNums;
+    translucent = blendMask & BLEND_BANNER;
     for (; i < 2; i++) {
-        u16 tile = tbl[idx * 2 + i];
+        u16 tile = tileNums[banner * 2 + i];
         s32 x, y;
         u32 *oam;
         u32 attr;
-        x = x0 + i * w;
+        x = x0 + i * width;
         y = y0;
-        if (idx == 0)
+        if (banner == BANNER_SELECT_CARD)
             y -= 0x42;
-        oam = OamListAddSprite(0, tile, x, y, w, h, pal, gTurnOrderBannerPalNums[idx], 0x200, 0, 0, 0, &gWork);
+        oam = OamListAddSpriteWide(0, tile, x, y, width, height, bpp, gTurnOrderBannerPalNums[banner], 0x200, 0, 0,
+                                   0, &gSceneWork.oamList);
         attr = *oam;
-        if (hflip)
-            *oam = attr | 0x400;
+        if (translucent)
+            *oam = attr | OAM_ATTR0_BLEND;
     }
 }
 
-void TurnOrder_DrawOpponentCard(u8 idx, u8 t, u16 flags)
+/* Draws the opponent's 32x64 card for `hand` (enum RpsHand) at x 0x69, sliding down from above the screen:
+ * y = 0xC0 + slide * 1.375 (8-bit y: slide 0x30 gives y 2). Matrix 3 is set to identity; semi-transparent when
+ * blendMask has BLEND_OPPONENT_CARD. */
+void TurnOrder_DrawOpponentCard(u8 hand, u8 slide, u16 blendMask)
 {
-    s32 w = 0x20;
-    s32 h = 0x40;
-    u32 *oam = OamListAddSprite(0, gHandCardTileNums[idx], 0x69, (MulFix8(t << 8, 0x160) >> 8) + 0xC0,
-                            w, h, 4, gHandCardPalNums[idx], 0x200, 0, 0, 0, &gWork);
-    *oam |= (flags & 2) ? 0x06000400 : 0x06000000;
-    gWork.aff[3].angle = 0;
-    gWork.aff[3].scaleX = 0x100;
-    gWork.aff[3].scaleY = 0x100;
+    s32 width = 0x20;
+    s32 height = 0x40;
+    u32 *oam = OamListAddSpriteWide(0, gHandCardTileNums[hand], 0x69, (MulFix8Int(slide << 8, 0x160) >> 8) + 0xC0,
+                                    width, height, 4, gHandCardPalNums[hand], 0x200, 0, 0, 0, &gSceneWork.oamList);
+    *oam |= (blendMask & BLEND_OPPONENT_CARD) ? OAM_ATTR01(OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(3))
+                                              : OAM_ATTR01(0, OAM_ATTR1_MATRIX(3));
+    gSceneWork.aff[3].angle = 0;
+    gSceneWork.aff[3].scaleX = 0x100;
+    gSceneWork.aff[3].scaleY = 0x100;
 }
 
-void TurnOrder_DrawTurnChoice(u32 unused, u8 angle, u16 flags, s16 *scale, u8 sel)
+/* Draws the "FIRST to go" (x 0x28) and "SECOND to go" (x 0x88) 64x32 banners bobbing at
+ * y = 0x30 + sin(2 * frame) * amplitude. `bob` is struct ChoiceBob[2] as halfwords: bob[0] and bob[2] are the
+ * two amplitudes. The banner of `choice` (enum TurnChoice) uses palette 3, the other the dim palette 9;
+ * matrices 4 and 5 are set to identity. Semi-transparent when blendMask has BLEND_TURN_CHOICE. */
+void TurnOrder_DrawTurnChoice(u32 unused, u8 frame, u16 blendMask, s16 *bob, u8 choice)
 {
-    s32 w = 0x40;
-    s32 h = 0x20;
+    s32 width = 0x40;
+    s32 height = 0x20;
     u32 *oam;
     u32 attr;
 
-    oam = OamListAddSprite(0, gTurnChoiceBannerTileNums[0], 0x28,
-                       (MulFix8(gSineTable[(angle * 2) % 256], scale[0]) >> 8) + 0x30,
-                       w, h, 4, sel == 0 ? 3 : 9, 0x200, 0, 0, 0, &gWork);
+    oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[0], 0x28,
+                               (MulFix8Int(gSineTable[(frame * 2) % 256], bob[0]) >> 8) + 0x30,
+                               width, height, 4, choice == TURN_CHOICE_FIRST ? 3 : 9, 0x200, 0, 0, 0,
+                               &gSceneWork.oamList);
     attr = *oam;
-    *oam = attr | ((flags & 8) ? 0x08000400 : 0x08000000);
-    gWork.aff[4].angle = 0;
-    gWork.aff[4].scaleX = 0x100;
-    gWork.aff[4].scaleY = 0x100;
+    *oam = attr | ((blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                                                   : OAM_ATTR01(0, OAM_ATTR1_MATRIX(4)));
+    gSceneWork.aff[4].angle = 0;
+    gSceneWork.aff[4].scaleX = 0x100;
+    gSceneWork.aff[4].scaleY = 0x100;
     {
-        s32 y = (MulFix8(gSineTable[(angle * 2) % 256], scale[2]) >> 8) + 0x30;
+        s32 y = (MulFix8Int(gSineTable[(frame * 2) % 256], bob[2]) >> 8) + 0x30;
         u16 tile = gTurnChoiceBannerTileNums[1];
         s32 x = 0x88;
 
         /* FAKEMATCH: keep the initialized x in r2 after the tile load,
          * before preparing the stack arguments, as in the ROM. */
         __asm__("" : : "r"(x));
-        oam = OamListAddSprite(0, tile, x, y, w, h, 4, sel == 1 ? 3 : 9, 0x200, 0, 0, 0, &gWork);
+        oam = OamListAddSpriteWide(0, tile, x, y, width, height, 4, choice == TURN_CHOICE_SECOND ? 3 : 9, 0x200, 0,
+                                   0, 0, &gSceneWork.oamList);
     }
     attr = *oam;
-    *oam = attr | ((flags & 8) ? 0x0A000400 : 0x0A000000);
-    gWork.aff[5].angle = 0;
-    gWork.aff[5].scaleX = 0x100;
-    gWork.aff[5].scaleY = 0x100;
+    *oam = attr | ((blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(5))
+                                                   : OAM_ATTR01(0, OAM_ATTR1_MATRIX(5)));
+    gSceneWork.aff[5].angle = 0;
+    gSceneWork.aff[5].scaleX = 0x100;
+    gSceneWork.aff[5].scaleY = 0x100;
 }
-void TurnOrder_DrawTurnChoiceConfirm(u32 unused, u8 angle, u16 flags, s16 *scale, u8 sel, s16 *anim)
+
+/* After the FIRST/SECOND choice: both bob amplitudes decay by 0x80 per frame. The chosen banner (palette 3)
+ * slides to the centre (x 0x58 when tween[0] reaches 0x40: x moves by 0x30 * (1 - cos(tween[0]))) and keeps
+ * bobbing. The other one (palette 9) becomes a double-size affine sprite on matrix 4 that falls by
+ * tween[1]^2 / 2 while it turns by +-tween[1] << 9. `bob` is struct ChoiceBob[2] as halfwords (amplitudes at
+ * [0] and [2]); `tween` is the struct Tween as halfwords ([0] x, [1] y). */
+void TurnOrder_DrawTurnChoiceConfirm(u32 unused, u8 frame, u16 blendMask, s16 *bob, u8 choice, s16 *tween)
 {
     s32 width = 0x40, height = 0x20;
     s32 x0 = 0x78;
     s32 y0 = 0x30;
-    /* Separate x per case (case 0 x in r7, case 1 x in r5) and a separate offset t:
-       x = x0 - (t) must not fold into (x0 + 0x10) - (...). */
+    /* Matching: a separate x per case (case 0 x in r7, case 1 x in r5) and a separate offset t: x = x0 - t
+     * must not fold into (x0 + 0x10) - (...). */
     s32 x, x1, t;
     u8 i;
     u32 *oam;
 
     for (i = 0; i < 2; i++) {
-        if (scale[i * 2] > 0x7F)
-            scale[i * 2] -= 0x80;
+        if (bob[i * 2] > 0x7F)
+            bob[i * 2] -= 0x80;
         else
-            scale[i * 2] = 0;
+            bob[i * 2] = 0;
     }
-    switch (sel) {
-    case 0:
-        t = (MulFix8(0x100 - gSineTable[anim[0] + 0x40], 0x3000) >> 8) - 0x50;
+    switch (choice) {
+    case TURN_CHOICE_FIRST:
+        t = (MulFix8Int(0x100 - gSineTable[tween[0] + 0x40], 0x3000) >> 8) - 0x50;
         x = x0 + t;
-        oam = OamListAddSprite(0, gTurnChoiceBannerTileNums[0], x,
-                           y0 + (MulFix8(gSineTable[(angle * 2) % 256], scale[0]) >> 8),
-                           width, height, 4, 3, 0x200, 0, 0, 0, &gWork);
-        *oam |= ((flags & 8) ? 0x08000400 : 0x08000000);
-        oam = OamListAddSprite(0, gTurnChoiceBannerTileNums[1], x0 - 0x10, ((anim[1] * anim[1]) >> 1) + y0,
-                           width, height, 4, 9, 0x200, 0, 0, 0, &gWork);
-        *oam |= ((flags & 8) ? 0x08000700 : 0x08000300);
-        gWork.aff[4].angle = ((u32)(u16)anim[1]) << 9;
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[0], x,
+                                   y0 + (MulFix8Int(gSineTable[(frame * 2) % 256], bob[0]) >> 8),
+                                   width, height, 4, 3, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= ((blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                                                 : OAM_ATTR01(0, OAM_ATTR1_MATRIX(4)));
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[1], x0 - 0x10, ((tween[1] * tween[1]) >> 1) + y0,
+                                   width, height, 4, 9, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= ((blendMask & BLEND_TURN_CHOICE)
+                     ? OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                     : OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE, OAM_ATTR1_MATRIX(4)));
+        gSceneWork.aff[4].angle = ((u32)(u16)tween[1]) << 9;
         break;
-    case 1:
-        oam = OamListAddSprite(0, gTurnChoiceBannerTileNums[0], x0 - 0x70, ((anim[1] * anim[1]) >> 1) + y0,
-                           width, height, 4, 9, 0x200, 0, 0, 0, &gWork);
-        *oam |= ((flags & 8) ? 0x08000700 : 0x08000300);
-        t = (MulFix8(0x100 - gSineTable[anim[0] + 0x40], 0x3000) >> 8) - 0x10;
+    case TURN_CHOICE_SECOND:
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[0], x0 - 0x70, ((tween[1] * tween[1]) >> 1) + y0,
+                                   width, height, 4, 9, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= ((blendMask & BLEND_TURN_CHOICE)
+                     ? OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                     : OAM_ATTR01(OAM_ATTR0_AFFINE_DOUBLE, OAM_ATTR1_MATRIX(4)));
+        t = (MulFix8Int(0x100 - gSineTable[tween[0] + 0x40], 0x3000) >> 8) - 0x10;
         x1 = x0 - t;
-        oam = OamListAddSprite(0, gTurnChoiceBannerTileNums[1], x1,
-                           (MulFix8(gSineTable[(angle * 2) % 256], scale[2]) >> 8) + y0,
-                           width, height, 4, 3, 0x200, 0, 0, 0, &gWork);
-        *oam |= ((flags & 8) ? 0x08000400 : 0x08000000);
-        gWork.aff[4].angle = -(((u32)(u16)anim[1]) << 9);
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[1], x1,
+                                   (MulFix8Int(gSineTable[(frame * 2) % 256], bob[2]) >> 8) + y0,
+                                   width, height, 4, 3, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= ((blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                                                 : OAM_ATTR01(0, OAM_ATTR1_MATRIX(4)));
+        gSceneWork.aff[4].angle = -(((u32)(u16)tween[1]) << 9);
         break;
     }
-    gWork.aff[4].scaleX = 0x100;
-    gWork.aff[4].scaleY = 0x100;
+    gSceneWork.aff[4].scaleX = 0x100;
+    gSceneWork.aff[4].scaleY = 0x100;
 }
-

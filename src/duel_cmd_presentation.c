@@ -1,86 +1,123 @@
+/*
+ * Duel commands 0x72-0x76: full-screen card presentations (wiki/functions/duel-cmd-presentation-c.md).
+ *
+ * Each handler shows the card arg2 (a card ID) in the middle of the screen and animates it in and out.
+ * LoadCardFrame, LoadCardPicture and DrawCardInfo draw the card image into OBJ VRAM (8bpp, 2D mapping) after
+ * UnloadDuelUiGfx has made room, and the image is shown as a grid of 4 x 5 sprites of 32x32 pixels
+ * (CARD_GRID_*). The handlers differ only in how the grid moves and blends:
+ *
+ *   0x72 DuelCmd_ShowCardZoomIn          grows from the centre
+ *   0x73 DuelCmd_ShowCardEffect          grows from the centre while the background flashes white
+ *   0x74 DuelCmd_ShowCardScatter         appears in place, then its tiles fly apart
+ *   0x75 DuelCmd_ShowCardUnrollDown      unrolls downwards, holds, rolls back up
+ *   0x76 DuelCmd_ShowCardUnrollSideways  opens from its vertical centre line, flashes, closes again
+ *
+ * DuelCmd_ShowCardAssemble (0x71, duel_cmd_turn.c) is the sixth member of the family. Every handler runs one
+ * step per frame on gDuelCmd.step / gDuelCmd.timer, restores the duel sprites with LoadDuelUiGfx and clears
+ * gDuelCmd.running at the end. Fast-forward (B held, or gDuelScreen.fast) skips timer frames.
+ */
 #include "global.h"
-#include "gba.h"
+#include "gba.h"            /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
+#include "main.h"           /* gMain.heldKeys */
+#include "sound.h"          /* PlaySE */
+#include "sprite.h"         /* SPRITE_SHAPE_32x32 */
+#include "duel_flow.h"      /* gPulseScaleCurve */
+#include "duel_cmd.h"       /* gDuelCmd, gDuelCmdT16, gScatterScaleCurve */
 
-/* Command block at 0x020185C0 (current duel command, see duel_cmd_deck). */
-struct DuelCmd {
-    u16 cmd;            /* 0x000: bits 0-11 command id, bit 15 acting player */
-    u16 arg2;           /* 0x002 */
-    u16 arg4;           /* 0x004 */
-    u16 arg6;           /* 0x006 */
-    u8 filler8[0x80A - 0x8];
-    u16 step:7;         /* 0x80A bits 0-6: multi-frame handler state */
-    u16 unk80A_7:9;
-    u32 unk80C_0:5;
-    u32 timer:7;        /* 0x80C bits 5-11: frame counter inside a step (u32 container: signed compares) */
-    u32 unk80C_12:1;
-    u32 running:1;      /* 0x80D bit 5: command in progress */
-    u32 unk80C_14:2;
-    u32 unk80C_16:16;
-};
-extern struct DuelCmd gDuelCmd;
-
-/* Duel screen / animation state at 0x0201CFB0 (fields used here). */
+#ifdef DISPCNT_MODE_4
+#include "duel_screen.h"    /* gDuelScreen, DuelScreen_ScrollToZone, the card-image loaders */
+#else
+/* ---- BEGIN pre-H0 subset ---- */
+/*
+ * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
+ * headers, and duel_screen.h cannot be included (it needs the new duel.h). This block repeats what the unit
+ * uses from the new gba.h, sound.h and duel_screen.h, with the same names, values and prototypes (truncated
+ * structs end after the last field used here). With the new headers installed the block is skipped; then
+ * delete it (build/readability/issues/duel_cmd_presentation.md).
+ */
+#define BLDCNT_TGT1_BG0         0x0001
+#define BLDCNT_TGT1_BG1         0x0002
+#define BLDCNT_TGT1_BG2         0x0004
+#define BLDCNT_TGT1_OBJ         0x0010
+#define BLDCNT_TGT1_BD          0x0020
+#define BLDCNT_EFFECT_BLEND     0x0040
+#define BLDCNT_EFFECT_LIGHTEN   0x0080
+#define BLDCNT_TGT2_BG0         0x0100
+#define BLDCNT_TGT2_BG1         0x0200
+#define BLDCNT_TGT2_BG2         0x0400
+#define BLDCNT_TGT2_BG3         0x0800
+#define BLDCNT_TGT2_OBJ         0x1000
+#define BLDCNT_TGT2_BD          0x2000
+void PlaySE(u32 seId);
 struct DuelScreen {
-    u8 fast:1;          /* +0x000 bit 0: (hypothesis) fast-forward animations */
-    u8 unk0_1:1;
-    u8 unk0_2:1;        /* +0x000 bit 2 */
+    u8 fast:1;              /* +0x000 bit 0: fast-forward card animations, as if B were held */
+    u8 uiGfxLoaded:1;
+    u8 active:1;
     u8 unk0_3:5;
 };
 extern struct DuelScreen gDuelScreen;
-
-/* gMain (0x03000040): only the fields used here. */
-struct Main {
-    u32 rngState;           /* +0x000 */
-    u16 heldKeys;           /* +0x004 */
-};
-extern struct Main gMain;
-#define gMain gMain
-#define FAST_FORWARD() ((gMain.heldKeys & 2) || gDuelScreen.fast)
-
-extern const u16 gPulseScaleCurve[];   /* zoom/alpha curve for the grid effects (hypothesis) */
-extern const s32 gScatterScaleCurve[];   /* zoom curve, 1.0 == 0x100 (shared with duel_cmd_turn) */
-
-void DuelScreen_ScrollToZone(u32 player, u32 a);
-void UnloadDuelUiGfx(void);
-void LoadCardFrame(u16);
-void LoadCardPicture(u16);
-void DrawCardInfo(u16);
-void TextCellsClear(void);
-void DuelInfo_DrawCardNameCentered(u16);
+void DuelScreen_ScrollToZone(u32 player, u32 area);
 void LoadDuelUiGfx(void);
-void AddSprite8bppAlpha(u32 yx, u32 shapeSize, u32 attr2);
-void AddSprite8bpp(u32 yx, u32 shapeSize, u32 attr2);
-void PlaySE(u16 se);  /* PlaySE */
-void AddAffineSprite8bppAlpha(u32 yx, u32 shapeSize, u32 attr2, u32 extra);
+void UnloadDuelUiGfx(void);
+void TextCellsClear(void);
+void DuelInfo_DrawCardNameCentered(u16 cardId);
+void LoadCardFrame(u16 cardId);
+void LoadCardPicture(u16 cardId);
+void DrawCardInfo(u16 cardId);
+/* ---- END pre-H0 subset ---- */
+#endif
 
 /*
- * Halfword view of the DuelCmd timer (0x80C bits 5-11) for the grid loops below.
- * FAKEMATCH: reading the timer through a u16 container plus the (u8) casts in the
- * loop add RTL insns that combine deletes later. They lift the inner loop above
- * loop.c's hoisting threshold (13 * savings 3 * life 3 = 117 insns), so the timer
- * address stays inside the loop and the base copy is spilled, as in the ROM.
+ * Local views of the sprite emitters (sprite.h declares the shape and tile as u16). This unit calls them with
+ * u32 parameters: the u16 ones add narrowing at the call sites, and the ROM has none.
  */
-struct DuelCmdTimer16 {
-    u16 cmd;
-    u16 arg2;
-    u8 filler4[0x80C - 0x4];
-    u16 unk80C_0:5;
-    u16 timer:7;
-    u16 unk80C_12:4;
-};
-#define gDuelCmdT16 (*(struct DuelCmdTimer16 *)&gDuelCmd)
+void AddSprite8bppU32(u32 yx, u32 shape, u32 tile) asm("AddSprite8bpp");
+void AddSprite8bppAlphaU32(u32 yx, u32 shape, u32 tile) asm("AddSprite8bppAlpha");
+void AddAffineSprite8bppAlphaU32(u32 yx, u32 shape, u32 tile, u32 scaleAngle) asm("AddAffineSprite8bppAlpha");
+
+/* Fast-forward: B held, or the duel's fast mode. */
+#define FAST_FORWARD() ((gMain.heldKeys & B_BUTTON) || gDuelScreen.fast)
 
 /*
- * Grid zoom-in effect (sibling of DuelCmd_ShowCardAssemble). Steps 2-4 call LoadCardFrame / LoadCardPicture /
- * DrawCardInfo and step 5 calls TextCellsClear / DuelInfo_DrawCardNameCentered. Step 6 draws a 4x5 grid of 32x32
- * sprites that zooms in over 32 frames (x * timer / 32), fades with BLDALPHA, then holds
- * until timer 0x78.
+ * The card grid: 4 columns x 5 rows of 32x32 sprites, top-left corner at (0x44, 2), so the card is centred
+ * on (CARD_CENTER_X, CARD_CENTER_Y). CARD_GRID_TILE is the tile argument of the AddSprite8bpp* calls for
+ * cell (row, col) of the card image.
+ */
+#define CARD_GRID_X(col)        ((col) * 32 + 0x44)
+#define CARD_GRID_Y(row)        ((row) * 32 + 2)
+#define CARD_GRID_TILE(row, col) ((u16)((col) * 4) + ((u16)((row) * 2 + 1) << 5))
+#define CARD_CENTER_X           0x68
+#define CARD_CENTER_Y           0x40
+
+/* BLDCNT values of the presentations. */
+#define BLEND_CARD_OVER_BG      (BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 \
+                                 | BLDCNT_TGT2_BG3)                     /* 0x0F40: card alpha-blended over BG0-3 */
+#define BRIGHTEN_BACKGROUND     (BLDCNT_TGT1_BG0 | BLDCNT_TGT1_BG1 | BLDCNT_TGT1_BG2 | BLDCNT_TGT1_BD \
+                                 | BLDCNT_EFFECT_LIGHTEN | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 \
+                                 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BD)    /* 0x27A7: BG0-2 and backdrop to white */
+#define BRIGHTEN_SPRITES        (BLDCNT_TGT1_OBJ | BLDCNT_EFFECT_LIGHTEN | BLDCNT_TGT2_OBJ) /* 0x1090 */
+
+/*
+ * BLDALPHA value: weight eva of the card (1st target) and evb of the background (2nd target), 0-16 each.
+ * Same value as gba.h's BLDALPHA_BLEND, but ORed in the ROM's operand order (the other order changes the code).
+ */
+#define BLEND_WEIGHTS(eva, evb) ((eva) | ((evb) << 8))
+
+/* Sound effect played when the card has opened (no SE name yet; DuelCmd_ShowCardAssemble plays it too). */
+#define SE_CARD_SHOWN           0x2C
+
+/*
+ * Command 0x72 (DUEL_CMD_SHOW_CARD_ZOOM_IN), arg2 = card ID.
+ * Steps 0-4 scroll the field to player 0's monster row, free the sprite VRAM and build the card image; step 5
+ * shows the card name in the info bar. Step 6 runs for 0x78 frames: for the first 32 the grid grows from the
+ * centre (position * timer / 32), for the first 16 each cell also pops (gPulseScaleCurve) and the card fades
+ * in, and from frame 0x68 it fades out again. Step 7 is one idle frame; then the duel sprites are reloaded.
  */
 void DuelCmd_ShowCardZoomIn(void)
 {
-    int i, j;
+    int row, col;
     int x, y;
-    int ta, tb, tc, td;
+    int tZoom, tBlend, tPulse, tEnd;
 
     switch (gDuelCmd.step) {
     case 0:
@@ -110,42 +147,49 @@ void DuelCmd_ShowCardZoomIn(void)
         gDuelCmd.step++;
         break;
     case 6:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                x = j * 32 + 0x44;
-                y = i * 32 + 2;
-                if ((ta = (u8)gDuelCmdT16.timer) <= 0x1F) {
-                    x -= 0x68;
-                    y -= 0x40;
-                    x *= ta;
-                    y *= ta;
+        /* FAKEMATCH: the timer is read through the u16-container view gDuelCmdT16 with (u8) casts. The extra
+         * RTL keeps the inner loop above loop.c's hoisting threshold, so the timer address stays inside the
+         * loop and the base copy is spilled, as in the ROM (wiki: duel-cmd-presentation-c). */
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                x = CARD_GRID_X(col);
+                y = CARD_GRID_Y(row);
+                if ((tZoom = (u8)gDuelCmdT16.timer) <= 0x1F) {
+                    /* grow from the centre: pos = centre + (pos - centre) * t / 32 */
+                    x -= CARD_CENTER_X;
+                    y -= CARD_CENTER_Y;
+                    x *= tZoom;
+                    y *= tZoom;
                     x /= 32;
                     y /= 32;
-                    x += 0x68;
-                    y += 0x40;
+                    x += CARD_CENTER_X;
+                    y += CARD_CENTER_Y;
                 }
-                tb = (u8)gDuelCmdT16.timer;
-                if (tb < 16) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = (u8)tb | ((u8)(16 - tb) << 8);
-                } else if (tb > 0x67) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = (u8)(0x78 - tb) | ((u8)(tb - 0x68) << 8);
+                tBlend = (u8)gDuelCmdT16.timer;
+                if (tBlend < 16) {
+                    /* fade in: card weight t / 16 */
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS((u8)tBlend, (u8)(16 - tBlend));
+                } else if (tBlend > 0x67) {
+                    /* fade out over frames 0x68-0x77 */
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x78 - tBlend), (u8)(tBlend - 0x68));
                 } else {
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = (u8)gDuelCmdT16.timer;
-                if (tc < 16)
-                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[(u8)tc] << 16);
+                tPulse = (u8)gDuelCmdT16.timer;
+                if (tPulse < 16)
+                    AddAffineSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col),
+                                                gPulseScaleCurve[(u8)tPulse] << 16);
                 else
-                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        td = gDuelCmd.timer;
-        if (td < 0x78) {
-            if (FAST_FORWARD() && td <= 0x6F)
-                gDuelCmd.timer = td + 7;
+        tEnd = gDuelCmd.timer;
+        if (tEnd < 0x78) {
+            if (FAST_FORWARD() && tEnd <= 0x6F)
+                gDuelCmd.timer = tEnd + 7;
             gDuelCmd.timer++;
             break;
         }
@@ -160,11 +204,18 @@ void DuelCmd_ShowCardZoomIn(void)
         break;
     }
 }
+
+/*
+ * Command 0x73 (DUEL_CMD_SHOW_CARD_EFFECT), arg2 = card ID: the "card effect activated" announcement, queued
+ * by ShowCardEffect before an effect resolves. DuelCmd_ShowCardZoomIn with a white flash of the background in
+ * step 6: after the fade-in, BG0-2 and the backdrop brighten (BLDY 0 -> 0x1F over frames 16-47) and darken
+ * back (frames 48-79), then the card fades out from frame 0x68.
+ */
 void DuelCmd_ShowCardEffect(void)
 {
-    int i, j;
+    int row, col;
     int x, y;
-    int ta, tb, tc, td;
+    int tZoom, tBlend, tPulse, tEnd;
 
     switch (gDuelCmd.step) {
     case 0:
@@ -194,48 +245,52 @@ void DuelCmd_ShowCardEffect(void)
         gDuelCmd.step++;
         break;
     case 6:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                x = j * 32 + 0x44;
-                y = i * 32 + 2;
-                if ((ta = gDuelCmd.timer) <= 0x1F) {
-                    x -= 0x68;
-                    y -= 0x40;
-                    x *= ta;
-                    y *= ta;
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                x = CARD_GRID_X(col);
+                y = CARD_GRID_Y(row);
+                if ((tZoom = gDuelCmd.timer) <= 0x1F) {
+                    x -= CARD_CENTER_X;
+                    y -= CARD_CENTER_Y;
+                    x *= tZoom;
+                    y *= tZoom;
                     x /= 32;
                     y /= 32;
-                    x += 0x68;
-                    y += 0x40;
+                    x += CARD_CENTER_X;
+                    y += CARD_CENTER_Y;
                 }
-                tb = gDuelCmd.timer;
-                if (tb < 16) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
-                } else if ((u32)((u8)tb - 0x10) <= 0x1F) {
-                    REG_BLDCNT = 0x27A7;
-                    REG_BLDY = tb - 0x10;
-                } else if ((u32)(tb - 0x30) <= 0x1F) {
-                    REG_BLDCNT = 0x27A7;
-                    REG_BLDY = 0x4F - tb;
-                } else if (tb > 0x67) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = (u8)(0x78 - tb) | ((u8)(tb - 0x68) << 8);
+                tBlend = gDuelCmd.timer;
+                if (tBlend < 16) {
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS(tBlend, (u8)(16 - tBlend));
+                } else if ((u32)((u8)tBlend - 0x10) <= 0x1F) {
+                    /* frames 16-47: the background brightens. FAKEMATCH: the (u8) cast is not needed for the
+                     * value (tBlend < 0x80); without it this function and the next three no longer match. */
+                    REG_BLDCNT = BRIGHTEN_BACKGROUND;
+                    REG_BLDY = tBlend - 0x10;
+                } else if ((u32)(tBlend - 0x30) <= 0x1F) {
+                    /* frames 48-79: and darkens back */
+                    REG_BLDCNT = BRIGHTEN_BACKGROUND;
+                    REG_BLDY = 0x4F - tBlend;
+                } else if (tBlend > 0x67) {
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x78 - tBlend), (u8)(tBlend - 0x68));
                 } else {
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = gDuelCmd.timer;
-                if (tc < 16)
-                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[tc] << 16);
+                tPulse = gDuelCmd.timer;
+                if (tPulse < 16)
+                    AddAffineSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col),
+                                                gPulseScaleCurve[tPulse] << 16);
                 else
-                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        td = gDuelCmd.timer;
-        if (td < 0x78) {
-            if (FAST_FORWARD() && td <= 0x6F)
-                gDuelCmd.timer = td + 7;
+        tEnd = gDuelCmd.timer;
+        if (tEnd < 0x78) {
+            if (FAST_FORWARD() && tEnd <= 0x6F)
+                gDuelCmd.timer = tEnd + 7;
             gDuelCmd.timer++;
             break;
         }
@@ -252,23 +307,16 @@ void DuelCmd_ShowCardEffect(void)
 }
 
 /*
- * Grid zoom-in effect, table variant. Like DuelCmd_ShowCardZoomIn, but once the timer passes
- * 0x67 the grid is scaled by the curve gScatterScaleCurve (1.0 == 0x100, i.e. /256)
- * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
- */
-/*
- * Grid zoom-in effect, table variant. Like DuelCmd_ShowCardZoomIn, but once the timer passes
- * 0x67 the grid is scaled by the curve gScatterScaleCurve (1.0 == 0x100, i.e. /256)
- * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
+ * Command 0x74 (DUEL_CMD_SHOW_CARD_SCATTER), arg2 = card ID.
+ * Steps 0-5 as DuelCmd_ShowCardZoomIn. In step 6 the card appears in place (cell pop and fade-in over 16
+ * frames) and holds; from frame 0x68 its cells fly apart from the centre, scaled by
+ * gScatterScaleCurve[timer - 0x68] / 256 (up to about 3.8x), while the card fades out.
  */
 void DuelCmd_ShowCardScatter(void)
 {
-    int i, j;
+    int row, col;
     int x, y, dx, dy, k;
-    int ta, tb, tc, td;
-
-    /* FAKEMATCH: the (u8) timer casts and gDuelCmdT16 keep the grid loop long enough
-     * that loop.c leaves the timer address in it (see gDuelCmdT16 above). */
+    int tScatter, tBlend, tPulse, tEnd;
 
     switch (gDuelCmd.step) {
     case 0:
@@ -298,43 +346,46 @@ void DuelCmd_ShowCardScatter(void)
         gDuelCmd.step++;
         break;
     case 6:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                x = j * 32 + 0x44;
-                y = i * 32 + 2;
-                if ((ta = (u8)gDuelCmdT16.timer) > 0x67) {
-                    dx = x - 0x68;
-                    dy = y - 0x40;
-                    k = ta - 0x68;
+        /* FAKEMATCH: gDuelCmdT16 and the (u8) timer casts, as in DuelCmd_ShowCardZoomIn. */
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                x = CARD_GRID_X(col);
+                y = CARD_GRID_Y(row);
+                if ((tScatter = (u8)gDuelCmdT16.timer) > 0x67) {
+                    /* fly apart: pos = centre + (pos - centre) * curve[t - 0x68] / 256 */
+                    dx = x - CARD_CENTER_X;
+                    dy = y - CARD_CENTER_Y;
+                    k = tScatter - 0x68;
                     dx *= gScatterScaleCurve[k];
                     dy *= gScatterScaleCurve[k];
                     dx /= 256;
                     dy /= 256;
-                    x = dx + 0x68;
-                    y = dy + 0x40;
+                    x = dx + CARD_CENTER_X;
+                    y = dy + CARD_CENTER_Y;
                 }
-                tb = (u8)gDuelCmdT16.timer;
-                if (tb < 16) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = (u8)tb | ((u8)(16 - tb) << 8);
-                } else if (tb > 0x67) {
-                    REG_BLDCNT = 0xF40;
-                    REG_BLDALPHA = (u8)(0x78 - tb) | ((u8)(tb - 0x68) << 8);
+                tBlend = (u8)gDuelCmdT16.timer;
+                if (tBlend < 16) {
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS((u8)tBlend, (u8)(16 - tBlend));
+                } else if (tBlend > 0x67) {
+                    REG_BLDCNT = BLEND_CARD_OVER_BG;
+                    REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x78 - tBlend), (u8)(tBlend - 0x68));
                 } else {
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = (u8)gDuelCmdT16.timer;
-                if (tc < 16)
-                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[(u8)tc] << 16);
+                tPulse = (u8)gDuelCmdT16.timer;
+                if (tPulse < 16)
+                    AddAffineSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col),
+                                                gPulseScaleCurve[(u8)tPulse] << 16);
                 else
-                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        td = gDuelCmd.timer;
-        if (td < 0x78) {
-            if (FAST_FORWARD() && td <= 0x6F)
-                gDuelCmd.timer = td + 7;
+        tEnd = gDuelCmd.timer;
+        if (tEnd < 0x78) {
+            if (FAST_FORWARD() && tEnd <= 0x6F)
+                gDuelCmd.timer = tEnd + 7;
             gDuelCmd.timer++;
             break;
         }
@@ -349,16 +400,19 @@ void DuelCmd_ShowCardScatter(void)
         break;
     }
 }
+
 /*
- * Grid fade effect (sibling of DuelCmd_ShowCardAssemble). Steps 2-4 call LoadCardFrame / LoadCardPicture /
- * DrawCardInfo. Step 5 draws the 4x5 sprite grid growing from the top (y * timer / 16) with
- * a BLDALPHA fade-in, step 6 flashes it, and step 7 shrinks it again with a fade-out.
+ * Command 0x75 (DUEL_CMD_SHOW_CARD_UNROLL_DOWN), arg2 = card ID.
+ * Step 0 clears the info bar and scrolls the field to player 0's monster row; steps 1-4 build the card
+ * image. Step 5 unrolls the card downwards (row y * timer / 16) while it fades in, then shows the card name.
+ * Step 6 holds the opaque card for 32 frames. Step 7 rolls it back up (row y * (0x38 - timer) / 16 from frame
+ * 0x28) while it fades out. Step 8 is one idle frame; then the duel sprites are reloaded.
  */
 void DuelCmd_ShowCardUnrollDown(void)
 {
-    int i, j;
+    int row, col;
     int x, y;
-    int ta, tb, te;
+    int tRoll, tBlend, tEnd;
 
     switch (gDuelCmd.step) {
     case 0:
@@ -384,21 +438,21 @@ void DuelCmd_ShowCardUnrollDown(void)
         gDuelCmd.step++;
         break;
     case 5:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                x = j * 32 + 0x44;
-                y = i * 32 + 2;
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                x = CARD_GRID_X(col);
+                y = CARD_GRID_Y(row);
                 if (gDuelCmd.timer <= 0xF) {
                     y *= gDuelCmd.timer;
                     y /= 16;
                 }
-                AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        tb = gDuelCmd.timer;
-        if (tb < 16) {
-            REG_BLDCNT = 0xF40;
-            REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
+        tBlend = gDuelCmd.timer;
+        if (tBlend < 16) {
+            REG_BLDCNT = BLEND_CARD_OVER_BG;
+            REG_BLDALPHA = BLEND_WEIGHTS(tBlend, (u8)(16 - tBlend));
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
@@ -414,9 +468,10 @@ void DuelCmd_ShowCardUnrollDown(void)
         }
         break;
     case 6:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++)
-                AddSprite8bpp((j * 32 + 0x44) | ((i * 32 + 2) << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++)
+                AddSprite8bppU32(CARD_GRID_X(col) | (CARD_GRID_Y(row) << 16), SPRITE_SHAPE_32x32,
+                                 CARD_GRID_TILE(row, col));
         }
         gDuelCmd.timer++;
         if (FAST_FORWARD() && gDuelCmd.timer <= 0x17)
@@ -427,29 +482,29 @@ void DuelCmd_ShowCardUnrollDown(void)
         }
         break;
     case 7:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                x = j * 32 + 0x44;
-                y = i * 32 + 2;
-                if ((ta = gDuelCmd.timer) > 0x27) {
-                    y *= (0x38 - ta);
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                x = CARD_GRID_X(col);
+                y = CARD_GRID_Y(row);
+                if ((tRoll = gDuelCmd.timer) > 0x27) {
+                    y *= (0x38 - tRoll);
                     y /= 16;
                 }
-                AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlphaU32(x | (y << 16), SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        tb = gDuelCmd.timer;
-        if (tb > 0x27) {
-            REG_BLDCNT = 0xF40;
-            REG_BLDALPHA = (u8)(0x38 - tb) | ((u8)(tb - 0x28) << 8);
+        tBlend = gDuelCmd.timer;
+        if (tBlend > 0x27) {
+            REG_BLDCNT = BLEND_CARD_OVER_BG;
+            REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x38 - tBlend), (u8)(tBlend - 0x28));
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        te = gDuelCmd.timer;
-        if (te < 0x38) {
-            if (FAST_FORWARD() && te <= 0x2F)
-                gDuelCmd.timer = te + 7;
+        tEnd = gDuelCmd.timer;
+        if (tEnd < 0x38) {
+            if (FAST_FORWARD() && tEnd <= 0x2F)
+                gDuelCmd.timer = tEnd + 7;
             gDuelCmd.timer++;
             break;
         }
@@ -464,15 +519,19 @@ void DuelCmd_ShowCardUnrollDown(void)
         break;
     }
 }
+
 /*
- * Variant of DuelCmd_ShowCardUnrollDown where the grid slides in horizontally (x * timer / 16) and
- * SE 0x2C plays when it lands; step 6 flashes it with BLDY.
+ * Command 0x76 (DUEL_CMD_SHOW_CARD_UNROLL_SIDEWAYS), arg2 = card ID.
+ * Like DuelCmd_ShowCardUnrollDown, but the card opens horizontally from its centre line
+ * ((x - centre) * timer / 16 + centre) and plays SE_CARD_SHOWN when it is open. Step 6 flashes the card
+ * itself white (BLDY up over 16 frames, then down) instead of holding it, and step 7 closes it horizontally
+ * while it fades out.
  */
 void DuelCmd_ShowCardUnrollSideways(void)
 {
-    int i, j;
+    int row, col;
     int x, y;
-    int ta, tb, tc, te;
+    int tRoll, tBlend, tFlash, tEnd;
 
     switch (gDuelCmd.step) {
     case 0:
@@ -498,23 +557,24 @@ void DuelCmd_ShowCardUnrollSideways(void)
         gDuelCmd.step++;
         break;
     case 5: {
-        int rowY;
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                rowY = (i * 32 + 2) << 16;
-                x = j * 32 + 0x44;
+        int rowY;   /* CARD_GRID_Y(row) << 16, computed in the inner loop (see the wiki for the allocation) */
+
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                rowY = CARD_GRID_Y(row) << 16;
+                x = CARD_GRID_X(col);
                 if (gDuelCmd.timer <= 0xF) {
-                    x -= 0x68;
+                    x -= CARD_CENTER_X;
                     x *= gDuelCmd.timer;
                     x /= 16;
-                    x += 0x68;
+                    x += CARD_CENTER_X;
                 }
-                AddSprite8bppAlpha(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlphaU32(x | rowY, SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
         if (gDuelCmd.timer < 16) {
-            REG_BLDCNT = 0xF40;
-            REG_BLDALPHA = gDuelCmd.timer | ((u8)(16 - gDuelCmd.timer) << 8);
+            REG_BLDCNT = BLEND_CARD_OVER_BG;
+            REG_BLDALPHA = BLEND_WEIGHTS(gDuelCmd.timer, (u8)(16 - gDuelCmd.timer));
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
@@ -527,25 +587,26 @@ void DuelCmd_ShowCardUnrollSideways(void)
             DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
             gDuelCmd.timer = 0;
             gDuelCmd.step++;
-            PlaySE(0x2C);
+            PlaySE(SE_CARD_SHOWN);
         }
         break;
     }
     case 6:
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                y = (i * 32 + 2) << 16;
-                AddSprite8bpp((j * 32 + 0x44) | y, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                y = CARD_GRID_Y(row) << 16;
+                AddSprite8bppU32(CARD_GRID_X(col) | y, SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        tc = gDuelCmd.timer;
-        if (tc < 0x20) {
-            if (tc < 16) {
-                REG_BLDY = tc;
-                REG_BLDCNT = 0x1090;
+        /* white flash on the card: BLDY 0 -> 15 over 16 frames, then back to 0 */
+        tFlash = gDuelCmd.timer;
+        if (tFlash < 0x20) {
+            if (tFlash < 16) {
+                REG_BLDY = tFlash;
+                REG_BLDCNT = BRIGHTEN_SPRITES;
             } else {
-                REG_BLDY = 0x1F - tc;
-                REG_BLDCNT = 0x1090;
+                REG_BLDY = 0x1F - tFlash;
+                REG_BLDCNT = BRIGHTEN_SPRITES;
             }
         } else {
             REG_BLDY = 0;
@@ -561,31 +622,32 @@ void DuelCmd_ShowCardUnrollSideways(void)
         break;
     case 7: {
         int rowY;
-        for (i = 0; i <= 4; i++) {
-            for (j = 0; j <= 3; j++) {
-                rowY = (i * 32 + 2) << 16;
-                x = j * 32 + 0x44;
-                if ((ta = gDuelCmd.timer) > 0x27) {
-                    x -= 0x68;
-                    x *= (0x38 - ta);
+
+        for (row = 0; row <= 4; row++) {
+            for (col = 0; col <= 3; col++) {
+                rowY = CARD_GRID_Y(row) << 16;
+                x = CARD_GRID_X(col);
+                if ((tRoll = gDuelCmd.timer) > 0x27) {
+                    x -= CARD_CENTER_X;
+                    x *= (0x38 - tRoll);
                     x /= 16;
-                    x += 0x68;
+                    x += CARD_CENTER_X;
                 }
-                AddSprite8bppAlpha(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlphaU32(x | rowY, SPRITE_SHAPE_32x32, CARD_GRID_TILE(row, col));
             }
         }
-        tb = gDuelCmd.timer;
-        if (tb > 0x27) {
-            REG_BLDCNT = 0xF40;
-            REG_BLDALPHA = (u8)(0x38 - tb) | ((u8)(tb - 0x28) << 8);
+        tBlend = gDuelCmd.timer;
+        if (tBlend > 0x27) {
+            REG_BLDCNT = BLEND_CARD_OVER_BG;
+            REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x38 - tBlend), (u8)(tBlend - 0x28));
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        te = gDuelCmd.timer;
-        if (te < 0x38) {
-            if (FAST_FORWARD() && te <= 0x2F)
-                gDuelCmd.timer = te + 7;
+        tEnd = gDuelCmd.timer;
+        if (tEnd < 0x38) {
+            if (FAST_FORWARD() && tEnd <= 0x2F)
+                gDuelCmd.timer = tEnd + 7;
             gDuelCmd.timer++;
             break;
         }
@@ -601,4 +663,3 @@ void DuelCmd_ShowCardUnrollSideways(void)
         break;
     }
 }
-

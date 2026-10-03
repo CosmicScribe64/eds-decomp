@@ -1,146 +1,243 @@
+/*
+ * duel_cmd_screen (0x080162C4-0x08017313): duel command handlers for the duel screen, the banners and the
+ * full-screen scenes (wiki/functions/duel-cmd-screen-c.md).
+ *
+ * DuelCmd_Dispatch calls one of these once per frame while gDuelCmd.running is set. Each reads its operands
+ * from gDuelCmd (cmd bit 15 = acting player, arg2/arg4), runs a small state machine on gDuelCmd.step with
+ * gDuelCmd.timer as its frame counter, and clears running when it is done. The banners hold B (or
+ * gDuelScreen.fast) to fast-forward.
+ *
+ *  - Duel start: DUEL_CMD_RESET_DUEL_STATE, DUEL_CMD_START_DUEL_BANNER.
+ *  - Duel screen: open (fade in), close (fade out), field background.
+ *  - Banners: the phase banners (DUEL_CMD_DRAW_PHASE .. DUEL_CMD_END_PHASE), the Battle Phase banner, the
+ *    "Chain" banner; the hand pointer (DUEL_CMD_POINT_AT_CARD) and the field cursor.
+ *  - Scenes (duel_scenes.h): the Exodia and Destiny Board win scenes, the coin tosses and the dice. The
+ *    command starts the scene with DuelScene_Start, sets gDuelScene.arg and waits for DuelScene_Run.
+ */
 #include "global.h"
-#include "main.h"
-#include "duel.h"
-#include "duel_ui.h"
+#include "gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
+#include "main.h"                   /* gMain.heldKeys */
+#include "constants/duel.h"         /* enum DuelPhase */
+#include "constants/duel_cmds.h"
 
+/* ---- BEGIN duel.h subset (pre-H0) ---- */
 /*
- * Duel command handlers (continued from duel_cmd_deck): each one runs from the
- * command dispatcher, reads its operands from the command block at 0x020185C0,
- * and clears the "running" flag (bit 5 of byte +0x80D) when it is done.
- * Multi-frame handlers keep their state in the 7-bit `step` (+0x80A) and the
- * 7-bit `timer` (+0x80C bits 5-11).  See wiki/functions/code-080162c4.md.
+ * The part of include/duel.h this unit uses, with the header's tags, field names and bitfield containers.
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
+ * so this block stands in for it: it defines GUARD_DUEL_H so that the headers included below do not pull
+ * in the legacy file. After H0, replace this block (BEGIN to END) with
+ *     #include "duel.h"
+ *     #include "sound.h"
  */
+#define GUARD_DUEL_H
 
-/* gMain (0x03000040) comes from main.h. */
-#define gMain gMain
-
-/* Duel command block gDuelCmd comes from duel_ui.h. */
-
-/* Per-player duel state (gDuelPlayers) and the duel state (gDuel) come from duel.h. */
-/* gDuel addressed through the gDuelPlayers symbol (lets CSE share the base, see DuelCmd_ResetDuelState). */
-#define DUEL_FROM_PLAYERS ((struct DuelState *)((u8 *)gDuelPlayers - 4))
-
-/* Duel screen / animation state gDuelScreen comes from duel_ui.h. */
-
-/* Message box request block at 0x02017A30 (fields used here). */
-struct DuelMsg {
-    u8 filler0[6];
-    u16 arg;                /* +0x006 */
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
-extern struct DuelMsg gDuelScene;
 
-/*
- * Local view for DuelCmd_SetFieldBackground only. It touches gDuel+0x1ACC as a u8 bitfield
- * (unk1ACC_0:4) and the ROM uses ldrb/strb there. duel.h models that word as
- * `u32 unk1ACC_0:15`, which makes agbcc emit ldrh/strh, so the unit keeps its own split.
- */
-struct DuelStateUnk1ACCView {
-    u32 unk0;                       /* +0x0000 */
-    struct DuelPlayer players[2];   /* +0x0004 */
-    u8 unk1ACC_0:4;                 /* +0x1ACC (unit-local split; canonical is u32:15) */
+struct DuelLoc {
+    u16 player:1;                   /* bit 0: side of the field */
+    u16 area:4;                     /* bits 1-4: enum DuelArea */
+    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
+    u16 isDefense:1;                /* bit 14 */
+    u16 isFaceUp:1;                 /* bit 15 */
+    u16 unk2;
+};
+
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u8 unk4[0x94 - 4];
+};
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002 */
+    u8 deckCount;                   /* +0x003 */
+    u8 graveCount;                  /* +0x004 */
+    u8 fusionCount;                 /* +0x005 */
+    u8 unk6[0x28 - 0x6];
+    struct DuelZone zones[11];      /* +0x028 */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4 */
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 fieldBackground:4;           /* +0x1ACC bits 0-3: field background 0-14 (0 none) */
     u8 unk1ACC_4:4;
+    u8 unk1ACD[0x1B10 - 0x1ACD];    /* rule flags, the Prohibition list */
+    u16 turnCount;                  /* +0x1B10 */
+    u8 bgmOn:1;                     /* +0x1B12 bit 0: duel BGM allowed */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 linkError:1;
+    u8 result:2;
+    u8 unk1B13[0x1B78 - 0x1B13];
 };
-extern struct DuelStateUnk1ACCView gUnk_020192E0_lo asm("gDuel");
 
-extern u8 gChain[];
-extern const u8 gDuelBannerPal[];
-extern const u8 gStartDuelBannerGfx[];
-extern const u16 gShrinkScaleSteps[];
-extern const u8 gPhaseBannerPal[];
-extern const u8 gPhaseBannerGfx[];
-extern const u8 gBattlePhaseBannerGfx[];
-extern const u8 gChainBannerPal[];
-extern const u8 gChainBannerGfx[];
-extern const u16 gBannerSlideOffsets[];   /* slide offsets, 16 entries */
-extern const u16 gPulseScaleCurve[];   /* pulse scale, 16 entries */
-extern const u32 gBattleBannerSlideX[];   /* slide-in x offsets, 16 entries */
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
 
-#define REG_BLDCNT (*(vu16 *)0x04000050)
-#define REG_BLDALPHA (*(vu16 *)0x04000052)
+void PlaySE(u32 seId);                          /* sound.h */
+/* ---- END duel.h subset ---- */
+
+#include "duel_cmd.h"       /* gDuelCmd, gBannerSlideOffsets, gShrinkScaleSteps, gDuelBannerPal */
+#include "duel_screen.h"    /* gDuelScreen, DuelScreen_*, DuelCursor_Select, DrawPhaseIndicator, DuelFieldFade* */
+#include "duel_scenes.h"    /* gDuelScene, DuelScene_Start, enum DuelSceneId */
+#include "duel_flow.h"      /* PlayDuelBGM, gPulseScaleCurve */
+#include "chain.h"          /* gChain */
+#include "sprite.h"         /* AddSprite, AddSpriteAlpha, AddAffineSprite, enum SpriteShape */
+#include "util.h"           /* CopyDoubleWords, MemClear16 */
+
+/* ROM data used only here. */
+extern const u8 gPhaseBannerPal[];          /* 0x0867F01C: OBJ palette of the phase banners */
+extern const u8 gPhaseBannerGfx[];          /* 0x0867F03C: six 0x200-byte 32x16 banners, by enum DuelPhase */
+extern const u8 gBattlePhaseBannerGfx[];    /* 0x0867F63C = gPhaseBannerGfx + PHASE_BATTLE * 0x200 (own symbol) */
+extern const u8 gStartDuelBannerGfx[];      /* 0x08687BBC: "Start Duel", 64x32 */
+extern const u8 gChainBannerPal[];          /* 0x08688FBC */
+extern const u8 gChainBannerGfx[];          /* 0x08688FD8: "Chain", 64x32 */
+/* 0x08081728: [16] x of the left half of the Battle Phase banner, 88 at [0] easing out to 32 at [15]; the
+ * right half is drawn at 0xD0 - x, so the halves slide together from x = 32 / 176 to 88 / 120. */
+extern const u32 gBattleBannerSlideX[];
+
+/*
+ * Local views of functions, kept on purpose (matching choices, see build/readability/HEADERS.md): both
+ * return u16 in their definitions, and this unit tests the result as a u32 (no narrowing at the call).
+ */
+u32 DuelScreen_FadeInStepU32(void) asm("DuelScreen_FadeInStep");
+u32 DuelScene_RunU32(void) asm("DuelScene_Run");
+
+/*
+ * gDuel reached through the gDuelPlayers symbol (gDuelPlayers - 4). Matching: DuelCmd_ResetDuelState forms
+ * the gDuel.phase address from the gDuelPlayers base it already holds; gDuel.phase would load a second
+ * literal.
+ */
+#define DUEL_FROM_PLAYERS ((struct DuelState *)((u8 *)gDuelPlayers - OFFSET_OF(struct DuelState, players)))
+
+/* Banners and the hand pointer fast-forward while B is held or the duel screen runs in fast mode. */
+#define FAST_FORWARD() ((gMain.heldKeys & B_BUTTON) || gDuelScreen.fast)
+
+/* Acting player of the current command: bit 15 of the command word (DUEL_CMD_PLAYER). */
+#define CMD_PLAYER (gDuelCmd.cmd >> 15)
+
+/*
+ * Every banner loads its palette into OBJ palette 15 and its tiles at OBJ tile 0x364 (0x06016C80); a
+ * 64x32 banner is one sprite, a 32x16 phase banner is drawn as two halves (tiles 0x364 and 0x36C).
+ */
+#define BANNER_PAL      ((void *)(OBJ_PLTT + 15 * 0x20))        /* 0x050003E0 */
+#define BANNER_GFX      ((void *)(OBJ_VRAM0 + 0x364 * 0x20))    /* 0x06016C80 */
+#define BANNER_ATTR2_L  0xF364      /* attr2: palette 15, tile 0x364 (left half / whole banner) */
+#define BANNER_ATTR2_R  0xF36C      /* attr2: palette 15, tile 0x36C (right half) */
+
+/* AddSprite position argument: y << 16 | x. */
+#define SPRITE_YX(y, x) (((y) << 16) | (x))
+
+/*
+ * Until step H0 installs the new gba.h (build/readability/HEADERS.md), include/gba.h lacks the BLDCNT bit
+ * names; these repeat the staged header's values. Delete this block after H0.
+ */
+#ifndef BLDCNT_EFFECT_BLEND
+#define BLDCNT_EFFECT_BLEND     0x0040  /* alpha blend (BLDALPHA) */
+#define BLDCNT_TGT2_BG0         0x0100
+#define BLDCNT_TGT2_BG1         0x0200
+#define BLDCNT_TGT2_BG2         0x0400
+#define BLDCNT_TGT2_BG3         0x0800
+#endif
+
+/* Phase banner fade: alpha blend over BG0-BG3 as 2nd targets (semi-transparent sprites are always a 1st
+ * target), 0xF40. */
+#define BANNER_BLDCNT (BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3)
+
+/* BLDALPHA value: EVA (1st target weight) in bits 0-4, EVB (2nd target) in bits 8-12. Matching: each weight
+ * is narrowed to u8 as the ROM does (gba.h's BLDALPHA_BLEND has no casts). */
 #define BLDALPHA(eva, evb) ((u8)(eva) | ((u8)(evb) << 8))
 
-void CopyDoubleWords(void *dst, const void *src, u32 size);   /* CopyDoubleWords */
-void MemClear16(void *dst, u32 size);                    /* MemClear16 */
-void PlaySE(u16 se);                                 /* PlaySE */
-void AddSprite(u32 yx, u16 shapeSize, u16 attr2);       /* AddSprite */
-void AddSpriteAlpha(u32 yx, u16 shapeSize, u16 attr2);
-void AddAffineSprite(u32 yx, u16 shapeSize, u16 attr2, s32 affine);
-void DuelCursor_Select(u32 player, u32 a, u32 b);
-void DuelScreen_ScrollToZone(u32 player, u32 a);
-void DuelScene_Start(u16 msg, u32 a);
-u32 DuelScene_Run(void);
-void PlayDuelBGM(void);
-void DrawPhaseIndicator(u32 a, u32 b);
-u32 DuelFieldFadeToWhite(u32 a);
-u32 DuelFieldFadeFromWhite(u32 a);
-void DuelScreen_Init(void);
-u32 DuelScreen_FadeInStep(void);
-u32 DuelScreen_FadeOutStep(void);
-void DuelScreen_LoadFieldBackground(u16 a);
-
-#define FAST_FORWARD() ((gMain.heldKeys & 2) || gDuelScreen.fast)
-
 /*
- * Restart the duel. Save both players' list7C4/listA44 (and their counts) into the
- * command block, clear the whole duel state and gChain, restore the lists,
- * and reset both players to 8000 LP.
+ * DUEL_CMD_RESET_DUEL_STATE (0x10), pushed once at duel start before the opening draws: clear gChain and
+ * both players (with the rule flags and the Prohibition list, up to gDuel.turnCount) but keep the decks and
+ * fusion decks that duel setup loaded and shuffled; they wait in gDuelCmd across the clear. Both players
+ * start at 8000 LP and the phase becomes PHASE_NONE.
  */
 void DuelCmd_ResetDuelState(void)
 {
     int i;
 
     for (i = 0; i < 2; i++) {
-        gDuelCmd.savedCount3[i] = gDuelPlayers[i & 1].deckCount;
-        CopyDoubleWords(gDuelCmd.savedList7C4[i], gDuelPlayers[i & 1].deck, 0x140);
-        gDuelCmd.savedCount5[i] = gDuelPlayers[i & 1].fusionCount;
-        CopyDoubleWords(gDuelCmd.savedListA44[i], gDuelPlayers[i & 1].fusionDeck, 0x140);
+        gDuelCmd.savedDeckCount[i] = gDuelPlayers[i & 1].deckCount;
+        CopyDoubleWords(gDuelCmd.savedDeck[i], gDuelPlayers[i & 1].deck, sizeof(gDuelCmd.savedDeck[i]));
+        gDuelCmd.savedFusionCount[i] = gDuelPlayers[i & 1].fusionCount;
+        CopyDoubleWords(gDuelCmd.savedFusionDeck[i], gDuelPlayers[i & 1].fusionDeck,
+                        sizeof(gDuelCmd.savedFusionDeck[i]));
     }
-    MemClear16(gChain, 0x56C);
-    MemClear16(gDuelPlayers, 0x1B0C);
+    MemClear16(&gChain, sizeof(gChain));
+    MemClear16(gDuelPlayers, OFFSET_OF(struct DuelState, turnCount) - OFFSET_OF(struct DuelState, players));
     for (i = 0; i < 2; i++) {
-        gDuelPlayers[i & 1].deckCount = gDuelCmd.savedCount3[i];
-        CopyDoubleWords(gDuelPlayers[i & 1].deck, gDuelCmd.savedList7C4[i], 0x140);
-        gDuelPlayers[i & 1].fusionCount = gDuelCmd.savedCount5[i];
-        CopyDoubleWords(gDuelPlayers[i & 1].fusionDeck, gDuelCmd.savedListA44[i], 0x140);
+        gDuelPlayers[i & 1].deckCount = gDuelCmd.savedDeckCount[i];
+        CopyDoubleWords(gDuelPlayers[i & 1].deck, gDuelCmd.savedDeck[i], sizeof(gDuelCmd.savedDeck[i]));
+        gDuelPlayers[i & 1].fusionCount = gDuelCmd.savedFusionCount[i];
+        CopyDoubleWords(gDuelPlayers[i & 1].fusionDeck, gDuelCmd.savedFusionDeck[i],
+                        sizeof(gDuelCmd.savedFusionDeck[i]));
     }
     gDuelPlayers[0].lifePoints = 8000;
     gDuelPlayers[1].lifePoints = 8000;
-    DUEL_FROM_PLAYERS->phase1B12 = 7;
+    DUEL_FROM_PLAYERS->phase = PHASE_NONE;
     gDuelCmd.running = 0;
 }
 
+/*
+ * DUEL_CMD_OPEN_DUEL_SCREEN (0x12): set up the duel screen if it is not active, then fade it in. Pushed at
+ * duel start and after every full-screen scene.
+ */
 void DuelCmd_OpenDuelScreen(void)
 {
-    if (!gDuelScreen.flag0_2)
+    if (!gDuelScreen.active)
         DuelScreen_Init();
-    else if (DuelScreen_FadeInStep())
+    else if (DuelScreen_FadeInStepU32())
         gDuelCmd.running = 0;
 }
 
+/* DUEL_CMD_CLOSE_DUEL_SCREEN (0x13): fade the duel screen out and leave it (before a full-screen scene). */
 void DuelCmd_CloseDuelScreen(void)
 {
     if (DuelScreen_FadeOutStep())
         gDuelCmd.running = 0;
 }
 
+/*
+ * DUEL_CMD_SET_FIELD_BACKGROUND (0x11): load field background arg2 (0 none, 1-14 a Field Magic's
+ * texture) and remember it in gDuel.fieldBackground, which DuelScreen_Init re-applies.
+ */
 void DuelCmd_SetFieldBackground(void)
 {
     DuelScreen_LoadFieldBackground(gDuelCmd.arg2);
-    gUnk_020192E0_lo.unk1ACC_0 = gDuelCmd.arg2;
+    gDuel.fieldBackground = gDuelCmd.arg2;
     gDuelCmd.running = 0;
 }
 
 /*
- * Duel-start banner: slide the two halves in (gBattleBannerSlideX offsets), run
- * DuelFieldFadeToWhite / DuelFieldFadeFromWhite (4x speed when fast-forwarding), slide them out,
- * then set phase1B12 = 3 and notify DrawPhaseIndicator / DuelCursor_Select.
+ * DUEL_CMD_BATTLE_PHASE (0x53): the Battle Phase banner. Steps:
+ *   0  load the banner, scroll the field to player 0's monster row
+ *   1  the two 32x16 halves slide in from the sides (gBattleBannerSlideX), then SE 0x1D
+ *   2  flash the field to white (4x speed when fast-forwarding)
+ *   3  fade back from white
+ *   4  the halves slide out
+ *   5+ gDuel.phase = PHASE_BATTLE, mark it in the phase indicator, put the cursor on the turn player's
+ *      first monster zone
  */
 void DuelCmd_EnterBattlePhase(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        CopyDoubleWords((void *)0x050003E0, gPhaseBannerPal, 0x20);
-        CopyDoubleWords((void *)0x06016C80, gBattlePhaseBannerGfx, 0x200);
+        CopyDoubleWords(BANNER_PAL, gPhaseBannerPal, 0x20);
+        CopyDoubleWords(BANNER_GFX, gBattlePhaseBannerGfx, 0x200);
         DuelScreen_ScrollToZone(0, 0);
         gDuelCmd.timer = 16;
         gDuelCmd.step++;
@@ -150,21 +247,24 @@ void DuelCmd_EnterBattlePhase(void)
             gDuelCmd.timer--;
             if (FAST_FORWARD() && gDuelCmd.timer > 4)
                 gDuelCmd.timer -= 3;
-            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | 0x400000, 0x4080, 0xF364);
-            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | 0x400000, 0x4080, 0xF36C);
+            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | SPRITE_YX(0x40, 0), SPRITE_SHAPE_32x16,
+                      BANNER_ATTR2_L);
+            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | SPRITE_YX(0x40, 0), SPRITE_SHAPE_32x16,
+                      BANNER_ATTR2_R);
             break;
         }
         PlaySE(0x1D);
         gDuelCmd.step++;
+        /* fall through */
     case 2:
-        AddSprite(0x00400058, 0x4080, 0xF364);
-        AddSprite(0x00400078, 0x4080, 0xF36C);
+        AddSprite(SPRITE_YX(0x40, 0x58), SPRITE_SHAPE_32x16, BANNER_ATTR2_L);
+        AddSprite(SPRITE_YX(0x40, 0x78), SPRITE_SHAPE_32x16, BANNER_ATTR2_R);
         if (DuelFieldFadeToWhite(FAST_FORWARD() ? 4 : 1))
             gDuelCmd.step++;
         break;
     case 3:
-        AddSprite(0x00400058, 0x4080, 0xF364);
-        AddSprite(0x00400078, 0x4080, 0xF36C);
+        AddSprite(SPRITE_YX(0x40, 0x58), SPRITE_SHAPE_32x16, BANNER_ATTR2_L);
+        AddSprite(SPRITE_YX(0x40, 0x78), SPRITE_SHAPE_32x16, BANNER_ATTR2_R);
         if (DuelFieldFadeFromWhite(FAST_FORWARD() ? 4 : 1)) {
             gDuelCmd.timer = 0;
             gDuelCmd.step++;
@@ -172,97 +272,127 @@ void DuelCmd_EnterBattlePhase(void)
         break;
     case 4:
         if (gDuelCmd.timer < 16) {
-            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | 0x400000, 0x4080, 0xF364);
-            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | 0x400000, 0x4080, 0xF36C);
+            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | SPRITE_YX(0x40, 0), SPRITE_SHAPE_32x16,
+                      BANNER_ATTR2_L);
+            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | SPRITE_YX(0x40, 0), SPRITE_SHAPE_32x16,
+                      BANNER_ATTR2_R);
             gDuelCmd.timer++;
-            if (FAST_FORWARD() && gDuelCmd.timer <= 0xB)
+            if (FAST_FORWARD() && gDuelCmd.timer <= 11)
                 gDuelCmd.timer += 3;
             break;
         }
         gDuelCmd.step++;
+        /* fall through */
     default:
-        gDuel.phase1B12 = 3;
-        DrawPhaseIndicator(gDuel.linkSkip, gDuel.phase1B12);
-        DuelCursor_Select(gDuel.linkSkip, 0, 0);
+        gDuel.phase = PHASE_BATTLE;
+        DrawPhaseIndicator(gDuel.turnPlayer, gDuel.phase);
+        DuelCursor_Select(gDuel.turnPlayer, DUEL_AREA_MONSTER, 0);
         gDuelCmd.running = 0;
         break;
     }
 }
-/* +0x80C view; the larger container preserves the original halfword RMW. */
-struct BannerTimer {
-    u32 reserved : 5;
-    u32 timer : 7;
-    u32 remainder : 20;
-    u32 trailing;
+
+/*
+ * gDuelCmd's +0x80C word with the timer in a u32 container, for the timer clear in DuelCmd_EnterPhase
+ * (struct DuelCmd has the same bits; this view only serves the FAKEMATCH there).
+ */
+struct DuelCmdTimerWord {
+    u32 unk80C_0:5;
+    u32 timer:7;                    /* +0x80C bits 5-11: struct DuelCmd.timer */
+    u32 unk80C_12:20;
+    u32 unk810;
 };
-void DuelCmd_EnterPhase(u32 kind)
+
+/*
+ * DUEL_CMD_DRAW_PHASE .. DUEL_CMD_END_PHASE except the Battle Phase (0x50-0x52, 0x54, 0x55; the dispatcher
+ * passes the enum DuelPhase): the phase banner gPhaseBannerGfx[phase] fades in over 16 frames, holds, and
+ * fades out over the last 16 of 0x60 frames (OBJ alpha blend over BG0-BG3; +8 frames per frame when
+ * fast-forwarding). Then gDuel.phase = phase and the phase indicator shows it.
+ */
+void DuelCmd_EnterPhase(u32 phase)
 {
     u32 step = gDuelCmd.step;
-    int blend;
+    int blending;
 
     switch (step) {
     case 0:
-        CopyDoubleWords((void *)0x050003E0, gPhaseBannerPal, 0x20);
-        CopyDoubleWords((void *)0x06016C80, gPhaseBannerGfx + kind * 0x200, 0x200);
+        CopyDoubleWords(BANNER_PAL, gPhaseBannerPal, 0x20);
+        CopyDoubleWords(BANNER_GFX, gPhaseBannerGfx + phase * 0x200, 0x200);
         {
+            /*
+             * gDuelCmd.timer = 0. FAKEMATCH: the ROM clears the timer with a halfword read-modify-write
+             * through base + 0x80C with the offset in r3 and the pointer in r1; only this pinned form
+             * (offset kept live by the empty asm, pointer built from the base, then the offset added)
+             * reproduces that allocation and also case 1's (wiki: duel-cmd-screen-c.md).
+             */
             u8 *base = (u8 *)&gDuelCmd;
-            /* FAKEMATCH: preserve the initialized offset and RMW pointer roles. */
             register u32 offset asm("r3") = 0x80C;
-            register struct BannerTimer *timer asm("r1");
+            register struct DuelCmdTimerWord *timerWord asm("r1");
             asm("" : "+r"(offset));
-            timer = (struct BannerTimer *)base;
-            timer = (struct BannerTimer *)((u32)timer + offset);
-            timer->timer = 0;
+            timerWord = (struct DuelCmdTimerWord *)base;
+            timerWord = (struct DuelCmdTimerWord *)((u32)timerWord + offset);
+            timerWord->timer = 0;
         }
         gDuelCmd.step++;
         break;
     case 1:
         if (gDuelCmd.timer < 0x60) {
-            blend = 0;
+            blending = FALSE;
             if (gDuelCmd.timer < 16) {
-                REG_BLDCNT = 0xF40;
+                /* fade in: EVA rises 0 -> 15 */
+                REG_BLDCNT = BANNER_BLDCNT;
                 REG_BLDALPHA = BLDALPHA(gDuelCmd.timer, 16 - gDuelCmd.timer);
-                blend = 1;
+                blending = TRUE;
             }
             if (gDuelCmd.timer >= 0x50) {
-                REG_BLDCNT = 0xF40;
+                /* fade out over the last 16 frames */
+                REG_BLDCNT = BANNER_BLDCNT;
                 REG_BLDALPHA = BLDALPHA(0x60 - gDuelCmd.timer, gDuelCmd.timer - 0x50);
-                blend = 1;
+                blending = TRUE;
             }
-            if (!blend) {
+            if (!blending) {
                 REG_BLDCNT = 0;
                 REG_BLDALPHA = 0;
             }
-            AddSpriteAlpha(0x00400058, 0x4080, 0xF364);
-            AddSpriteAlpha(0x00400078, 0x4080, 0xF36C);
+            AddSpriteAlpha(SPRITE_YX(0x40, 0x58), SPRITE_SHAPE_32x16, BANNER_ATTR2_L);
+            AddSpriteAlpha(SPRITE_YX(0x40, 0x78), SPRITE_SHAPE_32x16, BANNER_ATTR2_R);
             if (FAST_FORWARD() && gDuelCmd.timer <= 0x57)
                 gDuelCmd.timer += 7;
             gDuelCmd.timer++;
             break;
         }
         gDuelCmd.step = step + 1;
+        /* fall through */
     default:
-        gDuel.phase1B12 = kind;
-        DrawPhaseIndicator(gDuel.linkSkip, gDuel.phase1B12);
+        gDuel.phase = phase;
+        DrawPhaseIndicator(gDuel.turnPlayer, gDuel.phase);
         gDuelCmd.running = 0;
         break;
     }
 }
 
-/* Banner that slides in from the acting player's side, pulses for 0x40 frames, then slides back out (cf. DuelCmd_ShowJustAMomentBanner). */
+/*
+ * DUEL_CMD_CHAIN_BANNER (0x07): the "Chain" banner (64x32) slides in vertically from the acting player's
+ * side (player 1 from the top, player 0 from the bottom) to y = 0x40, pulses for 0x40 frames
+ * (gPulseScaleCurve), then slides back out. Same shape as DuelCmd_ShowJustAMomentBanner. Steps:
+ *   0  hide the cursor, load the banner, clear the field overlay callback, SE 0x16
+ *   1  slide in over 16 frames, then SE 0x16
+ *   2  pulse
+ *   3  slide out
+ */
 void DuelCmd_ShowChainBanner(void)
 {
-    u32 player = gDuelCmd.cmd >> 15;
+    u32 player = CMD_PLAYER;
     s32 step = gDuelCmd.step;
     s32 timer;
     s32 y;
 
     switch (step) {
     case 0:
-        gDuelScreen.busy = 0;
-        CopyDoubleWords((void *)0x050003E0, gChainBannerPal, 0x20);
-        CopyDoubleWords((void *)0x06016C80, gChainBannerGfx, 0x400);
-        gDuelScreen.cb85C = (void (*)(void))step;
+        gDuelScreen.showCursor = 0;
+        CopyDoubleWords(BANNER_PAL, gChainBannerPal, 0x20);
+        CopyDoubleWords(BANNER_GFX, gChainBannerGfx, 0x400);
+        gDuelScreen.overlayCallback = NULL;
         gDuelCmd.timer = 0;
         gDuelCmd.step++;
         PlaySE(0x16);
@@ -274,18 +404,20 @@ void DuelCmd_ShowChainBanner(void)
                 y = gBannerSlideOffsets[timer];
             else
                 y = 0x80 - gBannerSlideOffsets[timer];
-            AddSprite((y << 16) | 0x58, 0x40C0, 0xF364);
+            AddSprite(SPRITE_YX(y, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L);
             gDuelCmd.timer++;
-            if (FAST_FORWARD() && gDuelCmd.timer <= 0xB)
+            if (FAST_FORWARD() && gDuelCmd.timer <= 11)
                 gDuelCmd.timer += 3;
             break;
         }
         gDuelCmd.timer = 0;
         gDuelCmd.step = step + 1;
         PlaySE(0x16);
+        /* fall through */
     case 2:
         if (gDuelCmd.timer < 0x40) {
-            AddAffineSprite(0x00400058, 0x40C0, 0xF364, gPulseScaleCurve[gDuelCmd.timer & 0xF] << 16);
+            AddAffineSprite(SPRITE_YX(0x40, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L,
+                            gPulseScaleCurve[gDuelCmd.timer & 0xF] << 16);
             gDuelCmd.timer++;
             if (FAST_FORWARD() && gDuelCmd.timer <= 0x37)
                 gDuelCmd.timer += 7;
@@ -293,6 +425,7 @@ void DuelCmd_ShowChainBanner(void)
         }
         gDuelCmd.timer = 16;
         gDuelCmd.step++;
+        /* fall through */
     case 3:
         timer = gDuelCmd.timer;
         if (timer != 0) {
@@ -300,37 +433,47 @@ void DuelCmd_ShowChainBanner(void)
                 y = gBannerSlideOffsets[timer - 1];
             else
                 y = 0x80 - gBannerSlideOffsets[timer - 1];
-            AddSprite((y << 16) | 0x58, 0x40C0, 0xF364);
+            AddSprite(SPRITE_YX(y, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L);
             gDuelCmd.timer--;
             if (FAST_FORWARD() && gDuelCmd.timer > 4)
                 gDuelCmd.timer -= 3;
             break;
         }
+        /* fall through */
     default:
         gDuelCmd.running = 0;
         break;
     }
 }
+
+/*
+ * DUEL_CMD_POINT_AT_CARD (0x08): select arg2 = player, arg4 = area | index << 8 with the field cursor,
+ * then draw the pulsing hand pointer (gShrinkScaleSteps) over the cursor for 64 frames (+8 per frame when
+ * fast-forwarding), turned half a turn when the acting player is player 1. Effects use it to show the card
+ * they target.
+ */
 void DuelCmd_PointAtCard(void)
 {
-    u32 player = gDuelCmd.cmd >> 15;
-    u32 arg2 = gDuelCmd.arg2;
-    u32 lo = (u8)gDuelCmd.arg4;
-    u32 hi = gDuelCmd.arg4 >> 8;
+    u32 player = CMD_PLAYER;
+    u32 targetPlayer = gDuelCmd.arg2;
+    u32 area = (u8)gDuelCmd.arg4;
+    u32 index = gDuelCmd.arg4 >> 8;
     u32 step = gDuelCmd.step;
 
     switch (step) {
     case 0:
-        gDuelScreen.busy = 1;
-        DuelCursor_Select(arg2, lo, hi);
+        gDuelScreen.showCursor = 1;
+        DuelCursor_Select(targetPlayer, area, index);
         gDuelCmd.timer = 0;
         gDuelCmd.step++;
         break;
     case 1:
-        gDuelScreen.busy = 0;
+        gDuelScreen.showCursor = 0;
         if (gDuelCmd.timer < 64) {
+            /* scaleAngle: scale << 16 | angle (0x40 = half of the 128-step turn) */
             AddAffineSprite((gDuelScreen.cursorX + 8) | ((gDuelScreen.cursorY - gDuelScreen.scroll) << 16),
-                         0x80, 0, (gShrinkScaleSteps[gDuelCmd.timer & 7] << 16) | (player << 6));
+                            SPRITE_SHAPE_32x32, 0,
+                            (gShrinkScaleSteps[gDuelCmd.timer & 7] << 16) | (player << 6));
             gDuelCmd.timer++;
             if (FAST_FORWARD() && gDuelCmd.timer <= 0x37)
                 gDuelCmd.timer += 7;
@@ -344,16 +487,24 @@ void DuelCmd_PointAtCard(void)
     }
 }
 
+/* DUEL_CMD_MOVE_CURSOR (0x09): show the field cursor on the acting player's area arg2, index arg4. */
 void DuelCmd_MoveCursor(void)
 {
-    u32 player = gDuelCmd.cmd >> 15;
-    u32 arg2 = gDuelCmd.arg2;
-    u32 arg4 = gDuelCmd.arg4;
-    gDuelScreen.busy = 1;
-    DuelCursor_Select(player, arg2, arg4);
+    u32 player = CMD_PLAYER;
+    u32 area = gDuelCmd.arg2;
+    u32 index = gDuelCmd.arg4;
+
+    gDuelScreen.showCursor = 1;
+    DuelCursor_Select(player, area, index);
     gDuelCmd.running = 0;
 }
 
+/*
+ * DUEL_CMD_START_DUEL_BANNER (0x14): SE 0xB, then the "Start Duel" banner over 0x100 frames: frames 1-15
+ * it zooms from large to normal size, 16-96 it holds, 97-127 it shrinks away; frame 0x7F calls
+ * PlayDuelBGM, which fades the pre-duel music out (bgmOn is still clear). When the 7-bit timer wraps to 0
+ * the duel BGM is allowed (gDuel.bgmOn = 1).
+ */
 void DuelCmd_StartDuelBanner(void)
 {
     u32 scale;
@@ -361,22 +512,24 @@ void DuelCmd_StartDuelBanner(void)
     switch (gDuelCmd.step) {
     case 0:
         PlaySE(0xB);
-        CopyDoubleWords((void *)0x050003E0, gDuelBannerPal, 0x20);
-        CopyDoubleWords((void *)0x06016C80, gStartDuelBannerGfx, 0x400);
+        CopyDoubleWords(BANNER_PAL, gDuelBannerPal, 0x20);
+        CopyDoubleWords(BANNER_GFX, gStartDuelBannerGfx, 0x400);
         gDuelCmd.timer = 0;
         gDuelCmd.step++;
         break;
     case 1:
         if (gDuelCmd.timer != 0 && gDuelCmd.timer <= 15) {
+            /* scaleAngle = (timer + 1) * 0x10 << 16: scale 0x20 .. 0x100 */
             scale = gDuelCmd.timer << 20;
-            AddAffineSprite(0x00300058, 0x40C0, 0xF364, scale + 0x100000);
+            AddAffineSprite(SPRITE_YX(0x30, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L, scale + 0x100000);
         }
         if (gDuelCmd.timer >= 16 && gDuelCmd.timer <= 96)
-            AddSprite(0x00300058, 0x40C0, 0xF364);
+            AddSprite(SPRITE_YX(0x30, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L);
         scale = gDuelCmd.timer;
         if (scale > 96 && scale < 128) {
-            scale -= 0x60;
-            AddAffineSprite(0x00300058, 0x40C0, 0xF364, scale << 24);
+            /* scaleAngle = (timer - 96) * 0x100 << 16: scale 0x100 .. 0x1F00 */
+            scale -= 96;
+            AddAffineSprite(SPRITE_YX(0x30, 0x58), SPRITE_SHAPE_64x32, BANNER_ATTR2_L, scale << 24);
             if (gDuelCmd.timer == 0x7F)
                 PlayDuelBGM();
         }
@@ -385,110 +538,120 @@ void DuelCmd_StartDuelBanner(void)
             gDuelCmd.step++;
         break;
     default:
-        gDuel.flag1B12_0 = 1;
+        gDuel.bgmOn = 1;
         gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_EXODIA_WIN_SCENE (0x05): run the Exodia win scene. */
 void DuelCmd_ExodiaWinScene(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(1, 0);
+        DuelScene_Start(DUEL_SCENE_EXODIA_WIN, 0);
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_DESTINY_BOARD_WIN_SCENE (0x06): run the Destiny Board win scene. */
 void DuelCmd_DestinyBoardWinScene(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(5, 0);
+        DuelScene_Start(DUEL_SCENE_DESTINY_BOARD_WIN, 0);
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/*
+ * DUEL_CMD_TOSS_COIN (0xE0): toss one coin; arg2 = the called face, arg4 = the result (1 = tails).
+ * gDuelScene.arg: bit 15 the called face, bits 8-14 the coin count (1), bit 7 set, bit 0 the result.
+ */
 void DuelCmd_TossCoin(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(0, 0);
-        gDuelScene.arg = (gDuelCmd.arg2 << 15) | 0x180 | (u8)gDuelCmd.arg4;
+        DuelScene_Start(DUEL_SCENE_COIN_TOSS, 0);
+        gDuelScene.arg = (gDuelCmd.arg2 << 15) | (1 << 8) | 0x80 | (u8)gDuelCmd.arg4;
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_TOSS_THREE_COINS (0xE1, Barrel Dragon): toss three coins; arg2 bits 0-2 are the results. */
 void DuelCmd_TossThreeCoins(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(0, 0);
-        gDuelScene.arg = 0x380 | (u8)gDuelCmd.arg2;
+        DuelScene_Start(DUEL_SCENE_COIN_TOSS, 0);
+        gDuelScene.arg = (3 << 8) | 0x80 | (u8)gDuelCmd.arg2;
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_ROLL_GRACEFUL_DICE (0xE2): roll Graceful Dice; arg2 = the face (1-6). */
 void DuelCmd_RollGracefulDice(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(2, 0);
+        DuelScene_Start(DUEL_SCENE_DICE_GRACEFUL, 0);
         gDuelScene.arg = gDuelCmd.arg2;
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_ROLL_SKULL_DICE (0xE3; the dispatcher also sends 0xE5 here): roll Skull Dice; arg2 = the face. */
 void DuelCmd_RollSkullDice(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(3, 0);
+        DuelScene_Start(DUEL_SCENE_DICE_SKULL, 0);
         gDuelScene.arg = gDuelCmd.arg2;
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }
 }
 
+/* DUEL_CMD_ROLL_PLAIN_DIE (0xE4): roll a plain die (no character swing-in); arg2 = the face. */
 void DuelCmd_RollPlainDie(void)
 {
     switch (gDuelCmd.step) {
     case 0:
-        DuelScene_Start(4, 0);
+        DuelScene_Start(DUEL_SCENE_DICE_PLAIN, 0);
         gDuelScene.arg = gDuelCmd.arg2;
         gDuelCmd.step++;
         break;
     case 1:
-        if (DuelScene_Run())
+        if (DuelScene_RunU32())
             gDuelCmd.running = 0;
         break;
     }

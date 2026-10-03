@@ -1,123 +1,166 @@
+/*
+ * Campaign steps 1-3, 5 and 6 (gCampaignSteps, run by CB_Campaign in campaign.c; enum CampaignStep):
+ *  - Campaign_SelectOpponent: the opponent-select screen, unless the day's event fixed the opponent, then
+ *    the opponent's pre-duel dialogue;
+ *  - Campaign_DecideTurnOrder: rock-paper-scissors for the first duel of a match, a first/second choice for
+ *    the later ones;
+ *  - Campaign_SetupDuel: clears the duel and loads and shuffles both decks;
+ *  - Campaign_ShowDuelResult: best-of-3 match scoring and the opponent's result text; an open match goes
+ *    back to CAMPAIGN_STEP_TURN_ORDER after a side-deck swap;
+ *  - Campaign_GiveRewards: records the duel (Campaign_RecordDuelResult), then hands out the prize of the
+ *    day's event: Championship tickets, holiday and Grandpa Cup packs, the card a Rare Hunter takes, or
+ *    the regular pick-a-pack screen.
+ * A step returns 1 when it is done; gMain.subStep is its sub-state. See wiki/functions/campaign-steps-c.md.
+ */
 #include "global.h"
-#include "main.h"
-#include "duel.h"
+#include "constants/cards.h"    /* CARD_THE_MONARCHY, ... (the three Championship tickets) */
+#include "constants/duel.h"     /* enum DuelResult, DuelFormat */
+#include "constants/game.h"     /* enum BoosterPackId, DuelistId */
+#include "save.h"               /* gSaveData, RecordDuel*, Add/RemoveCardFromTrunk, SaveGame, ... */
+#include "calendar.h"           /* enum CalendarEvent (gMain.events) */
+#include "campaign.h"           /* struct OpponentResultTexts, Campaign_*, OpponentSelect_Run */
+#include "bustup.h"             /* StartDialogue, CB_Bustup */
+#include "turn_order.h"         /* TurnOrder_RunRps, TurnOrder_RunPlayerChoice, TurnOrder_RunCpuChoice */
+#include "duel_flow.h"          /* Duel_Setup, gDuelCtrl */
+#include "ai.h"                 /* LoadOpponentDeck */
+#include "booster.h"            /* CB_GetPack, GetRewardPack */
+#include "card_detail.h"        /* CardDetail_Init, CardDetail_Run */
+#include "deck_edit.h"          /* SideDeckSwap_Run */
 
-#define gMain gMain
+/* ---- BEGIN header subset (pre-H0) ---- */
+/*
+ * The parts of main.h, duel.h and sound.h this unit uses, with the headers' tags, names, types and bitfield
+ * containers. include/main.h, duel.h and sound.h still hold the legacy headers until the header switch (H0,
+ * build/readability/HEADERS.md), and the legacy main.h has none of the +0x4888 names. After H0, replace this
+ * block (BEGIN to END) with:
+ *     #include "main.h"
+ *     #include "duel.h"
+ *     #include "sound.h"
+ */
+struct Main {
+    u8 unk0[0x4857];
+    u8 seqIndexCampaign;                /* +0x4857 step index of the Campaign runner */
+    u8 seqState0;                       /* +0x4858 */
+    u8 seqIndex1;                       /* +0x4859 step index of the menu/Password/Trading/Deck Edit runners */
+    u8 seqState1;                       /* +0x485A */
+    u8 seqState2;                       /* +0x485B */
+    u8 unk485C[0x4870 - 0x485C];
+    u8 firstPlayer:1;                   /* +0x4870 bit 0: who takes the first turn, 0 = this player */
+    u8 opponent:5;                      /* +0x4870 bits 1-5: duelist ID of the Campaign opponent */
+    u8 result:2;                        /* +0x4870 bits 6-7 */
+    u8 unk4871[0x4876 - 0x4871];
+    u16 rewardPack;                     /* +0x4876 reward for the Get Pack screen */
+    u8 unk4878[4];
+    u32 events;                         /* +0x487C CalendarEvent mask of the current duel (0 = ordinary) */
+    u16 rewardCard;                     /* +0x4880 card given after a calendar-event duel (0 = none) */
+    u8 unk4882[6];
+    u8 unk4888_0:1;                     /* +0x4888 bit 0 */
+    u8 opponentFixed:1;                 /* +0x4888 bit 1: opponent already chosen, skip OpponentSelect_Run */
+    u8 duelFormat:2;                    /* +0x4888 bits 2-3: enum DuelFormat (1 single, 3 best of 3) */
+    u8 matchDuelCount:2;                /* +0x4888 bits 4-5: duels played in the current match */
+    u8 unk4888_6:2;
+    s8 matchScore;                      /* +0x4889 wins minus losses in the current match */
+    u16 startField:4;                   /* +0x488A bits 0-3 */
+    u16 subStep:8;                      /* +0x488A bits 4-11: sub-state of the Campaign/Link/menu step */
+    u16 unk488A_12:4;
+};
+extern struct Main gMain;
+
+struct DuelState {
+    u8 unk0[0x1B12];
+    u8 bgmOn:1;                         /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                    /* +0x1B12 bit 1 */
+    u8 phase:3;                         /* +0x1B12 bits 2-4 */
+    u8 linkError:1;                     /* +0x1B12 bit 5 */
+    u8 result:2;                        /* +0x1B12 bits 6-7: enum DuelResult */
+    u8 unk1B13;
+};
+extern struct DuelState gDuel;
+void ShuffleDeck(int player, int passes);
+
+void PlayBGM(u32 songId);
+/* ---- END header subset ---- */
+
+/* ---- Local data and views ---- */
 
 /*
- * Canonical main.h splits +0x4888 as unk4888_0:4 / counter4888:2 / unk4888_6:2.
- * This unit reads bit 1 (skipScript) and bits 2-3 (unk4888_2) separately, so it keeps
- * a unit-specific view of that one byte at the same address.
+ * Matching: these callers test or return the result of four u16 functions as a whole word (no lsl #16
+ * after the call), so they are called through u32-returning views of the same symbols.
  */
-struct MainFlags4888 {
-    u8 filler0[0x4888];
-    u8 unk4888_0:1;
-    u8 skipScript:1;                /* 0x4888 bit 1 */
-    u8 unk4888_2:2;                 /* 0x4888 bits 2-3 */
-    u8 rest4888_4:4;
-};
-#define gMainBits (*(struct MainFlags4888 *)&gMain)
+u32 CB_BustupU32(void) asm("CB_Bustup");
+u32 OpponentSelect_RunU32(void) asm("OpponentSelect_Run");
+u32 SideDeckSwap_RunU32(void) asm("SideDeckSwap_Run");
+u32 IsPackUnlockedU32(u32 packId) asm("IsPackUnlocked");
 
-/* Save image (0x02011C20). */
-struct SaveOpponent {
-    u16 unk0_0:11;
-    u16 unk0_11:5;
-    u16 unk2;
-};
-
-struct SaveData {
-    u8 filler0[0x20D0];
-    struct SaveOpponent opponents[(0x215C - 0x20D0) / 4];  /* 0x20D0, indexed by opponent */
-    u16 unk215C;
-    u16 unk215E;                    /* 0x215E: counter, reset by some events */
-    u16 unk2160;                    /* 0x2160 */
-    u8 unk2162;                     /* 0x2162 */
-    u8 unk2163;
-    u16 unk2164;                    /* 0x2164: bit 0/1 set after a duel (see Campaign_RecordDuelResult) */
-};
-extern struct SaveData gSaveData;
-#define gSaveData gSaveData
-
-struct Unk02015EE8 {
-    u8 phase;                       /* 0x0: duel phase index (see program-flow) */
-    u8 unk1_0:1;
-    u8 unk1_1:7;
-};
-extern struct Unk02015EE8 gDuelCtrl;
-
-extern const u16 gPackDisplayOrder[];   /* 0x1C card IDs */
-
-/* Per-opponent post-duel text IDs (0x10 bytes each). */
-struct OpponentText {
-    u16 win;        /* 0x0 */
-    u16 lose;       /* 0x2 */
-    u16 draw;       /* 0x4 */
-    u16 unk6;       /* 0x6 */
-    u16 unk8;       /* 0x8 */
-    u16 winAlt4;    /* 0xA: if save state == 4 */
-    u16 winAlt9;    /* 0xC: if save state == 9 */
-    u16 unkE;
-};
-extern const struct OpponentText gOpponentResultTexts[];
-extern const u16 gOpponentFirstMeetingText[];
+/* 0x080819BE: the 28 booster packs of the Get Pack list in display order. */
+extern const u16 gPackDisplayOrder[28];
+/* 0x080817FC: what each opponent (enum DuelistId) says after a duel. */
+extern const struct OpponentResultTexts gOpponentResultTexts[];
+/* 0x0808198C: text before the next duel of an open match, per opponent. */
 extern const u16 gOpponentNextMatchDuelText[];
 
-u32 OpponentSelect_Run(void);
-void Campaign_StartPreDuelDialogue(void);
-u32 CB_Bustup(void);
+/* The card IDs of the three Championship tickets, read through address-suffixed aliases of
+ * gCardNumberToId entries: each gets its own literal, as in the ROM (a single base would be shared). */
+extern const u16 gUnk_08624CCE;         /* gCardNumberToId[CARD_THE_MONARCHY]: round 2 prize */
+extern const u16 gUnk_08624CD0;         /* gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]: round 1 prize */
+extern const u16 gUnk_08624CD2;         /* gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]: semifinal prize */
 
+/* Clear the sub-states of the screen runners before the next one starts. */
+#define RESET_SEQ_STATE() (gMain.seqIndex1 = 0, gMain.seqState1 = 0, gMain.seqState2 = 0)
+
+/*
+ * Campaign step 1. Sub-step 0 runs the opponent-select screen until an opponent is confirmed (skipped when
+ * gMain.opponentFixed: an event or an open match chose the opponent); 1 starts the pre-duel dialogue; 2
+ * waits for it to close. Returns 1 after that.
+ */
 u16 Campaign_SelectOpponent(void)
 {
-    switch (gMain.step488A) {
+    switch (gMain.subStep) {
     case 0:
-        if (!gMainBits.skipScript) {
-            if (OpponentSelect_Run()) {
-                gMain.step488A++;
-                gMain.seqIndex1 = 0;
-                gMain.seqState1 = 0;
-                gMain.seqState2 = 0;
+        if (!gMain.opponentFixed) {
+            if (OpponentSelect_RunU32()) {
+                gMain.subStep++;
+                RESET_SEQ_STATE();
             }
             return 0;
         }
-        gMain.step488A++;
+        gMain.subStep++;
+        /* fall through */
     case 1:
         Campaign_StartPreDuelDialogue();
-        gMain.step488A++;
+        gMain.subStep++;
+        /* fall through */
     case 2:
-        if (CB_Bustup()) {
-            gMain.step488A++;
-            gMain.seqIndex1 = 0;
-            gMain.seqState1 = 0;
-            gMain.seqState2 = 0;
+        if (CB_BustupU32()) {
+            gMain.subStep++;
+            RESET_SEQ_STATE();
         }
         return 0;
     }
     return 1;
 }
 
-u16 TurnOrder_RunRps(void);
-u16 TurnOrder_RunCpuChoice(void);
-u16 TurnOrder_RunPlayerChoice(void);
-
+/*
+ * Campaign step 2: the first duel of a match starts with rock-paper-scissors. In the later duels the
+ * loser of the previous duel picks: the player after a loss, otherwise the opponent. Returns the runner's
+ * result (1 when the turn order is decided).
+ */
 u16 Campaign_DecideTurnOrder(void)
 {
-    if (!gMain.counter4888)
+    if (!gMain.matchDuelCount)
         return TurnOrder_RunRps();
-    else if (gDuel.result == 2)
+    else if (gDuel.result == DUEL_RESULT_LOSE)
         return TurnOrder_RunPlayerChoice();
     else
         return TurnOrder_RunCpuChoice();
 }
 
-void Duel_Setup(void);
-void LoadPlayerDeckFromSave(void);
-void ShuffleDeck(u32, u32);
-void LoadOpponentDeck(u32);
-
+/* Campaign step 3: clear the duel state, then load and shuffle the player's and the opponent's decks.
+ * Returns 1. */
 u16 Campaign_SetupDuel(void)
 {
     Duel_Setup();
-    gDuelCtrl.unk1_0 = 0;
+    gDuelCtrl.isLinkDuel = 0;
     LoadPlayerDeckFromSave();
     ShuffleDeck(0, 8);
     LoadOpponentDeck(0);
@@ -125,369 +168,394 @@ u16 Campaign_SetupDuel(void)
     return 1;
 }
 
-int GetCampaignLevel(void);
-u32 IsPackUnlocked(u16);
-void RecordDuelWin(u32);
-void RecordDuelLoss(u32);
-void RecordDuelDraw(u32);
-
+/*
+ * Record the duel's win, loss or draw against gMain.opponent. If that raised the campaign level, set
+ * unlockNotices bit 0 (new opponents, text 350 on the next day); if it unlocked more of the Get Pack list,
+ * set bit 1 (text 351, shown by Campaign_GiveRewards).
+ */
 void Campaign_RecordDuelResult(void)
 {
-    int before = GetCampaignLevel();
+    /* Matching: compared as signed below, so GetCampaignLevel's u32 result is read as int. */
+    int levelBefore = GetCampaignLevel();
     u32 i;
-    int countBefore, countAfter;
+    int packsBefore, packsAfter;
 
-    for (i = 0, countBefore = 0; i <= 0x1B; i++) {
-        if (IsPackUnlocked(gPackDisplayOrder[i]))
-            countBefore++;
+    for (i = 0, packsBefore = 0; i < ARRAY_COUNT(gPackDisplayOrder); i++) {
+        if (IsPackUnlockedU32(gPackDisplayOrder[i]))
+            packsBefore++;
     }
     switch (gDuel.result) {
-    case 1:
+    case DUEL_RESULT_WIN:
         RecordDuelWin(gMain.opponent);
         break;
-    case 2:
+    case DUEL_RESULT_LOSE:
         RecordDuelLoss(gMain.opponent);
         break;
-    case 3:
+    case DUEL_RESULT_DRAW:
         RecordDuelDraw(gMain.opponent);
         break;
     }
-    if (GetCampaignLevel() > before)
-        gSaveData.unk2164 |= 1;
-    for (i = 0, countAfter = 0; i <= 0x1B; i++) {
-        if (IsPackUnlocked(gPackDisplayOrder[i]))
-            countAfter++;
+    if ((int)GetCampaignLevel() > levelBefore)
+        gSaveData.unlockNotices |= 1;
+    for (i = 0, packsAfter = 0; i < ARRAY_COUNT(gPackDisplayOrder); i++) {
+        if (IsPackUnlockedU32(gPackDisplayOrder[i]))
+            packsAfter++;
     }
-    if (countAfter > countBefore)
-        gSaveData.unk2164 |= 2;
+    if (packsAfter > packsBefore)
+        gSaveData.unlockNotices |= 2;
 }
 
-void StartDialogue(u16 textId);
-void PlayBGM(u16 bgm);
-u32 SideDeckSwap_Run(void);
-extern const u16 gUnk_08624CCE;
-extern const u16 gUnk_08624CD0;
-extern const u16 gUnk_08624CD2;
+/* Campaign_GiveRewards sub-steps (gMain.subStep). */
+enum {
+    REWARD_STEP_RECORD = 0,             /* Campaign_RecordDuelResult */
+    REWARD_STEP_CHOOSE = 1,             /* pick the prize from the result and gMain.events */
+    REWARD_STEP_NEW_PACKS_TEXT = 2,     /* text 351 if new packs were unlocked (skips to 4 if not) */
+    REWARD_STEP_WAIT_TEXT = 3,
+    REWARD_STEP_PICK_PACK = 4,          /* the regular pick-a-pack screen */
+    REWARD_STEP_TICKET = 0xA,           /* Championship: give the ticket, or take all three back */
+    REWARD_STEP_CHAMPION_PACK = 0xB,    /* Championship final: pack 509 */
+    REWARD_STEP_SHOW_TICKET = 0xC,      /* Card Detail of the ticket (and 0xD) */
+    REWARD_STEP_GRANDPA_CUP_TEXT = 0xE, /* then 0xF */
+    REWARD_STEP_GIVE_PACK = 0xF,        /* GetRewardPack(gMain.rewardPack) */
+    REWARD_STEP_LOSS_TEXT = 0x14,       /* tournament loss text, then done */
+    REWARD_STEP_SHOW_LOST_CARD = 0x16,  /* Card Detail of the card a Rare Hunter took (and 0x17) */
+    REWARD_STEP_RARE_HUNTER_TEXT = 0x18,
+    REWARD_STEP_DONE = 0x19,
+};
 
-u32 CB_GetPack(void);
-u32 GetRewardPack(u16 pack);
-u16 PickRandomOwnedRareCard(void);
-void RemoveCardFromTrunk(u16 card);
-void SaveGame(void);
-void AddCardToTrunk(u16 card);
-void IncrementChampionshipWins(void);
-void CardDetail_Init(u16 card, u16 b, u16 c);
-u16 CardDetail_Run(void);
-
-#define RESET_SEQ()             \
-    do {                        \
-        gMain.seqIndex1 = 0;    \
-        gMain.seqState1 = 0;    \
-        gMain.seqState2 = 0;    \
-    } while (0)
-
-/* Campaign step after the post-duel text: rewards (cards / booster packs). */
+/*
+ * Campaign step 6: record the duel, then hand out what the result earned. A won event duel gives a fixed
+ * pack (or a Championship ticket); a lost Rare Hunter duel costs a random rare card; any other win or loss
+ * goes on to the new-packs notice and the regular pick-a-pack screen. Returns 1 when done.
+ */
 u16 Campaign_GiveRewards(void)
 {
-    switch (gMain.step488A) {
-    case 0:
+    switch (gMain.subStep) {
+    case REWARD_STEP_RECORD:
         Campaign_RecordDuelResult();
-        gMain.step488A = 1;
+        gMain.subStep = REWARD_STEP_CHOOSE;
         return 0;
-    case 1:
+    case REWARD_STEP_CHOOSE:
         switch (gDuel.result) {
-        case 1:
-            RESET_SEQ();
+        case DUEL_RESULT_WIN:
+            RESET_SEQ_STATE();
             switch (gMain.events) {
-            case 0x1000000:
-                StartDialogue(0xC8);
-                gSaveData.unk215E++;
+            /* Championship rounds 1-3: a ticket for the next round (texts 200/202/204). */
+            case CAL_TOURNAMENT_ROUND1:
+                StartDialogue(200);
+                gSaveData.tournamentRound++;
                 gMain.rewardCard = gUnk_08624CD0;
-                gMain.step488A = 0xA;
+                gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
-            case 0x2000000:
-                StartDialogue(0xCA);
-                gSaveData.unk215E++;
+            case CAL_TOURNAMENT_ROUND2:
+                StartDialogue(202);
+                gSaveData.tournamentRound++;
                 gMain.rewardCard = gUnk_08624CCE;
-                gMain.step488A = 0xA;
+                gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
-            case 0x4000000:
-                StartDialogue(0xCC);
-                gSaveData.unk215E++;
+            case CAL_TOURNAMENT_SEMIFINAL:
+                StartDialogue(204);
+                gSaveData.tournamentRound++;
                 gMain.rewardCard = gUnk_08624CD2;
-                gMain.step488A = 0xA;
+                gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
-            case 0x8000000:
-                StartDialogue(0xCE);
-                gSaveData.unk215E = 0;
-                gSaveData.unk2162++;
+            /* Final (text 206): the champion title. championshipWins is also bumped by
+             * IncrementChampionshipWins in REWARD_STEP_TICKET (original behaviour). */
+            case CAL_TOURNAMENT_FINAL:
+                StartDialogue(206);
+                gSaveData.tournamentRound = 0;
+                gSaveData.championshipWins++;
                 gMain.rewardCard = 0;
-                gMain.step488A = 0xA;
+                gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
-            case 0x10000000:
-                gSaveData.unk2160 = 1;
-                gMain.rewardPack = 0x1F8;
-                gMain.step488A = 0xF;
+            case CAL_SUGOROKU_PRELIM:
+                gSaveData.sugorokuQualified = 1;
+                gMain.rewardPack = PACK_DUELIST_PACK;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x20000000:
-                StartDialogue(0x2BF);
-                gMain.rewardPack = 0x386;
-                gMain.step488A = 0xE;
+            case CAL_SUGOROKU_MATCH:
+                StartDialogue(703);
+                gMain.rewardPack = PACK_GRANDPA_CUP_PRIZE;
+                gMain.subStep = REWARD_STEP_GRANDPA_CUP_TEXT;
                 return 0;
-            case 0x800000:
-                gMain.rewardPack = 0x1FA;
-                gMain.step488A = 0xF;
+            case CAL_RARE_HUNTER:
+                gMain.rewardPack = PACK_RARE_SELECTIONS;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 1:
-            case 4:
-            case 0x400:
-            case 0x8000:
-                gMain.rewardPack = 0x1FD;
-                gMain.step488A = 0xF;
+            /* Holiday special duels (Campaign_StartPreDuelDialogue). */
+            case CAL_NEW_YEARS_DAY:
+            case CAL_GREENERY_DAY:
+            case CAL_EMPERORS_BIRTHDAY:
+            case CAL_MURAN_BIRTHDAY:
+                gMain.rewardPack = PACK_LIMITED_COLLECTION;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 2:
-                gMain.rewardPack = 5;
-                gMain.step488A = 0xF;
+            case CAL_FOUNDATION_DAY:
+                gMain.rewardPack = PACK_VOL_5;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 8:
-                gMain.rewardPack = 0x15;
-                gMain.step488A = 0xF;
+            case CAL_CONSTITUTION_DAY:
+                gMain.rewardPack = PACK_MAGIC_RULER;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x10:
-                gMain.rewardPack = 0xB;
-                gMain.step488A = 0xF;
+            case CAL_CITIZENS_HOLIDAY:
+                gMain.rewardPack = PACK_LOB_EWD;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x20:
-            case 0x200:
-            case 0x1000:
-                gMain.rewardPack = 0x1F9;
-                gMain.step488A = 0xF;
+            case CAL_CHILDRENS_DAY:
+            case CAL_LABOR_THANKSGIVING_DAY:
+            case CAL_SPORTS_DAY:
+                gMain.rewardPack = PACK_THE_FINAL_DUELIST;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x40:
-                gMain.rewardPack = 0xC;
-                gMain.step488A = 0xF;
+            case CAL_MARINE_DAY:
+                gMain.rewardPack = PACK_PHANTOM_OF_G;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x80:
-                gMain.rewardPack = 0x16;
-                gMain.step488A = 0xF;
+            case CAL_RESPECT_FOR_AGED_DAY:
+                gMain.rewardPack = PACK_PHARAOHS_SERVANT;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x100:
-                gMain.rewardPack = 0x17;
-                gMain.step488A = 0xF;
+            case CAL_CULTURE_DAY:
+                gMain.rewardPack = PACK_CURSE_OF_ANUBIS;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x800:
-                gMain.rewardPack = 4;
-                gMain.step488A = 0xF;
+            case CAL_COMING_OF_AGE_DAY:
+                gMain.rewardPack = PACK_VOL_4;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x2000:
-            case 0x4000:
-            case 0x10000:
-            case 0x20000:
-                gMain.rewardPack = 0x1FA;
-                gMain.step488A = 0xF;
+            case CAL_SPRING_DAY:
+            case CAL_AUTUMN_DAY:
+            case CAL_HALLOWEEN:
+            case CAL_CHRISTMAS_EVE:
+                gMain.rewardPack = PACK_RARE_SELECTIONS;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
-            case 0x40000:
-            case 0x80000:
-                gMain.rewardPack = 0x1F8;
-                gMain.step488A = 0xF;
+            case CAL_VALENTINES_DAY:
+            case CAL_WHITE_DAY:
+                gMain.rewardPack = PACK_DUELIST_PACK;
+                gMain.subStep = REWARD_STEP_GIVE_PACK;
                 return 0;
             }
-            gMain.step488A++;
+            gMain.subStep++;
             return 0;
-        case 2:
-            RESET_SEQ();
+        case DUEL_RESULT_LOSE:
+            RESET_SEQ_STATE();
             switch (gMain.events) {
-            case 0x800000:
+            /* Lost to a Ghoul (texts X001): the Rare Hunter takes one of the player's rare cards. */
+            case CAL_RARE_HUNTER:
                 switch (gMain.opponent) {
-                case 11: StartDialogue(0x2AF9); break;
-                case 12: StartDialogue(0x2EE1); break;
-                case 13: StartDialogue(0x32C9); break;
-                case 14: StartDialogue(0x36B1); break;
-                case 15: StartDialogue(0x3A99); break;
+                case DUELIST_RARE_HUNTER: StartDialogue(11001); break;
+                case DUELIST_ARKANA: StartDialogue(12001); break;
+                case DUELIST_STRINGS: StartDialogue(13001); break;
+                case DUELIST_UMBRA_LUMIS: StartDialogue(14001); break;
+                case DUELIST_MARIK: StartDialogue(15001); break;
                 }
-                gMain.step488A = 0x16;
+                gMain.subStep = REWARD_STEP_SHOW_LOST_CARD;
                 gMain.rewardCard = PickRandomOwnedRareCard();
                 RemoveCardFromTrunk(gMain.rewardCard);
                 SaveGame();
                 return 0;
-            case 0x1000000:
-            case 0x2000000:
-            case 0x4000000:
-            case 0x8000000:
-                gSaveData.unk215E = 0;
-            case 0x400000:
-            case 0x10000000:
-            case 0x20000000:
-                StartDialogue(0x12C);
-                gMain.step488A = 0x14;
+            /* A lost Championship round ends the year's tournament. */
+            case CAL_TOURNAMENT_ROUND1:
+            case CAL_TOURNAMENT_ROUND2:
+            case CAL_TOURNAMENT_SEMIFINAL:
+            case CAL_TOURNAMENT_FINAL:
+                gSaveData.tournamentRound = 0;
+                /* fall through */
+            case CAL_DUEL_CEREMONY:
+            case CAL_SUGOROKU_PRELIM:
+            case CAL_SUGOROKU_MATCH:
+                StartDialogue(300);
+                gMain.subStep = REWARD_STEP_LOSS_TEXT;
                 return 0;
             }
             break;
         }
         return 1;
-    case 2:
+    case REWARD_STEP_NEW_PACKS_TEXT:
         {
-            u16 flag = gSaveData.unk2164 & 2;
-            if (flag) {
-                gSaveData.unk2164 &= ~2;
-                StartDialogue(0x15F);
+            u16 newPacks = gSaveData.unlockNotices & 2;
+            if (newPacks) {
+                gSaveData.unlockNotices &= ~2;
+                StartDialogue(351);
             } else {
-                gMain.rewardPack = flag;
-                RESET_SEQ();
-                gMain.step488A++;
+                /* No notice: skip the text step; rewardPack 0 = the regular pack list. */
+                gMain.rewardPack = 0;
+                RESET_SEQ_STATE();
+                gMain.subStep++;
             }
         }
-        gMain.step488A++;
+        gMain.subStep++;
         return 0;
-    case 3:
-        if (CB_Bustup()) {
-            gMain.step488A++;
-            RESET_SEQ();
+    case REWARD_STEP_WAIT_TEXT:
+        if (CB_BustupU32()) {
+            gMain.subStep++;
+            RESET_SEQ_STATE();
         }
         return 0;
-    case 4:
+    case REWARD_STEP_PICK_PACK:
         return CB_GetPack();
-    case 0xA:
-        if (CB_Bustup()) {
+    case REWARD_STEP_TICKET:
+        if (CB_BustupU32()) {
             if (gMain.rewardCard) {
                 AddCardToTrunk(gMain.rewardCard);
                 SaveGame();
-                gMain.step488A = 0xC;
+                gMain.subStep = REWARD_STEP_SHOW_TICKET;
                 return 0;
             } else {
+                /* Champion: the three tickets are handed back. */
                 RemoveCardFromTrunk(gUnk_08624CCE);
                 RemoveCardFromTrunk(gUnk_08624CD0);
                 RemoveCardFromTrunk(gUnk_08624CD2);
                 IncrementChampionshipWins();
                 SaveGame();
-                RESET_SEQ();
-                gMain.step488A++;
+                RESET_SEQ_STATE();
+                gMain.subStep++;
             }
         }
         return 0;
-    case 0xB:
-        if (GetRewardPack(0x1FD)) {
-            RESET_SEQ();
-            gMain.step488A = 0x19;
+    case REWARD_STEP_CHAMPION_PACK:
+        if (GetRewardPack(PACK_LIMITED_COLLECTION)) {
+            RESET_SEQ_STATE();
+            gMain.subStep = REWARD_STEP_DONE;
             return 0;
         }
         return 0;
-    case 0xC:
+    case REWARD_STEP_SHOW_TICKET:
         CardDetail_Init(gMain.rewardCard, 0, 0);
-        gMain.step488A++;
-    case 0xD:
+        gMain.subStep++;
+        /* fall through */
+    case REWARD_STEP_SHOW_TICKET + 1:
         return CardDetail_Run();
-    case 0xE:
-        if (CB_Bustup()) {
-            RESET_SEQ();
-            gMain.step488A++;
+    case REWARD_STEP_GRANDPA_CUP_TEXT:
+        if (CB_BustupU32()) {
+            RESET_SEQ_STATE();
+            gMain.subStep++;
         }
         return 0;
-    case 0xF:
+    case REWARD_STEP_GIVE_PACK:
         return GetRewardPack(gMain.rewardPack);
-    case 0x14:
-        return CB_Bustup();
-    case 0x16:
+    case REWARD_STEP_LOSS_TEXT:
+        return CB_BustupU32();
+    case REWARD_STEP_SHOW_LOST_CARD:
         CardDetail_Init(gMain.rewardCard, 0, 0);
-        gMain.step488A++;
-    case 0x17:
+        gMain.subStep++;
+        /* fall through */
+    case REWARD_STEP_SHOW_LOST_CARD + 1:
         if (CardDetail_Run()) {
-            RESET_SEQ();
-            gMain.step488A++;
+            RESET_SEQ_STATE();
+            gMain.subStep++;
         }
         return 0;
-    case 0x18:
-        return CB_Bustup();
-    case 0x19:
+    case REWARD_STEP_RARE_HUNTER_TEXT:
+        return CB_BustupU32();
+    case REWARD_STEP_DONE:
+        /* Matching: written out so that the jump table has this last entry. */
         return 1;
     }
     return 1;
 }
 
+/* Campaign_ShowDuelResult sub-steps (gMain.subStep). */
+enum {
+    RESULT_STEP_START = 0,              /* score the match, start the result text */
+    RESULT_STEP_WAIT_RESULT_TEXT = 1,   /* the duel or match is over: wait, then return 1 */
+    RESULT_STEP_WAIT_MATCH_TEXT = 2,    /* open match: wait for the between-duels text */
+    RESULT_STEP_SIDE_DECK = 3,          /* side-deck swap, then the next-duel text */
+    RESULT_STEP_NEXT_DUEL = 4,          /* wait, then go back to CAMPAIGN_STEP_TURN_ORDER */
+};
 
+/*
+ * Campaign step 5 (nothing for opponents 0, 25 and 31). In a match (DUEL_FORMAT_MATCH, best of 3) each duel adds
+ * +1 (win) or -1 (loss) to gMain.matchScore: after two duels a score of +-2 decides, after three the sign
+ * does (0 is a draw), and gDuel.result becomes the match result, so the rewards are for the match. A
+ * decided match or a single duel shows the opponent's win/lose/draw text (Rare Hunters have their own) and
+ * returns 1. An open match shows a between-duels text, runs the side-deck swap and the next-duel text, sets
+ * opponentFixed and goes back 3 steps, to CAMPAIGN_STEP_TURN_ORDER.
+ */
 u16 Campaign_ShowDuelResult(void)
 {
     s32 opp = gMain.opponent;
     u16 text;
-    int done;
+    int matchDecided;
 
     switch (opp) {
     case 0:
-    case 0x19:
-    case 0x1F:
+    case 25:
+    case 31:
         return 1;
     }
     text = gOpponentFirstMeetingText[opp];
-    switch (gMain.step488A) {
-    case 0:
-        done = 0;
-        if (gMainBits.unk4888_2 == 1) {
-            done = 1;
+    switch (gMain.subStep) {
+    case RESULT_STEP_START:
+        matchDecided = 0;
+        if (gMain.duelFormat == DUEL_FORMAT_SINGLE) {
+            matchDecided = 1;
         } else {
             switch (gDuel.result) {
-            case 1:
-                gMain.score++;
+            case DUEL_RESULT_WIN:
+                gMain.matchScore++;
                 break;
-            case 2:
-                gMain.score--;
+            case DUEL_RESULT_LOSE:
+                gMain.matchScore--;
                 break;
-            case 3:
+            case DUEL_RESULT_DRAW:
+                /* Matching: the empty case keeps the ROM's compare tree. */
                 break;
             }
-            gMain.counter4888++;
-            switch (gMain.counter4888) {
+            gMain.matchDuelCount++;
+            switch (gMain.matchDuelCount) {
             case 3:
-                if (gMain.score < 0)
-                    gDuel.result = 2;
-                if (gMain.score > 0)
-                    gDuel.result = 1;
-                if (gMain.score == 0)
-                    gDuel.result = 3;
-                done = 1;
+                if (gMain.matchScore < 0)
+                    gDuel.result = DUEL_RESULT_LOSE;
+                if (gMain.matchScore > 0)
+                    gDuel.result = DUEL_RESULT_WIN;
+                if (gMain.matchScore == 0)
+                    gDuel.result = DUEL_RESULT_DRAW;
+                matchDecided = 1;
                 break;
             case 2:
-                switch (gMain.score) {
+                switch (gMain.matchScore) {
                 case -2:
-                    gDuel.result = 2;
-                    done = 1;
+                    gDuel.result = DUEL_RESULT_LOSE;
+                    matchDecided = 1;
                     break;
                 case 2:
-                    gDuel.result = 1;
-                    done = 1;
+                    gDuel.result = DUEL_RESULT_WIN;
+                    matchDecided = 1;
                     break;
                 }
                 break;
             }
         }
-        if (!done) {
+        if (!matchDecided) {
             switch (gDuel.result) {
-            case 1:
-                StartDialogue(gOpponentResultTexts[opp].unk6);
+            case DUEL_RESULT_WIN:
+                StartDialogue(gOpponentResultTexts[opp].matchDuelWon);
                 break;
-            case 2:
-                StartDialogue(gOpponentResultTexts[opp].unk8);
+            case DUEL_RESULT_LOSE:
+                StartDialogue(gOpponentResultTexts[opp].matchDuelNotWon);
                 break;
-            case 3:
-                StartDialogue(gOpponentResultTexts[opp].unk8);
+            case DUEL_RESULT_DRAW:
+                StartDialogue(gOpponentResultTexts[opp].matchDuelNotWon);
                 break;
             }
-            gMain.seqIndex1 = 0;
-            gMain.seqState1 = 0;
-            gMain.seqState2 = 0;
-            gMain.step488A++;
-            gMain.step488A++;
+            RESET_SEQ_STATE();
+            gMain.subStep++;
+            gMain.subStep++;
             PlayBGM(0x15);
             return 0;
         }
-    show:
         switch (gDuel.result) {
-        case 1:
-            switch (gSaveData.opponents[opp].unk0_0) {
+        case DUEL_RESULT_WIN:
+            /* The 5th and the 10th win get their own text (wins counts the earlier ones). */
+            switch (gSaveData.duelRecords[opp].wins) {
             case 4:
-                text = gOpponentResultTexts[opp].winAlt4;
+                text = gOpponentResultTexts[opp].win5th;
                 break;
             case 9:
-                text = gOpponentResultTexts[opp].winAlt9;
+                text = gOpponentResultTexts[opp].win10th;
                 break;
             default:
                 text = gOpponentResultTexts[opp].win;
@@ -495,78 +563,71 @@ u16 Campaign_ShowDuelResult(void)
             }
             PlayBGM(0x18);
             break;
-        case 2:
+        case DUEL_RESULT_LOSE:
             text = gOpponentResultTexts[opp].lose;
-            if (gMain.events == 0x800000)
+            if (gMain.events == CAL_RARE_HUNTER)
                 PlayBGM(0x1C);
             else
                 PlayBGM(0x19);
             break;
-        case 3:
+        case DUEL_RESULT_DRAW:
             text = gOpponentResultTexts[opp].draw;
             PlayBGM(0x19);
             break;
         }
-        if (gMain.events == 0x800000) {
+        /* Rare Hunter event: the Ghoul's own texts (X003 after a win, X000 otherwise). */
+        if (gMain.events == CAL_RARE_HUNTER) {
             switch (gDuel.result) {
-            case 1:
+            case DUEL_RESULT_WIN:
                 switch (opp) {
-                case 11: text = 0x2AFB; break;
-                case 12: text = 0x2EE3; break;
-                case 13: text = 0x32CB; break;
-                case 14: text = 0x36B3; break;
-                case 15: text = 0x3A9B; break;
+                case DUELIST_RARE_HUNTER: text = 11003; break;
+                case DUELIST_ARKANA: text = 12003; break;
+                case DUELIST_STRINGS: text = 13003; break;
+                case DUELIST_UMBRA_LUMIS: text = 14003; break;
+                case DUELIST_MARIK: text = 15003; break;
                 }
                 break;
             default:
                 switch (opp) {
-                case 11: text = 0x2AF8; break;
-                case 12: text = 0x2EE0; break;
-                case 13: text = 0x32C8; break;
-                case 14: text = 0x36B0; break;
-                case 15: text = 0x3A98; break;
+                case DUELIST_RARE_HUNTER: text = 11000; break;
+                case DUELIST_ARKANA: text = 12000; break;
+                case DUELIST_STRINGS: text = 13000; break;
+                case DUELIST_UMBRA_LUMIS: text = 14000; break;
+                case DUELIST_MARIK: text = 15000; break;
                 }
                 break;
             }
         }
         StartDialogue(text);
-        gMain.seqIndex1 = 0;
-        gMain.seqState1 = 0;
-        gMain.seqState2 = 0;
-        gMain.step488A++;
-    case 1:
-        if (CB_Bustup())
+        RESET_SEQ_STATE();
+        gMain.subStep++;
+        /* fall through */
+    case RESULT_STEP_WAIT_RESULT_TEXT:
+        if (CB_BustupU32())
             return 1;
         break;
-    case 2:
-        if (CB_Bustup()) {
-            gMain.seqIndex1 = 0;
-            gMain.seqState1 = 0;
-            gMain.seqState2 = 0;
-            gMainBits.skipScript = 1;
-            gMain.step488A++;
+    case RESULT_STEP_WAIT_MATCH_TEXT:
+        if (CB_BustupU32()) {
+            RESET_SEQ_STATE();
+            gMain.opponentFixed = 1;
+            gMain.subStep++;
         }
         break;
-    case 3:
-        if (SideDeckSwap_Run()) {
+    case RESULT_STEP_SIDE_DECK:
+        if (SideDeckSwap_RunU32()) {
             StartDialogue(gOpponentNextMatchDuelText[opp]);
-            gMain.seqIndex1 = 0;
-            gMain.seqState1 = 0;
-            gMain.seqState2 = 0;
-            gMain.step488A++;
+            RESET_SEQ_STATE();
+            gMain.subStep++;
         }
         break;
-    case 4:
-        if (CB_Bustup()) {
-            gMain.seqIndexCampaign -= 3;
-            gMain.step488A = 0;
+    case RESULT_STEP_NEXT_DUEL:
+        if (CB_BustupU32()) {
+            gMain.seqIndexCampaign -= CAMPAIGN_STEP_RESULT - CAMPAIGN_STEP_TURN_ORDER;
+            gMain.subStep = 0;
             gMain.seqState0 = 0;
-            gMain.seqIndex1 = 0;
-            gMain.seqState1 = 0;
-            gMain.seqState2 = 0;
+            RESET_SEQ_STATE();
         }
         break;
     }
     return 0;
 }
-

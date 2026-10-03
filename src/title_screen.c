@@ -1,176 +1,93 @@
+/*
+ * title_screen (0x080044E4-0x080054FF): calendar events and date conversion, the New Game starter-deck
+ * builder, the boot license screens and most of the title screen.
+ *
+ * Boot: GameInit installs CB_License, which runs gLicenseSteps (Nintendo notice, Konami logo, KCEJ logo); the
+ * last step installs CB_Title (title_menu.c), which runs gTitleSteps. Steps 0-4 of that table are here:
+ * Title_Init, Title_Setup, Title_FadeIn, Title_HandleInput and Title_FadeOut (enum TitleStep).
+ */
 #include "global.h"
-
 #include "gba.h"
-
-/* gMain: the big system struct at 0x03000040 (see wiki ram-map). */
-struct Main {
-    u32 rngState;                       /* 0x0000 */
-    u16 heldKeys;                       /* 0x0004 */
-    u16 newKeys;                        /* 0x0006 */
-    u16 prevKeys;                       /* 0x0008 */
-    u16 keyRepeatTimer;                 /* 0x000A */
-    u8 intrMainBuf[0x400];              /* 0x000C */
-    u16 intrCheck;                      /* 0x040C */
-    u16 vblankFlags;                    /* 0x040E */
-    u16 (*callback)(void);              /* 0x0410 */
-    void (*vblankCallback)(void);       /* 0x0414 */
-    void (*vblankCallbackEarly)(void);  /* 0x0418 */
-    u16 bgMapBuffer[8][0x400];          /* 0x041C */
-    u16 unk441C;                        /* 0x441C */
-    u16 unk441E;                        /* 0x441E */
-    u16 bgVofs[4];                      /* 0x4420 */
-    u16 bgHofs[4];                      /* 0x4428 */
-    u8 oamBuffer[0x400];                /* 0x4430 */
-    u8 oamCount;                        /* 0x4830 */
-    u8 unk4831;                         /* 0x4831 */
-    u8 brightness;                      /* 0x4832 */
-    u8 unk4833;                         /* 0x4833 */
-    u16 unk4834;                        /* 0x4834 */
-    u16 hblankScroll[16];               /* 0x4836 */
-    u8 unk4856;                         /* 0x4856 */
-    u8 seqIndexCampaign;                /* 0x4857 */
-    u8 seqState0;                       /* 0x4858 */
-    u8 seqIndex1;                       /* 0x4859 */
-    u8 seqState1;                       /* 0x485A */
-    u8 seqState2;                       /* 0x485B */
-    u16 currentBgm;                     /* 0x485C */
-    u16 frameCounter;                   /* 0x485E */
-    u8 frameCounter8;                   /* 0x4860 */
-    u8 vblankCounter8;                  /* 0x4861 */
-    u16 unk4862;                        /* 0x4862 */
-    u16 vblankCounter;                  /* 0x4864 */
-    u16 lagCounter;                     /* 0x4866 */
-    u16 lastSeFrame;                    /* 0x4868 */
-    u8 filler486A[0x4878 - 0x486A];     /* 0x486A */
-    u8 seqIndexTop;                     /* 0x4878 */
-    u8 unk4879;                         /* 0x4879 */
-    u8 unk487A;                         /* 0x487A */
-};
-
-/* gTitleState at 0x0201527C */
-struct TitleState {
-    u16 scroll;                         /* 0x0: BG3 scroll, decremented each frame */
-    u16 savePresent : 1;                 /* 0x2 bit 0 */
-    u16 continueSelected : 1;            /* 0x2 bit 1 */
-};
-
-extern struct Main gMain;
-#define gMain gMain
-extern struct TitleState gTitleState;
-#define gTitleState gTitleState
-/* gSaveData at 0x02011C20 (0x2170-byte save image) */
-struct SaveData {
-    u8 filler0[0x2150];
-    u16 days;                           /* 0x2150: in-game calendar day count (hypothesis) */
-    u8 filler2152[0x215E - 0x2152];
-    u16 unk215E;                        /* 0x215E: unlock counter (hypothesis) */
-    u16 unk2160;                        /* 0x2160 */
-};
-extern struct SaveData gSaveData;
-#define gSaveData gSaveData
-
-extern u16 (*const gLicenseSteps[])(void);
-extern const u8 gKonamiLogoImage[];
-extern const u8 gTitleCopyrightImage[];
-/* IWRAM 0x03000000: interrupt vectors (hypothesis: +4 = HBlank callback) */
-struct IntrVectors {
-    u32 unk0;
-    void (*hblankCallback)(void);
-};
-extern struct IntrVectors IntrTable;
-u16 FadeFromBlack(u16 step);
-u16 CB_Title(void);
-s32 StrLen(const u8 *str); /* StrLen */
-void TextDrawString(s32 x, s32 y, u16 color, const u8 *str); /* DrawText (hypothesis) */
-void TextCanvasToTiles(void *dest, u16 b);
-void TextCanvasInit(u8 a, u8 b);
-extern const u8 gKcejLogoImage[];
-
-/* Starting-deck card pool (0x08198744, 11 entries). See [[deck-lists]]. */
-struct DeckPool {
-    const u16 *cards;
-    u32 count:10;       /* cards in the pool */
-    u32 take0:5;        /* copies drawn for starting choice 0 */
-    u32 take1:5;        /* ... choice 1 */
-    u32 take2:5;        /* ... choice 2 */
-};
-extern const struct DeckPool gStarterDeckPools[];
-extern const u16 gCardNumberToId[]; /* card ID to card index */
-extern const u8 gStrStarterDeckErrorFmt[];
-s32 Random(void); /* Random */
-void AddCardToSavedDeck(u16 card);
-void DebugPrintf(const u8 *fmt, u32 arg);
-void DebugPrintFlush(void);
-
-/* Converts a card ID (0..1999 and 2000+) to a card index; 0xFFFF maps to 0. Inlined wherever it appears. */
-static inline u16 CardIdToIndex(u16 id)
-{
-    if (id == 0xFFFF)
-        return 0;
-    if (id < 2000) {
-        /* FAKEMATCH: keep the initialized lookup mask and its working copy
-         * separate, then add the table to the already scaled byte offset. */
-        register u32 mask asm("r3") = 0x7FF;
-        register u32 copy asm("r1") = mask;
-        u32 off;
-        register const u16 *table asm("r4");
-
-        asm("" : : "r"(mask));
-        off = (id & copy) * 2;
-        table = gCardNumberToId;
-        off += (u32)table;
-        return *(const u16 *)off;
-    }
-    {
-        u32 off = ((id - 2000) & 0x7FF) * 2;
-        /* FAKEMATCH: the alternate-ID path uses a separate table scratch. */
-        register const u16 *table asm("r3");
-
-        table = gCardNumberToId;
-        off += (u32)table;
-        return *(const u16 *)off + 1;
-    }
-}
-extern const u8 gStrLicensedByNintendo[];
-void LoadBgImage4bpp(u16 a, u16 b, u16 c, const void *img);
-
-u32 GetDayOfWeek(u32 year, u32 month, u32 day); /* day of week */
-u32 IsLeapYear(u32 year);
-u32 GetHolidayFlags(u32 year, u32 month, u32 day);
-u32 IsDayOff(u32 a, u32 b, u32 c);
-/* Unpacked date */
-struct Date {
-    u32 year:12;
-    u32 month:4;
-    u32 day:5;
-    u32 weekday:3;
-};
-void DayCountToDate(struct Date *date, u16 days);
-extern const u8 gDaysPerMonth[]; /* days per month */
-void Title_DrawMenu(void);
-void Title_InitBgCnt(void);
-void Title_LoadGraphics(void);
-void LoadBgImage(u16 mapBase, u16 palIdx, u16 tileBase, const void *img);
-void ClearBgMapBuffers(void);
-void ResetVideo(void);
-void MemClear16(void *dst, u32 size);
-void ResetBgScroll(void);
-void SetBrightnessBlack(void);
-void SetBrightnessWhite(void);
-u16 FadeToBlack(u16 step);
-u16 FadeToWhite(u16 step);
-u16 FadeFromWhite(u16 step);
-void AddSprite(u32 yx, u16 shapeSize, u16 attr2);
-u32 IsSaveChecksumValid(void);
-void PlaySE(u16 id);
-void PlayBGMNoTrack(u16 id);
-void FadeOutBGM(void);
+#include "main.h"
+#include "sound.h"
+#include "constants/sound.h"
+#include "util.h"
+#include "palette.h"
+#include "bg.h"
+#include "sprite.h"
+#include "text.h"
+#include "save.h"
+#include "debug.h"
+#include "card_data.h"
+#include "booster.h"
+#include "calendar.h"
+#include "title_screen.h"
 
 /*
- * Returns a bitmask of restrictions/flags for the calendar entry (arg0, arg1, arg2),
- * which is a year, a month and a day-like value. Starts from GetHolidayFlags()'s flags and
- * ORs in bits per case, then checks surrounding days via IsDayOff (day-info) and
- * the save-data unlock counters.
+ * Until step H0 of the header plan installs the new gba.h, main.h and sound.h (build/readability/HEADERS.md),
+ * include/ holds the legacy versions, which lack these names. The fallbacks repeat the staged headers'
+ * values and prototypes; delete this block after H0. The legacy main.h also types gMain.callback as
+ * void (*)(void), so the CB_Title store in License_ShowKcejLogo warns until then.
+ */
+#ifndef DISPCNT_BG0_ON
+#define DISPCNT_BG0_ON          0x0100
+#define DISPCNT_BG1_ON          0x0200
+#define DISPCNT_BG2_ON          0x0400
+#define DISPCNT_BG3_ON          0x0800
+#define DISPCNT_OBJ_ON          0x1000
+#define BGCNT_PRIORITY(n)       (n)
+#define BGCNT_CHARBASE(n)       ((n) << 2)
+#define BGCNT_256COLOR          0x0080
+#define BGCNT_SCREENBASE(n)     ((n) << 8)
+#define INTR_FLAG_HBLANK        0x0002
+#define INTR_SLOT_HBLANK        1
+#define VBLANK_COPY_OAM         0x1
+#define VBLANK_COPY_BG_MAPS     0x2
+extern void (*IntrTable[16])(void);
+void ResetBgScroll(void);
+void PlaySE(u32 seId);
+void PlayBGMNoTrack(u32 songId);
+void FadeOutBGM(void);
+#endif
+
+/* Matching: this unit calls the fades as returning u16, so each caller truncates the result (lsls #16) before
+ * testing or returning it. palette.h has the definitions' u32 return. */
+u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
+u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
+u16 FadeToWhiteU16(s32 step) asm("FadeToWhite");
+u16 FadeFromWhiteU16(s32 step) asm("FadeFromWhite");
+
+/* The HBlank IRQ (IntrTable slot and IE bit), changed with IME off. */
+#define DISABLE_HBLANK_INTR() (REG_IME = 0, REG_IE &= ~INTR_FLAG_HBLANK, REG_IME = 1)
+#define SET_HBLANK_HANDLER(handler) \
+    (REG_IME = 0, REG_IE &= ~INTR_FLAG_HBLANK, IntrTable[INTR_SLOT_HBLANK] = (handler), REG_IME = 1)
+#define ENABLE_HBLANK_INTR() (REG_IME = 0, REG_IE |= INTR_FLAG_HBLANK, REG_IME = 1)
+
+/* Font size and colour index packed for the sizeColor argument of the TextDraw* functions (text.h). */
+#define TEXT_SIZE_COLOR(size, color) (((size) << 8) | (color))
+
+/* ROM data used only by this unit. The image packs are declared u16 because the bg.h loaders take a
+ * (non-const) u16 *. */
+extern u16 (*const gLicenseSteps[])(void);              /* 0x0819879C: the 4 License_* steps, NULL */
+extern const char gStrLicensedByNintendo[];             /* 0x080813F0 */
+extern u16 gKonamiLogoImage[];                          /* 0x087D01F4: 8bpp image pack */
+extern u16 gKcejLogoImage[];                            /* 0x087D292C: 8bpp image pack */
+extern const struct StarterDeckPool gStarterDeckPools[];/* 0x08198744: 11 pools */
+extern const char gStrStarterDeckErrorFmt[];            /* 0x080813E4: debug message for an unknown card number */
+extern const char gStrNewGame[];                        /* 0x08081408 */
+extern const char gStrContinue[];                       /* 0x08081414 */
+extern const u16 gTitleLogoWave[];                      /* 0x08198830: 16 BG1 HOFS values (Title_HBlank) */
+extern u16 gTitleLogoImage[];                           /* 0x087BDAA8: 8bpp, the logo (BG0) */
+extern u16 gTitleFlameImage[];                          /* 0x087C1DCC: 4bpp, the flames (BG1) */
+extern u16 gTitleCoinImage[];                           /* 0x087C0CD4: 4bpp, the coin (BG2) */
+extern u16 gTitleGridImage[];                           /* 0x0867DFCC: 4bpp, one 4x4-tile block of the BG3 grid */
+extern u16 gTitleCopyrightImage[];                      /* 0x087C056C: 4bpp, "(c)1996 KAZUKI TAKAHASHI" line */
+
+/* ---- Calendar ---- */
+
+/*
+ * 1-based week of the month of a date. The two GetDayOfWeek calls are discarded, but the ROM makes them.
+ * GetWeekOfMonth below is the same body out of line; GetCalendarEvents only matches with this inline copy.
  */
 static inline u32 WeekOfMonth(u32 year, u32 month, u32 day)
 {
@@ -179,104 +96,122 @@ static inline u32 WeekOfMonth(u32 year, u32 month, u32 day)
     return (day - 1) / 7 + 1;
 }
 
+/* IsDayOff tested through the low halfword of its result, as the ROM does (lsl #16). */
+#define IS_DAY_OFF(year, month, day) ((IsDayOff(year, month, day) << 16) != 0)
+
+/*
+ * Returns the CalendarEvent bits of a date: GetHolidayFlags' holiday bits, the seasonal days, the June
+ * SUGOROKU and November tournament duels (the later rounds gated by save progress), the Duel Ceremony
+ * Saturdays and, unless the date is itself a day off, the Weekly Jump and V Jump release days, which move
+ * earlier when their usual day is off.
+ */
 u32 GetCalendarEvents(u32 year, u32 month, u32 day)
 {
-    u32 bit20, bit21;
+    u32 weeklyJump, vJump;
     u32 flags = GetHolidayFlags(year, month, day);
 
-    switch (month - 2) {
-    case 0:
-        if (day == 0xE)
-            flags |= 0x40000;
+    switch (month) {
+    case 2:
+        if (day == 14)
+            flags |= CAL_VALENTINES_DAY;
         break;
-    case 1:
-        if (day == 0xE)
-            flags |= 0x80000;
+    case 3:
+        if (day == 14)
+            flags |= CAL_WHITE_DAY;
         break;
-    case 4:
-        if (day == 0x1C)
-            flags |= 0x8000;
-        if (WeekOfMonth(year, month, day) == 1 && GetDayOfWeek(year, month, day) == 6)
-            flags |= 0x10000000;
-        if (WeekOfMonth(year, month, day - 1) == 1 && GetDayOfWeek(year, month, day - 1) == 6
-            && gSaveData.unk2160 != 0)
-            flags |= 0x20000000;
+    case 6:
+        if (day == 28)
+            flags |= CAL_MURAN_BIRTHDAY;
+        /* SUGOROKU prelim on the first Saturday; the match the next day, if the player won the prelim. */
+        if (WeekOfMonth(year, month, day) == 1 && GetDayOfWeek(year, month, day) == WEEKDAY_SATURDAY)
+            flags |= CAL_SUGOROKU_PRELIM;
+        if (WeekOfMonth(year, month, day - 1) == 1 && GetDayOfWeek(year, month, day - 1) == WEEKDAY_SATURDAY
+            && gSaveData.sugorokuQualified != 0)
+            flags |= CAL_SUGOROKU_MATCH;
         break;
-    case 8:
-        if (day == 0x1F)
-            flags |= 0x10000;
+    case 10:
+        if (day == 31)
+            flags |= CAL_HALLOWEEN;
         break;
-    case 9:
-        if (GetDayOfWeek(year, month, day) == 0) {
+    case 11:
+        /* Tournament on the first four Sundays; each later round needs the previous one won. */
+        if (GetDayOfWeek(year, month, day) == WEEKDAY_SUNDAY) {
             switch (WeekOfMonth(year, month, day)) {
             case 1:
-                flags |= 0x1000000;
+                flags |= CAL_TOURNAMENT_ROUND1;
                 break;
             case 2:
-                if (gSaveData.unk215E != 0)
-                    flags |= 0x2000000;
+                if (gSaveData.tournamentRound != 0)
+                    flags |= CAL_TOURNAMENT_ROUND2;
                 break;
             case 3:
-                if (gSaveData.unk215E > 1)
-                    flags |= 0x4000000;
+                if (gSaveData.tournamentRound > 1)
+                    flags |= CAL_TOURNAMENT_SEMIFINAL;
                 break;
             case 4:
-                if (gSaveData.unk215E > 2)
-                    flags |= 0x8000000;
+                if (gSaveData.tournamentRound > 2)
+                    flags |= CAL_TOURNAMENT_FINAL;
                 break;
             }
         }
         break;
-    case 10:
-        if (day == 0x18)
-            flags |= 0x20000;
+    case 12:
+        if (day == 24)
+            flags |= CAL_CHRISTMAS_EVE;
         break;
     }
-    if (GetDayOfWeek(year, month, day) == 6) {
-        u32 v = WeekOfMonth(year, month, day);
-        if (v == 2 || v == 4)
-            flags |= 0x400000;
+    if (GetDayOfWeek(year, month, day) == WEEKDAY_SATURDAY) {
+        u32 week = WeekOfMonth(year, month, day);
+        if (week == 2 || week == 4)
+            flags |= CAL_DUEL_CEREMONY;
     }
-    /* The shared exit keeps flags at one return use, which lets month win r6 over flags. */
-    if ((IsDayOff(year, month, day) << 16) != 0)
+    /* No magazine on a day off. The shared exit keeps one use of flags at the return, which lets month win
+     * r6 over flags. */
+    if (IS_DAY_OFF(year, month, day))
         goto end;
-    bit20 = 0;
-    bit21 = 0;
-    if (GetDayOfWeek(year, month, day) == 2
-        && (year > 0x7D1 || month > 1 || day > 2))
-        bit20 = 1;
-    if (GetDayOfWeek(year, month, day) == 1
-        && (IsDayOff(year, month, day + 1) << 16) != 0)
-        bit20 = 1;
-    if (GetDayOfWeek(year, month, day) == 6
-        && (IsDayOff(year, month, day + 2) << 16) != 0
-        && (IsDayOff(year, month, day + 3) << 16) != 0)
-        bit20 = 1;
-    if (bit20 != 0)
-        flags |= 0x100000;
-    if (day == 0x15)
-        bit21 = 1;
-    if (day == 0x14 && (IsDayOff(year, month, 0x15) << 16) != 0)
-        bit21 = 1;
-    if (day == 0x13 && (IsDayOff(year, month, 0x14) << 16) != 0
-        && (IsDayOff(year, month, 0x15) << 16) != 0)
-        bit21 = 1;
-    if (day == 0x12 && (IsDayOff(year, month, 0x13) << 16) != 0
-        && (IsDayOff(year, month, 0x14) << 16) != 0
-        && (IsDayOff(year, month, 0x15) << 16) != 0)
-        bit21 = 1;
-    if (bit21 != 0)
-        flags |= 0x200000;
+    weeklyJump = 0;
+    vJump = 0;
+    /* Weekly Jump: Tuesdays (except 2001-01-02, day 1 of the game); Monday if Tuesday is off; Saturday if
+     * Monday and Tuesday are both off. */
+    if (GetDayOfWeek(year, month, day) == WEEKDAY_TUESDAY
+        && (year > 2001 || month > 1 || day > 2))
+        weeklyJump = 1;
+    if (GetDayOfWeek(year, month, day) == WEEKDAY_MONDAY
+        && IS_DAY_OFF(year, month, day + 1))
+        weeklyJump = 1;
+    if (GetDayOfWeek(year, month, day) == WEEKDAY_SATURDAY
+        && IS_DAY_OFF(year, month, day + 2)
+        && IS_DAY_OFF(year, month, day + 3))
+        weeklyJump = 1;
+    if (weeklyJump != 0)
+        flags |= CAL_WEEKLY_JUMP;
+    /* V Jump: the 21st, or the last working day before it (back to the 18th). */
+    if (day == 21)
+        vJump = 1;
+    if (day == 20 && IS_DAY_OFF(year, month, 21))
+        vJump = 1;
+    if (day == 19 && IS_DAY_OFF(year, month, 20)
+        && IS_DAY_OFF(year, month, 21))
+        vJump = 1;
+    if (day == 18 && IS_DAY_OFF(year, month, 19)
+        && IS_DAY_OFF(year, month, 20)
+        && IS_DAY_OFF(year, month, 21))
+        vJump = 1;
+    if (vJump != 0)
+        flags |= CAL_V_JUMP;
 end:
     return flags;
 }
 
-/* Converts a day count (day 0 = 2001-01-01) into a packed date plus weekday.
- * Day 36524 (2100-02-29, not a leap day) is skipped. */
+/*
+ * Unpacks a day count (day 0 = 2001-01-01) into year, month, day and weekday, in 1461-day (4-year) cycles
+ * whose last year is a leap year. 2100 is not one, so from day 36524 (2101-01-01) on the count moves on by
+ * one day, skipping the 366th day the cycle would give 2100.
+ */
 void DayCountToDate(struct Date *date, u16 days)
 {
     u16 year, month;
-    s32 monthLen = 31;
+    s32 monthLength = 31;
 
     if (days > 36523)
         days++;
@@ -284,90 +219,136 @@ void DayCountToDate(struct Date *date, u16 days)
     days = days % 1461;
     year += days / 365 + 2001;
     if (days == 1460) {
+        /* Dec 31 of the cycle's leap year (day 366) */
         days = 365;
         year--;
     } else {
         days = days % 365;
     }
     month = 0;
-    while (days >= monthLen) {
-        days -= monthLen;
+    while (days >= monthLength) {
+        days -= monthLength;
         month++;
-        monthLen = gDaysPerMonth[month];
+        monthLength = gDaysPerMonth[month];
         if (month == 1)
-            monthLen += IsLeapYear(year);
+            monthLength += IsLeapYear(year);
     }
     date->year = year;
     date->month = month + 1;
     date->day = days + 1;
     date->weekday = GetDayOfWeek(year, month + 1, days + 1);
-    if (date->day == 0)
+    if (date->day == 0) /* the 5-bit field wrapped; never for a valid day count */
         date->day++;
 }
+
+/* Today's in-game date. */
 void GetCurrentDate(struct Date *date)
 {
     DayCountToDate(date, gSaveData.days);
 }
 
-u32 GetWeekOfMonth(u32 a, u32 b, u32 c)
+/* 1-based week of the month, (day - 1) / 7 + 1. Unreferenced out-of-line copy of WeekOfMonth. */
+u32 GetWeekOfMonth(u32 year, u32 month, u32 day)
 {
-    GetDayOfWeek(a, b, 1);
-    GetDayOfWeek(a, b, c);
-    return (c - 1) / 7 + 1;
+    GetDayOfWeek(year, month, 1);
+    GetDayOfWeek(year, month, day);
+    return (day - 1) / 7 + 1;
 }
 
-/* Builds the starting deck for `choice` (choice % 3) by shuffling each of the 11 pools
- * and adding the first take<n> cards of each. The scene supplies choice 0..2. */
+/* ---- New Game starter deck ---- */
+
+/*
+ * Card number to card ID through gCardNumberToId: 0xFFFF (no card) gives 0, and an alternate-art number
+ * (2000 + n) gives the ID of n plus 1.
+ */
+static inline u16 CardNumberToId(u16 number)
+{
+    if (number == 0xFFFF)
+        return 0;
+    if (number < CARD_NUMBER_ALT_ART) {
+        /* FAKEMATCH: keep the initialized lookup mask and its working copy
+         * separate, then add the table to the already scaled byte offset. */
+        register u32 mask asm("r3") = 0x7FF;
+        register u32 copy asm("r1") = mask;
+        u32 off;
+        register const u16 *table asm("r4");
+
+        asm("" : : "r"(mask));
+        off = (number & copy) * 2;
+        table = gCardNumberToId;
+        off += (u32)table;
+        return *(const u16 *)off;
+    }
+    {
+        u32 off = ((number - CARD_NUMBER_ALT_ART) & 0x7FF) * 2;
+        /* FAKEMATCH: the alternate-art path uses a separate table scratch. */
+        register const u16 *table asm("r3");
+
+        table = gCardNumberToId;
+        off += (u32)table;
+        return *(const u16 *)off + 1;
+    }
+}
+
+/*
+ * Builds the starting deck for `choice` (enum StarterDeck, taken % 3): shuffles each of the 11
+ * gStarterDeckPools (count * 4 random swaps) and adds its first pick0/pick1/pick2 cards to the saved deck.
+ * A card number with no card ID goes to DebugPrintf (a stub in the retail game) instead.
+ */
 void BuildStarterDeck(s32 choice)
 {
-    u16 buf[64];
-    const struct DeckPool *pool = gStarterDeckPools;
-    u32 p;
-    s32 i, n;
+    u16 cards[64];
+    const struct StarterDeckPool *pool = gStarterDeckPools;
+    u32 poolIndex;
+    s32 i, picks;
 
-    for (p = 0; p <= 10; pool++, p++) {
+    for (poolIndex = 0; poolIndex <= 10; pool++, poolIndex++) {
         const u16 *src = pool->cards;
 
         for (i = 0; i < pool->count; i++)
-            buf[i] = src[i];
+            cards[i] = src[i];
         for (i = 0; i < pool->count * 4; i++) {
             s32 a = Random() % pool->count;
             s32 b = Random() % pool->count;
-            u16 t = buf[a];
-            buf[a] = buf[b];
-            buf[b] = t;
+            u16 tmp = cards[a];
+            cards[a] = cards[b];
+            cards[b] = tmp;
         }
+        /* No default: choice is 0-2, so one case always sets picks. */
         switch (choice % 3) {
-        case 0:
-            n = pool->take0;
+        case STARTER_DECK_BLACK:
+            picks = pool->pick0;
             break;
-        case 1:
-            n = pool->take1;
+        case STARTER_DECK_RED:
+            picks = pool->pick1;
             break;
-        case 2:
-            n = pool->take2;
+        case STARTER_DECK_GREEN:
+            picks = pool->pick2;
             break;
         }
-        for (i = 0; i < n; i++) {
-            u16 id = buf[i % pool->count];
-            u16 idx = CardIdToIndex(id);
+        for (i = 0; i < picks; i++) {
+            u16 number = cards[i % pool->count];
+            u16 cardId = CardNumberToId(number);
 
-            if (idx)
-                AddCardToSavedDeck(idx);
+            if (cardId)
+                AddCardToSavedDeck(cardId);
             else
-                DebugPrintf(gStrStarterDeckErrorFmt, id);
+                DebugPrintf(gStrStarterDeckErrorFmt, number);
         }
     }
     DebugPrintFlush();
 }
 
-/* HBlank handler: wavy BG1 horizontal scroll */
+/* ---- Boot license screens ---- */
+
+/* Title HBlank handler, installed by Title_LoadGraphics and removed by Title_FadeIn at the white flash: makes
+ * the flames (BG1) wave, one HOFS value per scanline from a 16-line table that moves on every frame. */
 void Title_HBlank(void)
 {
     REG_BG1HOFS = gMain.hblankScroll[(REG_VCOUNT + gMain.frameCounter) & 0xF];
 }
 
-/* License step 0: License_InitVideo */
+/* License step 0: white screen, display off; then video reset, the default BG0-3CNT and a white backdrop. */
 u16 License_InitVideo(void)
 {
     switch (gMain.seqState0) {
@@ -379,40 +360,48 @@ u16 License_InitVideo(void)
         gMain.seqState0++;
         return 0;
     case 1:
-        gMain.vblankFlags = 3;
+        gMain.vblankFlags = VBLANK_COPY_OAM | VBLANK_COPY_BG_MAPS;
         ResetVideo();
         ResetBgScroll();
-        REG_BG0CNT = 0x84;
-        REG_BG1CNT = 0x105;
-        REG_BG2CNT = 0x206;
-        REG_BG3CNT = 0x307;
-        *(vu16 *)0x05000000 = 0xFFFF;
+        REG_BG0CNT = BGCNT_PRIORITY(0) | BGCNT_CHARBASE(1) | BGCNT_256COLOR | BGCNT_SCREENBASE(0);
+        REG_BG1CNT = BGCNT_PRIORITY(1) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(1);
+        REG_BG2CNT = BGCNT_PRIORITY(2) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(2);
+        REG_BG3CNT = BGCNT_PRIORITY(3) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(3);
+        *(vu16 *)BG_PLTT = 0xFFFF;
         gMain.seqState0++;
         return 0;
     }
 }
-/* License step 1: draws the centred notice text 0x080813F0 (drawn twice, offset, as an outline) and holds it. */
+
+/*
+ * License step 1: "LICENSED BY NINTENDO" centred on BG1 (rows 9-11). Each pass draws the string twice, one
+ * pixel apart, for bold text: first the shadow (colour 15) at +1,+1, then the text (colour 8). Fades in from
+ * white, holds 120 frames and fades out to white.
+ */
 u16 License_ShowNintendoNotice(void)
 {
-    s32 x, i, j, k;
+    s32 left, shadow, dx, dy;
 
     switch (gMain.seqState0) {
     case 0:
         ClearBgMapBuffers();
-        TextCanvasInit(0x20, 3);
-        x = (240 - StrLen(gStrLicensedByNintendo) * 9) / 2;
-        for (i = 1; i >= 0; i--)
-            for (j = 0; j <= 1; j++)
-                for (k = 0; k <= 0; k++)
-                    TextDrawString(x + j + i, k + i, i == 1 ? 0x100F : 0x1008, gStrLicensedByNintendo);
-        TextCanvasToTiles((void *)0x06004400, 0);
-        for (j = 0; j < 96; j++)
-            gMain.bgMapBuffer[1][0x120 + j] = j + 0x20;
+        TextCanvasInit(32, 3);
+        left = (240 - StrLen(gStrLicensedByNintendo) * 9) / 2;
+        /* The dy loop runs once (dy = 0), as in the ROM. */
+        for (shadow = 1; shadow >= 0; shadow--)
+            for (dx = 0; dx <= 1; dx++)
+                for (dy = 0; dy <= 0; dy++)
+                    TextDrawString(left + dx + shadow, dy + shadow,
+                                   shadow == 1 ? TEXT_SIZE_COLOR(16, 15) : TEXT_SIZE_COLOR(16, 8),
+                                   gStrLicensedByNintendo);
+        TextCanvasToTiles((u16 *)(VRAM + 0x4400), 0); /* charblock 1, tile 0x20 */
+        for (dx = 0; dx < 96; dx++)
+            gMain.bgMapBuffer[1][9 * 32 + dx] = dx + 0x20;
         gMain.seqState0++;
         return 0;
     case 1:
-        REG_DISPCNT |= 0x200;
-        if (!FadeFromWhite(1))
+        REG_DISPCNT |= DISPCNT_BG1_ON;
+        if (!FadeFromWhiteU16(1))
             return 0;
         gMain.seqState0++;
         return 0;
@@ -423,14 +412,15 @@ u16 License_ShowNintendoNotice(void)
         gMain.seqState0++;
         return 0;
     default:
-        if (!FadeToWhite(1))
+        if (!FadeToWhiteU16(1))
             break;
-        REG_DISPCNT &= ~0x200;
+        REG_DISPCNT &= ~DISPCNT_BG1_ON;
         return 1;
     }
     return 0;
 }
-/* License step 2: shows the logo image 0x087D01F4, holds it 120 frames, fades out. */
+
+/* License step 2: the Konami logo on BG0; fades in from white, holds 120 frames, fades out to white. */
 u16 License_ShowKonamiLogo(void)
 {
     switch (gMain.seqState0) {
@@ -440,8 +430,8 @@ u16 License_ShowKonamiLogo(void)
         gMain.seqState0++;
         return 0;
     case 1:
-        REG_DISPCNT |= 0x100;
-        if (!FadeFromWhite(1))
+        REG_DISPCNT |= DISPCNT_BG0_ON;
+        if (!FadeFromWhiteU16(1))
             return 0;
         gMain.seqState0++;
         return 0;
@@ -452,14 +442,20 @@ u16 License_ShowKonamiLogo(void)
         gMain.seqState0++;
         return 0;
     default:
-        if (!FadeToWhite(1))
+        if (!FadeToWhiteU16(1))
             break;
-        REG_DISPCNT &= ~0x100;
+        REG_DISPCNT &= ~DISPCNT_BG0_ON;
         return 1;
     }
     return 0;
 }
-/* License step 3: second logo (0x087D292C), then hands over to the title screen. */
+
+/*
+ * License step 3: the "Konami Computer Entertainment Japan" logo; fades in from white, holds 120 frames and
+ * fades to black. Then it switches to the title screen itself (SetMainCallback inlined, without the save):
+ * clears both VBlank callbacks and the HBlank IRQ, zeroes the step bytes and installs CB_Title. It never
+ * returns 1.
+ */
 u16 License_ShowKcejLogo(void)
 {
     switch (gMain.seqState0) {
@@ -469,8 +465,8 @@ u16 License_ShowKcejLogo(void)
         gMain.seqState0++;
         return 0;
     case 1:
-        REG_DISPCNT |= 0x100;
-        if (FadeFromWhite(1))
+        REG_DISPCNT |= DISPCNT_BG0_ON;
+        if (FadeFromWhiteU16(1))
             gMain.seqState0++;
         return 0;
     case 2:
@@ -480,24 +476,19 @@ u16 License_ShowKcejLogo(void)
         }
         return 0;
     case 3:
-        if (FadeToBlack(1)) {
-            REG_DISPCNT &= ~0x100;
+        if (FadeToBlackU16(1)) {
+            REG_DISPCNT &= ~DISPCNT_BG0_ON;
             gMain.seqState0++;
         }
         return 0;
     default:
         gMain.vblankCallbackEarly = NULL;
         gMain.vblankCallback = NULL;
-        REG_IME = 0;
-        REG_IE &= ~2;
-        REG_IME = 1;
-        REG_IME = 0;
-        REG_IE &= ~2;
-        IntrTable.hblankCallback = NULL;
-        REG_IME = 1;
+        DISABLE_HBLANK_INTR();
+        SET_HBLANK_HANDLER(NULL);
         gMain.seqIndexTop = 0;
-        gMain.unk4879 = 0;
-        gMain.unk487A = 0;
+        gMain.seq4879 = 0;
+        gMain.seq487A = 0;
         gMain.seqIndexCampaign = 0;
         gMain.seqState0 = 0;
         gMain.seqIndex1 = 0;
@@ -508,7 +499,8 @@ u16 License_ShowKcejLogo(void)
     }
 }
 
-/* CB_License: runs the step table at 0x0819879C */
+/* Boot scene callback: runs gLicenseSteps[gMain.seqIndexTop]; a step that returns 1 moves on to the next one
+ * with the sub-states reset. Returns 1 at the table's NULL end. */
 u16 CB_License(void)
 {
     u16 (*step)(void) = gLicenseSteps[gMain.seqIndexTop];
@@ -526,86 +518,86 @@ u16 CB_License(void)
     return 1;
 }
 
-/* Title VBlank callback: scroll BG3 diagonally */
+/* ---- Title screen ---- */
+
+/* Title VBlank callback: scrolls the BG3 grid diagonally (HOFS = bgScroll, VOFS = bgScroll / 4; bgScroll goes
+ * down by one per frame). */
 void Title_VBlank(void)
 {
-    gTitleState.scroll--;
-    REG_BG3VOFS = gTitleState.scroll >> 2;
-    REG_BG3HOFS = gTitleState.scroll;
+    gTitleState.bgScroll--;
+    REG_BG3VOFS = gTitleState.bgScroll >> 2;
+    REG_BG3HOFS = gTitleState.bgScroll;
 }
 
 /*
- * Draws the "New Game" / "Continue" labels (a 64x32 + 32x32 sprite each).
- * The unselected option uses the tiles 12 further on (the dimmed version).
+ * Adds the "New Game" (left) and "Continue" (right) labels, each a 64x32 and a 32x32 sprite at y 0x68. The
+ * labels' tiles start at OBJ tile 0x200 + 0x80 * option; the unselected option uses the dimmed copy 12 tiles
+ * further on.
  */
 void Title_DrawMenu(void)
 {
-    s32 i;
+    s32 option;
 
-    for (i = 0; i <= 1; i++) {
-        s32 x = 0x18 + i * 0x70;
-        s32 t = i * 0x80 + 0x200;
+    for (option = 0; option <= 1; option++) {
+        s32 x = 0x18 + option * 0x70;
+        s32 t = option * 0x80 + 0x200;
         u16 tile = t;
-        if (gTitleState.continueSelected != i)
+
+        if (gTitleState.continueSelected != option)
             tile += 12;
-        AddSprite(x | (0x68 << 16), 0x40C0, tile);
-        AddSprite((0x58 + i * 0x70) | (0x68 << 16), 0x80, tile + 8);
+        AddSprite(x | (0x68 << 16), SPRITE_SHAPE_64x32, tile);
+        AddSprite((0x58 + option * 0x70) | (0x68 << 16), SPRITE_SHAPE_32x32, tile + 8);
     }
 }
 
+/* Display off and the default BG0-3CNT (BG0 8bpp, all on charblock 1, screenblocks 0-3, priorities 0-3). */
 void Title_InitBgCnt(void)
 {
     REG_DISPCNT = 0;
-    REG_BG0CNT = 0x84;
-    REG_BG1CNT = 0x105;
-    REG_BG2CNT = 0x206;
-    REG_BG3CNT = 0x307;
+    REG_BG0CNT = BGCNT_PRIORITY(0) | BGCNT_CHARBASE(1) | BGCNT_256COLOR | BGCNT_SCREENBASE(0);
+    REG_BG1CNT = BGCNT_PRIORITY(1) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(1);
+    REG_BG2CNT = BGCNT_PRIORITY(2) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(2);
+    REG_BG3CNT = BGCNT_PRIORITY(3) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(3);
 }
 
-/* Title step: sets up the title screen. Copies the palettes/text/logo images, fills a
- * 4x4-tile pattern into the IWRAM tile map, halves the brightness of palette entries
- * 0xC0..0xCF, copies the HBlank scroll table and installs the VBlank/HBlank callbacks. */
-extern u8 gUnk_03004876[];
-extern const u8 gSystemFontPal[];
-extern const u8 gStrNewGame[];
-extern const u8 gStrContinue[];
-extern const u8 gTitleLogoWave[];
-extern const u8 gTitleLogoImage[];
-extern const u8 gTitleFlameImage[];
-extern const u8 gTitleCoinImage[];
-extern const u8 gTitleGridImage[];
-void CopyDoubleWords(void *dst, const void *src, u32 size);
-void MemCopy16(void *dst, const void *src, u32 size);
-void Title_VBlank(void);
-void Title_HBlank(void);
-/* Title screen setup: palettes and graphics, a repeating 4x4 tile block over BG map 3,
- * half-brightness palette entries 0xC0..0xCF, HBlank scroll table and the VBlank/HBlank callbacks. */
+/*
+ * One-shot title setup:
+ * - renders the menu labels into OBJ tiles from 0x200 (2D mapping, 32 tiles per row; "Continue" 4 rows
+ *   below "New Game"): each label twice with a shadow, a bright 16-px copy and a dimmed 12-px copy whose
+ *   sprite starts 12 tiles further right;
+ * - loads the logo (BG0), flames (BG1), coin (BG2) and grid (BG3) images and tiles the 4x4 grid block over
+ *   the whole BG3 map;
+ * - halves the brightness of BG palette 12 (colours 0xC0-0xCF, the grid);
+ * - copies the flame wave table to gMain.hblankScroll and installs Title_VBlank and Title_HBlank.
+ */
 void Title_LoadGraphics(void)
 {
-    s32 x, i;
+    s32 col, i;
 
-    CopyDoubleWords((void *)0x05000200, gSystemFontPal, 0x20);
-    TextCanvasInit(0x20, 0x10);
-    TextDrawString(9, 9, 0x100F, gStrNewGame);
-    TextDrawString(8, 8, 0x1007, gStrNewGame);
-    TextDrawString(0x73, 0xB, 0xC01, gStrNewGame);
-    TextDrawString(0x72, 0xA, 0xC0D, gStrNewGame);
-    TextDrawString(1, 0x29, 0x100F, gStrContinue);
-    TextDrawString(0, 0x28, 0x1007, gStrContinue);
-    TextDrawString(0x69, 0x2B, 0xC01, gStrContinue);
-    TextDrawString(0x68, 0x2A, 0xC0D, gStrContinue);
-    TextCanvasToTiles((void *)0x06014000, 0);
-    MemCopy16((void *)0x05000000, gSystemFontPal, 0x20);
-    *(s16 *)0x05000000 = 0;
+    CopyDoubleWords((void *)OBJ_PLTT, gSystemFontPal, 0x20);
+    TextCanvasInit(32, 16);
+    TextDrawString(9, 9, TEXT_SIZE_COLOR(16, 15), gStrNewGame);
+    TextDrawString(8, 8, TEXT_SIZE_COLOR(16, 7), gStrNewGame);
+    TextDrawString(0x73, 0xB, TEXT_SIZE_COLOR(12, 1), gStrNewGame);
+    TextDrawString(0x72, 0xA, TEXT_SIZE_COLOR(12, 13), gStrNewGame);
+    TextDrawString(1, 0x29, TEXT_SIZE_COLOR(16, 15), gStrContinue);
+    TextDrawString(0, 0x28, TEXT_SIZE_COLOR(16, 7), gStrContinue);
+    TextDrawString(0x69, 0x2B, TEXT_SIZE_COLOR(12, 1), gStrContinue);
+    TextDrawString(0x68, 0x2A, TEXT_SIZE_COLOR(12, 13), gStrContinue);
+    TextCanvasToTiles((u16 *)(OBJ_VRAM0 + 0x4000), 0); /* OBJ tile 0x200 */
+    MemCopy16((void *)BG_PLTT, gSystemFontPal, 0x20);
+    *(s16 *)BG_PLTT = 0; /* black backdrop */
+    /* mapOffset 0x400 * n + cell addresses gMain.bgMapBuffer[n]: BG1, BG2 and BG3 */
     LoadBgImage(0x20, 0x10, 0x10, gTitleLogoImage);
     LoadBgImage4bpp(0x409, 0xA0, 0x2B8, gTitleFlameImage);
     LoadBgImage4bpp(0x809, 0xB0, 0x310, gTitleCoinImage);
     LoadBgImage4bpp(0xC00, 0xC0, 0x388, gTitleGridImage);
-    /* Plain constants: postreload move2add turns the reloads into the ROM's `adds r1, #1` chain.
+    /* Map entries 0xC388-0xC397: palette 12, the grid's tiles 0x388-0x397 in a 4x4 block.
+     * Plain constants: postreload move2add turns the reloads into the ROM's `adds r1, #1` chain.
      * The outer counter shares `i` with the palette loop, which puts it in r5. */
     for (i = 0; i <= 0x1F; i += 4) {
-        for (x = 0; x <= 0x1F; x += 4) {
-            s32 o = (i << 5) + x;
+        for (col = 0; col <= 0x1F; col += 4) {
+            s32 o = (i << 5) + col;
 
             gMain.bgMapBuffer[3][o] = 0xC388;
             gMain.bgMapBuffer[3][o + 1] = 0xC389;
@@ -625,28 +617,26 @@ void Title_LoadGraphics(void)
             gMain.bgMapBuffer[3][o + 0x63] = 0xC397;
         }
     }
+    /* BGR555: halve each channel. */
     for (i = 0; i <= 0xF; i++) {
-        u16 c = ((u16 *)0x05000180)[i];
-        u16 r = c & 0x1F;
-        u16 g = c & 0x3E0;
-        u16 b = c & 0x7C00;
+        u16 color = ((u16 *)(BG_PLTT + 0x180))[i];
+        u16 r = color & 0x1F;
+        u16 g = color & 0x3E0;
+        u16 b = color & 0x7C00;
 
         r = (r >> 1) & 0x1F;
         g = (g >> 1) & 0x3E0;
         b = (b >> 1) & 0x7C00;
-        ((u16 *)0x05000180)[i] = r | g | b;
+        ((u16 *)(BG_PLTT + 0x180))[i] = r | g | b;
     }
     MemCopy16(gMain.hblankScroll, gTitleLogoWave, 0x20);
     gMain.vblankCallback = Title_VBlank;
-    REG_IME = 0;
-    REG_IE &= 0xFFFD;
-    IntrTable.hblankCallback = Title_HBlank;
-    REG_IME = 1;
-    REG_IME = 0;
-    REG_IE |= 2;
-    REG_IME = 1;
+    SET_HBLANK_HANDLER(Title_HBlank);
+    ENABLE_HBLANK_INTR();
 }
-/* Title step 0: Title_Init */
+
+/* TITLE_STEP_INIT: clears gTitleState and puts the cursor on Continue when a valid save exists; display off,
+ * black screen, video and BG reset. */
 u16 Title_Init(void)
 {
     switch (gMain.seqState0) {
@@ -665,19 +655,21 @@ u16 Title_Init(void)
         ResetVideo();
         ResetBgScroll();
         Title_InitBgCnt();
-        gMain.vblankFlags = 3;
+        gMain.vblankFlags = VBLANK_COPY_OAM | VBLANK_COPY_BG_MAPS;
         gMain.seqState0++;
         return 0;
     }
     return 1;
 }
-/* Title step 1: Title_Setup */
+
+/* TITLE_STEP_SETUP (also where the delete-save prompt's B returns to): display off, video and BG reset, then
+ * Title_LoadGraphics and the title song. */
 u16 Title_Setup(void)
 {
     switch (gMain.seqState0) {
     default:
         Title_LoadGraphics();
-        PlayBGMNoTrack(0);
+        PlayBGMNoTrack(0); /* title song */
         return 1;
     case 0:
         REG_DISPCNT = 0;
@@ -688,68 +680,69 @@ u16 Title_Setup(void)
         ResetVideo();
         ResetBgScroll();
         Title_InitBgCnt();
-        gMain.vblankFlags = 3;
+        gMain.vblankFlags = VBLANK_COPY_OAM | VBLANK_COPY_BG_MAPS;
         gMain.seqState0++;
         return 0;
     }
 }
-/* Title step 2: fade in, then drop the HBlank handler and draw the menu labels. */
+
+/*
+ * TITLE_STEP_FADE_IN: shows the waving flames and the coin (BG1, BG2) and fades in from black one level every
+ * 4th frame; then flashes to white, stops the wave, shows the logo, the grid and the sprites (BG0, BG3, OBJ)
+ * with the copyright line and the menu, and fades back from white. Returns 1 when the fade is done.
+ */
 u16 Title_FadeIn(void)
 {
     switch (gMain.seqState0) {
     case 0:
-        REG_DISPCNT = 0x600;
+        REG_DISPCNT = DISPCNT_BG1_ON | DISPCNT_BG2_ON;
         gMain.seqState0++;
     case 1:
-        if (!(gMain.frameCounter & 3) && FadeFromBlack(1))
+        if (!(gMain.frameCounter & 3) && FadeFromBlackU16(1))
             gMain.seqState0++;
         return 0;
     case 2:
-        if (FadeToWhite(4)) {
-            REG_IME = 0;
-            REG_IE &= ~2;
-            IntrTable.hblankCallback = NULL;
-            REG_IME = 1;
-            REG_IME = 0;
-            REG_IE &= ~2;
-            REG_IME = 1;
-            REG_DISPCNT |= 0x1900;
-            LoadBgImage4bpp(0xA20, 0x90, 0x284, gTitleCopyrightImage);
+        if (FadeToWhiteU16(4)) {
+            SET_HBLANK_HANDLER(NULL);
+            DISABLE_HBLANK_INTR();
+            REG_DISPCNT |= DISPCNT_BG0_ON | DISPCNT_BG3_ON | DISPCNT_OBJ_ON;
+            LoadBgImage4bpp(0xA20, 0x90, 0x284, gTitleCopyrightImage); /* BG2 map, row 17 */
             Title_DrawMenu();
             gMain.seqState0++;
         }
         return 0;
     default:
         Title_DrawMenu();
-        return FadeFromWhite(1);
+        return FadeFromWhiteU16(1);
     }
 }
 
-/* Title step 4: Title_FadeOut */
+/* TITLE_STEP_FADE_OUT: draws the menu while fading to black, then drops the VBlank scroll callback. */
 u16 Title_FadeOut(void)
 {
     Title_DrawMenu();
-    if (FadeToBlack(4)) {
+    if (FadeToBlackU16(4)) {
         gMain.vblankCallback = NULL;
         return 1;
     }
     return 0;
 }
 
-/* Title step 3: Title_HandleInput */
+/* TITLE_STEP_HANDLE_INPUT: Left/Right toggle New Game/Continue when a save exists (else a buzzer); A
+ * confirms, fades out the music and returns 1. */
 u16 Title_HandleInput(void)
 {
     Title_DrawMenu();
     if (gMain.newKeys & (DPAD_LEFT | DPAD_RIGHT)) {
         if (gTitleState.savePresent) {
             gTitleState.continueSelected = 1 - gTitleState.continueSelected;
-            PlaySE(0);
+            PlaySE(SE_CURSOR);
         } else {
-            PlaySE(3);
+            PlaySE(SE_ERROR);
         }
     }
     if (gMain.newKeys & A_BUTTON) {
-        PlaySE(1);
+        PlaySE(SE_CONFIRM);
         FadeOutBGM();
         return 1;
     }

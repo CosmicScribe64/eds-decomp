@@ -1,318 +1,398 @@
 #include "global.h"
-#include "duel.h"
+#include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_STATS_* extractors, token numbers */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType, CardKind, SpellSubtype */
+#include "constants/duel.h"         /* enum ZoneLinkKind, DUEL_LOC */
+#include "duel_actions.h"           /* DestroyFieldCard */
+#include "effect_handlers.h"        /* EffectEquipTargetCheck */
 
 /*
- * Duel-state helpers: per-player card lists (hand, graveyard, ...) and the
- * per-zone "link" lists of the field zones. See wiki/functions/code-08009a68.md.
+ * Duel piles and zone links (wiki/functions/duel-piles-c.md).
  *
- * The card/zone/player structures and gDuelPlayers / gDuelZones come from
- * include/duel.h (canonical layouts and field names).
+ * The first half edits and searches the per-player piles of struct DuelPlayer: the graveyard, the banished
+ * pile (with its parallel banishedInfo array) and the hand. AddCardToHand drops tokens and sends Fusion
+ * monsters to the fusion deck; IsHandRevealed decides whether a player's hand is shown.
+ *
+ * The second half reads a zone's links: the list of cards that affect the card in that zone (struct
+ * DuelZone links / linkKinds). A link's kind (low byte of linkKinds[i], enum ZoneLinkKind) says what
+ * links[i] holds: the DUEL_LOC (zone << 8 | player) of an equip or of a card with a continuous effect,
+ * or a card ID whose effect applies (ZONE_LINK_CARD_EFFECT).
  */
 
-/* Byte at 0x020192E4 + 0x1B0E (= 0x020192E0 + 0x1B12, "flags1B12" in duel_stat_queries). */
-struct DuelFlags {
-    u8 bit0 : 1;
-    u8 bit1 : 1;            /* compared with a player number (hypothesis: turn player / host side) */
-    u8 rest : 6;
-    u8 filler1[4];          /* keeps the struct larger than 4 bytes so the bitfield is read with ldrb */
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit uses, with the header's names,
+ * types and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that
+ * chain.h does not pull in the legacy header. After H0, replace the block (BEGIN to END) with
+ * #include "duel.h": that gives identical assembly (checked against the staged header). */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
+    u32 unk13:19;
 };
-#define DUEL_FLAGS (*(struct DuelFlags *)((u8 *)gUnk_020192E4_u9 + 0x1B0E))
+
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 unk6[4];
+    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one, or a value / card ID */
+    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
+    u16 numLinks;                   /* +0x8A: entries in links / linkKinds */
+    u8 unk8C[5];
+    u8 unk91_0:3;
+    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
+    u8 unk91_4:4;
+    u8 unk92[2];
+};
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003 */
+    u8 graveCount;                  /* +0x004: entries in graveyard[] */
+    u8 fusionCount;                 /* +0x005 */
+    u8 banishedCount;               /* +0x006: entries in banished[] and banishedInfo[] */
+    u8 unk7[2];
+    u8 handRevealed:1;              /* +0x009 bit 0: forces IsHandRevealed */
+    u8 unk9_1:7;
+    u8 unkA[0x28 - 0xA];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4: parallel to banished[]: low byte enum BanishKind, high byte zone */
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 unk1B12_5:3;
+};
+
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+
+extern struct DuelState gDuel;
+extern struct DuelPlayer gDuelPlayers[2];
+extern struct DuelZonesPlayer gDuelZones[2];
+
+void CopyDuelCard(u32 *dst, u32 *src);
+void AddCardToFusionDeck(int player, struct DuelCard *card);
+int CountActiveCardsOnField(int player, u16 cardNo);
+int CountActiveCardsOnField2(int player, u16 cardNo);
+int CountOtherFaceUpSameNameMonsters(int player, int zone);
+/* ---- END duel.h stand-in ---- */
+
+#include "chain.h"                  /* struct ChainEntry (EffectEquipTargetCheck's card argument) */
+
+/* CopyDuelCard is declared with u32 * parameters; the piles here are struct DuelCard arrays. */
+#define COPY_CARD(dst, src) CopyDuelCard((u32 *)(dst), (u32 *)(src))
+
+/* The card word as one u32. Matching: the ROM always loads the whole word (ldr) for these compares and ID
+ * extractions; a bitfield read of .id would load only the halfword holding it. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+/* Card ID (bits 0-11) of a card word: lsl #20; lsr #20. */
+#define CARD_ID(word) (((word) << 20) >> 20)
 
 /*
- * Local view used by IsHandRevealed only: the canonical struct DuelPlayer declares +0x9 as a plain
- * `u8 unk9`, but that function reads its bit 0 as a bitfield (the ROM emits `lsl #31`, whereas
- * `unk9 & 1` emits `and #1`). Full size so that [player & 1] still strides 0xD64.
+ * &gDuelZones[player].zones[zone] by byte arithmetic. Matching: this operand order emits the zone term
+ * first, as the ROM's link walkers do; array indexing emits the player term first. Callers mask the
+ * player with & 1.
  */
-struct DuelPlayerUnk9 {
-    u8 unk0[9];
-    u8 unk9_0 : 1;
-    u8 unk9_1 : 7;
-    u8 rest[0xD64 - 0xA];
-};
-extern struct DuelPlayerUnk9 gUnk_020192E4_u9[2] asm("gDuelPlayers");
-
-/* The same zones addressed from their own base (player + 0x28); struct DuelZonesPlayer is in duel.h. */
-#define ZONE(p, z) (gDuelZones[(p) & 1].zones[z])
-/* Zone pointer by byte arithmetic, zone term first (the ROM's address order); callers pass player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((u8 *)gDuelZones + (z) * 0x94 + (p) * 0xD64))
-/* Card reference passed to EffectEquipTargetCheck (0x14 bytes on the stack; same struct as in duel_stat_queries). */
-struct CardRef {
-    u16 id;             /* +0x00 card ID */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 unk2_10 : 6;
-    u8 filler4[0x14 - 0x4];
-};
-
-extern const u32 gCardStats[];   /* card stats, indexed by card ID */
-extern const u16 gCardIdToNumber[];   /* card ID to card number */
-
-/* The card word read as a whole u32 (the code always loads it with ldr). */
-#define CARD_WORD(c) (*(u32 *)&(c))
-/* Card ID from a card word: bits 0-11 (compiles to lsl #20; lsr #20). */
-#define CARD_ID(w) (((w) << 20) >> 20)
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((u8 *)gDuelZones + (zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer)))
 
 /*
- * ROM tables indexed through integer-constant pointers: GCC then reloads the
- * table address at every use (inside loops too) instead of hoisting/CSEing it,
- * which is what the ROM does. Same bytes as gCardStats[] / gCardIdToNumber[].
+ * Card tables read through integer-constant addresses: gCardStats (0x08621DE0) and gCardIdToNumber
+ * (0x08622AB4). Matching: old_agbcc then reloads the table address at every use, inside loops too,
+ * instead of hoisting it as it does for the symbols. Same tables, same bytes.
  */
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-/* Card numbers 1920-1999 are tokens. */
-#define IS_TOKEN(id) ((u16)(CARD_NUMBER(id) - 1920) < 80)
-#define CARD_KIND(id) ((CARD_STATS(id) & 0xC0000) >> 18)
-#define CARD_SUBTYPE(id) ((CARD_STATS(id) & 0xE0000) >> 17)   /* Magic/Trap subtype (2 = Field) */
+#define CARD_STATS(id)   (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_NUMBER(id)  (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id)    CARD_STATS_TYPE(CARD_STATS(id))      /* enum CardType */
+#define CARD_KIND(id)    CARD_STATS_KIND(CARD_STATS(id))      /* monster kind: enum CardKind 0-3 */
+/* Card numbers 1920-1999 are monster tokens. */
+#define IS_TOKEN(id) \
+    ((u16)(CARD_NUMBER(id) - CARD_NUMBER_TOKEN_FIRST) < CARD_NUMBER_TOKEN_END - CARD_NUMBER_TOKEN_FIRST)
 
-void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
-int CountActiveCardsOnField(int player, u16 number);
-int CountActiveCardsOnField2(int player, u16 number);
-int EffectEquipTargetCheck(struct CardRef *card, u16 pos);
-void DestroyFieldCard(int player, int zone, u16 arg);
-void AddCardToFusionDeck(int owner, struct DuelCard *card);
-int CountOtherFaceUpSameNameMonsters(int a, int b);
-int RemoveGraveyardCardAt(int player, int idx);
-int RemoveBanishedCardAt(int player, int idx);
+/* The duel state seen from gDuelPlayers. Matching: IsHandRevealed reaches gDuel.turnPlayer as
+ * gDuelPlayers + 0x1B0E, from the base register it already holds, not through a gDuel literal. */
+#define DUEL_VIA_PLAYERS (*(struct DuelState *)((u8 *)gDuelPlayers - OFFSET_OF(struct DuelState, players)))
 
-/* Card category (same inline as in card_detail): 3/1 for card numbers 1910/1911-1912,
- * 7 Magic, 8 Trap, 9 Ticket, else the monster kind (0 normal, 1 effect, 2 fusion, 3 ritual). */
-static inline int GetCardSubtype(u16 id)
+/*
+ * enum CardKind of a card (the same inline as in card_detail): the Egyptian Gods first (Obelisk counts as
+ * Ritual, Slifer and Ra as Effect), then Magic, Trap and Ticket cards, else the monster kind from the stats.
+ */
+static inline int GetCardKind(u16 id)
 {
     switch (CARD_NUMBER(id)) {
-    case 1910:
-        return 3;
-    case 1911:
-    case 1912:
-        return 1;
+    case CARD_OBELISK_THE_TORMENTOR:
+        return CARD_KIND_RITUAL;
+    case CARD_SLIFER_THE_SKY_DRAGON:
+    case CARD_THE_WINGED_DRAGON_OF_RA:
+        return CARD_KIND_EFFECT;
     }
     switch ((u8)CARD_TYPE(id)) {
-    case 22:
-        return 7;
-    case 21:
-        return 8;
-    case 23:
-        return 9;
+    case CARD_TYPE_MAGIC:
+        return CARD_KIND_MAGIC;
+    case CARD_TYPE_TRAP:
+        return CARD_KIND_TRAP;
+    case CARD_TYPE_TICKET:
+        return CARD_KIND_TICKET;
     default:
         return CARD_KIND(id);
     }
 }
 
-/* Remove hand[idx], shifting the rest down (inlined into its callers). */
-static inline void RemoveHandCard(int player, int idx)
+/* Remove hand[index], shifting the later cards down (inlined into RemoveCardFromHand and CompactHand). */
+static inline void RemoveHandCard(int player, int index)
 {
     int i;
 
     gDuelPlayers[player & 1].handCount--;
-    for (i = idx; i < gDuelPlayers[player & 1].handCount; i++)
-        CopyDuelCard(&gDuelPlayers[player & 1].hand[i], &gDuelPlayers[player & 1].hand[i + 1]);
+    for (i = index; i < gDuelPlayers[player & 1].handCount; i++)
+        COPY_CARD(&gDuelPlayers[player & 1].hand[i], &gDuelPlayers[player & 1].hand[i + 1]);
 }
 
-/* Remove entry idx from graveyard, shifting the rest down. */
-int RemoveGraveyardCardAt(int player, int idx)
+/* Remove graveyard[index] and close the gap. Returns 1, or 0 if index >= graveCount. */
+int RemoveGraveyardCardAt(int player, int index)
 {
     int i;
 
-    if (idx < gDuelPlayers[player & 1].graveCount) {
+    if (index < gDuelPlayers[player & 1].graveCount) {
         gDuelPlayers[player & 1].graveCount--;
-        for (i = idx; i < gDuelPlayers[player & 1].graveCount; i++)
-            CopyDuelCard(&gDuelPlayers[player & 1].graveyard[i], &gDuelPlayers[player & 1].graveyard[i + 1]);
+        for (i = index; i < gDuelPlayers[player & 1].graveCount; i++)
+            COPY_CARD(&gDuelPlayers[player & 1].graveyard[i], &gDuelPlayers[player & 1].graveyard[i + 1]);
         return 1;
     }
     return 0;
 }
-/* Copy graveyard[idx] to *out, then remove it from the list. */
-int TakeGraveyardCardAt(int player, int idx, struct DuelCard *out)
+
+/* Copy graveyard[index] to *out, then remove it and close the gap. Returns 1, or 0 if index >= graveCount. */
+int TakeGraveyardCardAt(int player, int index, struct DuelCard *out)
 {
     int i;
 
-    if (idx < gDuelPlayers[player & 1].graveCount) {
-        CopyDuelCard(out, &gDuelPlayers[player & 1].graveyard[idx]);
+    if (index < gDuelPlayers[player & 1].graveCount) {
+        COPY_CARD(out, &gDuelPlayers[player & 1].graveyard[index]);
         gDuelPlayers[player & 1].graveCount--;
-        for (i = idx; i < gDuelPlayers[player & 1].graveCount; i++)
-            CopyDuelCard(&gDuelPlayers[player & 1].graveyard[i], &gDuelPlayers[player & 1].graveyard[i + 1]);
+        for (i = index; i < gDuelPlayers[player & 1].graveCount; i++)
+            COPY_CARD(&gDuelPlayers[player & 1].graveyard[i], &gDuelPlayers[player & 1].graveyard[i + 1]);
         return 1;
     }
     return 0;
 }
-/* Remove the first graveyard entry equal to *card. */
+
+/* Remove the first graveyard entry whose whole card word equals *card. Returns 1 if found, else 0. */
 u16 RemoveCardFromGraveyard(int player, struct DuelCard *card)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
         struct DuelCard *entry = &gDuelPlayers[player & 1].graveyard[i];
+
         if (CARD_WORD(*card) == CARD_WORD(*entry))
             return RemoveGraveyardCardAt(player, i);
     }
     return 0;
 }
-/* Remove the first graveyard entry with card ID `id`. */
-u16 RemoveGraveyardCardById(int player, u16 id)
+
+/* Remove the first graveyard entry with card ID cardId. Returns 1 if found, else 0. */
+u16 RemoveGraveyardCardById(int player, u16 cardId)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
-        if (CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i])) == id)
+        if (CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i])) == cardId)
             return RemoveGraveyardCardAt(player, i);
     }
     return 0;
 }
-static inline u16 GetGraveyardCardId(int player, int idx)
+
+/* Card ID of graveyard[index]. */
+static inline u16 GetGraveyardCardId(int player, int index)
 {
-    struct DuelCard *card = &gDuelPlayers[player & 1].graveyard[idx];
+    struct DuelCard *card = &gDuelPlayers[player & 1].graveyard[index];
 
     return card->id;
 }
-/* Find the first graveyard entry with card ID `id` and copy it to *out. */
-int GetGraveyardCardById(int player, u16 id, struct DuelCard *out)
+
+/* Copy the first graveyard entry with card ID cardId to *out; the pile is unchanged. Returns 1 if found. */
+int GetGraveyardCardById(int player, u16 cardId, struct DuelCard *out)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
         struct DuelCard *entry = &gDuelPlayers[player & 1].graveyard[i];
-        if (GetGraveyardCardId(player, i) == id) {
-            CopyDuelCard(out, entry);
+
+        if (GetGraveyardCardId(player, i) == cardId) {
+            COPY_CARD(out, entry);
             return 1;
         }
     }
     return 0;
 }
-/* Return 1 if graveyard contains a card equal to *card. */
+
+/* 1 if some graveyard entry's whole card word equals *card, else 0. */
 int IsCardInGraveyard(int player, struct DuelCard *card)
 {
-    struct DuelCard *source = card;
+    struct DuelCard *wanted = card;
     int i = 0;
-    u8 *root = (u8 *)gDuelPlayers;
-    u32 offset = (player & 1) * 0xD64;
-    /* FAKEMATCH: the initialized count uses r2 until copied into the loop bound. */
-    register int count asm("r2") = *((u8 *)(offset + (u32)root) + 4);
+    u8 *players = (u8 *)gDuelPlayers;
+    u32 playerOffset = (player & 1) * 0xD64;
+    /* FAKEMATCH: graveCount is loaded into r2, where the ROM keeps it until the loop bound copy. */
+    register int count asm("r2") = *((u8 *)(playerOffset + (u32)players) + OFFSET_OF(struct DuelPlayer, graveCount));
 
     if (i < count) {
-        u8 *listbase = root + 0x904;
-        int bound = count;
-        u32 want;
+        u8 *graveyards = players + OFFSET_OF(struct DuelPlayer, graveyard);
+        int end = count;
+        u32 word;
         struct DuelCard *entry;
 
-        want = CARD_WORD(*source);
-        entry = (struct DuelCard *)(offset + (u32)listbase);
+        word = CARD_WORD(*wanted);
+        entry = (struct DuelCard *)(playerOffset + (u32)graveyards);
         do {
-            if (want == CARD_WORD(*entry))
+            if (word == CARD_WORD(*entry))
                 return 1;
             entry++;
             i++;
-        } while (i < bound);
+        } while (i < end);
     }
     return 0;
 }
-/* Count graveyard entries whose card number is `number`. */
-int CountGraveyardCardsByNumber(int player, u16 number)
+
+/* Number of graveyard cards whose card number is cardNo. */
+int CountGraveyardCardsByNumber(int player, u16 cardNo)
 {
     int i;
     int count = 0;
 
     for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i])) & 0x7FF;
-        if (gCardIdToNumber[idx] == number)
+        u32 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i])) & CARD_ID_MASK;
+
+        if (gCardIdToNumber[id] == cardNo)
             count++;
     }
     return count;
 }
-/* Remove entry idx from listB84 (and its parallel arrCC4), shifting the rest down. */
-int RemoveBanishedCardAt(int player, int idx)
-{
-    if (idx < gDuelPlayers[player & 1].countB84) {
-        int i = idx;
 
-        gDuelPlayers[player & 1].countB84--;
-        i++; /* FAKEMATCH: no-op pair that shifts the index copy's scheduling */
+/* Remove banished[index] and its banishedInfo entry, closing both gaps. Returns 1, or 0 if out of range. */
+int RemoveBanishedCardAt(int player, int index)
+{
+    if (index < gDuelPlayers[player & 1].banishedCount) {
+        int i = index;
+
+        gDuelPlayers[player & 1].banishedCount--;
+        i++; /* FAKEMATCH: no-op pair that moves the copy of index one instruction later, as in the ROM */
         i--;
-        for (; i < gDuelPlayers[player & 1].countB84; i++) {
-            CopyDuelCard(&gDuelPlayers[player & 1].listB84[i], gDuelPlayers[player & 1].listB84 + i + 1);
-            gDuelPlayers[player & 1].arrCC4[i] = gDuelPlayers[player & 1].arrCC4[i + 1];
+        for (; i < gDuelPlayers[player & 1].banishedCount; i++) {
+            /* Matching: the source is written banished + i + 1, not &banished[i + 1]. */
+            COPY_CARD(&gDuelPlayers[player & 1].banished[i], gDuelPlayers[player & 1].banished + i + 1);
+            gDuelPlayers[player & 1].banishedInfo[i] = gDuelPlayers[player & 1].banishedInfo[i + 1];
         }
         return 1;
     }
     return 0;
 }
-/* Remove the first listB84 entry equal to *card. */
+
+/* Remove the first banished entry whose whole card word equals *card. Returns 1 if found, else 0. */
 u16 RemoveCardFromBanished(int player, struct DuelCard *card)
 {
     int i;
 
-    for (i = 0; i < gDuelPlayers[player & 1].countB84; i++) {
-        struct DuelCard *entry = &gDuelPlayers[player & 1].listB84[i];
+    for (i = 0; i < gDuelPlayers[player & 1].banishedCount; i++) {
+        struct DuelCard *entry = &gDuelPlayers[player & 1].banished[i];
+
         if (CARD_WORD(*card) == CARD_WORD(*entry))
             return RemoveBanishedCardAt(player, i);
     }
     return 0;
 }
-/* Return the card type, preserving the inline lookup's narrow ID argument. */
+
+/* enum CardType of a card. Matching: the u16 parameter narrows the ID as in the ROM. */
 static inline int GetCardType(u16 id)
 {
     return CARD_TYPE(id);
 }
-/* Count graveyard entries whose card type is a monster type (<= 20). */
+
+/* Number of monsters (types 1-20) in the graveyard. */
 int CountGraveyardMonsters(int player)
 {
     int i;
     int count = 0;
 
     for (i = 0; i < gDuelPlayers[player & 1].graveCount; i++) {
-        if ((u32)GetCardType(CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i]))) <= 20)
+        if ((u32)GetCardType(CARD_ID(CARD_WORD(gDuelPlayers[player & 1].graveyard[i]))) <= CARD_TYPE_REPTILE)
             count++;
     }
     return count;
 }
-/* Count hand entries whose card type is a monster type (<= 20). */
+
+/* Number of monsters (types 1-20) in the hand. */
 int CountHandMonsters(int player)
 {
     int i;
     int count = 0;
 
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
-        if ((u32)GetCardType(CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]))) <= 20)
+        if ((u32)GetCardType(CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]))) <= CARD_TYPE_REPTILE)
             count++;
     }
     return count;
 }
-/* Add *card to the end of the hand; fusion monsters (subtype 2) go to AddCardToFusionDeck instead. Tokens are dropped. */
+
+/*
+ * Append *card to the player's hand. Empty cards and tokens are dropped; a Fusion monster goes to its
+ * owner's fusion deck instead.
+ */
 void AddCardToHand(int player, struct DuelCard *card)
 {
     int count = gDuelPlayers[player & 1].handCount;
     struct DuelCard *slot = &gDuelPlayers[player & 1].hand[count];
 
-    /* FAKEMATCH: keep card in r4 and the hand-offset scratch in r3; emits no instructions. */
+    /* FAKEMATCH: emits nothing; keeps card in r4 and the hand-offset scratch in r3, as in the ROM. */
     asm volatile ("" : : "r"(card) : "r3");
 
     if (card->id == 0 || IS_TOKEN(card->id))
         return;
-    if (GetCardSubtype(card->id) == 2) {
+    if (GetCardKind(card->id) == CARD_KIND_FUSION) {
         AddCardToFusionDeck(card->owner, card);
     } else {
-        CopyDuelCard(slot, card);
+        COPY_CARD(slot, card);
         gDuelPlayers[player & 1].handCount++;
     }
 }
 
-/* Clear the card ID of hand[idx] (if idx is in range). */
-void ClearHandCardAt(int player, int idx)
+/* Clear hand[index].id if index < handCount, leaving a hole for CompactHand. No callers in the ROM. */
+void ClearHandCardAt(int player, int index)
 {
     int count = gDuelPlayers[player & 1].handCount;
-    struct DuelCard *card = &gDuelPlayers[player & 1].hand[idx];
+    struct DuelCard *card = &gDuelPlayers[player & 1].hand[index];
 
-    if (idx < count)
+    if (index < count)
         card->id = 0;
 }
-/* Read a hand card as the complete instance word. */
-static inline u32 GetHandCardWord(int player, int idx)
+
+/* hand[index] as a whole card word. */
+static inline u32 GetHandCardWord(int player, int index)
 {
-    struct DuelCard *card = &gDuelPlayers[player & 1].hand[idx];
+    struct DuelCard *card = &gDuelPlayers[player & 1].hand[index];
 
     return CARD_WORD(*card);
 }
-/* Remove the first hand card equal to *card, shifting the rest down; 1 if found. */
+
+/* Remove the first hand entry whose whole card word equals *card. Returns 1 if found, else 0. */
 int RemoveCardFromHand(int player, struct DuelCard *card)
 {
     int i;
@@ -325,7 +405,8 @@ int RemoveCardFromHand(int player, struct DuelCard *card)
     }
     return 0;
 }
-/* Compact the hand: remove every empty (ID 0) entry. */
+
+/* Delete the empty (card ID 0) hand entries, keeping the order of the others. */
 void CompactHand(int player)
 {
     int i;
@@ -337,35 +418,41 @@ void CompactHand(int player)
             i++;
     }
 }
-/* Return the index of the first hand card of type 21 (Trap), or -1. */
+
+/* Index of the first Trap card in the hand, or -1. */
 int FindTrapInHand(int player)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         u16 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]));
-        if (id != 0 && CARD_TYPE(id) == 21)
+
+        if (id != 0 && CARD_TYPE(id) == CARD_TYPE_TRAP)
             return i;
     }
     return -1;
 }
-/* Return the index of the first hand card of type 22 (Magic), or -1. */
+
+/* Index of the first Magic card in the hand, or -1. */
 int FindMagicInHand(int player)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         u16 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]));
-        if (id != 0 && CARD_TYPE(id) == 22)
+
+        if (id != 0 && CARD_TYPE(id) == CARD_TYPE_MAGIC)
             return i;
     }
     return -1;
 }
-/* Masked table accessors used only by FindNonFieldMagicInHand (see FAKEMATCH note there). */
-#define CARD_STATS_M(id, m) (((const u32 *)0x08621DE0)[(id) & (m)])
-#define CARD_TYPE_M(id, m) ((CARD_STATS_M(id, m) & 0x1F00000) >> 20)
-#define CARD_SUBTYPE_M(id, m) ((CARD_STATS_M(id, m) & 0xE0000) >> 17)
-/* Return the index of the first hand Magic card that is not a Field card (subtype 2), or -1. */
+
+/* CARD_STATS with the ID mask passed in: used only by FindNonFieldMagicInHand (see its FAKEMATCH). */
+#define CARD_STATS_M(id, mask)   (((const u32 *)0x08621DE0)[(id) & (mask)])
+#define CARD_TYPE_M(id, mask)    CARD_STATS_TYPE(CARD_STATS_M(id, mask))
+#define CARD_SUBTYPE_M(id, mask) CARD_STATS_SUBTYPE(CARD_STATS_M(id, mask))
+
+/* Index of the first Magic card in the hand that is not a Field Magic, or -1. */
 int FindNonFieldMagicInHand(int player)
 {
     int i;
@@ -374,64 +461,86 @@ int FindNonFieldMagicInHand(int player)
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         u16 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]));
 
-        mask = 0x7FF; /* FAKEMATCH: local mask so the 0x7FF load lands one instruction later */
-        if (id != 0 && CARD_TYPE_M(id, mask) == 22 && CARD_SUBTYPE_M(id, mask) != 2)
+        mask = CARD_ID_MASK; /* FAKEMATCH: a variable mask makes the 0x7FF load land one instruction later */
+        if (id != 0 && CARD_TYPE_M(id, mask) == CARD_TYPE_MAGIC && CARD_SUBTYPE_M(id, mask) != SPELL_FIELD)
             return i;
     }
     return -1;
 }
-/* Count hand entries whose card number is `number`. */
-int CountHandCardsByNumber(int player, u16 number)
+
+/* Number of hand cards whose card number is cardNo. */
+int CountHandCardsByNumber(int player, u16 cardNo)
 {
     int i;
     int count = 0;
 
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i])) & 0x7FF;
-        if (gCardIdToNumber[idx] == number)
+        u32 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i])) & CARD_ID_MASK;
+
+        if (gCardIdToNumber[id] == cardNo)
             count++;
     }
     return count;
 }
-/* Return the index of the first hand entry whose card number is `number`, or -1. */
-int FindHandCardByNumber(int player, u16 number)
+
+/* Index of the first hand card whose card number is cardNo, or -1. */
+int FindHandCardByNumber(int player, u16 cardNo)
 {
     int i;
 
     for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i])) & 0x7FF;
-        if (gCardIdToNumber[idx] == number)
+        u32 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i])) & CARD_ID_MASK;
+
+        if (gCardIdToNumber[id] == cardNo)
             return i;
     }
     return -1;
 }
-/* 1 if the player's +9 flag is set, or card 1093 is on the opponent's side, or card 1121 on either side,
- * or (when DUEL_FLAGS.bit1 == player) card 1152 on either side. */
+
+/*
+ * 1 if the player's hand must be shown to the opponent, else 0:
+ *  - the player's handRevealed flag is set;
+ *  - The Eye of Truth is active on the opponent's field ("your opponent must show his/her hand");
+ *  - Ceremonial Bell is active on either field (both players show their hands);
+ *  - Respect Play is active on either field and it is this player's turn ("during their respective turns").
+ */
 int IsHandRevealed(int player)
 {
     int opponent;
 
-    if (gUnk_020192E4_u9[player & 1].unk9_0)
+    if (gDuelPlayers[player & 1].handRevealed)
         return 1;
     opponent = 1 - player;
-    if (CountActiveCardsOnField2(opponent, 1093) > 0 || CountActiveCardsOnField2(player, 1121) > 0 || CountActiveCardsOnField2(opponent, 1121) > 0)
+    if (CountActiveCardsOnField2(opponent, CARD_THE_EYE_OF_TRUTH) > 0
+        || CountActiveCardsOnField2(player, CARD_CEREMONIAL_BELL) > 0
+        || CountActiveCardsOnField2(opponent, CARD_CEREMONIAL_BELL) > 0)
         return 1;
-    if (player == DUEL_FLAGS.bit1) {
-        if (CountActiveCardsOnField2(player, 1152) > 0 || CountActiveCardsOnField2(opponent, 1152) > 0)
+    if (player == DUEL_VIA_PLAYERS.turnPlayer) {
+        if (CountActiveCardsOnField2(player, CARD_RESPECT_PLAY) > 0
+            || CountActiveCardsOnField2(opponent, CARD_RESPECT_PLAY) > 0)
             return 1;
     }
     return 0;
 }
-/* If card number 1178 is present (either player) and CountOtherFaceUpSameNameMonsters(a, b) > 0, return its total count; else 0. */
-int CountAquaChorusBoosts(int a, int b)
-{
-    int count = CountActiveCardsOnField(0, 1178) + CountActiveCardsOnField(1, 1178);
 
-    if (count > 0 && CountOtherFaceUpSameNameMonsters(a, b) > 0)
+/*
+ * Aqua Chorus: "If there are Monster Cards of the same name on the field, the ATK and DEF of those cards are
+ * increased by 500." Returns the number of active Aqua Chorus on both fields if another face-up monster
+ * shares the name of the monster in (player, zone), else 0. GetZoneCardStats adds 500 ATK/DEF per count.
+ */
+int CountAquaChorusBoosts(int player, int zone)
+{
+    int count = CountActiveCardsOnField(0, CARD_AQUA_CHORUS) + CountActiveCardsOnField(1, CARD_AQUA_CHORUS);
+
+    if (count > 0 && CountOtherFaceUpSameNameMonsters(player, zone) > 0)
         return count;
     return 0;
 }
-/* Return the first link of zone (player, zone) whose kind is 5, or 0xFFFF. */
+
+/*
+ * DUEL_LOC of the monster absorbed by the monster in (player, zone): links[i] of its first
+ * ZONE_LINK_ABSORBED link (Relinquished treats the absorbed monster as an equip), or 0xFFFF if none.
+ */
 u16 FindAbsorbedMonsterLink(int player, int zone)
 {
     int i;
@@ -439,137 +548,174 @@ u16 FindAbsorbedMonsterLink(int player, int zone)
 
     i = 0;
     player &= 1;
-    z = (struct DuelZone *)((u8 *)gDuelZones + (zone * 0x94 + player * 0xD64));
+    /* Matching: the two offsets are summed before the base is added (ZONE_AT adds them one by one). */
+    z = (struct DuelZone *)((u8 *)gDuelZones + (zone * sizeof(struct DuelZone) + player * sizeof(struct DuelPlayer)));
     for (; i < z->numLinks; i++) {
         u16 link = z->links[i];
-        if ((u8)z->linkKinds[i] == 5)
+
+        if ((u8)z->linkKinds[i] == ZONE_LINK_ABSORBED)
             return link;
     }
     return 0xFFFF;
 }
-/* For each kind-1 link of zone (player, zone) whose linked card is one of a fixed set of card
- * numbers, call EffectEquipTargetCheck(linked card, (player, zone)); if that returns 0, DestroyFieldCard(linked zone). */
+
+/*
+ * Run by DNA Surgery for each monster zone after the declared type changes: every equip on the monster in
+ * (player, zone) that only suits some types or attributes (or one monster) is checked again with
+ * EffectEquipTargetCheck, and destroyed if the monster no longer qualifies.
+ */
 void DestroyInvalidEquips(int player, int zone)
 {
-    struct CardRef ref;
+    struct ChainEntry equip;
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT(player & 1, zone)->links[i];
 
-        if ((u8)ZB(player & 1, zone)->linkKinds[i] == 1) {
-            int lp = (u8)link;
-            u16 lz = link >> 8;
-            u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, lz)->card));
+        if ((u8)ZONE_AT(player & 1, zone)->linkKinds[i] == ZONE_LINK_EQUIP) {
+            int equipPlayer = (u8)link;
+            u16 equipZone = link >> 8;
+            u16 id = CARD_ID(CARD_WORD(ZONE_AT(equipPlayer & 1, equipZone)->card));
 
             switch (CARD_NUMBER(id)) {
-            case 300: case 301: case 302:
-            case 304: case 305: case 306: case 307: case 308: case 309:
-            case 311:
-            case 314: case 315: case 316:
-            case 318:
-            case 321: case 322: case 323: case 324: case 325: case 326: case 327:
-            case 651:
-            case 653:
-            case 667:
-            case 962:
-            case 1012: case 1013:
-            case 1046: case 1047:
-            case 1182:
-            case 1314:
-            case 1422:
-            case 1540:
-            case 1550:
-                ref.player = lp;
-                ref.zone = lz;
-                ref.id = id;
-                if (EffectEquipTargetCheck(&ref, (u8)player | ((u8)zone << 8)) == 0)
-                    DestroyFieldCard(lp, lz, 1);
+            case CARD_LEGENDARY_SWORD:
+            case CARD_SWORD_OF_DARK_DESTRUCTION:
+            case CARD_DARK_ENERGY:
+            case CARD_LASER_CANNON_ARMOR:
+            case CARD_INSECT_ARMOR_WITH_LASER_CANNON:
+            case CARD_ELFS_LIGHT:
+            case CARD_BEAST_FANGS:
+            case CARD_STEEL_SHELL:
+            case CARD_VILE_GERMS:
+            case CARD_SILVER_BOW_AND_ARROW:
+            case CARD_DRAGON_TREASURE:
+            case CARD_ELECTRO_WHIP:
+            case CARD_CYBER_SHIELD:
+            case CARD_MYSTICAL_MOON:
+            case CARD_VIOLET_CRYSTAL:
+            case CARD_BOOK_OF_SECRET_ARTS:
+            case CARD_INVIGORATION:
+            case CARD_MACHINE_CONVERSION_FACTORY:
+            case CARD_RAISE_BODY_HEAT:
+            case CARD_FOLLOW_WIND:
+            case CARD_POWER_OF_KAISHIN:
+            case CARD_MAGICAL_LABYRINTH:
+            case CARD_SALAMANDRA:
+            case CARD_BRIGHT_CASTLE:
+            case CARD_7_COMPLETED:
+            case CARD_BURNING_SPEAR:
+            case CARD_GUST_FAN:
+            case CARD_GERM_INFECTION:
+            case CARD_PARALYZING_POTION:
+            case CARD_SWORD_OF_DRAGONS_SOUL:
+            case CARD_1314:
+            case CARD_1422:
+            case CARD_1540:
+            case CARD_1550:
+                equip.player = equipPlayer;
+                equip.zone = equipZone;
+                equip.card = id;
+                if (EffectEquipTargetCheck(&equip, (u8)player | ((u8)zone << 8)) == 0)
+                    DestroyFieldCard(equipPlayer, equipZone, 1);
                 break;
             }
         }
     }
 }
-/* Magic/Trap subtype (stats bits 17-19) of a Magic or Trap card, else 0. */
-static inline int GetMagicSubtype(u16 id)
+
+/* Magic/Trap subtype (enum SpellSubtype) of a Magic or Trap card, 0 for any other card. */
+static inline int GetSpellSubtype(u16 id)
 {
     u32 stats = CARD_STATS(id);
 
-    switch ((int)((stats & 0x1F00000) >> 20)) {
-    case 21:
-    case 22:
-        return (stats & 0xE0000) >> 17;
+    switch ((int)CARD_STATS_TYPE(stats)) {
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+        return CARD_STATS_SUBTYPE(stats);
     default:
         return 0;
     }
 }
-/* Count links of zone (player, zone): kind 5 always counts; kind 1 (link to another zone) counts
- * when the linked card exists and (!needMagic || it is a Magic card) or (!needSubtype3 || its
- * Magic/Trap subtype is 3). */
-int CountZoneEquips(int player, int zone, u16 needMagic, u16 needSubtype3)
+
+/*
+ * Number of equips on the monster in (player, zone): every ZONE_LINK_ABSORBED link, plus each
+ * ZONE_LINK_EQUIP link whose source zone holds a card that passes either filter: (!requireMagic or a Magic
+ * card) or (!requireEquipSubtype or an Equip spell). The filters are ORed, so one alone filters nothing; the
+ * only caller (Eternal Rest) passes (0, 0).
+ */
+int CountZoneEquips(int player, int zone, u16 requireMagic, u16 requireEquipSubtype)
 {
     int count = 0;
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
-        switch ((u8)ZB(player & 1, zone)->linkKinds[i]) {
-        case 1: {
-            int ok = 0;
-            int lp = (u8)link;
-            u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, link >> 8)->card));
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT(player & 1, zone)->links[i];
+
+        switch ((u8)ZONE_AT(player & 1, zone)->linkKinds[i]) {
+        case ZONE_LINK_EQUIP: {
+            int counts = 0;
+            int equipPlayer = (u8)link;
+            u16 id = CARD_ID(CARD_WORD(ZONE_AT(equipPlayer & 1, link >> 8)->card));
 
             if (id == 0)
                 break;
-            if (!needMagic || CARD_TYPE(id) == 22)
-                ok = 1;
-            if (!needSubtype3 || GetMagicSubtype(id) == 3)
-                ok = 1;
-            if (ok)
+            if (!requireMagic || CARD_TYPE(id) == CARD_TYPE_MAGIC)
+                counts = 1;
+            if (!requireEquipSubtype || GetSpellSubtype(id) == SPELL_EQUIP)
+                counts = 1;
+            if (counts)
                 count++;
             break;
         }
-        case 5:
+        case ZONE_LINK_ABSORBED:
             count++;
             break;
         }
     }
     return count;
 }
-/* Like CountActiveZoneLinksFromCard, but the linked zone's +0x91 bit 3 only disqualifies the link for card
- * numbers 348, 1058 and 1244. The linked zone number is a local (lz) shared by both lookups;
- * lp is a u8 local (not int), which keeps loop.c from strength-reducing linkKinds[i] in its first pass. */
-int CountZoneLinksFromCard(int player, int zone, u16 number)
+
+/*
+ * Number of links on the card in (player, zone) that come from card number cardNo: ZONE_LINK_EQUIP,
+ * ZONE_LINK_CONTINUOUS and ZONE_LINK_EQUIP_ATK_200 links name the source zone, whose card is compared;
+ * ZONE_LINK_CARD_EFFECT links hold the card ID itself. For Spellbinding Circle, Ring of Magnetism and card
+ * 1244 a link whose source zone is disabled does not count; for other cards it does.
+ * Quirk (ROM): the disabled test runs before the kind switch, so for a card-ID link it reads the zone that
+ * the ID's bits happen to name.
+ */
+int CountZoneLinksFromCard(int player, int zone, u16 cardNo)
 {
     int i;
     int count = 0;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
-        u8 kind = ZB(player & 1, zone)->linkKinds[i];
-        u8 lp = link;
-        int lz = link >> 8;
-        u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, lz)->card));
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT(player & 1, zone)->links[i];
+        u8 kind = ZONE_AT(player & 1, zone)->linkKinds[i];
+        /* Matching: the source player is a u8 local (not int), which keeps loop.c from strength-reducing
+         * linkKinds[i] in its first pass; the source zone is one local shared by both lookups. */
+        u8 sourcePlayer = link;
+        int sourceZone = link >> 8;
+        u16 id = CARD_ID(CARD_WORD(ZONE_AT(sourcePlayer & 1, sourceZone)->card));
         int valid = 1;
 
-        switch (number) {
-        case 348:
-        case 1058:
-        case 1244:
-            if (ZB(lp & 1, lz)->unk8C[5] & 8)
+        switch (cardNo) {
+        case CARD_SPELLBINDING_CIRCLE:
+        case CARD_RING_OF_MAGNETISM:
+        case CARD_1244:
+            if (ZONE_AT(sourcePlayer & 1, sourceZone)->isDisabled)
                 valid = 0;
             break;
         }
         if (valid) {
             switch (kind) {
-            case 1:
-            case 2:
-            case 10:
-                if (CARD_NUMBER(id) == number)
+            case ZONE_LINK_EQUIP:
+            case ZONE_LINK_CONTINUOUS:
+            case ZONE_LINK_EQUIP_ATK_200:
+                if (CARD_NUMBER(id) == cardNo)
                     count++;
                 break;
-            case 3:
-                if (CARD_NUMBER(link) == number)
+            case ZONE_LINK_CARD_EFFECT:
+                if (CARD_NUMBER(link) == cardNo)
                     count++;
                 break;
             }
@@ -577,33 +723,35 @@ int CountZoneLinksFromCard(int player, int zone, u16 number)
     }
     return count;
 }
-/* Count links of zone (player, zone) that refer to card number `number`: kinds 1, 2 and 10 link to
- * another zone (low byte player, high byte zone; skipped if that zone's +0x91 bit 3 is set),
- * kind 3 holds a card ID directly. */
-int CountActiveZoneLinksFromCard(int player, int zone, u16 number)
+
+/*
+ * CountZoneLinksFromCard, but every link whose source zone is disabled is skipped, whatever the card.
+ * Same quirk: card-ID links are also tested against the zone their bits name.
+ */
+int CountActiveZoneLinksFromCard(int player, int zone, u16 cardNo)
 {
     int count = 0;
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
-        u8 kind = ZB(player & 1, zone)->linkKinds[i];
-        int lp = (u8)link;
-        u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, link >> 8)->card));
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT(player & 1, zone)->links[i];
+        u8 kind = ZONE_AT(player & 1, zone)->linkKinds[i];
+        int sourcePlayer = (u8)link;
+        u16 id = CARD_ID(CARD_WORD(ZONE_AT(sourcePlayer & 1, link >> 8)->card));
         int valid = 1;
 
-        if (ZB(lp & 1, link >> 8)->unk8C[5] & 8)
+        if (ZONE_AT(sourcePlayer & 1, link >> 8)->isDisabled)
             valid = 0;
         if (valid) {
             switch (kind) {
-            case 1:
-            case 2:
-            case 10:
-                if (gCardIdToNumber[id & 0x7FF] == number)
+            case ZONE_LINK_EQUIP:
+            case ZONE_LINK_CONTINUOUS:
+            case ZONE_LINK_EQUIP_ATK_200:
+                if (gCardIdToNumber[id & CARD_ID_MASK] == cardNo)
                     count++;
                 break;
-            case 3:
-                if (gCardIdToNumber[link & 0x7FF] == number)
+            case ZONE_LINK_CARD_EFFECT:
+                if (gCardIdToNumber[link & CARD_ID_MASK] == cardNo)
                     count++;
                 break;
             }
@@ -611,43 +759,48 @@ int CountActiveZoneLinksFromCard(int player, int zone, u16 number)
     }
     return count;
 }
-/* 1 if zone (player, zone) has a kind-3 link (link = card ID) whose card number is `number`.
- * The count is read through ZB (zone offset first); the body forms the zone pointer from a
- * separate player pointer, so its address ((player + base) + zone) is not CSE'd with the count's. */
-int HasZoneCardEffectLink(int player, int zone, u16 number)
+
+/* 1 if the card in (player, zone) has a ZONE_LINK_CARD_EFFECT link from card number cardNo, else 0. */
+int HasZoneCardEffectLink(int player, int zone, u16 cardNo)
 {
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        struct DuelZonesPlayer *pl = &gDuelZones[player & 1];
-        struct DuelZone *z = &pl->zones[zone];
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        /* Matching: the body reaches the zone through the player row, so its address ((base + player) +
+         * zone) is not shared with the loop bound's (zone first). */
+        struct DuelZonesPlayer *row = &gDuelZones[player & 1];
+        struct DuelZone *z = &row->zones[zone];
         u16 link = z->links[i];
 
-        if (z->linkKinds[i] == 3 && CARD_NUMBER(link) == number)
+        if (z->linkKinds[i] == ZONE_LINK_CARD_EFFECT && CARD_NUMBER(link) == cardNo)
             return 1;
     }
     return 0;
 }
-/* Index of the first link of zone (player, zone) whose card has card number `number`
- * (kinds 1/2: linked zone's card; kind 3: the link is a card ID), or -1. */
-int FindZoneLinkFromCard(int player, int zone, u16 number)
+
+/*
+ * Index of the first link on the card in (player, zone) from card number cardNo, or -1: ZONE_LINK_EQUIP and
+ * ZONE_LINK_CONTINUOUS links compare the source zone's card, ZONE_LINK_CARD_EFFECT links their card ID.
+ * No disabled test, and ZONE_LINK_EQUIP_ATK_200 links are not considered.
+ */
+int FindZoneLinkFromCard(int player, int zone, u16 cardNo)
 {
     int i;
 
-    for (i = 0; i < ZB(player & 1, zone)->numLinks; i++) {
-        u16 link = ZB(player & 1, zone)->links[i];
-        u8 kind = ZB(player & 1, zone)->linkKinds[i];
-        int lp = (u8)link;
-        u16 id = CARD_ID(CARD_WORD(ZB(lp & 1, link >> 8)->card));
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT(player & 1, zone)->links[i];
+        u8 kind = ZONE_AT(player & 1, zone)->linkKinds[i];
+        int sourcePlayer = (u8)link;
+        u16 id = CARD_ID(CARD_WORD(ZONE_AT(sourcePlayer & 1, link >> 8)->card));
 
         switch (kind) {
-        case 1:
-        case 2:
-            if (CARD_NUMBER(id) == number)
+        case ZONE_LINK_EQUIP:
+        case ZONE_LINK_CONTINUOUS:
+            if (CARD_NUMBER(id) == cardNo)
                 return i;
             break;
-        case 3:
-            if (CARD_NUMBER(link) == number)
+        case ZONE_LINK_CARD_EFFECT:
+            if (CARD_NUMBER(link) == cardNo)
                 return i;
             break;
         }

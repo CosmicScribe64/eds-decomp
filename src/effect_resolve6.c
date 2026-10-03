@@ -1,856 +1,831 @@
-#include "global.h"
-
 /*
- * Duel card-effect executors. Each is `int f(struct CardRef *ref)` and returns 0
- * or a step code such as 0x7F, 0x80 or 0x92. See wiki/functions/code-08031bc8.md.
+ * effect_resolve6 (0x080361D0-0x0803732B): card effect resolve handlers, part 4: Giant Trunade (1080) to
+ * Nimble Momonga (1115), with the handlers several card families share: the six recruiters with ATK 1500
+ * or less, Senju of the Thousand Hands / Sonic Bird, Call of the Haunted / Premature Burial, and Giant Germ
+ * / Nimble Momonga / key 1307 (wiki/functions/effect-resolve6-c.md).
+ *
+ * Every function is the resolve slot of a gCardEffects row (include/effect.h). Chain_Resolve calls it as
+ * resolve(link, chainedTo) with gChain.effectStep = EFFECT_STEP_START (0x80), stores the return value in
+ * gChain.effectStep and calls it again next frame until it returns EFFECT_STEP_DONE (0). Multi-step
+ * handlers count their steps down from 0x80 (enum EffectStep) and keep scratch values in
+ * gChain.effectSubStep, gChain.effectCounter and gChain.scratch.effect.effectCards. Most handlers do
+ * nothing when the activation was negated (link->negated). The CPU (player 1) is not asked the Yes/No
+ * questions; the recruiters let AiPickCardListEntry choose its card.
+ *
+ * Positions: link->targets[] hold player | zone << 8 (DUEL_LOC), or the two halves of a card word
+ * (Graverobber, Call of the Haunted, Premature Burial); zones 0-4 hold monsters, 5-9 spells and traps, 10
+ * the Field Magic (enum DuelZoneIndex). A duel command carries DUEL_CMD_PLAYER when it acts for player 1.
  */
+#include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE, CARD_STATS_SUBTYPE, gCardNames */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType, SpellSubtype */
+#include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, ZoneStatusFlag, ChainEntryKind, ... */
+#include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* enum SoundEffect */
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
+
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
+ * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
+ * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
+ * After H0, replace the block (BEGIN to END) with #include "duel.h" and #include "sound.h"
+ * (build/readability/issues/effect_resolve6.md). */
+#define GUARD_DUEL_H
 
 struct DuelCard {
-    u32 id : 12;
-    u32 unk12 : 20;
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
 
-/* One field zone, 0x94 bytes, 11 per player starting at player+0x28 (0x0201930C). */
-struct DuelZone {
-    struct DuelCard card;   /* +0x00 */
-    u8 unk4;
-    u8 unk5;
-    u8 flag6_0 : 1;
-    u8 flag6_1 : 1;
-    u8 counter6 : 4;
-    u8 unk6_6 : 2;
-    u8 unk7[0x94 - 7];
+/* Needed by duel_screen.h (DuelScreen.from / .to). */
+struct DuelLoc {
+    u16 player:1;
+    u16 area:4;
+    u16 index:9;
+    u16 isDefense:1;
+    u16 isFaceUp:1;
+    u16 unk2;
 };
-#define ZFLAGS(z) (((u8 *)(z))[6])
+
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 turnCounter:4;               /* +0x06 bits 2-5 */
+    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
+    u8 positionLocked:1;            /* +0x07 bit 2 */
+    u8 unk7_3:1;
+    u8 unk7_4:1;
+    u8 effectUnused:1;              /* +0x07 bit 5 */
+    u8 revivedByMonsterReborn:1;    /* +0x07 bit 6 */
+    u8 summonedFromGraveyard:1;     /* +0x07 bit 7: ZONE_STATUS_FROM_GRAVEYARD */
+    u8 unk8[0x94 - 0x8];
+};
+
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003: entries in deck[] */
+    u8 unk4[0x28 - 0x4];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
+    u8 unk904[0xD64 - 0x904];
+};
+
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 linkError:1;                 /* +0x1B12 bit 5 */
+    u8 result:2;                    /* +0x1B12 bits 6-7: enum DuelResult */
+    u8 unk1B13[0x1B64 - 0x1B13];
+    u16 promptResult;               /* +0x1B64: answer of the last duel prompt (a hand slot, a card ID) */
+    u8 unk1B66[0x1B78 - 0x1B66];
+};
+
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
-    u8 filler[0xD64 - 11 * 0x94];
-};
-extern struct DuelZonesPlayer gDuelZones[2];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-
-struct CardRef {
-    u16 id;             /* +0x00 */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 kind : 6;
-    u8 unk4_0 : 2;
-    u8 skip4 : 1;       /* +0x04 bit 2: effect already negated/skipped (hypothesis) */
-    u8 unk4_3 : 5;
-    u8 unk5;
-    u16 pos;
-    u16 unk8;
-    u8 numTargets : 3;  /* +0x0A bits 0-2 */
-    u8 unkA_3 : 5;
-    u8 unkB;
-    u16 targets[2];     /* +0x0C: low byte player, high byte zone */
+    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
 };
 
-#define CARD_WORD(c) (*(u32 *)&(c))
-#define CARD_ID(w) (((w) << 20) >> 20)
-#define CARD_ID11(w) (((w) << 21) >> 21)
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
+extern struct DuelCard gDuelDecks[];            /* 0x02019AA8 = gDuelPlayers[0].deck */
 
-extern const u16 gCardIdToNumber[];
-
-/* Effect-resolution state at 0x02017A40 (byte view; only two bytes used here). */
-extern u8 gChain[];
-#define EFF_PHASE gChain[0x3E0]  /* 0x7E / 0x7F / 0x80: step of a multi-step effect (hypothesis) */
-#define EFF_SIDE gChain[0x3E1]   /* player currently being processed */
-
-/* 0x020192E4 + 0x5F0: a card word in each player's state (stride 0xD64), hypothesis: a "set" spell/trap slot */
-struct PlayerCard5F0 {
-    struct DuelCard card;
-    u8 filler[0xD64 - 4];
-};
-extern struct PlayerCard5F0 gDuelFieldZone[2];
-
-int ReturnGraveyardCardToHand(int player, u16 no);
-void GainLifePoints(int player, int lp);
-void DuelCmd_Push(u16 msg, u16 arg1, u16 arg2, u16 arg3);
-int IsZoneTargetable(int player, int zone);
-void DestroyFieldCardByEffect(int player, int zone);
-void OnCardDestroyedByEffect(int player, int a, int b);
-void QueueAddZoneLink(int player, u16 a, u16 b, u16 c);
-u32 GetFieldMagicIndex(u16 cardNo);
-void EventResponse_Request(int player, int kind, u32 arg);
-void ChangeBattlePosition(int player, int zone, int a, int b);
-int GetZoneCardType(int player, int zone);
-void sub_080197C0(int player, u16 id);
-void FlipFieldCard(int player, int zone, int a);
-void ShowRevealedCard(int player, u16 id);
-void ApplyKotodama(void);
-void DestroyFieldCard(int player, int zone, int a);
-void LoseLifePoints(int player, int lp);
-void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
-void TextBoxSetMenu(u32 a, u32 b, u32 c);
-u32 DuelCursor_PickTarget(u32 keys);
-void ReturnHandCardToDeck(int player, int arg1, u16 arg2);
-extern const u8 gStrNeedleBallPayLpPrompt[];
-extern const u8 gStrYadoKaruReturnPrompt[];
-extern const u8 gStrYadoKaruSelectPrompt[];
-
-/* Player life points: gDuelPlayers[p].lifePoints (u16 at +0, stride 0xD64). */
-struct PlayerLP {
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 count904;
-    u8 fusionCount;
-    u8 filler[0xD64 - 6];
-};
-extern struct PlayerLP gDuelPlayers[2];
-
-/* 0x020192E4 + 0x7C4: deck card words (80 entries) of each player, stride 0xD64. */
-struct PlayerDeck {
-    u32 deck[80];
-    u8 filler[0xD64 - 80 * 4];
-};
-extern struct PlayerDeck gDuelDecks[2];
-/* u16 at 0x0201AE60+0x14 (nonzero = flag; hypothesis: a "count/flag" of the current effect) */
-struct AE60 {
-    u8 unk0[0x14];
-    u16 flag14;
-};
-extern struct AE60 gTextBox;
-/* Duel screen state at 0x0201CFB0: the word at +0x82C is passed to ReturnHandCardToDeck. */
-struct DuelScreen82C {
-    u8 unk0[0x82C];
-    u32 unk82C;
-};
-extern struct DuelScreen82C gDuelScreen;
-
-/* Card-list viewer at 0x0201D810 (see card_list_viewer struct ListView); fields used here. */
-struct ListView {
-    u8 unk0[5];
-    u8 row : 2;         /* +0x05 bits 0-1: cursor row */
-    u8 unk5_2 : 6;
-    u16 top;            /* +0x06: first visible entry */
-    u8 unk8[4];
-    u32 cards[0x80];    /* +0x0C: card words */
-    u16 kinds[0x80];    /* +0x20C: per-entry kind (hypothesis) */
-};
-extern struct ListView gCardListView;
-extern u8 gAiWork[];   /* u16 at +0x1B22 is the saved list position (hypothesis) */
-extern const u8 gStrElegantEgotistSelectPrompt[];
-int CountActiveCardsOnField(int player, u16 number);
-int CollectEffectTargets(int player, int number, int b);
-int CountFreeMonsterZones(int player);
-int AiPickCardListEntry(u16 id);
-void CardListView_Open(int player, int area, int a2, int a3);
-void QueueSpecialSummonChoosePosition(int player, u32 *card, int a, int b);
-void QueueSpecialSummon(int player, u32 *card, int a, int b, int c);
-void LoseLpOnSendToGraveyard(int player, int a);
-int AddDeckCardToHand(int player, u16 number);
-void FormatStr(void *dst, const void *a, const void *b);
-extern const u8 gStrThunderDragonAddPromptFmt[];
-extern const u16 gCardNumberToId[];
-extern const u8 gCardNames[];
-extern const u8 gStrCyberSteinSelectPrompt[];
-extern const u8 gStrGaleDograSelectPrompt[];
-void TributeMonster(int player, int zone);
-int EffectBlastJugglerCheck(struct CardRef *ref, u16 pos);
-int EffectDragonSeekerCheck(struct CardRef *ref, u16 pos);
-void ReturnFieldCardToHand(int player, int zone, int a);
-void SendTopDeckCardsToGraveyard(int player, int a, int b);
-void ShowCardDetail(int player, int id);
-extern u8 gDuel[];   /* duel global state, byte view */
-int EffectDestroyByTypeCheck(struct CardRef *ref, u16 pos);
-void SwapFieldCards(int player, u16 pos1, u16 pos2);
-void EquipCard(int player, u16 a, u16 b);
-void ChangeBattlePosition(int player, int zone, int a, int b);
-void ShowDestroyedCard(int player, int id);
-int GetZoneCardDef(int player, int zone);
-int HasFlipEffect(u16 number, int a);
-void Chain_AddPending(u32 a, u32 b);
-void FlipFieldCard(int player, int zone, int a);
-void DiscardHandCard(int player, int a, int b, int c);
-void DrawCards(int player, int a);
-
-
-int CountMonsters(int player);
-int CountTributableMonsters(int player, int a);
-void DuelPrompt_PostTribute(int player);
-int EffectSolemnJudgmentPrepare(struct CardRef *ref, int a, int b);
-int DuelPrompt_Post(int player, int a, int b, int c);
-/* Duel global state at 0x020192E0 (byte view gDuel); fields used in this unit. */
-struct DuelGlobals {
-    u8 unk0[0x1B12];
-    u8 b0 : 1;      /* +0x1B12 bit 1: a player index (hypothesis) */
-    u8 b1 : 1;
-    u8 rest : 6;
-    u8 unk1B13[0x1B64 - 0x1B13];
-    u16 w1B64;
-};
-#define DG ((struct DuelGlobals *)gDuel)
-void DuelPrompt_PostRandomDiscard(int player, int a, int b);
-void DuelPrompt_PostDiscard(int player, int a, int b, int c);
-int EffectTailorOfTheFickleCheck(struct CardRef *ref, u16 pos);
-int IsValidEquipTarget(int p1, int z1, int p2, int z2);
-int FindMonsterLinkedToCard(int player, int zone);
-void MoveEquipCard(u16 pos);
-void *MemCopy16(void *dst, const void *src, u32 n);
-int FindCardEffect(u16 id);
-/* Effect-resolution state at 0x02017A40, larger view. */
-struct EffState {
-    u8 unk0[0x3E0];
-    u8 phase;       /* +0x3E0 */
-    u8 side;        /* +0x3E1 */
-    u8 unk3E2[0x4E4 - 0x3E2];
-    struct CardRef cur;     /* +0x4E4: working copy of the CardRef being executed */
-    u8 (*fn)(struct CardRef *, int);    /* +0x4F8: executor picked from gCardEffects */
-    u8 unk4FC[0x542 - 0x4FC];
-    u16 w542;       /* +0x542: saved value (a stat) for the 0x78 step of EffectAttackResponseResolve */
-};
-#define ES ((struct EffState *)gChain)
-struct EffEntry {       /* 0x18 bytes each at 0x0819A9D4 (hypothesis: effect table) */
-    u32 unk0;
-    u8 (*fn)(struct CardRef *, int);
-    u32 unk8[4];
-};
-extern struct EffEntry gCardEffects[];
-int FindFreeMonsterZone(int player);
-void MoveFieldCard(int player, u16 a, u16 b);
-int EffectTheCheerfulCoffinPrepare(struct CardRef *ref, int a, int b);
-void PlaySE(int a);
-extern const u8 gStrCheerfulCoffinDiscardPrompt[];
-extern const u8 gStrCheerfulCoffinSelectMonster[];
-/* Duel screen state at 0x0201CFB0, larger view (see struct DuelScreen82C). */
-struct DuelScreenView {
-    u8 unk0[0x824];
-    u16 w824;
-    u8 unk826[2];
-    u8 b828;
-    u8 unk829[3];
-    u32 w82C;
-};
-#define DSV ((struct DuelScreenView *)&gDuelScreen)
-/* 0x020192E4 + 0x684: a list of card words per player (stride 0xD64). */
-struct PlayerWords {
-    u32 w[0xD64 / 4];
-};
-extern struct PlayerWords gDuelHands[2];
-int EffectLastWillPrepare(struct CardRef *ref, int a, int b);
-int GetZoneCardAtk(int player, int zone);
-void FormatInt(char *dst, const void *fmt, ...);
-extern const u8 gStrWidespreadRuinTiePrompt[];
-int GetGraveyardCardById(int player, int id, int *out);
-int GetZoneCardAttribute(int player, int zone);
+void CopyDuelCard(u32 *dst, u32 *src);
+u32 IsSpecialSummonOnly(u16 cardId);
+int IsCardInGraveyard(int player, struct DuelCard *card);
 int FindTrapInHand(int player);
 int FindNonFieldMagicInHand(int player);
+int CountFreeMonsterZones(int player);
 int FindFreeSpellTrapZone(int player);
-extern const u8 gStrDustTornadoSetPrompt[];
-extern const u8 gStrDustTornadoSelectCards[];
-struct MainView { u8 unk0[6]; u16 h6; };
-extern struct MainView gMain;
-int IsCardInGraveyard(int player, u32 *packed);
-/* 0x0201CF90: a byte whose bits 1-5 are used (hypothesis: a selected position) */
-extern u8 gSummonAction;
-extern const u8 gStrSenjuAddRitualMonsterPrompt[];
-extern const u8 gStrSonicBirdAddRitualMagicPrompt[];
-extern const u8 gStrRitualSearchSelectCard[];
-int CanSpecialSummon(int player);
-extern const u8 gStrRecruiterNoCardsInDeck[];
-extern const u8 gStrRecruiterSummonPrompt[];
-extern const u8 gStrRecruiterSelectMonster[];
-struct S15F00 { u8 unk0[0x1B22]; u16 listPos; };    /* saved list position (hypothesis) */
-#define S15F00 ((struct S15F00 *)gAiWork)
-int RemoveDeckCardByNumber(int player, int number, int *out);
-void CopyDuelCard(void *dst, const void *src);
-extern const u8 gStrGiantGermSummonPrompt[];
-extern const u8 gStrSameNameSetPrompt[];
-struct EffState544 {    /* 0x02017A40 view with a card word at +0x544 */
-    u8 unk0[0x544];
-    u32 card;
-};
-#define ES544 ((struct EffState544 *)gChain)
-int EffectPainfulChoicePrepare(struct CardRef *ref, int a, int b);
-void DuelPrompt_PostData(int player, int a, u16 *ids, int n);
-void sub_08019820(int player);
-void ShowDestroyedCard(int player, int id);
-void Chain_AddPending(u32 a, u32 b);
-extern const u8 gStrPainfulChoiceSelect5[];
-extern const u8 gStrPainfulChoiceCardsRemaining[];
-extern u32 gUnk_02017F84[];     /* 5 card words (hypothesis: revealed/drawn cards) */
-struct EffStateCards {          /* 0x02017A40 view: card words at +0x544 */
-    u8 unk0[0x544];
-    u32 cards[8];
-};
-#define ESC ((struct EffStateCards *)gChain)
-int IsSpecialSummonOnly(int id);
-#define EFF_CNT gChain[0x3E2]
-struct PF {     /* player state at 0x020192E4, stride 0xD64; fields used here */
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 unk4[0x7C4 - 4];
-    u32 deck[80];
-    u8 filler[0xD64 - 0x7C4 - 80 * 4];
-};
-#define PF ((struct PF *)gDuelPlayers)
-int EffectGiantTrunadeResolve(struct CardRef *ref)
+u32 GetZoneCardAttribute(s32 player, s32 slot);
+
+/* sound.h (staged) declares this; the legacy include/sound.h does not. */
+void PlaySE(u32 seId);
+/* ---- END duel.h stand-in ---- */
+
+#include "ai.h"                     /* gAiWork.listPick, AiPickCardListEntry */
+#include "card_list_view.h"         /* gCardListView, CardListView_Open */
+#include "chain.h"                  /* struct ChainEntry, gChain, Chain_AddPending */
+#include "duel_actions.h"           /* field actions: DestroyFieldCard, EquipCard, DiscardHandCard, ... */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_prompt.h"            /* DuelPrompt_PostData */
+#include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget */
+#include "effect.h"                 /* enum EffectStep, prompt texts */
+#include "effect_handlers.h"        /* the handlers defined here */
+#include "summon.h"                 /* gSummonAction, CanSpecialSummon, QueueSpecialSummon* */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "util.h"                   /* FormatInt, FormatStr */
+
+/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md). */
+/* Matching: EffectPainfulChoicePrepare is defined with one parameter; Painful Choice calls it with
+ * (link, chainedTo, 0), which loads r1 and r2 before the call. */
+extern int EffectPainfulChoicePrepare3(struct ChainEntry *card, int chainedTo, int fromHand)
+    asm("EffectPainfulChoicePrepare");
+/* Matching: CollectEffectTargets is defined to return u16; this unit tests the count as an int, with no
+ * narrowing of r0. */
+extern int CollectEffectTargetsInt(int player, int cardNumber, int param) asm("CollectEffectTargets");
+/* Matching: GetGraveyardCardById is defined with a u16 cardId; Graverobber passes an int, without the
+ * narrowing (lsl; lsr) that the u16 parameter adds. */
+extern int GetGraveyardCardByIdInt(int player, int cardId, struct DuelCard *out) asm("GetGraveyardCardById");
+/* Matching: DuelCmd_Push is defined with int arg4/arg6; Dust Tornado calls it with u16 ones (the narrowing
+ * changes how the two 0xF masks are loaded). */
+extern void DuelCmd_Push16(u16 cmd, u16 arg2, u16 arg4, u16 arg6) asm("DuelCmd_Push");
+
+/* The command id for player: player 1's commands carry DUEL_CMD_PLAYER. */
+#define PLAYER_CMD(player, cmd) ((player) ? DUEL_CMD_PLAYER | (cmd) : (cmd))
+
+/* ChainEntry.numTargets read as `7 & byte` (movs #7; ldrb; ands). Matching: where Dust Tornado keeps the
+ * count in a local, the bitfield read (lsl #29; lsr #29) gives other code. */
+#define LINK_NUM_TARGETS_BYTE(link) (7 & ((u8 *)(link))[0xA])
+
+/* The card word of a zone as one u32. Matching: the ROM loads the whole word (ldr) and extracts the ID
+ * with lsl #20; lsr #20. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+#define CARD_ID(word) (((word) << 20) >> 20)
+/* The card ID as a table index: bits 0-10 (CARD_ID_MASK) of a card word, lsl #21; lsr #21. */
+#define CARD_ID_INDEX(word) (((word) << 21) >> 21)
+/* DuelCard.owner (bit 12) and DuelCard.planted (bit 17) of a card word, extracted with shifts. */
+#define CARD_WORD_OWNER(word) (((word) << 19) >> 31)
+#define CARD_WORD_PLANTED(word) ((int)((word) << 14) < 0)
+
+/* gCardStats (0x08621DE0) and gCardIdToNumber (0x08622AB4) through integer-constant addresses. Matching:
+ * the ROM reloads the table address at each use, which the symbols do not give. */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id) CARD_STATS_TYPE(CARD_STATS(id))         /* enum CardType */
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define IS_MONSTER_TYPE(type) ((type) <= CARD_TYPE_REPTILE)    /* types 1-20 are monsters */
+
+/* &gDuelZones[player].zones[zone] by byte arithmetic from the gDuelZones literal. Matching: ZONE_AT adds the
+ * zone term first, ZONE_AT_PLAYER_FIRST the player term first; each function keeps the ROM's order.
+ * Callers pass player & 1. */
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer) + (u32)gDuelZones))
+#define ZONE_AT_PLAYER_FIRST(player, zone) \
+    ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
+
+/* CardListView_Open area -1: list the candidates CollectEffectTargets gathers for the card number. */
+#define CARDLIST_AREA_EFFECT_TARGETS (-1)
+
+/* Text box rectangles: TextBoxOpen takes x | y << 8 and width | height << 8, in cells. */
+#define TEXTBOX_XY(x, y) ((x) | (y) << 8)
+
+/* A Chain_AddPending trigger word: card | kind << 21 | event << 25 | player << 31 (include/chain.h). */
+#define CHAIN_TRIGGER(kind, event) ((event) << 25 | (kind) << 21)
+
+/* Giant Trunade (1080): return every Magic and Trap card on the field (zones 5-10) to its owner's hand, the
+ * opponent's first. 9 is passed on as arg4 of DUEL_CMD_RETURN_TO_HAND (meaning unknown). */
+int EffectGiantTrunadeResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4) {
+    if (!link->negated) {
         int i;
 
         for (i = 0; i <= 1; i++) {
-            int p;
-            int j;
+            int player;
+            int zone;
 
             if (i)
-                p = ref->player;
+                player = link->player;
             else
-                p = 1 - ref->player;
-            for (j = 5; j <= 10; j++) {
-                struct DuelZone *z = ZB(p & 1, j);
+                player = 1 - link->player;
+            for (zone = ZONE_SPELL_0; zone <= ZONE_FIELD; zone++) {
+                struct DuelZone *z = ZONE_AT(player & 1, zone);
 
                 if (CARD_ID(CARD_WORD(z->card)))
-                    ReturnFieldCardToHand(p, j, 9);
+                    ReturnFieldCardToHand(player, zone, 9);
             }
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectPainfulChoiceResolve(struct CardRef *ref, int arg)
+
+/*
+ * Painful Choice (1081): pick 5 cards from the deck (gChain.effectSubStep counts the picks left and indexes
+ * gChain.scratch.effect.effectCards, filled from [4] down to [0]); the opponent chooses one of them
+ * (PROMPT_PICK_ONE_OF_FIVE_CARDS). The first card equal to the choice goes to the hand, the others (including
+ * duplicates of it) to the graveyard; then the deck is shuffled.
+ */
+int EffectPainfulChoiceResolve(struct ChainEntry *link, int chainedTo)
 {
-    u16 ids[16];
-    char buf[0x80];
+    u16 cardIds[16];                /* only [0..4] are used */
+    u8 text[0x80];
     int i;
 
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80:
-            if (EffectPainfulChoicePrepare(ref, arg, 0) == 0)
-                return 0;
-            TextBoxOpen(0x206, 0x512, 0xB, gStrPainfulChoiceSelect5);
-            EFF_SIDE = 5;
-            return 0x7F;
-        case 0x7F:
-            CardListView_Open(ref->player, -1, CARD_NUMBER(ref->id), 0);
-            return 0x7E;
-        case 0x7E: {
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START:
+            if (EffectPainfulChoicePrepare3(link, chainedTo, 0) == 0)
+                return EFFECT_STEP_DONE;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 5), TEXTBOX_FLAGS_DEFAULT, gStrPainfulChoiceSelect5);
+            gChain.effectSubStep = 5;
+            return EFFECT_STEP_2;
+        case EFFECT_STEP_2:         /* open the deck list */
+            CardListView_Open(link->player, CARDLIST_AREA_EFFECT_TARGETS, CARD_NUMBER(link->card), 0);
+            return EFFECT_STEP_3;
+        case EFFECT_STEP_3: {       /* take the picked card out of the deck and keep it */
             u32 *card;
 
-            EFF_SIDE--;
-            card = &gCardListView.cards[gCardListView.row + gCardListView.top];
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8065 : 0x65, ((u16 *)card)[0], ((u16 *)card)[1], 0);
-            CopyDuelCard(&ESC->cards[EFF_SIDE], card);
-            if (EFF_SIDE != 0) {
-                FormatInt(buf, gStrPainfulChoiceCardsRemaining, EFF_SIDE);
-                TextBoxOpen(0x206, 0x512, 0xB, buf);
-                return 0x7F;
+            gChain.effectSubStep--;
+            card = &gCardListView.cards[gCardListView.cursorRow + gCardListView.top];
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_REMOVE_CARD_FROM_DECK), ((u16 *)card)[0],
+                         ((u16 *)card)[1], 0);
+            CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[gChain.effectSubStep], card);
+            if (gChain.effectSubStep != 0) {
+                FormatInt((char *)text, (const char *)gStrPainfulChoiceCardsRemaining, gChain.effectSubStep);
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 5), TEXTBOX_FLAGS_DEFAULT, text);
+                return EFFECT_STEP_2;
             }
-            return 0x7D;
+            return EFFECT_STEP_4;
         }
-        case 0x7D:
+        case EFFECT_STEP_4:         /* the opponent chooses one of the five */
             for (i = 0; i <= 4; i++)
-                ids[i] = CARD_ID(gUnk_02017F84[i]);
-            DuelPrompt_PostData(1 - ref->player, 12, ids, 5);
-            return 0x7C;
-        case 0x7C: {
-            int first = 1;
+                cardIds[i] = CARD_ID(CARD_WORD(gChain.scratch.effect.effectCards[i]));
+            DuelPrompt_PostData(1 - link->player, PROMPT_PICK_ONE_OF_FIVE_CARDS, cardIds, 5);
+            return EFFECT_STEP_5;
+        case EFFECT_STEP_5: {       /* promptResult: the chosen card ID */
+            int toHandLeft = 1;
 
             for (i = 0; i <= 4; i++) {
-                u32 *pw = &gUnk_02017F84[i];
-                u16 *ph = (u16 *)pw;
+                u32 *card = (u32 *)&gChain.scratch.effect.effectCards[i];
+                u16 *cardHalves = (u16 *)card;
 
-                if (CARD_ID(*pw) == DG->w1B64 && first != 0) {
-                    /* the unit declares sub_08019820(int); the real one is (int player, u16 id) */
-                    ((void (*)(int, u16))sub_08019820)(ref->player, CARD_ID(*pw));
-                    DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x80CB : 0xCB, ph[0], ph[1], 0);
-                    first = 0;
+                if (CARD_ID(*card) == gDuel.promptResult && toHandLeft != 0) {
+                    sub_08019820(link->player, CARD_ID(*card));
+                    DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_ADD_CARD_TO_HAND), cardHalves[0],
+                                 cardHalves[1], 0);
+                    toHandLeft = 0;
                 } else {
-                    u32 w;
-                    u32 id;
-                    u32 num;
+                    u32 word;
+                    u32 cardId;
+                    u32 number;
 
-                    ShowDestroyedCard(ref->player, CARD_ID(*pw));
-                    DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x80D7 : 0xD7, ph[0], ph[1], 0);
-                    w = *pw;
-                    id = CARD_ID(w);
-                    /* an int-width temporary keeps the compare in SImode, so loop.c does not hoist 0x4DA */
-                    num = CARD_NUMBER(id);
-                    if (num == 0x4DA)
-                        Chain_AddPending(0x3C600000 | (((w << 19) >> 31) & 1) << 31 | id, 0);
+                    ShowDestroyedCard(link->player, CARD_ID(*card));
+                    DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_ADD_CARD_TO_GRAVEYARD_NO_REDRAW),
+                                 cardHalves[0], cardHalves[1], 0);
+                    word = *card;
+                    cardId = CARD_ID(word);
+                    /* Matching: an int-width temporary keeps the compare in SImode, so loop.c does not hoist
+                     * the constant. */
+                    number = CARD_NUMBER(cardId);
+                    if (number == CARD_1242)    /* key 1242: queue its sent-to-the-graveyard trigger */
+                        Chain_AddPending(CHAIN_TRIGGER(CHAIN_KIND_OFF_FIELD, RESPONSE_MONSTER_TO_GRAVE)
+                                             | (CARD_WORD_OWNER(word) & 1) << 31 | cardId,
+                                         0);
                 }
             }
-            return 0x64;
+            return EFFECT_STEP_END;
         }
         default:
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 1, 0, 0);
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_SHUFFLE_DECK), 1, 0, 0);
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectTimeSealResolve(struct CardRef *ref)
-{
-    if (!ref->skip4)
-        DuelCmd_Push(!(1 & ((u8 *)ref)[2]) ? 0x8044 : 0x44, 0, 0, 0);
-    return 0;
-}
-int EffectGraverobberResolve(struct CardRef *ref)
-{
-    if (!ref->skip4 && ref->numTargets == 2) {
-        int out;
-        int opp = 1 - ref->player;
-        int id = (u32)ref->targets[0] << 20 >> 20;
 
-        if (GetGraveyardCardById(opp, id, &out))
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x80D5 : 0xD5, id, 0, 0);
-    }
-    return 0;
+/* Time Seal (1090): the opponent skips its next Draw Phase. */
+int EffectTimeSealResolve(struct ChainEntry *link)
+{
+    if (!link->negated)
+        DuelCmd_Push(PLAYER_CMD(!link->player, DUEL_CMD_SKIP_NEXT_DRAW_PHASE), 0, 0, 0);
+    return EFFECT_STEP_DONE;
 }
-int EffectGiftOfTheMysticalElfResolve(struct CardRef *ref)
+
+/* Graverobber (1091): take the chosen Magic card (a card word in targets[0..1]) from the opponent's
+ * graveyard, if it is still there. */
+int EffectGraverobberResolve(struct ChainEntry *link)
+{
+    if (!link->negated && link->numTargets == 2) {
+        struct DuelCard found;
+        int opponent = 1 - link->player;
+        int cardId = CARD_ID((u32)link->targets[0]);
+
+        if (GetGraveyardCardByIdInt(opponent, cardId, &found))
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_TAKE_OPPONENT_GRAVEYARD_CARD), cardId, 0, 0);
+    }
+    return EFFECT_STEP_DONE;
+}
+
+/* Gift of The Mystical Elf (1092): gain 300 LP for each face-up monster on the field. */
+int EffectGiftOfTheMysticalElfResolve(struct ChainEntry *link)
 {
     int count = 0;
-    struct DuelZone **zonePtr; /* FAKEMATCH: taking the local address preserves register allocation. */
+    /* FAKEMATCH: taking the address of z (never used otherwise) keeps the ROM's loop shape and register
+     * allocation. */
+    struct DuelZone **zonePtr;
 
-    if (!ref->skip4) {
-        int i;
+    if (!link->negated) {
+        int player;
 
-        for (i = 0; i <= 1; i++) {
-            int j;
+        for (player = 0; player <= 1; player++) {
+            int zone;
 
-            for (j = 0; j <= 4; j++) {
-                struct DuelZone *z = ZB(i & 1, j);
+            for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                struct DuelZone *z = ZONE_AT(player & 1, zone);
 
                 zonePtr = &z;
-                if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(*zonePtr) & 2))
+                if (CARD_ID(CARD_WORD(z->card)) && (*zonePtr)->isFaceUp)
                     count++;
             }
         }
         if (count > 0)
-            GainLifePoints(ref->player, count * 300);
+            GainLifePoints(link->player, count * 300);
     }
-    return 0;
-} /* 0x08036570 size 0x80 */
-static inline u32 EffectHandWord(int player, int index)
-{
-    int idx4 = index * 4;
-    int poff = player * 0xD64;
-
-    return *(u32 *)(idx4 + poff + (u32)gDuelHands);
+    return EFFECT_STEP_DONE;
 }
-int EffectDustTornadoResolve(struct CardRef *ref)
-{
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80: {
-            int n = 7 & ((u8 *)ref)[0xA];
 
-            if (n == 1) {
-                u8 tp = ref->targets[0];
-                int tz = ref->targets[0] >> 8;
-                int p = tp & n;
-                struct DuelZone *z = ZB(p, tz);
+/* gDuelPlayers[player].hand[index] as a word, by byte arithmetic from the gDuelHands literal (index term
+ * first, as the ROM adds them). */
+static inline u32 GetHandCardWord(int player, int index)
+{
+    int indexOffset = index * 4;
+    int playerOffset = player * 0xD64;
+
+    return *(u32 *)(indexOffset + playerOffset + (u32)gDuelHands);
+}
+
+/*
+ * Dust Tornado (1094): destroy the opponent's Magic/Trap card targets[0]; then the player may set a Magic
+ * or Trap card from the hand (not a Field Magic) in a free spell/trap zone. B in the hand-card pick goes
+ * back to the Yes/No question.
+ */
+int EffectDustTornadoResolve(struct ChainEntry *link)
+{
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START: {   /* destroy the target */
+            int numTargets = LINK_NUM_TARGETS_BYTE(link);
+
+            if (numTargets == 1) {
+                u8 targetPlayer = link->targets[0];
+                int targetZone = link->targets[0] >> 8;
+                int side = targetPlayer & 1;
+                struct DuelZone *z = ZONE_AT(side, targetZone);
 
                 if (CARD_ID(CARD_WORD(z->card))) {
-                    DestroyFieldCard(tp, tz, 1);
-                    return 0x7F;
+                    DestroyFieldCard(targetPlayer, targetZone, 1);
+                    return EFFECT_STEP_2;
                 }
             }
             break;
         }
-        case 0x7F: {
-            int r;
+        case EFFECT_STEP_2: {       /* a Trap or non-Field Magic in the hand and a free zone: ask Yes/No */
+            int trapIdx;
 
-            if (gDuelPlayers[ref->player].handCount == 0) {
-                /* FAKEMATCH: an empty repeated test ends the extended block, so
-                   the player bit is shifted again for FindTrapInHand. */
-                if (gDuelPlayers[ref->player].handCount) {
+            if (gDuelPlayers[link->player].handCount == 0) {
+                /* FAKEMATCH: an empty repeated test ends the extended block, so the player bit is shifted
+                 * again for FindTrapInHand. */
+                if (gDuelPlayers[link->player].handCount) {
                 }
                 break;
             }
-            r = FindTrapInHand(ref->player);
+            trapIdx = FindTrapInHand(link->player);
             {
-                int fail = -1;
+                int none = -1;
 
-                /* Compiler hint: retain r across the second check and rematerialize -1 later. */
-                __asm__("" : "+r"(fail));
-                if (r == fail && FindNonFieldMagicInHand(ref->player) == r)
+                /* FAKEMATCH: the empty asm keeps trapIdx in its register across the second search and
+                 * makes -1 be loaded again for the zone test below. */
+                asm("" : "+r"(none));
+                if (trapIdx == none && FindNonFieldMagicInHand(link->player) == trapIdx)
                     break;
             }
-            if (FindFreeSpellTrapZone(ref->player) == -1)
+            if (FindFreeSpellTrapZone(link->player) == -1)
                 break;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDustTornadoSetPrompt);
-            TextBoxSetMenu(1, 0, 0);
-            return 0x7E;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrDustTornadoSetPrompt);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            return EFFECT_STEP_3;
         }
-        case 0x7E:
-            if (gTextBox.flag14 == 0)
+        case EFFECT_STEP_3:         /* No ends the effect */
+            if (gTextBox.result == 0)
                 break;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrDustTornadoSelectCards);
-            return 0x7D;
-        case 0x7D:
-            if (DuelCursor_PickTarget(1) != 0) {
-                int p = ref->player;
-                u32 w = EffectHandWord(p, DSV->w82C);
-                u16 id = CARD_ID(w);
-                int kind;
-                int t;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrDustTornadoSelectCards);
+            return EFFECT_STEP_4;
+        case EFFECT_STEP_4:         /* pick the hand card and set it face down */
+            if (DuelCursor_PickTarget(PICK_HAND) != 0) {
+                u32 word = GetHandCardWord(link->player, gDuelScreen.selIndex);
+                u16 cardId = CARD_ID(word);
+                int subtype;
+                int type;
 
-                if (CARD_TYPE(id) <= 0x14)
-                    goto fail;
-                t = CARD_TYPE(id);
-                switch (t) {
-                case 0x15:
-                case 0x16:
-                    kind = (CARD_STATS(id) & 0xE0000) >> 17;
+                if (IS_MONSTER_TYPE(CARD_TYPE(cardId)))
+                    goto refuse;
+                type = CARD_TYPE(cardId);
+                switch (type) {
+                case CARD_TYPE_TRAP:
+                case CARD_TYPE_MAGIC:
+                    subtype = CARD_STATS_SUBTYPE(CARD_STATS(cardId));
                     break;
                 default:
-                    kind = 0;
+                    subtype = SPELL_NORMAL;
                 }
-                if (kind == 2)
-                    goto fail;
-                DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x80C5 : 0xC5, id,
-                             (DSV->w82C & 0xF) << 4 | (FindFreeSpellTrapZone(ref->player) & 0xF), 0);
-                return 0x64;
-            fail:
-                PlaySE(3);
+                if (subtype == SPELL_FIELD)
+                    goto refuse;
+                /* arg4: zone | hand index << 4, face down (bit 8 clear) */
+                DuelCmd_Push16(PLAYER_CMD(link->player, DUEL_CMD_PLACE_SPELL_TRAP_FROM_HAND), cardId,
+                               (gDuelScreen.selIndex & 0xF) << 4 | (FindFreeSpellTrapZone(link->player) & 0xF), 0);
+                return EFFECT_STEP_END;
+            refuse:
+                PlaySE(SE_ERROR);
             }
-            if (gMain.h6 & 2)
-                return 0x7F;
-            return 0x7D;
+            if (gMain.newKeys & B_BUTTON)
+                return EFFECT_STEP_2;
+            return EFFECT_STEP_4;
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
 
-#define ZB2_367E4(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-int EffectReviveFromGraveyardResolve(struct CardRef *ref)
+/*
+ * Call of the Haunted (1095) and Premature Burial (1160): Special Summon the chosen graveyard monster (its
+ * card word in targets[0..1]) face up in Attack Position, then link the card to it: Call of the Haunted with
+ * a ZONE_LINK_CONTINUOUS link, Premature Burial as an equip. Needs the card still in its zone and the
+ * monster still in the graveyard. The count of the player's monsters with the same ID summoned from the
+ * graveyard, kept in gChain.effectSubStep, is not read here.
+ */
+int EffectReviveFromGraveyardResolve(struct ChainEntry *link)
 {
-    u8 skip = 4 & ((u8 *)ref)[4];
+    if (!link->negated && link->numTargets == 2) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START: {
+            int side = link->player & 1;
+            struct DuelZone *z = ZONE_AT(side, link->zone);
+            u32 card;
+            int zone;
 
-    if (!skip && ref->numTargets == 2) {
-        switch (EFF_PHASE) {
-        case 0x80: {
-            int pp = 1 & ref->player;
-            struct DuelZone *z = ZB(pp, ref->zone);
-            u32 packed;
-            int j;
-
-            if (CARD_WORD(z->card) << 20 == 0)
-                return 0;
-            packed = ref->targets[1] << 16 | ref->targets[0];
-            if (IsCardInGraveyard(ref->player, &packed) == 0)
-                return 0;
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x80D3 : 0xD3, ref->targets[0], ref->targets[1], 0);
-            QueueSpecialSummon(ref->player, &packed, 1, 0, 0x20);
-            EFF_SIDE = 0;
-            for (j = 0; j <= 4; j++) {
-                if (CARD_ID(CARD_WORD(ZB2_367E4(1 & ref->player, j)->card)) == ref->targets[0]
-                    && (ZB2_367E4(1 & ref->player, j)->unk7[0] & 0x80))
-                    EFF_SIDE++;
+            if (CARD_ID(CARD_WORD(z->card)) == 0)      /* the card has left its zone */
+                return EFFECT_STEP_DONE;
+            card = link->targets[1] << 16 | link->targets[0];
+            if (IsCardInGraveyard(link->player, (struct DuelCard *)&card) == 0)
+                return EFFECT_STEP_DONE;
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_REMOVE_CARD_FROM_GRAVEYARD), link->targets[0],
+                         link->targets[1], 0);
+            QueueSpecialSummon(link->player, (struct DuelCard *)&card, 1, 0, ZONE_STATUS_FROM_GRAVEYARD);
+            gChain.effectSubStep = 0;
+            for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                if (CARD_ID(CARD_WORD(ZONE_AT_PLAYER_FIRST(link->player & 1, zone)->card)) == link->targets[0]
+                    && ZONE_AT_PLAYER_FIRST(link->player & 1, zone)->summonedFromGraveyard)
+                    gChain.effectSubStep++;
             }
-            return 0x7F;
+            return EFFECT_STEP_2;
         }
-        case 0x7F:
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x447:
-                QueueAddZoneLink(ref->player, ref->player | ref->zone << 8,
-                             ref->player | ((u32)(gSummonAction << 26) >> 27) << 8, 2);
+        case EFFECT_STEP_2:         /* link the card to the zone the summon landed in (gSummonAction.zone) */
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_CALL_OF_THE_HAUNTED:
+                QueueAddZoneLink(link->player, link->player | link->zone << 8,
+                                 link->player | gSummonAction.zone << 8, ZONE_LINK_CONTINUOUS);
                 break;
-            case 0x488:
-                EquipCard(ref->player, ref->player | ref->zone << 8,
-                             ref->player | ((u32)(gSummonAction << 26) >> 27) << 8);
+            case CARD_PREMATURE_BURIAL:
+                EquipCard(link->player, link->player | link->zone << 8,
+                          link->player | gSummonAction.zone << 8);
                 break;
             }
-            return 0x64;
+            return EFFECT_STEP_END;
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectSolomonsLawbookResolve(struct CardRef *ref)
+
+/* Solomon's Lawbook (1096): the player skips their next Standby Phase. */
+int EffectSolomonsLawbookResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4)
-        DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8045 : 0x45, 0, 0, 0);
-    return 0;
+    if (!link->negated)
+        DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_SKIP_NEXT_STANDBY_PHASE), 0, 0, 0);
+    return EFFECT_STEP_DONE;
 }
-int EffectEarthshakerResolve(struct CardRef *ref)
+
+/* Earthshaker (1097): destroy every face-up monster of the attribute the opponent picked (targets[0], enum
+ * CardAttribute), the opponent's first. */
+int EffectEarthshakerResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4 && ref->numTargets == 1) {
+    if (!link->negated && link->numTargets == 1) {
         int i;
 
         for (i = 0; i <= 1; i++) {
-            int p;
-            int j;
+            int player;
+            int zone;
 
             if (i)
-                p = ref->player;
+                player = link->player;
             else
-                p = 1 - ref->player;
-            for (j = 0; j <= 4; j++) {
-                struct DuelZone *z = ZB(p & 1, j);
+                player = 1 - link->player;
+            for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                struct DuelZone *z = ZONE_AT(player & 1, zone);
 
-                if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2) && GetZoneCardAttribute(p, j) == ref->targets[0]) {
-                    DestroyFieldCardByEffect(p, j);
-                    OnCardDestroyedByEffect(ref->player, p, j);
+                if (CARD_ID(CARD_WORD(z->card)) && z->isFaceUp
+                    && GetZoneCardAttribute(player, zone) == link->targets[0]) {
+                    DestroyFieldCardByEffect(player, zone);
+                    OnCardDestroyedByEffect(link->player, player, zone);
                 }
             }
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-/* Player state at 0x020192E4 (stride 0xD64) as a real array, so the base address is
- * loaded before the index (a `((struct PF *)gDuelPlayers)[i]` cast loads it after). */
-struct PFA {
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 unk4[0x7C4 - 4];
-    u32 deck[80];
-    u8 filler[0xD64 - 0x7C4 - 80 * 4];
-};
-extern struct PFA gPF_020192E4[2];
-/* The (u8) narrowing of an int makes the QImode AND take the mask register as its
- * first operand, so the constant 1 stays a QImode pseudo (shared by both player
- * lookups) and `1 - EFF_SIDE` below loads a fresh 1. */
-static inline int EffSideIndex(int p)
+
+/* Matching: the (u8) narrowing makes the AND take the mask register as its first operand, so the constant
+ * 1 stays one QImode pseudo shared by both player lookups and `1 - side` below loads a fresh 1. */
+static inline int PlayerSide(int player)
 {
-    return (u8)p & 1;
+    return (u8)player & 1;
 }
-/* Level-like value of a card: 0 for types 0x15-0x17, 10 for 0x18, else stat bits 25-28. */
-static inline u32 EffCardLevel(int type, int id)
+
+/* Level of a card: 0 for Trap, Magic and Ticket cards, 10 for the Divine cards, else gCardStats bits 25-28. */
+static inline u32 GetCardLevel(int type, int cardId)
 {
     switch (type) {
-    case 0x15:
-    case 0x16:
-    case 0x17:
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+    case CARD_TYPE_TICKET:
         return 0;
-    case 0x18:
-        return 0xA;
+    case CARD_TYPE_DIVINE:
+        return 10;
     default:
-        return (CARD_STATS(id) & 0x1E000000) >> 25;
+        return CARD_STATS_LEVEL(CARD_STATS(cardId));
     }
 }
-int EffectCyberJarResolve(struct CardRef *ref)
+
+/*
+ * Cyber Jar (1106): destroy every monster; then each player, the turn player first, draws the top 5 cards
+ * of the deck one at a time and reveals them: a monster of level 4 or lower that can be Normal Summoned is
+ * Special Summoned (the player picks the position), the other cards stay in the hand. A planted Parasite
+ * Paracide of the other player is Special Summoned face up on the other player's side if there is a free
+ * zone, else it is discarded. An empty deck ends the whole effect (EFFECT_STEP_9 has no case).
+ * gChain.effectSubStep is the side, gChain.effectCounter the cards left for it.
+ */
+int EffectCyberJarResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80: {
-            int i;
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START: {
+            int player;
 
-            for (i = 0; i <= 1; i++) {
-                int j;
+            for (player = 0; player <= 1; player++) {
+                int zone;
 
-                for (j = 0; j <= 4; j++) {
-                    DestroyFieldCardByEffect(i, j);
-                    OnCardDestroyedByEffect(ref->player, i, j);
+                for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+                    DestroyFieldCardByEffect(player, zone);
+                    OnCardDestroyedByEffect(link->player, player, zone);
                 }
             }
-            EFF_SIDE = DG->b1;
-            EFF_CNT = 5;
-            return 0x7F;
+            gChain.effectSubStep = gDuel.turnPlayer;
+            gChain.effectCounter = 5;
+            return EFFECT_STEP_2;
         }
-        case 0x7F: {
-            u32 *deck;
-            u16 *h;
-            u32 w;
-            int id;
+        case EFFECT_STEP_2: {       /* draw and reveal the top card of the side's deck */
+            u32 *top;
+            u16 *topHalves;
+            u32 word;
+            int cardId;
 
-            if (gPF_020192E4[EffSideIndex(EFF_SIDE)].deckCount == 0)
-                return 0x78;
-            deck = gPF_020192E4[EffSideIndex(EFF_SIDE)].deck;
-            h = (u16 *)deck;    /* second copy of the pointer, kept in r8 for the 0x7E message */
-            DuelCmd_Push(EFF_SIDE ? 0x8061 : 0x61, 1, 1, 0);
-            ShowRevealedCard(EFF_SIDE, CARD_ID(*deck));
-            w = *deck;
-            if (((w << 19) >> 31) != EFF_SIDE && (int)(w << 14) < 0 && CARD_NUMBER(CARD_ID11(w)) == 0x2FA) {
-                if (CountFreeMonsterZones(1 - EFF_SIDE) > 0) {
-                    DuelCmd_Push(EFF_SIDE ? 0x80C2 : 0xC2, h[0], h[1], 0);
-                    CopyDuelCard(&ESC->cards[0], deck);
-                    return 0x7D;
+            if (gDuelPlayers[PlayerSide(gChain.effectSubStep)].deckCount == 0)
+                return EFFECT_STEP_9;
+            top = (u32 *)gDuelPlayers[PlayerSide(gChain.effectSubStep)].deck;
+            topHalves = (u16 *)top;     /* Matching: a second copy of the pointer (the ROM keeps it in r8) */
+            DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_DRAW_CARDS), 1, 1, 0);
+            ShowRevealedCard(gChain.effectSubStep, CARD_ID(*top));
+            word = *top;
+            if (CARD_WORD_OWNER(word) != gChain.effectSubStep && CARD_WORD_PLANTED(word)
+                && CARD_NUMBER(CARD_ID_INDEX(word)) == CARD_PARASITE_PARACIDE) {
+                if (CountFreeMonsterZones(1 - gChain.effectSubStep) > 0) {
+                    DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_REMOVE_CARD_FROM_HAND), topHalves[0],
+                                 topHalves[1], 0);
+                    CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[0], top);
+                    return EFFECT_STEP_4;
                 }
-                DiscardHandCard(EFF_SIDE, gPF_020192E4[EffSideIndex(EFF_SIDE)].handCount, 0, 1);
+                /* the drawn card lands at hand index handCount (the draw command has not run yet) */
+                DiscardHandCard(gChain.effectSubStep, gDuelPlayers[PlayerSide(gChain.effectSubStep)].handCount,
+                                0, 1);
             } else {
                 u32 type;
 
-                id = CARD_ID(*deck);
-                type = CARD_TYPE(id);
-                if (type <= 0x14 && EffCardLevel(type, id) <= 4 && IsSpecialSummonOnly(id) == 0) {
-                    DuelCmd_Push(EFF_SIDE ? 0x80C2 : 0xC2, h[0], h[1], 0);
-                    CopyDuelCard(&ESC->cards[0], deck);
-                    return 0x7E;
+                cardId = CARD_ID(*top);
+                type = CARD_TYPE(cardId);
+                if (IS_MONSTER_TYPE(type) && GetCardLevel(type, cardId) <= 4 && IsSpecialSummonOnly(cardId) == 0) {
+                    DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_REMOVE_CARD_FROM_HAND), topHalves[0],
+                                 topHalves[1], 0);
+                    CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[0], top);
+                    return EFFECT_STEP_3;
                 }
             }
-            return 0x7C;
+            return EFFECT_STEP_5;
         }
-        case 0x7E:
-            QueueSpecialSummonChoosePosition(EFF_SIDE, &ESC->cards[0], 0, 0);
-            return 0x7C;
-        case 0x7D:
-            QueueSpecialSummonChoosePosition(1 - EFF_SIDE, &ESC->cards[0], 1, 0);
-            return 0x7C;
-        case 0x7C:
-            if (--EFF_CNT == 0) {
-                EFF_SIDE = 1 - EFF_SIDE;
-                EFF_CNT = 5;
-                /* FAKEMATCH: the ROM rereads EFF_SIDE after storing EFF_CNT */
+        case EFFECT_STEP_3:         /* Special Summon the monster for the side */
+            QueueSpecialSummonChoosePosition(gChain.effectSubStep, &gChain.scratch.effect.effectCards[0], 0, 0);
+            return EFFECT_STEP_5;
+        case EFFECT_STEP_4:         /* Special Summon Parasite Paracide face up for the other side */
+            QueueSpecialSummonChoosePosition(1 - gChain.effectSubStep, &gChain.scratch.effect.effectCards[0], 1, 0);
+            return EFFECT_STEP_5;
+        case EFFECT_STEP_5:         /* next card; after 5, the other side; done when back at the turn player */
+            if (--gChain.effectCounter == 0) {
+                gChain.effectSubStep = 1 - gChain.effectSubStep;
+                gChain.effectCounter = 5;
+                /* FAKEMATCH: the memory clobber makes effectSubStep be read again after the effectCounter
+                 * store, as in the ROM. */
                 asm volatile("" ::: "memory");
-                if (EFF_SIDE == DG->b1)
-                    return 0x78;
+                if (gChain.effectSubStep == gDuel.turnPlayer)
+                    return EFFECT_STEP_9;
             }
-            return 0x7F;
+            return EFFECT_STEP_2;
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectSpecialSummonFromDeckResolve(struct CardRef *ref)
-{
-    u32 *card = &gCardListView.cards[gCardListView.row + gCardListView.top];
 
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80:
-            if (CanSpecialSummon(ref->player) == 0)
-                return 0;
-            if (CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) == 0) {
-                if (1 & ((u8 *)ref)[2])
-                    return 0;
-                TextBoxOpen(0x206, 0x712, 0xB, gStrRecruiterNoCardsInDeck);
-                return 0x64;
+/*
+ * Giant Rat, UFO Turtle, Shining Fairy, Mother Grizzly, Flying Kamakiri #1, Mystic Tomato: Special Summon a
+ * deck monster that CollectEffectTargets accepts for the card (ATK 1500 or less, of the card's attribute),
+ * then shuffle. The human is asked first and picks in the card-list viewer; the CPU skips to the summon
+ * with the entry AiPickCardListEntry chose.
+ */
+int EffectSpecialSummonFromDeckResolve(struct ChainEntry *link)
+{
+    u32 *card = &gCardListView.cards[gCardListView.cursorRow + gCardListView.top];
+
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START:
+            if (CanSpecialSummon(link->player) == 0)
+                return EFFECT_STEP_DONE;
+            if (CollectEffectTargetsInt(link->player, CARD_NUMBER(link->card), 0) == 0) {
+                if (link->player)
+                    return EFFECT_STEP_DONE;
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrRecruiterNoCardsInDeck);
+                return EFFECT_STEP_END;
             }
-            if (1 & ((u8 *)ref)[2]) {
-                if (AiPickCardListEntry(ref->id) < 0)
-                    return 0;
-                gCardListView.row = 0;
-                gCardListView.top = S15F00->listPos;
-                return 0x7D;
+            if (link->player) {   /* the CPU: its pick becomes the selected list entry */
+                if (AiPickCardListEntry(link->card) < 0)
+                    return EFFECT_STEP_DONE;
+                gCardListView.cursorRow = 0;
+                gCardListView.top = gAiWork.listPick;
+                return EFFECT_STEP_4;
             }
-            TextBoxOpen(0x206, 0x712, 0xB, gStrRecruiterSummonPrompt);
-            TextBoxSetMenu(1, 0, 0);
-            return 0x7F;
-        case 0x7F:
-            if (gTextBox.flag14 == 0)
-                return 0;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrRecruiterSelectMonster);
-            return 0x7E;
-        case 0x7E:
-            CardListView_Open(ref->player, -1, CARD_NUMBER(ref->id), 0);
-            return 0x7D;
-        case 0x7D:
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8065 : 0x65, ((u16 *)card)[0], ((u16 *)card)[1], 0);
-            return 0x7C;
-        case 0x7C:
-            QueueSpecialSummon(ref->player, &gCardListView.cards[gCardListView.row + gCardListView.top], 1, 0, 0);
-            return 0x7B;
-        case 0x7B:
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 0, 0, 0);
-            return 0x64;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrRecruiterSummonPrompt);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            return EFFECT_STEP_2;
+        case EFFECT_STEP_2:         /* No ends the effect */
+            if (gTextBox.result == 0)
+                return EFFECT_STEP_DONE;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrRecruiterSelectMonster);
+            return EFFECT_STEP_3;
+        case EFFECT_STEP_3:         /* open the list of candidates */
+            CardListView_Open(link->player, CARDLIST_AREA_EFFECT_TARGETS, CARD_NUMBER(link->card), 0);
+            return EFFECT_STEP_4;
+        case EFFECT_STEP_4:         /* take the chosen card out of the deck */
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_REMOVE_CARD_FROM_DECK), ((u16 *)card)[0],
+                         ((u16 *)card)[1], 0);
+            return EFFECT_STEP_5;
+        case EFFECT_STEP_5:         /* Special Summon it face up in Attack Position */
+            QueueSpecialSummon(link->player,
+                               (struct DuelCard *)&gCardListView.cards[gCardListView.cursorRow + gCardListView.top],
+                               1, 0, 0);
+            return EFFECT_STEP_6;
+        case EFFECT_STEP_6:
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_SHUFFLE_DECK), 0, 0, 0);
+            return EFFECT_STEP_END;
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectAddRitualCardToHandResolve(struct CardRef *ref)
+
+/* Senju of the Thousand Hands (1109) and Sonic Bird (1122): add a Ritual Monster (Senju) or a Ritual Magic
+ * card (Sonic Bird) from the deck to the hand, picked in the card-list viewer. */
+int EffectAddRitualCardToHandResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80:
-            if (CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) == 0)
-                return 0;
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x455:
-                TextBoxOpen(0x206, 0x712, 0xB, gStrSenjuAddRitualMonsterPrompt);
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START:     /* candidates in the deck: ask Yes/No */
+            if (CollectEffectTargetsInt(link->player, CARD_NUMBER(link->card), 0) == 0)
+                return EFFECT_STEP_DONE;
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_SENJU_OF_THE_THOUSAND_HANDS:
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT,
+                            gStrSenjuAddRitualMonsterPrompt);
                 break;
-            case 0x462:
-                TextBoxOpen(0x206, 0x712, 0xB, gStrSonicBirdAddRitualMagicPrompt);
+            case CARD_SONIC_BIRD:
+                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT,
+                            gStrSonicBirdAddRitualMagicPrompt);
                 break;
             default:
-                return 0;
+                return EFFECT_STEP_DONE;
             }
-            TextBoxSetMenu(1, 0, 0);
-            return 0x7F;
-        case 0x7F:
-            if (gTextBox.flag14 == 0)
-                return 0;
-            TextBoxOpen(0x206, 0x712, 0xB, gStrRitualSearchSelectCard);
-            return 0x7E;
-        case 0x7E:
-            CardListView_Open(ref->player, -1, CARD_NUMBER(ref->id), 0);
-            return 0x7D;
-        case 0x7D:
-            AddDeckCardToHand(ref->player, ((const u16 *)0x08622AB4)[CARD_ID11(gCardListView.cards[gCardListView.row + gCardListView.top])]);
-            return 0x7C;
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            return EFFECT_STEP_2;
+        case EFFECT_STEP_2:         /* No ends the effect */
+            if (gTextBox.result == 0)
+                return EFFECT_STEP_DONE;
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, gStrRitualSearchSelectCard);
+            return EFFECT_STEP_3;
+        case EFFECT_STEP_3:
+            CardListView_Open(link->player, CARDLIST_AREA_EFFECT_TARGETS, CARD_NUMBER(link->card), 0);
+            return EFFECT_STEP_4;
+        case EFFECT_STEP_4:         /* add the chosen card (by its card number; gCardIdToNumber, unmasked) */
+            AddDeckCardToHand(link->player, ((const u16 *)0x08622AB4)[CARD_ID_INDEX(
+                                                gCardListView.cards[gCardListView.cursorRow + gCardListView.top])]);
+            return EFFECT_STEP_5;
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }
-int EffectKarateManResolve(struct CardRef *ref)
+
+/* Karate Man (1112) and key 1254: use up the card's once-per-turn effect (DUEL_CMD_SET_EFFECT_UNUSED 0);
+ * GetZoneCardStats applies the ATK change while the flag is clear. */
+int EffectKarateManResolve(struct ChainEntry *link)
 {
-    if (!ref->skip4)
-        DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8092 : 0x92, ref->zone, 0, 0);
-    return 0;
+    if (!link->negated)
+        DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_SET_EFFECT_UNUSED), link->zone, 0, 0);
+    return EFFECT_STEP_DONE;
 }
-int EffectSummonSameNameFromDeckResolve(struct CardRef *ref)
+
+/*
+ * Giant Germ (1114), Nimble Momonga (1115) and key 1307: first the LP effect (Giant Germ: the opponent loses
+ * 500 LP; Nimble Momonga: the player gains 1000 LP), then Special Summon further copies of the card from the
+ * deck, one Yes/No question each (the CPU always answers Yes): Giant Germ face up in Attack Position, the
+ * others face down in Defense Position. Key 1307 stops after one copy: it returns step 0x0A, which has no
+ * case and ends the effect through the default case (shuffle).
+ */
+int EffectSummonSameNameFromDeckResolve(struct ChainEntry *link)
 {
-    char buf[0x80];
-    int out;
+    u8 text[0x80];
+    u32 removed;
 
-    if (!ref->skip4) {
-        switch (EFF_PHASE) {
-        case 0x80:
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x45A:
-                LoseLifePoints(1 - ref->player, 500);
+    if (!link->negated) {
+        switch (gChain.effectStep) {
+        case EFFECT_STEP_START:
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_GIANT_GERM:
+                LoseLifePoints(1 - link->player, 500);
                 break;
-            case 0x45B:
-                GainLifePoints(ref->player, 1000);
+            case CARD_NIMBLE_MOMONGA:
+                GainLifePoints(link->player, 1000);
                 break;
             }
-            return 0x7F;
-        case 0x7F:
-            if (CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) == 0)
-                return 0;
-            if (1 & ((u8 *)ref)[2]) {
-                gTextBox.flag14 = 1;
-                return 0x7E;
+            return EFFECT_STEP_2;
+        case EFFECT_STEP_2:         /* another copy in the deck: ask Yes/No */
+            if (CollectEffectTargetsInt(link->player, CARD_NUMBER(link->card), 0) == 0)
+                return EFFECT_STEP_DONE;
+            if (link->player) {
+                gTextBox.result = 1;
+                return EFFECT_STEP_3;
             }
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x45A:
-                FormatStr(buf, gStrGiantGermSummonPrompt, (u8 *)0x0822C720 + ref->id * 64);
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_GIANT_GERM:
+                /* Matching: gCardNames through its integer address here, through the symbol below. */
+                FormatStr((char *)text, (const char *)gStrGiantGermSummonPrompt,
+                          (const char *)((u8 *)0x0822C720 + link->card * CARD_NAME_SIZE));
                 break;
-            case 0x45B:
-            case 0x51B:
-                FormatStr(buf, gStrSameNameSetPrompt, (u8 *)gCardNames + ref->id * 64);
+            case CARD_NIMBLE_MOMONGA:
+            case CARD_1307:
+                FormatStr((char *)text, (const char *)gStrSameNameSetPrompt,
+                          (const char *)((u8 *)gCardNames + link->card * CARD_NAME_SIZE));
                 break;
             }
-            TextBoxOpen(0x206, 0x712, 0xB, buf);
-            TextBoxSetMenu(1, 0, 0);
-            return 0x7E;
-        case 0x7E:
-            if (gTextBox.flag14 != 0) {
-                int r = RemoveDeckCardByNumber(ref->player, CARD_NUMBER(ref->id), &out);
+            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 7), TEXTBOX_FLAGS_DEFAULT, text);
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
+            return EFFECT_STEP_3;
+        case EFFECT_STEP_3:         /* Yes: take the next copy out of the deck */
+            if (gTextBox.result != 0) {
+                int deckIdx = RemoveDeckCardByNumber(link->player, CARD_NUMBER(link->card), &removed);
 
-                if (r >= 0) {
-                    u32 *dest = &ES544->card;
-                    struct DuelCard *src = (struct DuelCard *)&gDuelDecks[ref->player];
+                if (deckIdx >= 0) {
+                    /* the removal is only queued, so deck[deckIdx] still holds the card */
+                    u32 *dst = (u32 *)&gChain.scratch.effect.effectCards[0];
+                    struct DuelCard *src = (struct DuelCard *)((u32)gDuelDecks + link->player * 0xD64);
 
-                    src = (struct DuelCard *)((u32)src + r * 4);
-                    CopyDuelCard(dest, src);
-                    return 0x7D;
+                    src = (struct DuelCard *)((u32)src + deckIdx * 4);
+                    CopyDuelCard(dst, (u32 *)src);
+                    return EFFECT_STEP_4;
                 }
             }
-            goto dflt;
-        case 0x7D:
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x45A:
-                QueueSpecialSummon(ref->player, &ES544->card, 1, 0, 0);
+            goto shuffle;
+        case EFFECT_STEP_4:         /* summon it, then ask again */
+            switch (CARD_NUMBER(link->card)) {
+            case CARD_GIANT_GERM:
+                QueueSpecialSummon(link->player, &gChain.scratch.effect.effectCards[0], 1, 0, 0);
                 break;
-            case 0x45B:
-                QueueSpecialSummon(ref->player, &ES544->card, 0, 1, 0);
+            case CARD_NIMBLE_MOMONGA:
+                QueueSpecialSummon(link->player, &gChain.scratch.effect.effectCards[0], 0, 1, 0);
                 break;
-            case 0x51B:
-                QueueSpecialSummon(ref->player, &ES544->card, 0, 1, 0);
+            case CARD_1307:
+                QueueSpecialSummon(link->player, &gChain.scratch.effect.effectCards[0], 0, 1, 0);
                 return 0xA;
             }
-            return 0x7F;
+            return EFFECT_STEP_2;
         default:
-        dflt:
-            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8060 : 0x60, 1, 0, 0);
+        shuffle:
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_SHUFFLE_DECK), 1, 0, 0);
         }
     }
-    return 0;
+    return EFFECT_STEP_DONE;
 }

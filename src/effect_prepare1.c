@@ -1,428 +1,566 @@
 #include "global.h"
-#include "duel.h"
+#include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType */
+#include "constants/duel.h"         /* enum ResponseEventKind, DuelPhase, DuelZoneIndex, DUEL_LOC_* */
 
 /*
- * Duel effect-condition predicates, each taking (struct CardRef *ref, ?, u16 flag) and returning bool.
- * See wiki/functions/code-0802db30.md.
- * Uses the shared duel-state layouts from include/duel.h (struct DuelCard, DuelZone,
- * DuelPlayer, DuelState, DuelZonesPlayer).
+ * Activation conditions of card effects (wiki/functions/effect-prepare1-c.md).
+ *
+ * Every function here is the prepare handler (+0x0C) of a gCardEffects row (struct CardEffect,
+ * include/effect.h). CanActivateEffect calls it through the table to ask "may this card's effect be
+ * activated now?"; each one is a side-effect-free predicate returning 1 (yes) or 0 (no). Parameters:
+ *   card       the activating card: its card ID, player and zone, the event that opened the response
+ *              window (card->event, enum ResponseEventKind) and the event's locations loc0 / loc1
+ *              (player | zone << 8);
+ *   chainLink  the opponent's activation this card answers, or NULL (handlers that never read it
+ *              declare it as int);
+ *   fromHand   1 when the card is played from the hand, 0 when activated on the field.
+ * Handlers that do not use the trailing parameters are defined without them.
  */
 
-/*
- * Canonical struct DuelZone (duel.h) declares +0x07 as a plain `u8 unk7`, but EffectOncePerTurnPrepare
- * reads its bit 5 as a 0/1 bitfield (ROM: ldrb [+7]; lsls #26; lsrs #31). Keep a one-byte
- * local view for that function.
- */
-struct DuelZoneFlag7 {
-    u8 pad[7];
-    u8 unk7_0 : 5;
-    u8 flag7_5 : 1;         /* +0x07 bit 5 */
-    u8 unk7_6 : 2;
+/* ---- BEGIN duel.h stand-in (pre-H0) ----
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * This block declares the part of the canonical duel.h that this unit uses, with the header's names,
+ * types and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that
+ * chain.h and summon.h do not pull in the legacy header. After H0, replace the block (BEGIN to END) with
+ * #include "duel.h": that gives identical assembly (checked against the staged header). */
+#define GUARD_DUEL_H
+
+struct DuelCard {
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player */
+    u32 unk13:19;
 };
 
-/* Byte 6 of a zone as a plain byte (its flags are tested with mov #2; ldrb; and). */
-#define ZFLAGS(z) (((u8 *)(z))[6])
-
-/* Zone pointer by byte arithmetic, zone term first (the ROM's address order); p is player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-
-/* Card reference (0x14 bytes, see duel_piles / duel_stat_queries). */
-struct CardRef {
-    u16 id;             /* +0x00 card ID */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 kind : 6;       /* +0x02 bits 10-15 (hypothesis: effect kind) */
-    u16 unk4;
-    u16 pos;            /* +0x06: player (low byte) | zone << 8 of a target */
-    u16 unk8;           /* +0x08: high byte = a zone/count limit checked by EffectAttackResponsePrepare (hypothesis) */
-    u8 fillerA[0x14 - 0xA];
+struct DuelZone {
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 unk6_2:6;
+    u8 unk7_0:5;
+    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (once per turn) */
+    u8 unk7_6:2;
+    u8 unk8[2];
+    u16 links[32];                  /* +0x0A */
+    u16 linkKinds[32];              /* +0x4A */
+    u16 numLinks;                   /* +0x8A */
+    u8 unk8C[8];
 };
 
-/* The card word read as a whole u32 (the code always loads it with ldr). */
-#define CARD_WORD(c) (*(u32 *)&(c))
-#define CARD_ID(w) (((w) << 20) >> 20)
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_SUBTYPE(id) ((CARD_STATS(id) & 0xE0000) >> 17)
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
+struct DuelPlayer {
+    u16 lifePoints;                 /* +0x000 */
+    u8 handCount;                   /* +0x002: entries in hand[] */
+    u8 deckCount;                   /* +0x003: entries in deck[] */
+    u8 graveCount;                  /* +0x004: entries in graveyard[] */
+    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
+    u8 banishedCount;               /* +0x006 */
+    u8 unk7[4];
+    u8 crushCardTurns:3;            /* +0x00B bits 0-2 */
+    u8 monsterSentToGraveThisTurn:1;/* +0x00B bit 3: Last Will condition */
+    u8 unkB_4:4;
+    u8 unkC[0x28 - 0xC];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4 */
+};
 
-extern const u32 gCardStats[];   /* card stats, indexed by card ID */
-extern const u16 gCardIdToNumber[];   /* card ID to card number */
-/* Card ID as an 11-bit field (lsl #21; lsr #21). */
-#define CARD_ID11(w) (((w) << 21) >> 21)
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
+    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
+    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
+    u8 unk1B12_5:3;
+};
 
-int CountMonsters(int player);
-int CountFreeMonsterZones(int player);
-int CountActiveCardsOnField(int player, u16 number);
-int CountFaceUpMonstersByNumber(int player, u16 number);
-int CountGraveyardCardsByNumber(int player, u16 number);
-int CanSpecialSummon(int player);
-int IsToonMonster(u16 number);
-int GetZoneCardAtk(int player, int zone);   /* ATK of the card in a zone */
-int GetZoneCardDef(int player, int zone);
-int FindFusionMaterials(int player, u16 id, void *buf);
-int CountActiveCardsOnField2(int player, u16 number);
-int CollectEffectTargets(int player, int number, int b);
-int CanNormalSummon(int player);
-int CanSummonFromHand(int player, u16 id);
-int IsSpecialSummonOnly(u16 id);
-int CountTributableMonsters(int player, int zone);
-int CountMonstersFiltered(int player, int a, int b);
-int CountRedirectTargets(int a, int player, struct CardRef *ref);
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
+
+u32 IsToonMonster(u16 cardNo);
+u32 IsSpecialSummonOnly(u16 cardId);
+int CountGraveyardCardsByNumber(int player, u16 cardNo);
+int CountActiveCardsOnField(int player, u16 cardNo);
+int CountActiveCardsOnField2(int player, u16 cardNo);
 int HasFaceUpToonWorld(int player);
+int CountFaceUpMonstersByNumber(int player, u16 cardNo);
+int CountMonsters(int player);
+int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
+int CountFreeMonsterZones(int player);
+int CountTributableMonsters(int player, int excludeZone);
+u32 GetZoneCardAtk(u32 player, u32 slot);
+u32 GetZoneCardDef(u32 player, u32 slot);
+/* ---- END duel.h stand-in ---- */
 
+#include "chain.h"                  /* struct ChainEntry */
+#include "summon.h"                 /* CanNormalSummon, CanSpecialSummon, CanSummonFromHand */
+#include "effect.h"                 /* CollectEffectTargets, CountRedirectTargets, FindFusionMaterials */
+#include "effect_handlers.h"        /* the prototypes of this unit's handlers */
 
-int EffectJigenBakudanPrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Local views of callees (HEADERS.md, "Keeping a deliberate local view"). Matching: the ROM compares the
+ * results as signed ints (ATK <= 2000 is cmp; ble, the target count > 0 is cmp; ble); the header's u32 and
+ * u16 return types would turn them into unsigned compares or add a narrowing of r0.
+ */
+int GetZoneCardAtkInt(int player, int zone) asm("GetZoneCardAtk");
+int GetZoneCardDefInt(int player, int zone) asm("GetZoneCardDef");
+int CollectEffectTargetsInt(int player, int cardNumber, int param) asm("CollectEffectTargets");
+
+/* The card word of a zone or pile entry as one u32. Matching: the ROM loads the whole word (ldr) and
+ * extracts the ID with shifts; a .id bitfield read would load only the halfword that holds it. */
+#define CARD_WORD(card)     (*(u32 *)&(card))
+/* Card ID (bits 0-11) of a card word: lsl #20; lsr #20. */
+#define CARD_ID(word)       (((word) << 20) >> 20)
+
+/*
+ * Card tables through integer-constant addresses: gCardStats (0x08621DE0) and gCardIdToNumber
+ * (0x08622AB4). Matching: these give the ROM's literal pools; the symbol forms generate other code.
+ */
+#define CARD_STATS(id)      (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_NUMBER(id)     (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id)       CARD_STATS_TYPE(CARD_STATS(id))     /* enum CardType */
+
+/*
+ * &gDuelZones[player].zones[zone] by integer arithmetic, zone term first. Matching: this is the ROM's
+ * address order (array indexing emits the player term first). player must be 0 or 1: a ChainEntry's
+ * player bit, or a location's player masked with & 1.
+ */
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer) + (u32)gDuelZones))
+
+/*
+ * Jigen Bakudan: tribute it during its controller's Standby Phase. Needs a field activation answering the
+ * player's own Standby Phase, a second monster, the zone's effectUnused flag clear (the opposite of
+ * EffectOncePerTurnPrepare), and key 1418 (forbids Tributes) in effect on neither side.
+ */
+int EffectJigenBakudanPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (flag == 0 && ref->kind == 2 && CountMonsters(ref->player) > 1) {
-        int p = ref->player;
-        struct DuelZone *z = ZB(p, ref->zone);
+    if (fromHand == 0 && card->event == RESPONSE_OWN_STANDBY && CountMonsters(card->player) > 1) {
+        int player = card->player;
+        struct DuelZone *zone = ZONE_AT(player, card->zone);
 
-        if (!(((u8 *)z)[7] & 0x20) && CountActiveCardsOnField(0, 0x58A) <= 0 && CountActiveCardsOnField(1, 0x58A) <= 0)
+        if (!zone->effectUnused && CountActiveCardsOnField(0, CARD_1418) <= 0
+            && CountActiveCardsOnField(1, CARD_1418) <= 0)
             return 1;
     }
     return 0;
 }
 
-int EffectOncePerTurnPrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Shared once-per-turn ignition effect (Goddess of Whim, Barrel Dragon, Karate Man): on the field, returns
+ * the effectUnused flag of the card's zone (set again at the start of the turn).
+ */
+int EffectOncePerTurnPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (flag != 0)
+    int player;
+    struct DuelZone *zone;
+
+    if (fromHand != 0)
         return 0;
-    {
-        int p = ref->player;
-        struct DuelZone *z = ZB(p, ref->zone);
-
-        return ((struct DuelZoneFlag7 *)z)->flag7_5;
-    }
+    player = card->player;
+    zone = ZONE_AT(player, card->zone);
+    return zone->effectUnused;
 }
 
-int EffectValkyrionTheMagnaWarriorPrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Valkyrion the Magna Warrior: tribute it to Special Summon Alpha, Beta and Gamma The Magnet Warrior from
+ * the graveyard. On the field only; two free monster zones (Valkyrion's own zone makes the third), no key
+ * 1418 on either side, and all three magnets in the player's graveyard.
+ */
+int EffectValkyrionTheMagnaWarriorPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (flag == 0 && CountFreeMonsterZones(ref->player) > 1 && CountActiveCardsOnField(0, 0x58A) <= 0
-        && CountActiveCardsOnField(1, 0x58A) <= 0 && CountGraveyardCardsByNumber(ref->player, 0x2E1) != 0
-        && CountGraveyardCardsByNumber(ref->player, 0x2F4) != 0 && CountGraveyardCardsByNumber(ref->player, 0x320) != 0)
+    if (fromHand == 0 && CountFreeMonsterZones(card->player) > 1 && CountActiveCardsOnField(0, CARD_1418) <= 0
+        && CountActiveCardsOnField(1, CARD_1418) <= 0
+        && CountGraveyardCardsByNumber(card->player, CARD_ALPHA_THE_MAGNET_WARRIOR) != 0
+        && CountGraveyardCardsByNumber(card->player, CARD_BETA_THE_MAGNET_WARRIOR) != 0
+        && CountGraveyardCardsByNumber(card->player, CARD_GAMMA_THE_MAGNET_WARRIOR) != 0)
         return 1;
     return 0;
 }
 
-int EffectTimeMachinePrepare(struct CardRef *ref, int a, u16 flag)
+/* Time Machine: on the field, answering a monster destroyed in battle. */
+int EffectTimeMachinePrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (flag == 0 && ref->kind == 0x13)
+    if (fromHand == 0 && card->event == RESPONSE_BATTLE_DESTROYED)
         return 1;
     return 0;
 }
 
-int EffectToonWorldPrepare(struct CardRef *ref, int a)
+/* Toon World: the player can pay its 1000 LP cost. */
+int EffectToonWorldPrepare(struct ChainEntry *card, int chainLink)
 {
-    int ret = 0;
-
-    if (gDuelPlayers[ref->player].lifePoints > 999)
-        ret = 1;
-    return ret;
+    return gDuelPlayers[card->player].lifePoints > 999;
 }
 
-int EffectOpponentHasHandPrepare(struct CardRef *ref)
+/*
+ * Shared (Lightforce Sword, The Inexperienced Spy, Confiscation, Delinquent Duo, The Forceful Sentry): the
+ * opponent has a card in hand. Matching: the base pointer local comes first, then the opponent index.
+ */
+int EffectOpponentHasHandPrepare(struct ChainEntry *card)
 {
-    struct DuelPlayer *pl = gDuelPlayers;
-    int p = ref->player;
+    struct DuelPlayer *players = gDuelPlayers;
+    int opponent = card->player;
 
-    p ^= 1;
-    return pl[p].handCount != 0;
+    opponent ^= 1;
+    return players[opponent].handCount != 0;
 }
 
-int EffectTheFluteOfSummoningDragonPrepare(struct CardRef *ref)
+/*
+ * The Flute of Summoning Dragon: Special Summon Dragons from the hand while Lord of D. is face up. Needs a
+ * free monster zone, Special Summons allowed, Lord of D. face up on either side, and a Dragon in hand that
+ * is not a Toon monster unless the player has a face-up Toon World.
+ */
+int EffectTheFluteOfSummoningDragonPrepare(struct ChainEntry *card)
 {
     int i;
 
-    if (CountFreeMonsterZones(ref->player) != 0 && CanSpecialSummon(ref->player) != 0
-        && (CountFaceUpMonstersByNumber(0, 0x2E4) > 0 || CountFaceUpMonstersByNumber(1, 0x2E4) > 0)) {
-        for (i = 0; i < gDuelPlayers[ref->player].handCount; i++) {
-            u32 id = CARD_ID11(CARD_WORD(gDuelPlayers[ref->player].hand[i]));
+    if (CountFreeMonsterZones(card->player) != 0 && CanSpecialSummon(card->player) != 0
+        && (CountFaceUpMonstersByNumber(0, CARD_LORD_OF_D) > 0 || CountFaceUpMonstersByNumber(1, CARD_LORD_OF_D) > 0)) {
+        for (i = 0; i < gDuelPlayers[card->player].handCount; i++) {
+            u32 id = CARD_ID(CARD_WORD(gDuelPlayers[card->player].hand[i]));
 
-            if (CARD_TYPE(id) == 1
-                && (IsToonMonster(CARD_NUMBER(id)) == 0 || HasFaceUpToonWorld(ref->player) != 0))
+            if (CARD_TYPE(id) == CARD_TYPE_DRAGON
+                && (IsToonMonster(CARD_NUMBER(id)) == 0 || HasFaceUpToonWorld(card->player) != 0))
                 return 1;
         }
     }
     return 0;
 }
 
-int EffectChainDestructionPrepare(struct CardRef *ref)
+/*
+ * Chain Destruction: answering a summon (Normal, Flip or Special, by either player) of a face-up monster
+ * with 2000 ATK or less. loc0 is the summoned monster.
+ */
+int EffectChainDestructionPrepare(struct ChainEntry *card)
 {
-    int player = (u8)ref->pos;
-    int zone = ref->pos >> 8;
+    int player = DUEL_LOC_PLAYER(card->loc0);
+    int zoneIndex = DUEL_LOC_ZONE(card->loc0);
     int p;
-    struct DuelZone *z;
+    struct DuelZone *zone;
 
-    switch (ref->kind) {
-    case 5:
-    case 6:
-    case 7:
+    switch (card->event) {
+    case RESPONSE_SUMMONED:
+    case RESPONSE_FLIP_SUMMONED:
+    case RESPONSE_SPECIAL_SUMMONED:
         break;
     default:
         return 0;
     }
     p = player & 1;
-    z = ZB(p, zone);
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2))
+    zone = ZONE_AT(p, zoneIndex);
+    if (!CARD_ID(CARD_WORD(zone->card)) || !zone->isFaceUp)
         return 0;
-    return GetZoneCardAtk(player, zone) <= 2000;
+    return GetZoneCardAtkInt(player, zoneIndex) <= 2000;
 }
 
-
-int EffectTrapHolePrepare(struct CardRef *ref)
+/*
+ * Shared by Trap Hole, House of Adhesive Tape and Eatgaboon: the opponent Normal or Flip Summoned (not
+ * Special Summoned) a face-up monster (loc0). The activating card's number picks the stat test: Trap Hole
+ * ATK 1000 or more, House of Adhesive Tape DEF 500 or less, Eatgaboon ATK 500 or less.
+ */
+int EffectTrapHolePrepare(struct ChainEntry *card)
 {
-    int player = (u8)ref->pos;
-    int zone = ref->pos >> 8;
+    int player = DUEL_LOC_PLAYER(card->loc0);
+    int zoneIndex = DUEL_LOC_ZONE(card->loc0);
 
-    if (ref->kind == 5 || ref->kind == 6) {
+    if (card->event == RESPONSE_SUMMONED || card->event == RESPONSE_FLIP_SUMMONED) {
         int p = player & 1;
-        struct DuelZone *z = ZB(p, zone);
+        struct DuelZone *zone = ZONE_AT(p, zoneIndex);
 
-        if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2) && player != ref->player) {
-            switch (CARD_NUMBER(ref->id)) {
-            case 0x3EA:
-                return GetZoneCardAtk(player, zone) > 999;
-            case 0x2A8:
-                return GetZoneCardDef(player, zone) <= 500;
-            case 0x2A9:
-                return GetZoneCardAtk(player, zone) <= 500;
+        if (CARD_ID(CARD_WORD(zone->card)) && zone->isFaceUp && player != card->player) {
+            switch (CARD_NUMBER(card->card)) {
+            case CARD_TRAP_HOLE:
+                return GetZoneCardAtkInt(player, zoneIndex) > 999;
+            case CARD_HOUSE_OF_ADHESIVE_TAPE:
+                return GetZoneCardDefInt(player, zoneIndex) <= 500;
+            case CARD_EATGABOON:
+                return GetZoneCardAtkInt(player, zoneIndex) <= 500;
             }
         }
     }
     return 0;
 }
 
-int EffectPolymerizationPrepare(struct CardRef *ref)
+/*
+ * Polymerization: Special Summons allowed and some Fusion Deck monster has its materials in the player's
+ * hand or on the field (FindFusionMaterials).
+ */
+int EffectPolymerizationPrepare(struct ChainEntry *card)
 {
-    u8 buf[8];
+    u16 slots[4];
     int i;
 
-    if (CanSpecialSummon(ref->player) == 0)
+    if (CanSpecialSummon(card->player) == 0)
         return 0;
-    for (i = 0; i < gDuelPlayers[1 & ref->player].fusionCount; i++) {
-        int p = ref->player;
-        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & ref->player].fusionDeck[i]));
+    /* Matching: the same '1 & card->player' in the loop condition and the body, and the player read
+     * again inside the loop. */
+    for (i = 0; i < gDuelPlayers[1 & card->player].fusionCount; i++) {
+        int player = card->player;
+        u16 fusionId = CARD_ID(CARD_WORD(gDuelPlayers[1 & card->player].fusionDeck[i]));
 
-        if (FindFusionMaterials(p, id, buf) != 0)
+        if (FindFusionMaterials(player, fusionId, slots) != 0)
             return 1;
     }
     return 0;
 }
 
-int EffectTwoProngedAttackPrepare(struct CardRef *ref)
+/* Two-Pronged Attack: the player has two monsters to destroy and the opponent one. */
+int EffectTwoProngedAttackPrepare(struct ChainEntry *card)
 {
-    if (CountMonsters(ref->player) > 1 && CountMonsters(1 - ref->player) > 0)
+    if (CountMonsters(card->player) > 1 && CountMonsters(1 - card->player) > 0)
         return 1;
     return 0;
 }
 
-/* The AI uses the three-argument usability interface; this test needs only ref. */
-int EffectMonsterRebornPrepare(struct CardRef *ref, int action, int flags)
+/*
+ * Monster Reborn: a free monster zone, Special Summons allowed, Call of the Dark in effect on neither side,
+ * and a graveyard monster to revive (CollectEffectTargets). chainLink and fromHand are unused (the
+ * definition declares them as ints).
+ */
+int EffectMonsterRebornPrepare(struct ChainEntry *card, int chainLink, int fromHand)
 {
-    if (CountFreeMonsterZones(ref->player) == 0 || CanSpecialSummon(ref->player) == 0 || CountActiveCardsOnField2(0, 0x402) > 0
-        || CountActiveCardsOnField2(1, 0x402) > 0)
+    if (CountFreeMonsterZones(card->player) == 0 || CanSpecialSummon(card->player) == 0
+        || CountActiveCardsOnField2(0, CARD_CALL_OF_THE_DARK) > 0
+        || CountActiveCardsOnField2(1, CARD_CALL_OF_THE_DARK) > 0)
         return 0;
-    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargetsInt(card->player, CARD_NUMBER(card->card), 0) > 0;
 }
 
-int EffectGravediggerGhoulPrepare(struct CardRef *ref)
+/*
+ * Gravedigger Ghoul: key 1511 (which protects graveyards, hypothesis) not in effect on the opponent's side,
+ * and a graveyard monster to banish (CollectEffectTargets).
+ */
+int EffectGravediggerGhoulPrepare(struct ChainEntry *card)
 {
-    if (CountActiveCardsOnField(1 - ref->player, 0x5E7) > 0)
+    if (CountActiveCardsOnField(1 - card->player, CARD_1511) > 0)
         return 0;
-    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargetsInt(card->player, CARD_NUMBER(card->card), 0) > 0;
 }
 
-int EffectUltimateOfferingPrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Ultimate Offering: an extra Normal Summon for 500 LP. On the field only; the player has 500 LP, may
+ * Normal Summon, and holds a monster that can be summoned now and is not Special-Summon-only.
+ */
+int EffectUltimateOfferingPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
     int i;
 
-    if (flag != 0 || gDuelPlayers[1 & ref->player].lifePoints <= 499 || CanNormalSummon(ref->player) == 0)
+    if (fromHand != 0 || gDuelPlayers[1 & card->player].lifePoints <= 499 || CanNormalSummon(card->player) == 0)
         return 0;
-    for (i = 0; i < gDuelPlayers[1 & ref->player].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & ref->player].hand[i]));
+    /* Matching: the same '1 & card->player' in the loop condition and the body. */
+    for (i = 0; i < gDuelPlayers[1 & card->player].handCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & card->player].hand[i]));
 
-        if (CanSummonFromHand(ref->player, id) != 0 && IsSpecialSummonOnly(id) == 0)
+        if (CanSummonFromHand(card->player, id) != 0 && IsSpecialSummonOnly(id) == 0)
             return 1;
     }
     return 0;
 }
-int EffectSpellResponsePrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+
+/*
+ * Shared by the traps that answer one opponent Magic card: on the field, chainLink is the opponent's, and
+ * its card number is the one the trap counters. White Hole answers Dark Hole, Call of the Grave Monster
+ * Reborn, Anti Raigeki Raigeki, Gryphon Wing Harpie's Feather Duster; key 1247 answers the listed
+ * non-targeting normal Magic cards (healing, burn, draw, hand), key 1531 the Magic cards that target a
+ * monster (equips, Change of Heart, Snatch Steal, ...).
+ * Matching: the inner switches need their explicit 'default: return 0'.
+ */
+int EffectSpellResponsePrepare(struct ChainEntry *card, struct ChainEntry *chainLink, u16 fromHand)
 {
-    if (flag != 0)
+    if (fromHand != 0)
         return 0;
-    if (tgt == 0)
+    if (chainLink == NULL)
         return 0;
-    if ((1 & ((u8 *)tgt)[2]) == (1 & ((u8 *)ref)[2]))
+    if (chainLink->player == card->player)
         return 0;
-    switch (CARD_NUMBER(ref->id)) {
-    case 0x3FB:
-        return CARD_NUMBER(tgt->id) == 0x14F;
-    case 0x3FD:
-        return CARD_NUMBER(tgt->id) == 0x3F0;
-    case 0x3FE:
-        return CARD_NUMBER(tgt->id) == 0x150;
-    case 0x426:
-        return CARD_NUMBER(tgt->id) == 0x29F;
-    case 0x4DF:
-        switch (CARD_NUMBER(tgt->id)) {
-        case 0x151:
-        case 0x152:
-        case 0x153:
-        case 0x154:
-        case 0x155:
-        case 0x156:
-        case 0x157:
-        case 0x158:
-        case 0x159:
-        case 0x3C8:
-        case 0x3EE:
-        case 0x3EF:
-        case 0x3F2:
-        case 0x401:
-        case 0x40F:
-        case 0x42E:
-        case 0x42F:
-        case 0x439:
+    switch (CARD_NUMBER(card->card)) {
+    case CARD_WHITE_HOLE:
+        return CARD_NUMBER(chainLink->card) == CARD_DARK_HOLE;
+    case CARD_CALL_OF_THE_GRAVE:
+        return CARD_NUMBER(chainLink->card) == CARD_MONSTER_REBORN;
+    case CARD_ANTI_RAIGEKI:
+        return CARD_NUMBER(chainLink->card) == CARD_RAIGEKI;
+    case CARD_GRYPHON_WING:
+        return CARD_NUMBER(chainLink->card) == CARD_HARPIES_FEATHER_DUSTER;
+    case CARD_1247:
+        switch (CARD_NUMBER(chainLink->card)) {
+        case CARD_MOOYAN_CURRY:
+        case CARD_RED_MEDICINE:
+        case CARD_GOBLINS_SECRET_REMEDY:
+        case CARD_SOUL_OF_THE_PURE:
+        case CARD_DIAN_KETO_THE_CURE_MASTER:
+        case CARD_SPARKS:
+        case CARD_HINOTAMA:
+        case CARD_FINAL_FLAME:
+        case CARD_OOKAZI:
+        case CARD_GRACEFUL_CHARITY:
+        case CARD_BLUE_MEDICINE:
+        case CARD_RAIMEI:
+        case CARD_POT_OF_GREED:
+        case CARD_THE_CHEERFUL_COFFIN:
+        case CARD_RESTRUCTER_REVOLUTION:
+        case CARD_CONFISCATION:
+        case CARD_DELINQUENT_DUO:
+        case CARD_PAINFUL_CHOICE:
             return 1;
         default:
             return 0;
         }
-        break;
-    case 0x5FB:
-        switch (CARD_NUMBER(tgt->id)) {
-        case 0x12C:
-        case 0x12D:
-        case 0x12E:
-        case 0x12F:
-        case 0x130:
-        case 0x131:
-        case 0x132:
-        case 0x133:
-        case 0x134:
-        case 0x135:
-        case 0x136:
-        case 0x137:
-        case 0x138:
-        case 0x139:
-        case 0x13A:
-        case 0x13B:
-        case 0x13C:
-        case 0x13E:
-        case 0x13F:
-        case 0x140:
-        case 0x141:
-        case 0x142:
-        case 0x143:
-        case 0x144:
-        case 0x145:
-        case 0x146:
-        case 0x147:
-        case 0x28B:
-        case 0x28D:
-        case 0x290:
-        case 0x3C2:
-        case 0x3F0:
-        case 0x3F4:
-        case 0x3F5:
-        case 0x3FF:
-        case 0x403:
-        case 0x412:
-        case 0x413:
-        case 0x416:
-        case 0x417:
-        case 0x422:
-        case 0x424:
-        case 0x42C:
-        case 0x430:
-        case 0x433:
-        case 0x434:
-        case 0x485:
-        case 0x488:
-        case 0x49E:
-        case 0x4BB:
-        case 0x4C4:
-        case 0x521:
-        case 0x58B:
-        case 0x58C:
-        case 0x58E:
-        case 0x5A8:
-        case 0x5A9:
-        case 0x5AA:
-        case 0x5AB:
-        case 0x604:
-        case 0x60A:
-        case 0x60C:
-        case 0x60E:
+    case CARD_1531:
+        switch (CARD_NUMBER(chainLink->card)) {
+        case CARD_LEGENDARY_SWORD:
+        case CARD_SWORD_OF_DARK_DESTRUCTION:
+        case CARD_DARK_ENERGY:
+        case CARD_AXE_OF_DESPAIR:
+        case CARD_LASER_CANNON_ARMOR:
+        case CARD_INSECT_ARMOR_WITH_LASER_CANNON:
+        case CARD_ELFS_LIGHT:
+        case CARD_BEAST_FANGS:
+        case CARD_STEEL_SHELL:
+        case CARD_VILE_GERMS:
+        case CARD_BLACK_PENDANT:
+        case CARD_SILVER_BOW_AND_ARROW:
+        case CARD_HORN_OF_LIGHT:
+        case CARD_HORN_OF_THE_UNICORN:
+        case CARD_DRAGON_TREASURE:
+        case CARD_ELECTRO_WHIP:
+        case CARD_CYBER_SHIELD:
+        case CARD_MYSTICAL_MOON:
+        case CARD_STOP_DEFENSE:
+        case CARD_MALEVOLENT_NUZZLER:
+        case CARD_VIOLET_CRYSTAL:
+        case CARD_BOOK_OF_SECRET_ARTS:
+        case CARD_INVIGORATION:
+        case CARD_MACHINE_CONVERSION_FACTORY:
+        case CARD_RAISE_BODY_HEAT:
+        case CARD_FOLLOW_WIND:
+        case CARD_POWER_OF_KAISHIN:
+        case CARD_MAGICAL_LABYRINTH:
+        case CARD_SALAMANDRA:
+        case CARD_MEGAMORPH:
+        case CARD_7_COMPLETED:
+        case CARD_MONSTER_REBORN:
+        case CARD_BURNING_SPEAR:
+        case CARD_GUST_FAN:
+        case CARD_TRIBUTE_TO_THE_DOOMED:
+        case CARD_CHANGE_OF_HEART:
+        case CARD_SWORD_OF_DEEP_SEATED:
+        case CARD_BLOCK_ATTACK:
+        case CARD_GERM_INFECTION:
+        case CARD_PARALYZING_POTION:
+        case CARD_RING_OF_MAGNETISM:
+        case CARD_STIM_PACK:
+        case CARD_SNATCH_STEAL:
+        case CARD_DARKNESS_APPROACHES:
+        case CARD_RUSH_RECKLESSLY:
+        case CARD_THE_RELIABLE_GUARDIAN:
+        case CARD_NOBLEMAN_OF_CROSSOUT:
+        case CARD_PREMATURE_BURIAL:
+        case CARD_SWORD_OF_DRAGONS_SOUL:
+        case CARD_1211:
+        case CARD_1220:
+        case CARD_1313:
+        case CARD_1419:
+        case CARD_1420:
+        case CARD_1422:
+        case CARD_1448:
+        case CARD_1449:
+        case CARD_1450:
+        case CARD_1451:
+        case CARD_1540:
+        case CARD_1546:
+        case CARD_1548:
+        case CARD_1550:
             return 1;
         default:
             return 0;
         }
-        break;
     }
     return 0;
 }
 
-int EffectTributeToTheDoomedPrepare(struct CardRef *ref)
+/* Tribute to The Doomed: the player has a card to discard for the cost. */
+int EffectTributeToTheDoomedPrepare(struct ChainEntry *card)
 {
-    if (gDuelPlayers[ref->player].handCount == 0)
+    if (gDuelPlayers[card->player].handCount == 0)
         return 0;
     return 1;
 }
 
-int EffectSoulReleasePrepare(struct CardRef *ref)
+/* Soul Release: key 1511 not in effect on the opponent's side, and either graveyard holds a card. */
+int EffectSoulReleasePrepare(struct ChainEntry *card)
 {
-    if (CountActiveCardsOnField(1 - ref->player, 0x5E7) > 0)
+    if (CountActiveCardsOnField(1 - card->player, CARD_1511) > 0)
         return 0;
     if (gDuelPlayers[0].graveCount == 0 && gDuelPlayers[1].graveCount == 0)
         return 0;
     return 1;
 }
 
-int EffectTheCheerfulCoffinPrepare(struct CardRef *ref)
+/* The Cheerful Coffin: the player's hand holds a Monster Card to discard. */
+int EffectTheCheerfulCoffinPrepare(struct ChainEntry *card)
 {
     int i;
 
-    for (i = 0; i < gDuelPlayers[1 & (int)ref->player].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & (int)ref->player].hand[i]));
+    /* Matching: the same '1 & card->player' in the loop condition and the body. */
+    for (i = 0; i < gDuelPlayers[1 & card->player].handCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & card->player].hand[i]));
 
-        if (CARD_TYPE(id) <= 0x14)
+        if (CARD_TYPE(id) <= CARD_TYPE_REPTILE)   /* types 1-20 are monsters */
             return 1;
     }
     return 0;
 }
 
-int EffectChangeOfHeartPrepare(struct CardRef *ref)
+/* Change of Heart: the opponent has a monster and the player a free monster zone to take it to. */
+int EffectChangeOfHeartPrepare(struct ChainEntry *card)
 {
-    if (CountMonsters(1 - ref->player) != 0 && CountFreeMonsterZones(ref->player) != 0)
+    if (CountMonsters(1 - card->player) != 0 && CountFreeMonsterZones(card->player) != 0)
         return 1;
     return 0;
 }
 
-int EffectSolemnJudgmentPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+/*
+ * Solemn Judgment: on the field. Without chainLink: answering a summon (Normal, Flip or Special) of the
+ * monster at loc0, which is still there. With chainLink: it is a Magic or Trap activation other than key
+ * 1539.
+ */
+int EffectSolemnJudgmentPrepare(struct ChainEntry *card, struct ChainEntry *chainLink, u16 fromHand)
 {
-    if (flag == 0) {
-        if (tgt == 0) {
-            int p = ref->pos & 1;
-            int zone = ref->pos >> 8;
-            struct DuelZone *z = ZB(p, zone);
+    if (fromHand == 0) {
+        if (chainLink == NULL) {
+            int player = DUEL_LOC_PLAYER(card->loc0) & 1;
+            int zoneIndex = DUEL_LOC_ZONE(card->loc0);
+            struct DuelZone *zone = ZONE_AT(player, zoneIndex);
 
-            if (CARD_ID(CARD_WORD(z->card)) != 0) {
-                switch (ref->kind) {
-                case 5:
-                case 6:
-                case 7:
+            if (CARD_ID(CARD_WORD(zone->card)) != 0) {
+                switch (card->event) {
+                case RESPONSE_SUMMONED:
+                case RESPONSE_FLIP_SUMMONED:
+                case RESPONSE_SPECIAL_SUMMONED:
                     return 1;
                 }
             }
         } else {
-            u16 id = tgt->id & 0x7FF;
+            u16 id = chainLink->card & CARD_ID_MASK;
 
             switch ((int)CARD_TYPE(id)) {
-            case 0x15:
-            case 0x16:
-                if (CARD_NUMBER(id) != 0x603)
+            case CARD_TYPE_TRAP:
+            case CARD_TYPE_MAGIC:
+                if (CARD_NUMBER(id) != CARD_1539)
                     return 1;
             }
         }
@@ -430,42 +568,54 @@ int EffectSolemnJudgmentPrepare(struct CardRef *ref, struct CardRef *tgt, u16 fl
     return 0;
 }
 
-int EffectMagicJammerPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+/*
+ * Magic Jammer: on the field, chainLink is a Magic card other than key 1539, and the player has a card to
+ * discard for the cost.
+ */
+int EffectMagicJammerPrepare(struct ChainEntry *card, struct ChainEntry *chainLink, u16 fromHand)
 {
-    if (flag == 0 && tgt != 0) {
-        u32 id = tgt->id & 0x7FF;
+    if (fromHand == 0 && chainLink != NULL) {
+        u32 id = chainLink->card & CARD_ID_MASK;
 
-        if (CARD_TYPE(id) == 0x16 && gDuelPlayers[ref->player].handCount != 0 && CARD_NUMBER(id) != 0x603)
+        if (CARD_TYPE(id) == CARD_TYPE_MAGIC && gDuelPlayers[card->player].handCount != 0
+            && CARD_NUMBER(id) != CARD_1539)
             return 1;
     }
     return 0;
 }
 
-int EffectSevenToolsOfTheBanditPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+/* Seven Tools of the Bandit: on the field, chainLink is a Trap card, and the player can pay 1000 LP. */
+int EffectSevenToolsOfTheBanditPrepare(struct ChainEntry *card, struct ChainEntry *chainLink, u16 fromHand)
 {
-    if (flag == 0 && tgt != 0 && CARD_TYPE(tgt->id) == 0x15 && gDuelPlayers[ref->player].lifePoints > 999)
+    if (fromHand == 0 && chainLink != NULL && CARD_TYPE(chainLink->card) == CARD_TYPE_TRAP
+        && gDuelPlayers[card->player].lifePoints > 999)
         return 1;
     return 0;
 }
 
-int EffectHornOfHeavenPrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Horn of Heaven: on the field, answering a summon (Normal, Flip or Special) of the monster at loc0. The
+ * player needs a monster to tribute for the cost: any monster when the opponent summoned, another monster
+ * when the player summoned it.
+ */
+int EffectHornOfHeavenPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    int player = (u8)ref->pos;
-    int zone = ref->pos >> 8;
+    int player = DUEL_LOC_PLAYER(card->loc0);
+    int zoneIndex = DUEL_LOC_ZONE(card->loc0);
 
-    if (flag == 0) {
+    if (fromHand == 0) {
         int p = player & 1;
-        struct DuelZone *z = ZB(p, zone);
+        struct DuelZone *zone = ZONE_AT(p, zoneIndex);
 
-        if (CARD_ID(CARD_WORD(z->card)) != 0) {
-            if (player == ref->player && CountTributableMonsters(ref->player, zone) == 0)
+        if (CARD_ID(CARD_WORD(zone->card)) != 0) {
+            if (player == card->player && CountTributableMonsters(card->player, zoneIndex) == 0)
                 return 0;
-            if (player != ref->player && CountTributableMonsters(ref->player, -1) == 0)
+            if (player != card->player && CountTributableMonsters(card->player, -1) == 0)
                 return 0;
-            switch (ref->kind) {
-            case 5:
-            case 6:
-            case 7:
+            switch (card->event) {
+            case RESPONSE_SUMMONED:
+            case RESPONSE_FLIP_SUMMONED:
+            case RESPONSE_SPECIAL_SUMMONED:
                 return 1;
             }
         }
@@ -473,171 +623,213 @@ int EffectHornOfHeavenPrepare(struct CardRef *ref, int a, u16 flag)
     return 0;
 }
 
-int EffectRestructerRevolutionPrepare(struct CardRef *ref)
+/*
+ * Restructer Revolution: the opponent has a card in hand (200 damage per card). A byte-identical copy of
+ * EffectOpponentHasHandPrepare.
+ */
+int EffectRestructerRevolutionPrepare(struct ChainEntry *card)
 {
-    struct DuelPlayer *pl = gDuelPlayers;
-    int p = ref->player;
+    struct DuelPlayer *players = gDuelPlayers;
+    int opponent = card->player;
 
-    p ^= 1;
-    return pl[p].handCount != 0;
+    opponent ^= 1;
+    return players[opponent].handCount != 0;
 }
 
-int EffectFusionSagePrepare(struct CardRef *ref)
+/* Fusion Sage: the deck holds a Polymerization to add to the hand (CollectEffectTargets). */
+int EffectFusionSagePrepare(struct ChainEntry *card)
 {
-    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargetsInt(card->player, CARD_NUMBER(card->card), 0) > 0;
 }
 
-int EffectLastWillPrepare(struct CardRef *ref)
+/*
+ * Last Will: Special Summons allowed, a monster of the player's went from the field to the graveyard this
+ * turn, a free monster zone, and a deck monster with 1500 ATK or less to summon (CollectEffectTargets).
+ */
+int EffectLastWillPrepare(struct ChainEntry *card)
 {
-    if (CanSpecialSummon(ref->player) != 0) {
+    if (CanSpecialSummon(card->player) != 0) {
         struct DuelPlayer *players = gDuelPlayers;
-        u32 shifted = (u32)((u8 *)ref)[2] << 31;
+        u32 playerBit = (u32)((u8 *)card)[2] << 31;     /* card->player in bit 31 */
 
-        if ((s32)((u32)((u8 *)&players[shifted >> 31])[0xB] << 28) < 0) {
-            /* FAKEMATCH: re-extract the player bit for the call as the ROM does. */
-            __asm__("" : "+r"(shifted));
-            if (CountFreeMonsterZones(shifted >> 31) != 0 && CollectEffectTargets(ref->player, 0x41E, 0) != 0)
+        /* players[player].monsterSentToGraveThisTurn (+0x0B bit 3), tested as the sign of byte << 28 */
+        if ((s32)((u32)((u8 *)&players[playerBit >> 31])[0xB] << 28) < 0) {
+            /* FAKEMATCH: the ROM keeps playerBit and shifts it again (lsr r0, r3, #31) for the
+             * CountFreeMonsterZones argument. Without the empty asm (with this test or the
+             * monsterSentToGraveThisTurn bitfield) the compiler copies the player index register
+             * instead (checked 2026-10-02). */
+            __asm__("" : "+r"(playerBit));
+            if (CountFreeMonsterZones(playerBit >> 31) != 0
+                && CollectEffectTargetsInt(card->player, CARD_LAST_WILL, 0) != 0)
                 return 1;
         }
     }
     return 0;
 }
 
-int EffectWabokuPrepare(struct CardRef *ref, int a, u16 flag)
+/* Waboku: on the field, during the opponent's turn. */
+int EffectWabokuPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (flag == 0 && gDuel.linkSkip != ref->player)
+    if (fromHand == 0 && gDuel.turnPlayer != card->player)
         return 1;
     return 0;
 }
 
-int EffectAttackResponsePrepare(struct CardRef *ref, int a, u16 flag)
+/*
+ * Shared by the traps that answer an attack declaration: on the field, the opponent declared an attack
+ * (loc0 is the attacker, loc1 the attack target). Negate Attack, Enchanted Javelin and keys 1214, 1415,
+ * 1424 need nothing else. Widespread Ruin and Mirror Force need an opponent card in attack position in
+ * zones 0-9 (a quirk: the loop also accepts a spell/trap card, whose isDefense bit is clear). Magical
+ * Hats and Magic-Arm Shield need a monster as the attack target (loc1 zone 0-4; a direct attack is
+ * assumed to give a higher zone, hypothesis) and a monster of the player's; then Magical Hats needs two
+ * free monster zones and two cards to hide the monster among (CollectEffectTargets), Magic-Arm Shield a
+ * free monster zone and two face-up opponent monsters.
+ * Matching: the two CountMonsters calls at the top discard their results; the always-true case group
+ * comes first and every other case returns explicitly.
+ */
+int EffectAttackResponsePrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
     u16 number;
-    int k;
+    int zoneIndex;
 
-    CountMonsters(ref->player);
-    CountMonsters(1 - ref->player);
-    if (flag != 0)
+    CountMonsters(card->player);
+    CountMonsters(1 - card->player);
+    if (fromHand != 0)
         return 0;
-    if ((u8)ref->pos == ref->player)
+    if (DUEL_LOC_PLAYER(card->loc0) == card->player)
         return 0;
-    if (ref->kind != 0x10)
+    if (card->event != RESPONSE_ATTACK_DECLARED)
         return 0;
-    number = CARD_NUMBER(ref->id);
+    number = CARD_NUMBER(card->card);
     switch (number) {
-    case 0x3C0:
-    case 0x44A:
-    case 0x4BE:
-    case 0x587:
-    case 0x590:
+    case CARD_NEGATE_ATTACK:
+    case CARD_ENCHANTED_JAVELIN:
+    case CARD_1214:
+    case CARD_1415:
+    case CARD_1424:
         return 1;
-    case 0x2AD:
-    case 0x420:
-        for (k = 0; k <= 9; k++) {
-            int p = (1 - ref->player) & 1;
-            struct DuelZone *z = ZB(p, k);
+    case CARD_WIDESPREAD_RUIN:
+    case CARD_MIRROR_FORCE:
+        for (zoneIndex = ZONE_MONSTER_0; zoneIndex <= ZONE_SPELL_4; zoneIndex++) {
+            /* Matching: each zone access computes its own address. */
+            int opponent = (1 - card->player) & 1;
+            struct DuelZone *zone = ZONE_AT(opponent, zoneIndex);
 
-            if (CARD_ID(CARD_WORD(z->card)) != 0) {
-                int p2 = (1 - ref->player) & 1;
-                struct DuelZone *z2 = ZB(p2, k);
+            if (CARD_ID(CARD_WORD(zone->card)) != 0) {
+                int opponent2 = (1 - card->player) & 1;
+                struct DuelZone *zone2 = ZONE_AT(opponent2, zoneIndex);
 
-                if (!(ZFLAGS(z2) & 1))
+                if (!zone2->isDefense)
                     return 1;
             }
         }
         return 0;
-    case 0x3B1:
-        if ((ref->unk8 >> 8) > 4)
+    case CARD_MAGICAL_HATS:
+        if (DUEL_LOC_ZONE(card->loc1) > ZONE_MONSTER_4)
             return 0;
-        if (CountMonsters(ref->player) == 0)
+        if (CountMonsters(card->player) == 0)
             return 0;
-        if (CountFreeMonsterZones(ref->player) <= 1)
+        if (CountFreeMonsterZones(card->player) <= 1)
             return 0;
-        if (CollectEffectTargets(ref->player, number, 0) <= 1)
+        if (CollectEffectTargetsInt(card->player, number, 0) <= 1)
             return 0;
         return 1;
-    case 0x3DE:
-        if ((ref->unk8 >> 8) > 4)
+    case CARD_MAGIC_ARM_SHIELD:
+        if (DUEL_LOC_ZONE(card->loc1) > ZONE_MONSTER_4)
             return 0;
-        if (CountMonsters(ref->player) == 0)
+        if (CountMonsters(card->player) == 0)
             return 0;
-        if (CountFreeMonsterZones(ref->player) == 0)
+        if (CountFreeMonsterZones(card->player) == 0)
             return 0;
-        if (CountMonstersFiltered(1 - ref->player, 1, 0) <= 1)
+        if (CountMonstersFiltered(1 - card->player, TRUE, FALSE) <= 1)     /* face-up, any position */
             return 0;
         return 1;
     }
     return 0;
 }
 
-int EffectShareThePainPrepare(struct CardRef *ref)
+/* Share the Pain: both players have a monster to tribute. */
+int EffectShareThePainPrepare(struct ChainEntry *card)
 {
-    if (CountTributableMonsters(ref->player, -1) != 0 && CountTributableMonsters(1 - ref->player, -1) != 0)
+    if (CountTributableMonsters(card->player, -1) != 0 && CountTributableMonsters(1 - card->player, -1) != 0)
         return 1;
     return 0;
 }
 
-int EffectCurseOfFiendPrepare(struct CardRef *ref)
+/* Curse of Fiend: during the Standby Phase, with a monster on either side. */
+int EffectCurseOfFiendPrepare(struct ChainEntry *card)
 {
-    if (gDuel.phase1B12 != 1 || (CountMonsters(ref->player) <= 0 && CountMonsters(1 - ref->player) <= 0))
+    if (gDuel.phase != PHASE_STANDBY || (CountMonsters(card->player) <= 0 && CountMonsters(1 - card->player) <= 0))
         return 0;
     return 1;
 }
 
-int EffectFinalDestinyPrepare(struct CardRef *ref, int a, u16 n)
+/*
+ * Final Destiny: five other cards in hand to discard (a hand activation counts the card itself, so
+ * fromHand is subtracted), and a card in any zone of either player.
+ */
+int EffectFinalDestinyPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    int i, j;
+    int player, zoneIndex;
 
-    if (gDuelPlayers[ref->player].handCount - n <= 4)
+    if (gDuelPlayers[card->player].handCount - fromHand <= 4)
         return 0;
-    for (i = 0; i < 2; i++) {
-        for (j = 0; j <= 10; j++) {
-            if (CARD_ID(CARD_WORD(gDuelPlayers[i & 1].zones[j].card)) != 0)
+    for (player = 0; player < 2; player++) {
+        for (zoneIndex = ZONE_MONSTER_0; zoneIndex <= ZONE_FIELD; zoneIndex++) {
+            if (CARD_ID(CARD_WORD(gDuelPlayers[player & 1].zones[zoneIndex].card)) != 0)
                 return 1;
         }
     }
     return 0;
 }
 
-int EffectDarknessApproachesPrepare(struct CardRef *ref, int a, u16 n)
+/* Darkness Approaches: two other cards in hand to discard (fromHand: the card itself). */
+int EffectDarknessApproachesPrepare(struct ChainEntry *card, int chainLink, u16 fromHand)
 {
-    if (gDuelPlayers[ref->player].handCount - n <= 1)
+    if (gDuelPlayers[card->player].handCount - fromHand <= 1)
         return 0;
     return 1;
 }
 
-int EffectFairysHandMirrorPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+/*
+ * Fairy's Hand Mirror: on the field, chainLink is the opponent's, and its effect has another valid target
+ * to switch to (CountRedirectTargets).
+ */
+int EffectFairysHandMirrorPrepare(struct ChainEntry *card, struct ChainEntry *chainLink, u16 fromHand)
 {
-    if (flag != 0 || tgt == 0 || (((u8 *)tgt)[2] & 1) == (((u8 *)ref)[2] & 1))
+    if (fromHand != 0 || chainLink == NULL || chainLink->player == card->player)
         return 0;
-    return CountRedirectTargets(0x431, ref->player, tgt) > 0;
+    return CountRedirectTargets(CARD_FAIRYS_HAND_MIRROR, card->player, chainLink) > 0;
 }
 
-int EffectPainfulChoicePrepare(struct CardRef *ref)
+/* Painful Choice: the deck holds the five cards to pick from. */
+int EffectPainfulChoicePrepare(struct ChainEntry *card)
 {
-    int ret = 0;
-
-    if (gDuelPlayers[ref->player].deckCount > 4)
-        ret = 1;
-    return ret;
+    return gDuelPlayers[card->player].deckCount > 4;
 }
 
-int EffectGraverobberPrepare(struct CardRef *ref)
+/* Graverobber: the opponent's graveyard holds a Magic card to take. */
+int EffectGraverobberPrepare(struct ChainEntry *card)
 {
     int i;
 
-    for (i = 0; i < gDuelPlayers[(1 - ref->player) & 1].graveCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[(1 - ref->player) & 1].graveyard[i]));
+    /* Matching: the same '(1 - card->player) & 1' in the loop condition and the body. */
+    for (i = 0; i < gDuelPlayers[(1 - card->player) & 1].graveCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[(1 - card->player) & 1].graveyard[i]));
 
-        if (CARD_TYPE(id) == 0x16)
+        if (CARD_TYPE(id) == CARD_TYPE_MAGIC)
             return 1;
     }
     return 0;
 }
 
-int EffectCallOfTheHauntedPrepare(struct CardRef *ref)
+/*
+ * Call of the Haunted: Special Summons allowed, a free monster zone, and a graveyard monster to revive
+ * (CollectEffectTargets).
+ */
+int EffectCallOfTheHauntedPrepare(struct ChainEntry *card)
 {
-    if (CanSpecialSummon(ref->player) == 0 || CountFreeMonsterZones(ref->player) == 0)
+    if (CanSpecialSummon(card->player) == 0 || CountFreeMonsterZones(card->player) == 0)
         return 0;
-    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargetsInt(card->player, CARD_NUMBER(card->card), 0) > 0;
 }

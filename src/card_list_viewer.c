@@ -1,264 +1,361 @@
-#include "global.h"
-#include "main.h"
-#include "duel.h"
-
 /*
- * Duel field-target checks (can a card in (player, zone) be selected / affected?)
- * and the duel overlay object at 0x0201D810.  See wiki/functions/code-0802aac0.md.
+ * card_list_viewer (0x0802AAC0-0x0802BACF): the duel card-list viewer's runner, input and Open, then the
+ * target checks of card effects.
+ *
+ * Card-list viewer (card_list_view.h; the drawing helpers and CardListView_InitScreen are in turn_order_steps.c).
+ * CardListView_Open fills gCardListView from a player's graveyard, fusion deck, banished pile or deck, or for
+ * area -1 from the effect-target collector. DuelMainStep calls CardListView_Run every frame (it returns 1 while
+ * the viewer is active), which runs CardListView_Update and then the step gCardListViewSteps[step] (enum
+ * CardListViewStep): InitScreen, HandleInput, Exit. In HandleInput Up/Down move the cursor box (or scroll the
+ * page at the edges), Left/Right pick a button, A presses it (Card View opens Card Detail for the entry) and B
+ * leaves if Exit is enabled.
+ *
+ * Target checks: can a card effect target the card in (player, zone)? CanCardTargetZone and IsZoneTargetable
+ * are the generic protections: Lord of D. protects face-up Dragons, and under Umi cards 1326 and 1329 (not in
+ * this game) cannot be targeted by Magic cards other than Equip Magic. The Effect*Check functions are the
+ * 'check' slot of gCardEffects (effect_handlers.h): the effect code calls them for every (player, zone),
+ * packed as pos = zone << 8 | player, to find the legal targets of the card in `entry`.
  */
+#include "global.h"
+#include "gba.h"                    /* keys */
+#include "main.h"                   /* gMain.newKeys, gMain.bgVofs */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType, CardAttribute, SpellSubtype */
+#include "constants/duel.h"         /* enum DuelArea, DuelZoneIndex, BanishKind, ZoneLinkKind */
+#include "constants/sound.h"        /* enum SoundEffect */
+#include "util.h"                   /* MemClear16 */
+#include "text.h"                   /* TextCanvasToTiles */
+#include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_* */
+#include "card_detail.h"            /* CardDetail_Init, CardDetail_Run */
 
-/* struct DuelCard, struct DuelZone and struct DuelZonesPlayer come from include/duel.h. */
+/* ---- BEGIN header subset (pre-H0) ----
+ * The parts of duel.h and sound.h this unit and the headers below need, with the canonical headers' tags,
+ * names, types and bitfield containers (unused bytes are padding). include/duel.h and sound.h still hold the
+ * legacy headers until the header switch (H0, build/readability/HEADERS.md); chain.h, duel_screen.h and
+ * card_list_view.h include duel.h, so this block also defines duel.h's include guard. After H0, replace the
+ * block (BEGIN to END) with
+ *     #include "duel.h"
+ *     #include "sound.h"
+ * which gives identical assembly (checked against the staged headers). */
 
-/* Byte 6 of a zone as a plain byte (its flags are tested with mov #2; ldrb; and). */
-#define ZFLAGS(z) (((u8 *)(z))[6])
-
-/* Zone pointer by byte arithmetic, zone term first (the ROM's address order); p is player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
-
-/* Card reference (0x14 bytes, see duel_piles / duel_stat_queries). */
-struct CardRef {
-    u16 id;             /* +0x00 card ID */
-    u8 player : 1;      /* +0x02 bit 0 */
-    u8 unk2_1 : 3;
-    u16 zone : 6;       /* +0x02 bits 4-9 */
-    u16 unk2_10 : 6;
-    u8 filler4[0x14 - 0x4];
+/* duel.h */
+#define GUARD_DUEL_H
+struct DuelCard {
+    u32 id:12;                          /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                        /* bit 12: owning player */
+    u32 unk13:19;
 };
-
-/* The card word read as a whole u32 (the code always loads it with ldr). */
-#define CARD_WORD(c) (*(u32 *)&(c))
-#define CARD_ID(w) (((w) << 20) >> 20)
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-#define CARD_SUBTYPE(id) ((CARD_STATS(id) & 0xE0000) >> 17)
-
-/* Card list viewer at 0x0201D810 (0x310 bytes, cleared by the duel setup). */
-struct ListView {
-    u8 active : 1;      /* +0x000 bit 0 */
-    u8 player : 1;      /* +0x000 bit 1 (hypothesis: owner of the listed cards) */
-    u8 clearVram : 1;   /* +0x000 bit 2: clear 0x06004200 on the next update */
-    u8 unk0_3 : 1;
-    u8 drawList : 1;    /* +0x000 bit 4 */
-    u8 mode : 3;        /* +0x000 bits 5-7 */
-    u8 step;            /* +0x001: index into gCardListViewSteps */
-    u8 state;           /* +0x002 */
-    u8 unk3;
-    u8 unk4;
-    u8 row : 2;         /* +0x005 bits 0-1: cursor row on screen */
-    u8 scrollTimer : 3; /* +0x005 bits 2-4: scroll animation frames left */
-    u8 scrollDir : 2;   /* +0x005 bits 5-6: 1 up, 2 down */
-    u8 unk5_7 : 1;
-    u16 top;            /* +0x006: first visible entry */
-    u8 button : 2;      /* +0x008 bits 0-1: selected button */
-    u8 buttonMask : 4;  /* +0x008 bits 2-5: enabled buttons */
-    u8 unk8_6 : 2;
-    u8 filler9[3];
-    u32 cards[0xC0];    /* +0x00C: card words */
-    u16 count;          /* +0x30C */
+struct DuelLoc {
+    u16 player:1;
+    u16 area:4;
+    u16 index:9;
+    u16 isDefense:1;
+    u16 isFaceUp:1;
+    u16 unk2;
 };
-extern struct ListView gCardListView;
-#define gListView gCardListView
-
-/* gMain (struct Main) comes from include/main.h; +0x4422 is bgVofs[1]. */
-#define gMain gMain
-
-struct ScrollStep { u16 y; u16 unk2; };
-extern const struct ScrollStep gCardListViewCursorSlide[][4];   /* scroll offsets [dir][timer] */
-void TextCanvasToTiles(void *dest, u16 value);
-void CardListView_DrawSelectedInfo(void);
-void CardListView_DrawSelectedCursorFrame(void);
-void CardListView_DrawPage(void);
-void CardListView_DrawButtons(int button, int mask);
-void CardListView_DrawCardStatus(u32 *card);
-
-void PlaySE(u16 se);  /* PlaySE */
-void CardDetail_Init(u16 cardId, u16 timer, u16 c);  /* Card Detail view (hypothesis) */
-u16 CardDetail_Run(void);
-u16 CardListView_InitScreen(void);
-
-/* struct DuelPlayer and gDuelPlayers come from include/duel.h (+0x904 = graveyard). */
-
-void MemClear16(void *dst, u32 size); /* MemClear16 */
-void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
-void CollectEffectTargets(int player, int a, int b);
-
-typedef u16 (*StepFunc)(void);
-extern const StepFunc gCardListViewSteps[];
-
-u16 FadeToBlack(u32 a);
-void DuelScreen_Init(void);
-void DuelScreen_DrawCursorInfo(void);
-u16 DuelScreen_FadeInStep(void);
-void CardListView_Update(void);
-
-int GetZoneCardType(int player, int zone);
+struct DuelZone {
+    struct DuelCard card;               /* +0x00 */
+    u16 serial;                         /* +0x04 */
+    u8 isDefense:1;                     /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                      /* +0x06 bit 1: face up */
+    u8 turnCounter:4;                   /* +0x06 bits 2-5: turns a face-up card has been active */
+    u8 unk6_6:2;
+    u8 unk7[3];
+    u16 links[32];                      /* +0x0A: DUEL_LOC of a card affecting this one, or a value / card ID */
+    u16 linkKinds[32];                  /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
+    u16 numLinks;                       /* +0x8A: entries in links / linkKinds */
+    u8 unk8C[8];
+};
+struct DuelPlayer {
+    u16 lifePoints;                     /* +0x000 */
+    u8 handCount;                       /* +0x002 */
+    u8 deckCount;                       /* +0x003: entries in deck[] */
+    u8 graveCount;                      /* +0x004: entries in graveyard[] */
+    u8 fusionCount;                     /* +0x005: entries in fusionDeck[] */
+    u8 banishedCount;                   /* +0x006: entries in banished[] and banishedInfo[] */
+    u8 unk7[0x28 - 0x7];
+    struct DuelZone zones[11];          /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];           /* +0x684 */
+    struct DuelCard deck[80];           /* +0x7C4: deck[0] is the top card */
+    struct DuelCard graveyard[80];      /* +0x904 */
+    struct DuelCard fusionDeck[80];     /* +0xA44 */
+    struct DuelCard banished[80];       /* +0xB84 */
+    u16 banishedInfo[80];               /* +0xCC4: parallel to banished[]: low byte enum BanishKind */
+};
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
+extern struct DuelPlayer gDuelPlayers[2];
+extern struct DuelZonesPlayer gDuelZones[2];
+void CopyDuelCard(u32 *dst, u32 *src);
+int CountActiveCardsOnField(int player, u16 cardNo);
 int CountFaceUpMonstersByNumber(int player, u16 cardNo);
 int GetFaceUpFieldMagicNumber(void);
-int GetZoneCardAtk(int player, int zone);
-int CountActiveCardsOnField(int player, u16 number);
-int GetZoneCardAttribute(int player, int zone);
-int CountZoneLinksFromCard(int player, int zone, u16 number);
+int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
+u32 GetZoneCardAtk(u32 player, u32 slot);
+u32 GetZoneCardType(s32 player, s32 slot);
+u32 GetZoneCardAttribute(s32 player, s32 slot);
 
+/* sound.h */
+void PlaySE(u32 seId);
+/* ---- END header subset ---- */
+
+#include "chain.h"                  /* struct ChainEntry (the effect checks' card) */
+#include "effect.h"                 /* CanCardTargetZone, IsZoneTargetable */
+#include "effect_handlers.h"        /* the Effect*Check handlers defined here */
+#include "duel_screen.h"            /* DuelScreen_Init, DuelScreen_DrawCursorInfo, DuelScreen_FadeInStep */
+#include "card_list_view.h"         /* gCardListView, the CardListView_* functions */
+
+/* ---- Local views kept on purpose (matching choices, see build/readability/HEADERS.md) ---- */
+
+/* FadeToBlack as this unit calls it: returning u16, so the callers truncate the result (lsl #16) before testing
+ * it. palette.h has the definition's u32 return. */
+u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
+
+/* CollectEffectTargets with an int card number and no result: CardListView_Open passes its argument on
+ * unnarrowed (effect.h: u16 cardNumber, u16 return). */
+void CollectEffectTargetsInt(int player, int cardNumber, int arg) asm("CollectEffectTargets");
+
+/* ---- ROM data used only here ---- */
+
+/* 0x0819A7B8: the viewer's steps (enum CardListViewStep), NULL-terminated. */
+extern u16 (*const gCardListViewSteps[])(void);
+
+/* 0x0819A788: BG1 scroll offsets of the 4-frame cursor-box slide, [cursorMoveDir][cursorMoveTimer]: dir 1 (up)
+ * 15, 13, 10, 5; dir 2 (down) -15, -13, -10, -5 (row 0 unused). */
+extern const s32 gCardListViewCursorSlide[][4];
+
+/* ---- Helpers ---- */
+
+/* The card word as one u32 and its card ID (bits 0-11). Matching: the ROM always loads the whole word (ldr)
+ * and extracts the ID with lsl #20; lsr #20, where a bitfield read of .id loads a halfword. */
+#define CARD_WORD(card) (*(u32 *)&(card))
+#define CARD_ID(word) (((word) << 20) >> 20)
+
+/* The card tables through their integer addresses: gCardStats (0x08621DE0) and gCardIdToNumber (0x08622AB4).
+ * Matching: each use reloads the table base literal, as in the ROM. */
+#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+#define CARD_TYPE(id) CARD_STATS_TYPE(CARD_STATS(id))           /* enum CardType */
+#define CARD_SUBTYPE(id) CARD_STATS_SUBTYPE(CARD_STATS(id))     /* enum SpellSubtype */
+
+/* &gDuelZones[player].zones[zone] by byte arithmetic; player is already masked with & 1. Matching: written
+ * zone term first, agbcc emits the address in the ROM's order (array indexing gives another order). */
+#define ZONE_AT(player, zone) \
+    ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer) + (u32)gDuelZones))
+
+/* The same address with the player term written first; agbcc then emits the zone multiply first. */
+#define ZONE_AT_PLAYER_FIRST(player, zone) \
+    ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
+
+/* Byte 6 of a zone (isDefense bit 0, isFaceUp bit 1, turnCounter) as one byte. Matching: EffectStopDefenseCheck
+ * returns the isDefense bit as the loaded byte & 1 (the bitfield read gives lsl; lsr). */
+#define ZONE_FLAGS(zone) (((u8 *)(zone))[6])
+#define ZONE_FLAG_DEFENSE 1
+
+/* gCardListView.cursorMoveDir, and the length of the cursor-box slide (cursorMoveTimer counts it down). */
+enum CardListCursorMove {
+    CARDLIST_CURSOR_IDLE = 0,
+    CARDLIST_CURSOR_UP = 1,
+    CARDLIST_CURSOR_DOWN = 2,
+};
+#define CARDLIST_CURSOR_SLIDE_FRAMES 4
+
+/* Player and zone of a packed u16 location (DUEL_LOC: zone << 8 | player), such as the `pos` of the target
+ * checks and a zone link. */
+#define LOC_PLAYER(loc) ((u8)(loc))
+#define LOC_ZONE(loc) ((loc) >> 8)
+
+/* ======================================================================================================== */
+/* Card-list viewer                                                                                         */
+/* ======================================================================================================== */
+
+/*
+ * Step 2 of gCardListViewSteps (CARDLIST_STEP_EXIT), by state: fades to black and hides the sprites, then
+ * rebuilds the duel screen and its info bar; then returns DuelScreen_FadeInStep(), 1 once the duel screen has
+ * faded back in.
+ */
 u16 CardListView_Exit(void)
 {
-    struct ListView *v = &gListView;
+    struct CardListView *view = &gCardListView;
 
-    switch (v->state) {
+    switch (view->state) {
     case 0:
-        if (FadeToBlack(4)) {
-            v->drawList = 0;
-            v->state++;
+        if (FadeToBlackU16(4)) {
+            view->showSprites = 0;
+            view->state++;
         }
         break;
     case 1:
         DuelScreen_Init();
         DuelScreen_DrawCursorInfo();
-        v->state++;
+        view->state++;
         break;
     default:
         return DuelScreen_FadeInStep();
     }
     return 0;
 }
-/* Per-frame list viewer update: VRAM clear, scroll animation, redraw. */
+
+/*
+ * The per-frame part, run before every step: converts the text canvas to BG tiles when the names were redrawn
+ * (textDirty), slides the cursor box (BG1 scroll) and, when the slide ends, moves cursorRow and redraws the
+ * selected entry's panel and cursor box; then the button bar and, unless the box is moving or the list is empty,
+ * the selected entry's CARD STATUS icons.
+ */
 void CardListView_Update(void)
 {
     int idle = 1;
-    struct ListView *v = &gListView;
+    struct CardListView *view = &gCardListView;
 
-    if (v->clearVram) {
-        v->clearVram = 0;
-        TextCanvasToTiles((void *)0x06004200, 0);
+    if (view->textDirty) {
+        view->textDirty = 0;
+        TextCanvasToTiles((u16 *)(VRAM + 0x4000 + 0x10 * 32), 0);   /* BG tile 0x10 of char block 1 */
     }
-    if (v->scrollDir) {
-        if (v->scrollTimer) {
-            v->scrollTimer--;
-            gMain.bgVofs[1] = gCardListViewCursorSlide[v->scrollDir][v->scrollTimer].y - (v->row << 4);
+    /* BG1's VOFS -(cursorRow * 16) puts the box on the cursor row; the slide offsets lead it to the next row. */
+    if (view->cursorMoveDir) {
+        if (view->cursorMoveTimer) {
+            view->cursorMoveTimer--;
+            gMain.bgVofs[1] = gCardListViewCursorSlide[view->cursorMoveDir][view->cursorMoveTimer]
+                            - (view->cursorRow << 4);
             idle = 0;
         } else {
-            switch (v->scrollDir) {
-            case 1:
-                v->row--;
+            switch (view->cursorMoveDir) {
+            case CARDLIST_CURSOR_UP:
+                view->cursorRow--;
                 break;
-            case 2:
-                v->row++;
+            case CARDLIST_CURSOR_DOWN:
+                view->cursorRow++;
                 break;
             }
-            gListView.scrollDir = 0;
-            gMain.bgVofs[1] = -(gListView.row << 4);
+            /* Matching: from here on the code reads gCardListView again instead of through `view`. */
+            gCardListView.cursorMoveDir = CARDLIST_CURSOR_IDLE;
+            gMain.bgVofs[1] = -(gCardListView.cursorRow << 4);
             CardListView_DrawSelectedInfo();
             CardListView_DrawSelectedCursorFrame();
         }
     }
-    if (gListView.drawList) {
-        CardListView_DrawButtons(gListView.button, gListView.buttonMask);
-        if (idle && gListView.count)
-            CardListView_DrawCardStatus(&gListView.cards[gListView.top + gListView.row]);
+    if (gCardListView.showSprites) {
+        CardListView_DrawButtons(gCardListView.button, gCardListView.buttonMask);
+        if (idle && gCardListView.count)
+            CardListView_DrawCardStatus(
+                (struct DuelCard *)&gCardListView.cards[gCardListView.top + gCardListView.cursorRow]);
     }
 }
-/* List viewer input step: Up/Down scroll, Right cycles the buttons, A activates, B closes. */
+
+/*
+ * Step 1 of gCardListViewSteps (CARDLIST_STEP_INPUT). Returns 1 to close the viewer (Exit, Decide or B).
+ * States 1-4 open Card Detail for the selected entry and come back (enum CardListViewInputState); states 0
+ * and 5 take input:
+ *   Up / Down    move the cursor box (a 4-frame slide), or scroll the page at the top / bottom row; error
+ *                sound at either end of the list
+ *   Right / Left the next / previous enabled button
+ *   B            close, if Exit is enabled
+ *   A            the selected button: Card View (refused for the opponent's face-down banished cards), Exit,
+ *                Arrange (only a sound) or Decide
+ */
 u16 CardListView_HandleInput(void)
 {
-    int idx = gListView.top + gListView.row;
-    u32 id = CARD_ID(gListView.cards[idx]);
+    int index = gCardListView.top + gCardListView.cursorRow;
+    u32 id = CARD_ID(gCardListView.cards[index]);
 
-    switch (gListView.state) {
-    case 1:
-        if (FadeToBlack(4)) {
-            gListView.drawList = 0;
-            gListView.state++;
+    switch (gCardListView.state) {
+    case CARDLIST_INPUT_FADE_OUT:
+        if (FadeToBlackU16(4)) {
+            gCardListView.showSprites = 0;
+            gCardListView.state++;
         }
         break;
-    case 2:
+    case CARDLIST_INPUT_OPEN_DETAIL:
         CardDetail_Init(id, 0, 0);
-        gListView.state++;
+        gCardListView.state++;
         break;
-    case 3:
+    case CARDLIST_INPUT_WAIT_DETAIL:
         if (CardDetail_Run()) {
-            gListView.unk3 = 0;
-            gListView.state++;
+            gCardListView.initState = 0;
+            gCardListView.state++;
         }
         break;
-    case 4:
+    case CARDLIST_INPUT_REINIT:
         if (CardListView_InitScreen()) {
-            gListView.unk3 = 0;
-            gListView.state++;
+            gCardListView.initState = 0;
+            gCardListView.state++;
         }
         break;
     default:
-        if (gListView.scrollDir)
+        if (gCardListView.cursorMoveDir != CARDLIST_CURSOR_IDLE)
             break;
-        if (gMain.newKeys & 0x40) {
-            if (idx > 0) {
-                if (gListView.row) {
-                    gListView.scrollDir = 1;
-                    gListView.scrollTimer = 4;
+        if (gMain.newKeys & DPAD_UP) {
+            if (index > 0) {
+                if (gCardListView.cursorRow) {
+                    gCardListView.cursorMoveDir = CARDLIST_CURSOR_UP;
+                    gCardListView.cursorMoveTimer = CARDLIST_CURSOR_SLIDE_FRAMES;
                 } else {
-                    gListView.top--;
+                    gCardListView.top--;
                     CardListView_DrawPage();
                     CardListView_DrawSelectedInfo();
                     CardListView_DrawSelectedCursorFrame();
                 }
-                PlaySE(0);
+                PlaySE(SE_CURSOR);
             } else {
-                PlaySE(3);
+                PlaySE(SE_ERROR);
             }
         }
-        if (gMain.newKeys & 0x80) {
-            if (idx < gListView.count - 1) {
-                if (gListView.row <= 2) {
-                    gListView.scrollDir = 2;
-                    gListView.scrollTimer = 4;
+        if (gMain.newKeys & DPAD_DOWN) {
+            if (index < gCardListView.count - 1) {
+                if (gCardListView.cursorRow <= 2) {
+                    gCardListView.cursorMoveDir = CARDLIST_CURSOR_DOWN;
+                    gCardListView.cursorMoveTimer = CARDLIST_CURSOR_SLIDE_FRAMES;
                 } else {
-                    gListView.top++;
+                    gCardListView.top++;
                     CardListView_DrawPage();
                     CardListView_DrawSelectedInfo();
                     CardListView_DrawSelectedCursorFrame();
                 }
-                PlaySE(0);
+                PlaySE(SE_CURSOR);
             } else {
-                PlaySE(3);
+                PlaySE(SE_ERROR);
             }
         }
-        if (gMain.newKeys & 0x10) {
-            PlaySE(0);
+        if (gMain.newKeys & DPAD_RIGHT) {
+            PlaySE(SE_CURSOR);
             do {
-                gListView.button++;
-            } while (!((gListView.buttonMask >> gListView.button) & 1));
+                gCardListView.button++;
+            } while (!((gCardListView.buttonMask >> gCardListView.button) & 1));
         }
-        if (gMain.newKeys & 0x20) {
-            PlaySE(0);
+        if (gMain.newKeys & DPAD_LEFT) {
+            PlaySE(SE_CURSOR);
             do {
-                gListView.button--;
-            } while (!((gListView.buttonMask >> gListView.button) & 1));
+                gCardListView.button--;
+            } while (!((gCardListView.buttonMask >> gCardListView.button) & 1));
         }
-        if ((gMain.newKeys & 2) && (gListView.buttonMask & 2)) {
-            PlaySE(2);
+        if ((gMain.newKeys & B_BUTTON) && (gCardListView.buttonMask & (1 << CARDLIST_BUTTON_EXIT))) {
+            PlaySE(SE_CANCEL);
             return 1;
         }
-        if (gMain.newKeys & 1) {
-            switch (gListView.button) {
-            case 0:
-                if (gListView.mode == 3) {
-                    int player = gListView.player;
-                    int i = gListView.top + gListView.row;
-                    if ((u8)gDuelPlayers[player & 1].arrCC4[i] == 2 && player) {
-                        PlaySE(3);
+        if (gMain.newKeys & A_BUTTON) {
+            switch (gCardListView.button) {
+            case CARDLIST_BUTTON_CARD_VIEW:
+                if (gCardListView.mode == CARDLIST_MODE_BANISHED) {
+                    int player = gCardListView.player;
+                    int i = gCardListView.top + gCardListView.cursorRow;
+                    if ((u8)gDuelPlayers[player & 1].banishedInfo[i] == BANISH_FACE_DOWN && player) {
+                        PlaySE(SE_ERROR);
                         break;
                     }
                 }
-                PlaySE(1);
-                gListView.state = 1;
+                PlaySE(SE_CONFIRM);
+                gCardListView.state = CARDLIST_INPUT_FADE_OUT;
                 break;
-            case 1:
-                PlaySE(2);
+            case CARDLIST_BUTTON_EXIT:
+                PlaySE(SE_CANCEL);
                 return 1;
-            case 2:
-                PlaySE(1);
+            case CARDLIST_BUTTON_ARRANGE:
+                PlaySE(SE_CONFIRM);
                 break;
-            case 3:
-                PlaySE(1);
+            case CARDLIST_BUTTON_DECIDE:
+                PlaySE(SE_CONFIRM);
                 return 1;
             }
         }
@@ -266,383 +363,456 @@ u16 CardListView_HandleInput(void)
     }
     return 0;
 }
-/* Run the current step of the list viewer; returns 1 while active. */
+
+/*
+ * Runs the viewer for one frame while it is active: CardListView_Update, then the current step; when the step
+ * returns non-zero the next one starts (state, initState and unk4 reset). Returns 1 while active; at the end
+ * of gCardListViewSteps the viewer turns itself off and returns 0.
+ */
 u16 CardListView_Run(void)
 {
-    struct ListView *v = &gListView;
+    struct CardListView *view = &gCardListView;
 
-    if (v->active) {
-        if (gCardListViewSteps[v->step] != NULL) {
+    if (view->active) {
+        if (gCardListViewSteps[view->step] != NULL) {
             CardListView_Update();
-            if (gCardListViewSteps[v->step]()) {
-                v->state = 0;
-                v->unk3 = 0;
-                v->unk4 = 0;
-                v->step++;
+            if (gCardListViewSteps[view->step]()) {
+                view->state = 0;
+                view->initState = 0;
+                view->unk4 = 0;
+                view->step++;
             }
             return 1;
         }
-        v->active = 0;
+        view->active = 0;
     }
     return 0;
 }
-/* Open the list viewer on one of player's card lists (area 12-15, 13 = deck) or, for area -1, CollectEffectTargets. */
-void CardListView_Open(int player, int area, int a2, int a3)
+
+/*
+ * Opens the viewer on one of `player`'s piles (area DUEL_AREA_GRAVEYARD, FUSION_DECK, BANISHED or DECK), with
+ * only Exit enabled, or for area -1 on the effect targets of card number `cardNumber` (CollectEffectTargets
+ * fills cards[], sources[] and count), with only Decide enabled. Any other area leaves the viewer off.
+ */
+void CardListView_Open(int player, int area, int cardNumber, int arg)
 {
     struct DuelCard *src;
     int copy = 0;
     int i;
 
-    MemClear16(gListView.cards, 0x200);
-    gListView.player = player & 1;
-    gListView.count = 0;
-    gListView.buttonMask = 0;
-    gListView.button = 0;
+    MemClear16(gCardListView.cards, sizeof(gCardListView.cards));
+    gCardListView.player = player & 1;
+    gCardListView.count = 0;
+    gCardListView.buttonMask = 0;
+    gCardListView.button = 0;
     switch (area) {
-    case 14:
-        gListView.mode = player;
-        gListView.buttonMask = 2;
-        gListView.count = gDuelPlayers[player & 1].graveCount;
+    case DUEL_AREA_GRAVEYARD:
+        /* CARDLIST_MODE_YOUR_GRAVEYARD or CARDLIST_MODE_OPPONENT_GRAVEYARD */
+        gCardListView.mode = player;
+        gCardListView.buttonMask = 1 << CARDLIST_BUTTON_EXIT;
+        gCardListView.count = gDuelPlayers[player & 1].graveCount;
         src = gDuelPlayers[player & 1].graveyard;
         copy = 1;
         break;
-    case 12:
-        gListView.mode = 2;
-        gListView.buttonMask = 2;
-        gListView.count = gDuelPlayers[player & 1].fusionCount;
+    case DUEL_AREA_FUSION_DECK:
+        gCardListView.mode = CARDLIST_MODE_FUSION_DECK;
+        gCardListView.buttonMask = 1 << CARDLIST_BUTTON_EXIT;
+        gCardListView.count = gDuelPlayers[player & 1].fusionCount;
         src = gDuelPlayers[player & 1].fusionDeck;
         copy = 1;
         break;
-    case 15:
-        gListView.mode = 3;
-        gListView.buttonMask = 2;
-        gListView.count = gDuelPlayers[player & 1].countB84;
-        src = gDuelPlayers[player & 1].listB84;
+    case DUEL_AREA_BANISHED:
+        gCardListView.mode = CARDLIST_MODE_BANISHED;
+        gCardListView.buttonMask = 1 << CARDLIST_BUTTON_EXIT;
+        gCardListView.count = gDuelPlayers[player & 1].banishedCount;
+        src = gDuelPlayers[player & 1].banished;
         copy = 1;
         break;
-    case 13:
-        gListView.mode = 5;
-        gListView.buttonMask = 2;
-        gListView.count = gDuelPlayers[player & 1].deckCount;
+    case DUEL_AREA_DECK:
+        gCardListView.mode = CARDLIST_MODE_DECK;
+        gCardListView.buttonMask = 1 << CARDLIST_BUTTON_EXIT;
+        gCardListView.count = gDuelPlayers[player & 1].deckCount;
         src = gDuelPlayers[player & 1].deck;
         copy = 1;
         break;
     case -1:
-        gListView.mode = 4;
-        gListView.buttonMask = 8;
-        CollectEffectTargets(player, a2, a3);
+        gCardListView.mode = CARDLIST_MODE_TARGETS;
+        gCardListView.buttonMask = 1 << CARDLIST_BUTTON_DECIDE;
+        CollectEffectTargetsInt(player, cardNumber, arg);
         break;
     default:
-        gListView.active = 0;
+        gCardListView.active = 0;
         return;
     }
     if (copy) {
-        struct DuelCard *dst = (struct DuelCard *)gListView.cards;
-        for (i = 0; i < gListView.count; i++)
-            CopyDuelCard(dst++, src++);
+        struct DuelCard *dst = (struct DuelCard *)gCardListView.cards;
+        for (i = 0; i < gCardListView.count; i++)
+            CopyDuelCard((u32 *)dst++, (u32 *)src++);
     }
-    gListView.row = 0;
-    gListView.scrollTimer = 0;
-    gListView.scrollDir = 0;
-    gListView.top = 0;
-    gListView.active = 1;
-    gListView.step = 0;
+    gCardListView.cursorRow = 0;
+    gCardListView.cursorMoveTimer = 0;
+    gCardListView.cursorMoveDir = CARDLIST_CURSOR_IDLE;
+    gCardListView.top = 0;
+    gCardListView.active = 1;
+    gCardListView.step = CARDLIST_STEP_INIT;
 }
 
-/* Can the card `id` target the card in (player, zone)?  0 if the zone is empty. */
-u16 CanCardTargetZone(u16 id, int player, int zone)
+/* ======================================================================================================== */
+/* Target checks                                                                                            */
+/* ======================================================================================================== */
+
+/*
+ * Can the effect of card `cardId` target the card in (player, zone)? 0 if the zone is empty; 1 if the card is
+ * face down. A face-up card cannot be targeted if it is a Dragon (its effective type) while Lord of D. is face
+ * up on either side, or if it is card number 1326 or 1329 (not in this game) under Umi and `cardId` is a Magic
+ * card other than an Equip Magic.
+ */
+u16 CanCardTargetZone(u16 cardId, int player, int zone)
 {
     u16 ok = 1;
     int p = player & 1;
-    struct DuelZone *z = ZB(p, zone);
-    u32 zid = CARD_ID(CARD_WORD(z->card));
+    struct DuelZone *target = ZONE_AT(p, zone);
+    u32 targetId = CARD_ID(CARD_WORD(target->card));
 
-    if (zid == 0)
+    if (targetId == 0)
         return 0;
-    if (!(ZFLAGS(z) & 2))
+    if (!target->isFaceUp)
         return 1;
-    if (GetZoneCardType(player, zone) == 1) {
-        if (CountFaceUpMonstersByNumber(0, 0x2E4) > 0)
+    if (GetZoneCardType(player, zone) == CARD_TYPE_DRAGON) {
+        if (CountFaceUpMonstersByNumber(0, CARD_LORD_OF_D) > 0)
             ok = 0;
-        if (CountFaceUpMonstersByNumber(1, 0x2E4) > 0)
+        if (CountFaceUpMonstersByNumber(1, CARD_LORD_OF_D) > 0)
             ok = 0;
     }
-    if ((CARD_NUMBER(zid) == 0x52E || CARD_NUMBER(zid) == 0x531) && GetFaceUpFieldMagicNumber() == 0x14D
-        && CARD_TYPE(id) == 0x16 && CARD_SUBTYPE(id) != 3)
+    /* 1329 (0x531) has no CARD_ name: no card in this game has that number. */
+    if ((CARD_NUMBER(targetId) == CARD_1326 || CARD_NUMBER(targetId) == 1329)
+        && GetFaceUpFieldMagicNumber() == CARD_UMI && CARD_TYPE(cardId) == CARD_TYPE_MAGIC
+        && CARD_SUBTYPE(cardId) != SPELL_EQUIP)
         ok = 0;
     return ok;
 }
 
+/*
+ * The card-independent part of CanCardTargetZone: 1 if (player, zone) holds a card that is not a face-up card
+ * number 1326 or 1329 under Umi, else 0.
+ */
 int IsZoneTargetable(int player, int zone)
 {
     int p = player & 1;
-    struct DuelZone *z = ZB(p, zone);
-    u32 id = CARD_ID(CARD_WORD(z->card));
+    struct DuelZone *target = ZONE_AT(p, zone);
+    u32 id = CARD_ID(CARD_WORD(target->card));
 
     if (id == 0)
         return 0;
-    if ((CARD_NUMBER(id) == 0x52E || CARD_NUMBER(id) == 0x531) && GetFaceUpFieldMagicNumber() == 0x14D
-        && (ZFLAGS(z) & 2))
+    if ((CARD_NUMBER(id) == CARD_1326 || CARD_NUMBER(id) == 1329) && GetFaceUpFieldMagicNumber() == CARD_UMI
+        && target->isFaceUp)
         return 0;
     return 1;
 }
-/* Card-specific target check: ref (card 0x37/0x38/0x42/0x170) on its own monster (player, zone) that has
- * card number `needNo`; true when a kind-1 link of that zone holds card `wantNo` with counter > limit. */
-/* Zone pointer with the player term written first: agbcc then emits the zone multiply first (the ROM's order). */
-#define ZR(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
 
-/* The u16 cid temporary adds pre-combine insns after the last use of the 0xD64 constant, which lengthens
- * the zone*0x94 invariant's life so the constant gets r7 and zone*0x94 gets ip, as in the ROM. */
-int EffectEquippedTributeCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of Larvae Moth, Great Moth, Perfectly Ultimate Great Moth and Wall Shadow, whose summon tributes an
+ * equipped monster: the target must be one of entry's player's own monsters (zones 0-4) that is Petit Moth
+ * (Labyrinth Wall for Wall Shadow), card 1418 must be on neither field, and one of the target's equip links
+ * must be Cocoon of Evolution (Magical Labyrinth) with a turn counter above the summoned card's limit: 1 for
+ * Larvae Moth, 3 for Great Moth, 5 for Perfectly Ultimate Great Moth, none for Wall Shadow.
+ *
+ * Matching: the u16 cid temporary adds pre-combine insns after the last use of the 0xD64 constant, which
+ * lengthens the zone * 0x94 invariant's life, so the constant gets r7 and zone * 0x94 gets ip, as in the ROM.
+ */
+int EffectEquippedTributeCheck(struct ChainEntry *entry, u16 pos)
 {
-    int player = (u8)pos;
-    int zone = pos >> 8;
-    u32 id = CARD_ID(CARD_WORD(ZR(player & 1, zone)->card));
-    u16 wantNo = 0x47;
-    u16 needNo = 0x115;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
+    u32 id = CARD_ID(CARD_WORD(ZONE_AT_PLAYER_FIRST(player & 1, zone)->card));
+    u16 equipNo = CARD_COCOON_OF_EVOLUTION;
+    u16 targetNo = CARD_PETIT_MOTH;
     int limit;
     int i;
 
-    if (id == 0 || zone > 4 || player != ref->player)
+    if (id == 0 || zone > ZONE_MONSTER_4 || player != entry->player)
         return 0;
-    switch (CARD_NUMBER(ref->id)) {
-    case 0x37:
+    switch (CARD_NUMBER(entry->card)) {
+    case CARD_LARVAE_MOTH:
         limit = 1;
         break;
-    case 0x38:
+    case CARD_GREAT_MOTH:
         limit = 3;
         break;
-    case 0x42:
+    case CARD_PERFECTLY_ULTIMATE_GREAT_MOTH:
         limit = 5;
         break;
-    case 0x170:
+    case CARD_WALL_SHADOW:
         limit = -1;
-        wantNo = 0x28B;
-        needNo = 0x16D;
+        equipNo = CARD_MAGICAL_LABYRINTH;
+        targetNo = CARD_LABYRINTH_WALL;
         break;
     default:
         return 0;
     }
-    if (CARD_NUMBER(id) != needNo)
+    if (CARD_NUMBER(id) != targetNo)
         return 0;
-    if (CountActiveCardsOnField(0, 0x58A) > 0 || CountActiveCardsOnField(1, 0x58A) > 0)
+    if (CountActiveCardsOnField(0, CARD_1418) > 0 || CountActiveCardsOnField(1, CARD_1418) > 0)
         return 0;
-    for (i = 0; i < ZR(player & 1, zone)->numLinks; i++) {
-        u16 link = ZR(player & 1, zone)->links[i];
+    for (i = 0; i < ZONE_AT_PLAYER_FIRST(player & 1, zone)->numLinks; i++) {
+        u16 link = ZONE_AT_PLAYER_FIRST(player & 1, zone)->links[i];
 
-        if ((u8)ZR(player & 1, zone)->linkKinds[i] == 1) {
-            int lp = (u8)link;
-            int lz = link >> 8;
-            int pp = lp & 1;
-            struct DuelZone *l = ZB(pp, lz);
-            u16 cid = CARD_ID(CARD_WORD(l->card));
+        if ((u8)ZONE_AT_PLAYER_FIRST(player & 1, zone)->linkKinds[i] == ZONE_LINK_EQUIP) {
+            int linkPlayer = LOC_PLAYER(link);
+            int linkZone = LOC_ZONE(link);
+            int p = linkPlayer & 1;
+            struct DuelZone *equip = ZONE_AT(p, linkZone);
+            u16 cid = CARD_ID(CARD_WORD(equip->card));
 
-            if (CARD_NUMBER(cid) == wantNo && l->counter6 > limit)
+            if (CARD_NUMBER(cid) == equipNo && equip->turnCounter > limit)
                 return 1;
         }
     }
     return 0;
 }
 
-int EffectTrapTargetCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of Reaper of the Cards and Trap Master: an occupied spell/trap or field zone (5-10) whose card is face
+ * down or a face-up Trap.
+ */
+int EffectTrapTargetCheck(struct ChainEntry *entry, u16 pos)
 {
-    int player = (u8)pos;
-    int zone = pos >> 8;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
     int p = player & 1;
-    struct DuelZone *z = ZB(p, zone);
-    int id = CARD_ID(CARD_WORD(z->card));
+    struct DuelZone *target = ZONE_AT(p, zone);
+    int id = CARD_ID(CARD_WORD(target->card));
+    /* Matching: a u16 copy of the ID, taken before the tests, indexes the card table. */
     u16 copy;
-    int t;
+    int type;
 
     copy = id;
-    if (id == 0 || (u32)(zone - 5) > 5)
+    if (id == 0 || (u32)(zone - ZONE_SPELL_0) > ZONE_FIELD - ZONE_SPELL_0)
         return 0;
-    if ((ZFLAGS(z) & 2)) {
-        t = CARD_TYPE(copy);
-        return t == 21;
+    if (target->isFaceUp) {
+        type = CARD_TYPE(copy);
+        return type == CARD_TYPE_TRAP;
     }
     return 1;
 }
 
-int EffectOpponentMonsterCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check shared by Crass Clown, Dream Clown, Spellbinding Circle, Change of Heart and other effects that target
+ * an opponent's monster: an occupied monster zone (0-4) of the other player that CanCardTargetZone allows.
+ */
+int EffectOpponentMonsterCheck(struct ChainEntry *entry, u16 pos)
 {
     int zone;
     int player;
 
-    player = (u8)pos;
-    zone = pos >> 8;
+    player = LOC_PLAYER(pos);
+    zone = LOC_ZONE(pos);
 
-    if (ref->player != player && zone <= 4 && CanCardTargetZone(ref->id, player, zone)) {
+    if (entry->player != player && zone <= ZONE_MONSTER_4 && CanCardTargetZone(entry->card, player, zone)) {
         int p = player & 1;
-        struct DuelZone *z = ZB(p, zone);
-        if (CARD_ID(CARD_WORD(z->card)))
+        struct DuelZone *target = ZONE_AT(p, zone);
+        if (CARD_ID(CARD_WORD(target->card)))
             return 1;
     }
     return 0;
 }
 
-/* Main target check for a face-up monster in (player, zone): per card number of ref, compares
- * GetZoneCardType (a) or GetZoneCardAttribute (b) of the target with a constant, or tests the target's card. */
-int EffectEquipTargetCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of the equip cards: the target must be a face-up monster (zones 0-4) that CanCardTargetZone allows.
+ * Then, by the equip card's number: any monster; only the player's own (Kunai with Chain, Ring of Magnetism);
+ * a monster of one effective type (GetZoneCardType) or attribute (GetZoneCardAttribute), or not a Machine
+ * (Germ Infection, Paralyzing Potion); or one particular monster (Cocoon of Evolution: the player's own Petit
+ * Moth not cocooned yet; Cyber Shield: Harpie Lady or Harpie Lady Sisters; Magical Labyrinth: Labyrinth Wall).
+ */
+int EffectEquipTargetCheck(struct ChainEntry *entry, u16 pos)
 {
-    u16 refId = ref->id;
-    int player = (u8)pos;
-    int zone = pos >> 8;
-    struct DuelZonesPlayer *pz = &gDuelZones[player & 1];
-    struct DuelZone *first = (struct DuelZone *)pz;
-    u32 zid;
-    u16 a;
-    u16 b;
-    struct DuelZone *z;
+    u16 equipId = entry->card;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
+    /* Matching: the target's card is read once here through the player's zone array plus a byte offset, and
+     * again below through ZONE_AT. */
+    struct DuelZonesPlayer *zones = &gDuelZones[player & 1];
+    struct DuelZone *first = (struct DuelZone *)zones;
+    u32 targetId;
+    u16 type;
+    u16 attribute;
+    struct DuelZone *target;
 
-    first = (struct DuelZone *)((u32)first + zone * 0x94);
-    zid = CARD_ID(CARD_WORD(first->card));
-    a = GetZoneCardType(player, zone);
-    b = GetZoneCardAttribute(player, zone);
+    first = (struct DuelZone *)((u32)first + zone * sizeof(struct DuelZone));
+    targetId = CARD_ID(CARD_WORD(first->card));
+    type = GetZoneCardType(player, zone);
+    attribute = GetZoneCardAttribute(player, zone);
 
-    if (zone > 4)
+    if (zone > ZONE_MONSTER_4)
         return 0;
-    z = ZB(player & 1, zone);
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || !CanCardTargetZone(ref->id, player, zone))
+    target = ZONE_AT(player & 1, zone);
+    if (!CARD_ID(CARD_WORD(target->card)) || !target->isFaceUp
+        || !CanCardTargetZone(entry->card, player, zone))
         return 0;
-    switch (CARD_NUMBER(refId)) {
-    case 0x416:
-    case 0x417:
-        return a != 7;
-    case 0x28A:
-    case 0x422:
-        return ref->player == player;
-    case 0x47: {
-        int result;
-
-        if (CARD_NUMBER(zid) != 0x115)
+    switch (CARD_NUMBER(equipId)) {
+    case CARD_GERM_INFECTION:
+    case CARD_PARALYZING_POTION:
+        return type != CARD_TYPE_MACHINE;
+    case CARD_KUNAI_WITH_CHAIN:
+    case CARD_RING_OF_MAGNETISM:
+        return entry->player == player;
+    case CARD_COCOON_OF_EVOLUTION:
+        /* the player's own Petit Moth, not cocooned yet */
+        if (CARD_NUMBER(targetId) != CARD_PETIT_MOTH)
             return 0;
-        if (ref->player != player)
+        if (entry->player != player)
             return 0;
-        result = CountZoneLinksFromCard(player, zone, 0x47);
-        if (result != 0)
+        if (CountZoneLinksFromCard(player, zone, CARD_COCOON_OF_EVOLUTION) != 0)
             return 0;
-        result = 1;
-        return result;
-    }
-    case 0x13C:
-        switch (CARD_NUMBER(zid)) {
-        case 0x3D:
-        case 0x3E:
-        case 0x4E1:
+        return 1;
+    case CARD_CYBER_SHIELD:
+        switch (CARD_NUMBER(targetId)) {
+        case CARD_HARPIE_LADY:
+        case CARD_HARPIE_LADY_SISTERS:
+        case 1249:  /* no card in this game */
             return 1;
         }
         return 0;
-    case 0x28B:
-        if (CARD_NUMBER(zid) == 0x16D)
+    case CARD_MAGICAL_LABYRINTH:
+        if (CARD_NUMBER(targetId) == CARD_LABYRINTH_WALL)
             return 1;
         return 0;
-    case 0x604:
-        if (CARD_NUMBER(zid) == 0x53B)
-        return_true:
+    case CARD_1540:
+        if (CARD_NUMBER(targetId) == 1339)  /* no card in this game */
+        return_true:    /* Matching: the cases below jump here (a shared return 1), as in the ROM's block order */
             return 1;
         return 0;
-    case 0x130:
-    case 0x131:
-        return a == 10;
-    case 0x144:
-    case 0x3C2:
-    case 0x522:
-        return a == 7;
-    case 0x137:
-        return a == 0x11;
-    case 0x145:
-        return a == 9;
-    case 0x147:
-        return a == 0xE;
-    case 0x13B:
-        return a == 0x13;
-    case 0x12C:
-    case 0x49E:
-    case 0x58E:
-    case 0x60E:
-        return a == 0xF;
-    case 0x142:
-        return a == 0x12;
-    case 0x13A:
-        return a == 1;
-    case 0x146:
-        return a == 0x10;
-    case 0x135:
-        return a == 0xD;
-    case 0x13E:
-        return a == 0xC;
-    case 0x141:
-        return a == 2;
-    case 0x133:
-        return a == 0xB;
-    case 0x12E:
-        return a == 3;
-    case 0x143:
-        return b == 5;
-    case 0x134:
-        return b == 3;
-    case 0x28D:
-    case 0x3F4:
-        return b == 4;
-    case 0x132:
-    case 0x29B:
-        return b == 1;
-    case 0x3F5:
-        return b == 6;
-    case 0x12D:
-        return b == 2;
-    case 0x12F: case 0x136: case 0x138: case 0x139: case 0x140: case 0x290: case 0x291:
-    case 0x412: case 0x424: case 0x4EA: case 0x521: case 0x58B: case 0x58C:
-    case 0x5A8: case 0x5A9: case 0x5AA: case 0x60C:
+    case CARD_LASER_CANNON_ARMOR:
+    case CARD_INSECT_ARMOR_WITH_LASER_CANNON:
+        return type == CARD_TYPE_INSECT;
+    case CARD_MACHINE_CONVERSION_FACTORY:
+    case CARD_7_COMPLETED:
+    case CARD_1314:
+        return type == CARD_TYPE_MACHINE;
+    case CARD_SILVER_BOW_AND_ARROW:
+        return type == CARD_TYPE_FAIRY;
+    case CARD_RAISE_BODY_HEAT:
+        return type == CARD_TYPE_DINOSAUR;
+    case CARD_POWER_OF_KAISHIN:
+        return type == CARD_TYPE_AQUA;
+    case CARD_ELECTRO_WHIP:
+        return type == CARD_TYPE_THUNDER;
+    case CARD_LEGENDARY_SWORD:
+    case CARD_SWORD_OF_DRAGONS_SOUL:
+    case CARD_1422:
+    case CARD_1550:
+        return type == CARD_TYPE_WARRIOR;
+    case CARD_BOOK_OF_SECRET_ARTS:
+        return type == CARD_TYPE_SPELLCASTER;
+    case CARD_DRAGON_TREASURE:
+        return type == CARD_TYPE_DRAGON;
+    case CARD_FOLLOW_WIND:
+        return type == CARD_TYPE_WINGED_BEAST;
+    case CARD_VILE_GERMS:
+        return type == CARD_TYPE_PLANT;
+    case CARD_MYSTICAL_MOON:
+        return type == CARD_TYPE_BEAST_WARRIOR;
+    case CARD_VIOLET_CRYSTAL:
+        return type == CARD_TYPE_ZOMBIE;
+    case CARD_BEAST_FANGS:
+        return type == CARD_TYPE_BEAST;
+    case CARD_DARK_ENERGY:
+        return type == CARD_TYPE_FIEND;
+    case CARD_INVIGORATION:
+        return attribute == ATTRIBUTE_EARTH;
+    case CARD_STEEL_SHELL:
+        return attribute == ATTRIBUTE_WATER;
+    case CARD_SALAMANDRA:
+    case CARD_BURNING_SPEAR:
+        return attribute == ATTRIBUTE_FIRE;
+    case CARD_ELFS_LIGHT:
+    case CARD_BRIGHT_CASTLE:
+        return attribute == ATTRIBUTE_LIGHT;
+    case CARD_GUST_FAN:
+        return attribute == ATTRIBUTE_WIND;
+    case CARD_SWORD_OF_DARK_DESTRUCTION:
+        return attribute == ATTRIBUTE_DARK;
+    /* any face-up monster */
+    case CARD_AXE_OF_DESPAIR:
+    case CARD_BLACK_PENDANT:
+    case CARD_HORN_OF_LIGHT:
+    case CARD_HORN_OF_THE_UNICORN:
+    case CARD_MALEVOLENT_NUZZLER:
+    case CARD_MEGAMORPH:
+    case CARD_METALMORPH:
+    case CARD_SWORD_OF_DEEP_SEATED:
+    case CARD_STIM_PACK:
+    case CARD_1258:
+    case CARD_1313:
+    case CARD_1419:
+    case CARD_1420:
+    case CARD_1448:
+    case CARD_1449:
+    case CARD_1450:
+    case CARD_1548:
         goto return_true;
     }
     return 0;
 }
 
-int EffectStopDefenseCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of Stop Defense: an occupied monster zone (0-4) of the other player that CanCardTargetZone allows;
+ * returns its isDefense bit (only a monster in defense position qualifies).
+ */
+int EffectStopDefenseCheck(struct ChainEntry *entry, u16 pos)
 {
-    int player = (u8)pos;
-    int zone = pos >> 8;
-    struct DuelZone *z;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
+    struct DuelZone *target;
 
-    if (zone <= 4 && player != ref->player) {
+    if (zone <= ZONE_MONSTER_4 && player != entry->player) {
         int p = player & 1;
-        z = ZB(p, zone);
-        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone))
-            return ZFLAGS(z) & 1;
+        target = ZONE_AT(p, zone);
+        if (CARD_ID(CARD_WORD(target->card)) && CanCardTargetZone(entry->card, player, zone))
+            return ZONE_FLAGS(target) & ZONE_FLAG_DEFENSE;  /* isDefense */
     }
     return 0;
 }
 
-int EffectBlastJugglerCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of Blast Juggler: an occupied, face-up card with an effective ATK of at most 1000 that
+ * CanCardTargetZone allows, other than Blast Juggler itself. The zone is not range-checked.
+ */
+int EffectBlastJugglerCheck(struct ChainEntry *entry, u16 pos)
 {
-    int player = (u8)pos;
-    int zone = pos >> 8;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
     int p = player & 1;
-    struct DuelZone *z = ZB(p, zone);
+    struct DuelZone *target = ZONE_AT(p, zone);
 
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || GetZoneCardAtk(player, zone) > 1000
-        || !CanCardTargetZone(ref->id, player, zone)
-        || (player == ref->player && zone == ref->zone))
+    /* Matching: GetZoneCardAtk (u32 in duel.h) is compared as signed. */
+    if (!CARD_ID(CARD_WORD(target->card)) || !target->isFaceUp
+        || (int)GetZoneCardAtk(player, zone) > 1000
+        || !CanCardTargetZone(entry->card, player, zone)
+        || (player == entry->player && zone == entry->zone))
         return 0;
     return 1;
 }
 
-int EffectMagicTargetCheck(struct CardRef *ref, u16 pos)
+/*
+ * Check of Armed Ninja and De-Spell: an occupied spell/trap or field zone (5-10) whose card is face down or a
+ * face-up Magic card (not a face-up Trap).
+ */
+int EffectMagicTargetCheck(struct ChainEntry *entry, u16 pos)
 {
-    int player = (u8)pos;
-    int zone = pos >> 8;
+    int player = LOC_PLAYER(pos);
+    int zone = LOC_ZONE(pos);
     int p = player & 1;
-    struct DuelZone *z = ZB(p, zone);
-    int id = CARD_ID(CARD_WORD(z->card));
+    struct DuelZone *target = ZONE_AT(p, zone);
+    int id = CARD_ID(CARD_WORD(target->card));
+    /* Matching: a u16 copy of the ID, taken before the tests, indexes the card table. */
     u16 copy;
-    int t;
+    int type;
 
     copy = id;
-    if (id == 0 || (u32)(zone - 5) > 5)
+    if (id == 0 || (u32)(zone - ZONE_SPELL_0) > ZONE_FIELD - ZONE_SPELL_0)
         return 0;
-    if ((ZFLAGS(z) & 2) && (t = CARD_TYPE(copy)) == 0x15)
+    if (target->isFaceUp && (type = CARD_TYPE(copy)) == CARD_TYPE_TRAP)
         return 0;
     return 1;
 }

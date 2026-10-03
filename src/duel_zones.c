@@ -1,253 +1,289 @@
 #include "global.h"
+#include "card_data.h"
+#include "constants/cards.h"
+#include "constants/card_stats.h"
+#include "constants/duel.h"
 
 /*
- * Duel field helpers: queries over a player's 11 field zones (0-4 monster,
- * 5-9 magic/trap, 10 field), zone "link" lists, and moving zone cards to the
- * graveyard / banished lists.  See wiki/functions/code-08008a1c.md.
+ * Duel field helpers (wiki/functions/duel-zones-c.md):
+ *  - queries over a player's 11 field zones (enum DuelZoneIndex: 0-4 monsters, 5-9 spells/traps, 10 the
+ *    Field Magic): free zones, tributes, face-up / face-down counts, Toon and Prohibition checks;
+ *  - the per-zone link lists: equips and other cards that affect a monster, stored on the monster's zone
+ *    as a DUEL_LOC (zone << 8 | player) with a kind (enum ZoneLinkKind);
+ *  - moving cards out of a zone into the graveyard, the banished pile, the hand or the deck.
  */
 
+/* ---- BEGIN duel.h subset (pre-H0) ---- */
 /*
- * A card instance word as stored in the duel state (zones, graveyard, ...).
- * The containers hold plain u32 words; reads go through CARD() so that the
- * whole word is loaded (ldr + shifts), which is what the ROM does.
+ * The part of include/duel.h this unit uses, with the header's names, types and bitfield containers.
+ * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
+ * After H0, replace this block (BEGIN to END) with #include "duel.h": that gives identical assembly
+ * (checked against the staged header).
  */
 struct DuelCard {
-    u32 id : 12;        /* card ID (index into gCardStats / gCardIdToNumber); 0 = none */
-    u32 owner : 1;      /* bit 12: owning player (whose graveyard it goes to) */
-    u32 unk13 : 5;
-    u32 unk18 : 1;      /* bit 18: cleared when the card leaves the field */
-    u32 unk19 : 13;
+    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
+    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
+    u32 unk13:5;
+    u32 graverobbed:1;              /* bit 18: taken with Graverobber; cleared when it leaves the field */
+    u32 unk19:13;
 };
-#define CARD(word) (*(struct DuelCard *)&(word))
 
-/* One field zone, 0x94 bytes, 11 per player starting at player+0x28 (0x0201930C). */
 struct DuelZone {
-    u32 card;               /* +0x00: struct DuelCard */
-    u8 filler4[2];
-    u8 flags6;              /* +0x06: bit 1 = face up (hypothesis) */
-    u8 filler7[3];
-    u16 links[32];          /* +0x0A: (zone << 8) | player of a linked card */
-    u16 linkInfo[32];       /* +0x4A: low byte = link kind, high byte = count */
-    u16 numLinks;           /* +0x8A */
-    u8 filler8C[5];
-    u8 flags91;             /* +0x91 */
-    u8 filler92[2];
+    struct DuelCard card;           /* +0x00 */
+    u16 serial;                     /* +0x04 */
+    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
+    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
+    u8 unk6_2:6;
+    u8 unk7[3];
+    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one, or a value, by kind */
+    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
+    u16 numLinks;                   /* +0x8A: entries in links / linkKinds */
+    u8 unk8C[4];
+    u32 unk90_0:10;
+    u32 canActivate:1;              /* +0x91 bit 2: a set card that may be activated */
+    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
+    u32 unk91_4:20;
 };
 
-/* Per-player duel state, 0xD64 bytes, two of them at 0x020192E4. */
 struct DuelPlayer {
     u8 unk0[4];
-    u8 numGrave;            /* +0x004: count of grave[] */
+    u8 graveCount;                  /* +0x004: entries in graveyard[] */
     u8 unk5;
-    u8 numBanished;         /* +0x006: count of banished[] */
+    u8 banishedCount;               /* +0x006: entries in banished[] and banishedInfo[] */
     u8 unk7;
-    u32 unk8_0 : 14;
-    u32 zoneLock : 10;      /* +0x008 bits 14-23: per-zone bit, zones 0-9 */
-    u32 unk8_24 : 4;
-    u32 removedMask : 5;    /* +0x008 bits 28-32 (straddles into +0x00C): monster zones whose card is temporarily banished */
-    u32 unkC_1 : 27;
-    u8 filler10[0x18];
-    struct DuelZone zones[11];      /* +0x028 */
-    u32 list684[160];               /* +0x684 */
-    u32 grave[160];                 /* +0x904 */
-    u32 banished[80];               /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4: low byte = kind, high byte = zone */
+    u32 unk8_0:14;
+    u32 lockedZones:10;             /* +0x009 bit 6 .. +0x00A bit 7: one bit per zone 0-9 */
+    u32 unk8_24:4;
+    u32 removedMask:5;              /* +0x00B bit 4 .. +0x00C bit 0: monster zones held for a monster
+                                     * banished until the End Phase */
+    u32 unkC_1:27;
+    u8 unk10[0x18];
+    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
+    struct DuelCard hand[80];       /* +0x684 */
+    struct DuelCard deck[80];       /* +0x7C4 */
+    struct DuelCard graveyard[80];  /* +0x904 */
+    struct DuelCard fusionDeck[80]; /* +0xA44 */
+    struct DuelCard banished[80];   /* +0xB84 */
+    u16 banishedInfo[80];           /* +0xCC4: parallel to banished[]: low byte enum BanishKind, high byte zone */
 };
 
-extern struct DuelPlayer gDuelPlayers[2];
-
-/* The whole duel state: serial counter, both players, then a small list of (zone, card) pairs. */
-struct Duel {
-    u16 serial;                     /* 0x020192E0 */
-    u8 filler2[2];
-    struct DuelPlayer players[2];   /* 0x020192E4 */
-    u32 unk1ACC_0 : 15;             /* +0x1ACC */
-    u32 numMarked : 4;              /* +0x1ACC bits 15-18: entries in marked* */
-    u32 unk1ACC_19 : 13;
-    u16 markedZones[16];            /* +0x1AD0: (zone << 8) | player */
-    u16 markedCards[16];            /* +0x1AF0: card IDs */
+struct DuelState {
+    u16 serial;                     /* +0x0000 */
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
+    u32 unk1ACC_0:15;
+    u32 prohibitionCount:4;         /* +0x1ACD bit 7 .. +0x1ACE bit 2: entries in the Prohibition list */
+    u32 unk1ACE_3:13;
+    u16 prohibitionZones[16];       /* +0x1AD0: DUEL_LOC of each active Prohibition */
+    u16 prohibitedCards[16];        /* +0x1AF0: card ID that Prohibition declared */
 };
-extern struct Duel gDuel;
-extern const u32 gCardStats[];   /* card stats, indexed by card ID */
-extern const u16 gCardIdToNumber[];   /* card ID to card number */
 
-#define PLAYER(p) (gDuelPlayers[(p) & 1])
-#define ZONE(p, z) (gDuelPlayers[(p) & 1].zones[z])
-#define ZONE_CARD(p, z) CARD(ZONE(p, z).card)
-/* Zone pointer derived from the card word's address, so that field accesses
- * share one address computation with ZONE_CARD (CSE). */
-#define ZONEP(p, z) ((struct DuelZone *)&ZONE(p, z).card)
-/* Zone address computed as base + (zone * 0x94 + (player & 1) * 0xD64), the order some loops use. */
-#define ZONE_PTR(p, z) ((struct DuelZone *)((u8 *)gDuelPlayers[0].zones + (((p) & 1) * 0xD64 + (z) * 0x94)))
-/* Same address in the order matched shim code uses, zone * 0x94 + (player & 1) * 0xD64. */
-extern u8 gDuelZones[];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
+struct DuelZonesPlayer {
+    struct DuelZone zones[11];
+    u8 rest[0xD64 - 11 * 0x94];
+};
 
-/*
- * The ROM tables are indexed through integer-constant pointers. With the extern
- * arrays (SYMBOL_REF), old_agbcc loads the table address before the index math,
- * while the ROM loads it after. The bytes are the same as gCardIdToNumber[] / gCardStats[].
- */
-#define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-#define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
-#define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
-/* Card numbers 1920-1999 are tokens. */
-#define IS_TOKEN(id) ((u16)(CARD_NUMBER(id) - 1920) < 80)
+extern struct DuelState gDuel;                  /* 0x020192E0 */
+extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
+extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
 
-#define CARD_NUMBER_1418 1418   /* Not an EDS card number. Possibly an effect key (hypothesis). */
-
-u16 IsMonsterZoneFree(int player, int zone);
-u16 IsTributableMonster(int player, int zone);
-u16 IsSpellTrapZoneFree(int player, int zone);
-int CountActiveCardsOnFieldIn(struct DuelPlayer *players, int player, u16 number);
-int CountActivatableSetCardsIn(struct DuelPlayer *players, int player, u16 number);
+u32 IsSameCardName(u32 cardId1, u32 cardId2);
+u32 IsToonMonster(u16 cardNo);
+u32 IsFusionMonster(u16 cardId);
+void CopyDuelCard(u32 *dst, u32 *src);
+void ClearZone(int player, int zone);
+void AddCardToDeckTop(int player, struct DuelCard *card);
+void AddCardToFusionDeck(int player, struct DuelCard *card);
 void AddCardToGraveyard(struct DuelCard *card);
 void AddCardToBanished(struct DuelCard *card);
-void ClearZone(int player, int zone);
+void AddCardToHand(int player, struct DuelCard *card);
+int CountActiveCardsOnField(int player, u16 cardNo);
+u32 IsMonsterZoneFree(int player, int zone);
 void RemoveZoneLinkAt(int player, int zone, int idx);
-void RemoveLinksToZone(int player, int zone);
-int CountActiveCardsOnField(int player, u16 number);
-int IsFusionMonster(u32 id);
-void AddCardToFusionDeck(u32 owner, struct DuelCard *card);
-void AddCardToHand(u32 owner, struct DuelCard *card);
-void AddCardToDeckTop(u32 owner, struct DuelCard *card);
-int IsToonMonster(u16 number);
-int GetZoneCardAttribute(int player, int zone);
-void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
-u32 IsSameCardName(u32 id1, u32 id2);
+u32 GetZoneCardAttribute(s32 player, s32 slot);
+/* ---- END duel.h subset ---- */
 
-/* Number of monster zones (0-4) for which IsMonsterZoneFree is true. */
+/*
+ * A card inside a zone or a pile, read through a pointer to it. Matching: the ROM loads the whole word
+ * (ldr and shifts) to read a field such as the ID; a direct member access (zone.card.id) loads only the
+ * halfword that holds the field.
+ */
+#define CARD(card)  (*(struct DuelCard *)&(card))
+
+/* Every access masks the player with & 1, as the ROM does. */
+#define PLAYER(p)       (gDuelPlayers[(p) & 1])
+#define ZONE(p, z)      (gDuelPlayers[(p) & 1].zones[z])
+#define ZONE_CARD(p, z) CARD(ZONE(p, z).card)
+/* The zone reached through its card word's address. Matching: field reads then share one address
+ * computation with the ZONE_CARD read of the same zone (CSE). */
+#define ZONEP(p, z)     ((struct DuelZone *)&ZONE(p, z).card)
+
+/*
+ * &gDuelZones[p].zones[z] as explicit address arithmetic (0xD64 = sizeof(struct DuelPlayer), 0x94 =
+ * sizeof(struct DuelZone)). Matching: with this operand order old_agbcc emits zone * 0x94 first, as the
+ * ROM's link walkers do; array indexing emits the player term first. Callers mask the player.
+ */
+#define ZONE_AT(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
+
+/*
+ * Card tables read through integer-constant addresses. Matching: with the symbols (card_data.h) old_agbcc
+ * loads the table address before the index math, the ROM after it. Same tables, same bytes.
+ */
+#define CARD_NUMBER(id)     (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])    /* gCardIdToNumber[id] */
+#define CARD_STATS_WORD(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])    /* gCardStats[id] */
+#define CARD_TYPE(id)       CARD_STATS_TYPE(CARD_STATS_WORD(id))                 /* enum CardType */
+
+/* Card numbers 1920-1999 are monster tokens. */
+#define IS_TOKEN(id) \
+    ((u16)(CARD_NUMBER(id) - CARD_NUMBER_TOKEN_FIRST) < CARD_NUMBER_TOKEN_END - CARD_NUMBER_TOKEN_FIRST)
+
+/* Number of free monster zones (IsMonsterZoneFree) of the player. */
 int CountFreeMonsterZones(int player)
 {
     int count = 0;
-    int i;
+    int zone;
 
-    for (i = 0; i <= 4; i++) {
-        if (IsMonsterZoneFree(player, i))
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+        /* Matching: the result is narrowed to u16 (lsl #16) before the test, as by a u16 prototype. */
+        if ((u16)IsMonsterZoneFree(player, zone))
             count++;
     }
     return count;
 }
 
-/* First monster zone (0-4) for which IsMonsterZoneFree is true, or -1. */
+/* First free monster zone (0-4) of the player, or -1. */
 int FindFreeMonsterZone(int player)
 {
-    int i;
+    int zone;
 
-    for (i = 0; i <= 4; i++) {
-        if (IsMonsterZoneFree(player, i))
-            return i;
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+        /* Matching: the result is narrowed to u16 (lsl #16) before the test, as by a u16 prototype. */
+        if ((u16)IsMonsterZoneFree(player, zone))
+            return zone;
     }
     return -1;
 }
 
-/* Zone holds a non-token monster and card 1418 is on neither side of the field. */
+/*
+ * TRUE if the card in (player, zone) may be tributed: a monster (type 1-20) that is not a token, while
+ * card number 1418 is active (face up, not negated) on neither field. 1418 is not an EDS card, but the
+ * engine still checks it: it forbids all tributes.
+ */
 u16 IsTributableMonster(int player, int zone)
 {
-    u32 id = ZONE_CARD(player, zone).id;
+    u32 cardId = ZONE_CARD(player, zone).id;
 
-    if (id != 0 && !IS_TOKEN(id) && CARD_TYPE(id) <= 20
-        && CountActiveCardsOnField(0, CARD_NUMBER_1418) <= 0 && CountActiveCardsOnField(1, CARD_NUMBER_1418) <= 0)
+    if (cardId != 0 && !IS_TOKEN(cardId) && CARD_TYPE(cardId) <= CARD_TYPE_REPTILE
+        && CountActiveCardsOnField(0, CARD_1418) <= 0 && CountActiveCardsOnField(1, CARD_1418) <= 0)
         return TRUE;
     return FALSE;
 }
 
-/* Number of monster zones other than `exclude` for which IsTributableMonster is true. */
-int CountTributableMonsters(int player, int exclude)
+/* Number of the player's tributable monsters (IsTributableMonster), not counting excludeZone (-1 = none). */
+int CountTributableMonsters(int player, int excludeZone)
 {
     int count;
-    int i;
+    int zone;
 
-    if (CountActiveCardsOnField(0, CARD_NUMBER_1418) > 0 || CountActiveCardsOnField(1, CARD_NUMBER_1418) > 0)
+    /* card 1418 active on either field: no tributes at all */
+    if (CountActiveCardsOnField(0, CARD_1418) > 0 || CountActiveCardsOnField(1, CARD_1418) > 0)
         return 0;
     count = 0;
-    for (i = 0; i <= 4; i++) {
-        struct DuelZone *zone = &ZONE(player, i);
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+        struct DuelZone *z = &ZONE(player, zone);
 
-        if (CARD(zone->card).id && i != exclude && IsTributableMonster(player, i))
+        if (CARD(z->card).id && zone != excludeZone && IsTributableMonster(player, zone))
             count++;
     }
     return count;
 }
 
-/* Count occupied magic/trap zones (5-9, plus the field zone if includeField), all of them or
- * only the face-up and/or face-down ones. */
-/* Return the zero-extended halfword as a word, as the ROM callers consume it. */
+/*
+ * Number of occupied spell/trap zones 5-9 (and the Field Magic zone if includeField). faceUp counts the
+ * face-up cards, faceDown the face-down ones; both set or both clear count every card.
+ * Returns the u16 count zero-extended to a word, as the callers consume it.
+ */
 int CountSpellTrapsFiltered(int player, u16 faceUp, u16 faceDown, u16 includeField)
 {
     u16 count = 0;
-    int end = 10;
-    u16 i;
+    int end = ZONE_FIELD;           /* int, not u16: the ROM's loop compare is signed */
+    u16 zone;
 
     if (includeField)
-        end = 11;
-    for (i = 5; i < end; i++) {
-        if (ZONE_CARD(player, i).id) {
-            int ok = 0;
+        end = ZONE_FIELD + 1;
+    for (zone = ZONE_SPELL_0; zone < end; zone++) {
+        if (ZONE_CARD(player, zone).id) {
+            int counted = FALSE;
 
             if (!faceUp && !faceDown)
-                ok = 1;
-            if (faceUp && (ZONEP(player, i)->flags6 & 2))
-                ok = 1;
-            if (faceDown && !(ZONEP(player, i)->flags6 & 2))
-                ok = 1;
-            if (ok)
+                counted = TRUE;
+            if (faceUp && ZONEP(player, zone)->isFaceUp)
+                counted = TRUE;
+            if (faceDown && !ZONEP(player, zone)->isFaceUp)
+                counted = TRUE;
+            if (counted)
                 count++;
         }
     }
-    return (u16)(count);
+    return (u16)count;
 }
 
-/* True if the zone is empty and not locked. */
+/* TRUE if the spell/trap zone is empty and its bit in the player's lockedZones is clear. */
 u16 IsSpellTrapZoneFree(int player, int zone)
 {
-    if (ZONE_CARD(player, zone).id == 0 && !((PLAYER(player).zoneLock >> zone) & 1))
+    if (ZONE_CARD(player, zone).id == 0 && !((PLAYER(player).lockedZones >> zone) & 1))
         return TRUE;
     return FALSE;
 }
 
-/* First free magic/trap zone (5-9), or -1. */
+/* First free spell/trap zone (5-9, IsSpellTrapZoneFree) of the player, or -1. */
 int FindFreeSpellTrapZone(int player)
 {
-    int i;
+    int zone;
 
-    for (i = 5; i <= 9; i++) {
-        if (IsSpellTrapZoneFree(player, i))
-            return i;
+    for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
+        if (IsSpellTrapZoneFree(player, zone))
+            return zone;
     }
     return -1;
 }
 
-/* Is there room to play card `id`: always for a Field magic, else a free magic/trap zone. */
-int CanPlaceSpellTrapCard(int player, u16 id)
+/*
+ * TRUE if the player has room for the spell/trap card: always for a Field Magic (it goes to zone 10,
+ * replacing any card there), else if a spell/trap zone 5-9 is empty (lockedZones is not consulted).
+ */
+int CanPlaceSpellTrapCard(int player, u16 cardId)
 {
-    u32 stats = CARD_STATS(id);
-    int type = (stats & 0x1F00000) >> 20;
+    u32 stats = CARD_STATS_WORD(cardId);
+    int type = CARD_STATS_TYPE(stats);
     int subtype;
-    int i;
+    int zone;
 
     switch (type) {
-    case 21:    /* Trap */
-    case 22:    /* Magic */
-        subtype = (stats & 0xE0000) >> 17;
+    case CARD_TYPE_TRAP:
+    case CARD_TYPE_MAGIC:
+        subtype = CARD_STATS_SUBTYPE(stats);
         break;
     default:
-        subtype = 0;
+        subtype = 0;                /* monsters have no spell subtype */
         break;
     }
-    if (subtype == 2)
+    if (subtype == SPELL_FIELD)
         return TRUE;
-    for (i = 5; i <= 9; i++) {
-        if (ZONE_CARD(player, i).id == 0)
+    for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
+        if (ZONE_CARD(player, zone).id == 0)
             return TRUE;
     }
     return FALSE;
 }
 
-/* Send a zone's card to the banished list (flag) or the graveyard, then clear the zone. */
+/*
+ * Banish the card in (player, zone) if banish is set, else send it to the graveyard; then clear the zone.
+ * Unlike SendZoneCardToGraveyard it does not remove the links that point at the zone.
+ */
 void SendZoneCardToGraveyardOrBanished(int player, int zone, u16 banish)
 {
-    struct DuelCard *card = &ZONE_CARD(player, zone);
+    struct DuelCard *card = &ZONE(player, zone).card;
 
     if (banish)
         AddCardToBanished(card);
@@ -256,25 +292,32 @@ void SendZoneCardToGraveyardOrBanished(int player, int zone, u16 banish)
     ClearZone(player, zone);
 }
 
-/* Same definition as the ZB_PZ further down (identical redefinition): zone * 0x94 is emitted first. */
-#define ZB_PZ(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-
-/* Drop every link pointing to zone (player, zone): scan both players' monster zones
- * and remove links whose kind is 1, 2, 5, 7 or 10 and whose target word is (player, zone). */
+/*
+ * Remove the links that point at (player, zone) from both players' monster zones: links of kind
+ * ZONE_LINK_EQUIP, CONTINUOUS, ABSORBED, 7 or EQUIP_ATK_200 whose target is DUEL_LOC(player, zone).
+ * Original quirks (kept, they are the ROM's behaviour): a link of any other kind also skips the link after
+ * it (i is incremented twice), and after a removal the link that moved into slot i is not checked.
+ */
 void RemoveLinksToZone(int player, int zone)
 {
-    int p, z, i;
+    int monPlayer, monZone, i;
 
-    for (p = 0; p <= 1; p++) {
-        for (z = 0; z <= 4; z++) {
-            for (i = 0; i < ZB_PZ(p & 1, z)->numLinks; i++) {
-                u16 link = ZB_PZ(p & 1, z)->links[i];
-                u8 kind = ZB_PZ(p & 1, z)->linkInfo[i];
+    for (monPlayer = 0; monPlayer <= 1; monPlayer++) {
+        for (monZone = ZONE_MONSTER_0; monZone <= ZONE_MONSTER_4; monZone++) {
+            for (i = 0; i < ZONE_AT(monPlayer & 1, monZone)->numLinks; i++) {
+                u16 target = ZONE_AT(monPlayer & 1, monZone)->links[i];
+                u8 kind = ZONE_AT(monPlayer & 1, monZone)->linkKinds[i];
 
                 switch (kind) {
-                case 1: case 2: case 5: case 7: case 10:
-                    if (link == (u16)((u8)player | ((u8)zone << 8)))
-                        RemoveZoneLinkAt(p, z, i);
+                case ZONE_LINK_EQUIP:
+                case ZONE_LINK_CONTINUOUS:
+                case ZONE_LINK_ABSORBED:
+                case 7:
+                case ZONE_LINK_EQUIP_ATK_200:
+                    /* DUEL_LOC(player, zone). Matching: written player first, with the u16 cast, for
+                     * the ROM's lsl 24 / lsr 8 / orr / lsr 16 (DUEL_LOC's order differs). */
+                    if (target == (u16)((u8)player | ((u8)zone << 8)))
+                        RemoveZoneLinkAt(monPlayer, monZone, i);
                     break;
                 default:
                     i++;
@@ -285,24 +328,28 @@ void RemoveLinksToZone(int player, int zone)
     }
 }
 
-/* Send a zone's card to the graveyard, drop links to it, then clear the zone. */
+/* Send the card in (player, zone) to the graveyard, remove the links to it and clear the zone. */
 void SendZoneCardToGraveyard(int player, int zone)
 {
-    AddCardToGraveyard(&ZONE_CARD(player, zone));
+    AddCardToGraveyard(&ZONE(player, zone).card);
     RemoveLinksToZone(player, zone);
     ClearZone(player, zone);
 }
 
-/* Banish a zone's card, then clear the zone. */
+/* Banish the card in (player, zone) and clear the zone (the links to it stay). */
 void BanishZoneCard(int player, int zone)
 {
-    AddCardToBanished(&ZONE_CARD(player, zone));
+    AddCardToBanished(&ZONE(player, zone).card);
     ClearZone(player, zone);
 }
 
+/*
+ * Return the card in (player, zone) to its owner's hand (a Fusion monster to the owner's fusion deck),
+ * remove the links to it and clear the zone.
+ */
 void ReturnZoneCardToHand(int player, int zone)
 {
-    struct DuelCard *card = &ZONE_CARD(player, zone);
+    struct DuelCard *card = &ZONE(player, zone).card;
 
     if (IsFusionMonster(card->id))
         AddCardToFusionDeck(card->owner, card);
@@ -312,9 +359,13 @@ void ReturnZoneCardToHand(int player, int zone)
     ClearZone(player, zone);
 }
 
+/*
+ * Return the card in (player, zone) to the top of its owner's deck (a Fusion monster to the owner's fusion
+ * deck), remove the links to it and clear the zone.
+ */
 void ReturnZoneCardToDeck(int player, int zone)
 {
-    struct DuelCard *card = &ZONE_CARD(player, zone);
+    struct DuelCard *card = &ZONE(player, zone).card;
 
     if (IsFusionMonster(card->id))
         AddCardToFusionDeck(card->owner, card);
@@ -324,31 +375,33 @@ void ReturnZoneCardToDeck(int player, int zone)
     ClearZone(player, zone);
 }
 
-/* Any face-up monster whose card number satisfies IsToonMonster. */
+/* TRUE if one of the player's face-up monsters is a Toon (IsToonMonster). */
 int HasFaceUpToonMonster(int player)
 {
-    int i;
+    int zone;
 
-    for (i = 0; i <= 4; i++) {
-        u16 id = ZONE_CARD(player, i).id;
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+        /* u16, not u32: the ROM hoists the 0x7FF mask out of the loop, not the table address. */
+        u16 cardId = ZONE_CARD(player, zone).id;
 
-        if (id && (ZONEP(player, i)->flags6 & 2) && IsToonMonster(CARD_NUMBER(id)))
+        if (cardId && ZONEP(player, zone)->isFaceUp && IsToonMonster(CARD_NUMBER(cardId)))
             return TRUE;
     }
     return FALSE;
 }
 
-/* False if any face-up monster has GetZoneCardAttribute state 1, 2 or 6. */
+/* FALSE if one of the player's face-up monsters is LIGHT, DARK or WIND (effective attribute), else TRUE. */
 int HasNoFaceUpLightDarkWindMonster(int player)
 {
-    int i;
+    int zone;
 
-    for (i = 0; i <= 4; i++) {
-        if (ZONE_CARD(player, i).id && (ZONEP(player, i)->flags6 & 2)) {
-            switch (GetZoneCardAttribute(player, i)) {
-            case 1:
-            case 2:
-            case 6:
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
+        if (ZONE_CARD(player, zone).id && ZONEP(player, zone)->isFaceUp) {
+            /* Matching: switched on as an int (signed compares); the function returns u32. */
+            switch ((int)GetZoneCardAttribute(player, zone)) {
+            case ATTRIBUTE_LIGHT:
+            case ATTRIBUTE_DARK:
+            case ATTRIBUTE_WIND:
                 return FALSE;
             }
         }
@@ -356,191 +409,223 @@ int HasNoFaceUpLightDarkWindMonster(int player)
     return TRUE;
 }
 
-/* Count face-up cards (all 11 zones, flags91 bit 3 clear) with card number `number`. */
-int CountActiveCardsOnFieldIn(struct DuelPlayer *players, int player, u16 number)
+/*
+ * Number of active copies of card number cardNo in zones 0-10 of players[player & 1]: face up and not
+ * negated. The emptiness of each zone is tested twice, through players and through gDuelPlayers.
+ */
+int CountActiveCardsOnFieldIn(struct DuelPlayer *players, int player, u16 cardNo)
 {
     int count = 0;
-    int i;
+    int zone;
 
-    for (i = 0; i <= 10; i++) {
-        struct DuelZone *zone = &players[player & 1].zones[i];
-        u16 id = CARD(zone->card).id;
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_FIELD; zone++) {
+        struct DuelZone *z = &players[player & 1].zones[zone];
+        u16 cardId = CARD(z->card).id;
 
-        if (id && ZONE_CARD(player, i).id && (zone->flags6 & 2) && !(zone->flags91 & 8)
-            && CARD_NUMBER(id) == number)
+        if (cardId && ZONE_CARD(player, zone).id && z->isFaceUp && !z->isDisabled
+            && CARD_NUMBER(cardId) == cardNo)
             count++;
     }
     return count;
 }
 
-int CountActiveCardsOnField2(int player, u16 number)
+/* CountActiveCardsOnFieldIn(gDuelPlayers, ...): the same result as CountActiveCardsOnField. */
+int CountActiveCardsOnField2(int player, u16 cardNo)
 {
-    return CountActiveCardsOnFieldIn(gDuelPlayers, player, number);
+    return CountActiveCardsOnFieldIn(gDuelPlayers, player, cardNo);
 }
 
-/* Count face-up magic/trap zone cards of card type `type`. */
+/* Number of the player's face-up spell/trap cards (zones 5-9) of card type type (Trap or Magic). */
 int CountFaceUpSpellTrapsOfType(int player, u16 type)
 {
     int count = 0;
-    int i;
+    int zone;
 
-    for (i = 5; i <= 9; i++) {
-        u16 id = ZONE_CARD(player, i).id;
+    for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
+        u16 cardId = ZONE_CARD(player, zone).id;
 
-        if (id && (ZONEP(player, i)->flags6 & 2) && CARD_TYPE(id) == type)
+        if (cardId && ZONEP(player, zone)->isFaceUp && CARD_TYPE(cardId) == type)
             count++;
     }
     return count;
 }
 
-/* Keep the inline ID narrowing separate from the card-word read. */
-static inline int GetGraveCardType(u16 id)
+/*
+ * CARD_TYPE of a card ID. Matching: the u16 parameter keeps the ID narrowing apart from the card-word
+ * read, so the 0x7FF mask is hoisted out of the caller's loop and the table address is reloaded inside.
+ */
+static inline int GetCardTypeById(u16 cardId)
 {
-    return CARD_TYPE(id);
+    return CARD_TYPE(cardId);
 }
 
-/* Count graveyard cards of a card type. */
+/* Number of cards of card type type in the player's graveyard. */
 int CountGraveyardCardsOfType(int player, u16 type)
 {
     int i;
     int count = 0;
 
-    for (i = 0; i < PLAYER(player).numGrave; i++) {
-        if ((u32)GetGraveCardType(CARD(PLAYER(player).grave[i]).id) == type)
+    for (i = 0; i < PLAYER(player).graveCount; i++) {
+        if ((u32)GetCardTypeById(CARD(PLAYER(player).graveyard[i]).id) == type)
             count++;
     }
     return count;
 }
 
-/* Number of occupied magic/trap zones (5-9). */
+/* Number of the player's occupied spell/trap zones (5-9). */
 int CountSpellTraps(int player)
 {
     int count = 0;
-    int i;
+    int zone;
 
-    for (i = 5; i <= 9; i++) {
-        if (ZONE_CARD(player, i).id)
+    for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
+        if (ZONE_CARD(player, zone).id)
             count++;
     }
     return count;
 }
 
-/* Count face-down cards (flags91 bits 2-3 == 1) with card number `number`. */
-int CountActivatableSetCardsIn(struct DuelPlayer *players, int player, u16 number)
+/*
+ * Number of face-down copies of card number cardNo in zones 0-10 of players[player & 1] that may be
+ * activated (canActivate) and are not negated (isDisabled).
+ */
+int CountActivatableSetCardsIn(struct DuelPlayer *players, int player, u16 cardNo)
 {
     int count = 0;
-    int i;
+    int zone;
 
-    for (i = 0; i <= 10; i++) {
-        struct DuelZone *zone = &players[player & 1].zones[i];
-        u16 id = CARD(zone->card).id;
+    for (zone = ZONE_MONSTER_0; zone <= ZONE_FIELD; zone++) {
+        struct DuelZone *z = &players[player & 1].zones[zone];
+        u16 cardId = CARD(z->card).id;
 
-        if (id && ZONE_CARD(player, i).id && !(zone->flags6 & 2) && (zone->flags91 & 0xC) == 4
-            && CARD_NUMBER(id) == number)
+        if (cardId && ZONE_CARD(player, zone).id && !z->isFaceUp && z->canActivate && !z->isDisabled
+            && CARD_NUMBER(cardId) == cardNo)
             count++;
     }
     return count;
 }
 
-/* Signed table entries arrive as words; preserve the original low-half decode. */
-int CountActivatableSetCards(int player, int numberWord)
+/*
+ * CountActivatableSetCardsIn(gDuelPlayers, ...). The callers pass the card number as a word (a signed
+ * 16-bit table load); it is narrowed to u16 here.
+ */
+int CountActivatableSetCards(int player, int cardNoWord)
 {
-    u16 number = numberWord;
-    return CountActivatableSetCardsIn(gDuelPlayers, player, number);
+    u16 cardNo = cardNoWord;
+
+    return CountActivatableSetCardsIn(gDuelPlayers, player, cardNo);
 }
 
-/* Number of other face-up monsters on either side (opponent first) that are the same card
- * (IsSameCardName) as the face-up card in (player, zone); 0 if that zone is empty/face down. */
+/*
+ * If (player, zone) holds a face-up card: the number of other face-up monsters on both fields (the
+ * opponent's first) with the same card name (IsSameCardName). 0 if the zone is empty or face down.
+ * Matching: each zone address is built as base + (zone * 0x94 + side * 0xD64) from a separate side
+ * (= player & 1) local, in both scans.
+ */
 int CountOtherFaceUpSameNameMonsters(int player, int zone)
 {
-    int pp;
+    int side;
     struct DuelZone *z;
-    u32 id;
-    int count, side, i;
+    u32 cardId;
+    int count, scan, otherZone;
 
-    pp = player & 1;
-    z = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (zone * 0x94 + pp * 0xD64));
-    id = CARD(z->card).id;
-    if (!(z->flags6 & 2) || id == 0)
+    side = player & 1;
+    z = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (zone * 0x94 + side * 0xD64));
+    cardId = CARD(z->card).id;
+    if (!z->isFaceUp || cardId == 0)
         return 0;
     count = 0;
-    for (side = 0; side <= 1; side++) {
-        for (i = 0; i <= 4; i++) {
-            int p = player;
+    for (scan = 0; scan <= 1; scan++) {
+        for (otherZone = ZONE_MONSTER_0; otherZone <= ZONE_MONSTER_4; otherZone++) {
+            int otherPlayer = player;
 
-            if (side == 0)
-                p = 1 - p;
-            if (player != p || zone != i) {
+            if (scan == 0)
+                otherPlayer = 1 - otherPlayer;
+            if (player != otherPlayer || zone != otherZone) {
                 struct DuelZone *other;
-                u32 id2;
-                int pp2;
+                u32 otherId;
+                int otherSide;
 
-                pp2 = p & 1;
-                other = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (i * 0x94 + pp2 * 0xD64));
-                id2 = CARD(other->card).id;
-                if (id2 && (other->flags6 & 2) && IsSameCardName(id2, id))
+                otherSide = otherPlayer & 1;
+                other = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (otherZone * 0x94 + otherSide * 0xD64));
+                otherId = CARD(other->card).id;
+                if (otherId && other->isFaceUp && IsSameCardName(otherId, cardId))
                     count++;
             }
         }
     }
     return count;
 }
-/* Add a link from zone `at` ((zone << 8) | player) to `target` with the given kind. Unless kind
- * is 10, an existing link to the same target just gets its count (high byte of linkInfo) incremented. */
-void AddZoneLink(u16 at, u16 target, u16 kind)
+
+/*
+ * Add a link of the given kind to the zone at loc (DUEL_LOC): target is usually the DUEL_LOC of the card
+ * that affects it. Unless kind is ZONE_LINK_EQUIP_ATK_200 (always a new entry), an existing link with the
+ * same target, whatever its kind, only gets its stack count (high byte of linkKinds[i]) incremented.
+ * FAKEMATCH: the zone address is formed three times (z, the linkKinds[i] address inside the loop,
+ * zAppend), each in the ROM's operand order, and zoneOfs / playerOfs are declared before z so that
+ * side * 0xD64 gets the lower pseudo-register number (and r4).
+ */
+void AddZoneLink(u16 loc, u16 target, u16 kind)
 {
-    int p = (u8)at;
-    int zn = at >> 8;
-    struct DuelZone *z2;
+    int player = (u8)loc;           /* DUEL_LOC_PLAYER(loc); the (u8) form matches, & 0xFF does not */
+    int zone = DUEL_LOC_ZONE(loc);
+    struct DuelZone *zAppend;
     int zoneOfs, playerOfs;
     struct DuelZone *z;
-    int pp, n, i;
+    int side, count, i;
 
-    pp = p & 1;
-    zoneOfs = zn * 0x94;
-    playerOfs = pp * 0xD64;
+    side = player & 1;
+    zoneOfs = zone * 0x94;
+    playerOfs = side * 0xD64;
     z = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (zoneOfs + playerOfs));
-    n = z->numLinks;
-    if (kind != 10) {
-        for (i = 0; i < n; i++) {
+    count = z->numLinks;
+    if (kind != ZONE_LINK_EQUIP_ATK_200) {
+        for (i = 0; i < count; i++) {
             if (z->links[i] == target) {
-                /* The ROM re-derives this address as base + zone * 0x94 + player * 0xD64 (a separate
-                 * loop giv from links[i]). */
-                u16 *info = &((struct DuelZone *)((u32)gDuelPlayers[0].zones + zn * 0x94 + pp * 0xD64))->linkInfo[i];
+                u16 *kindAndCount = &((struct DuelZone *)((u32)gDuelPlayers[0].zones + zone * 0x94
+                    + side * 0xD64))->linkKinds[i];
 
-                /* The low byte (kind) is re-read with ldrb. */
-                *info = ((u8)((*info >> 8) + 1) << 8) | *(u8 *)info;
+                /* high byte (stack count) + 1; the low byte (kind) is re-read with ldrb */
+                *kindAndCount = ((u8)((*kindAndCount >> 8) + 1) << 8) | *(u8 *)kindAndCount;
                 return;
             }
         }
     }
-    pp = p & 1;
-    z2 = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (zn * 0x94 + pp * 0xD64));
-    z2->links[n] = target;
-    z2->linkInfo[n] = kind;
-    z2->numLinks++;
+    side = player & 1;
+    zAppend = (struct DuelZone *)((u32)gDuelPlayers[0].zones + (zone * 0x94 + side * 0xD64));
+    zAppend->links[count] = target;
+    zAppend->linkKinds[count] = kind;
+    zAppend->numLinks++;
 }
-/* Remove one link from zone `loc` ((zone << 8) | player): the first link whose kind
- * (low byte of linkInfo) is `kind` and, unless `kind` is a special kind, whose target
- * is `target`. Each field is read through ZB_PZ where used. `int player` (no u8
- * zero-extend of player & 1) lets loop.c's first pass hoist zone * 0x94, and the
- * duplicated call keeps the second pass's loop large enough that the links[i]
- * address in the default case stays in the loop, as in the ROM. */
+
+/*
+ * Remove one link from the zone at loc (DUEL_LOC): the first link of the given kind and, unless the kind
+ * is one of 4-7 or 9-12 (one link per kind), whose target is target.
+ * Matching: player is an int (no u8 zero-extension of player & 1, so loop.c hoists zone * 0x94 first), and
+ * the RemoveZoneLinkAt call is written twice: the larger loop keeps the default case's links[i] address
+ * computed inside it, as in the ROM; cross-jumping merges the two calls afterwards.
+ */
 void RemoveZoneLink(u16 loc, u16 target, u16 kind)
 {
-    int player = (u8)loc;
-    int zone = loc >> 8;
+    int player = (u8)loc;           /* DUEL_LOC_PLAYER(loc); the (u8) form matches */
+    int zone = DUEL_LOC_ZONE(loc);
     int i;
 
-    for (i = 0; i < ZB_PZ(player & 1, zone)->numLinks; i++) {
-        if ((u8)ZB_PZ(player & 1, zone)->linkInfo[i] == kind) {
+    for (i = 0; i < ZONE_AT(player & 1, zone)->numLinks; i++) {
+        if ((u8)ZONE_AT(player & 1, zone)->linkKinds[i] == kind) {
             switch (kind) {
-            case 4: case 5: case 6: case 7:
-            case 9: case 10: case 11: case 12:
+            case ZONE_LINK_ATK_BONUS:
+            case ZONE_LINK_ABSORBED:
+            case ZONE_LINK_6:
+            case 7:
+            case ZONE_LINK_STATS_DOWN_500:
+            case ZONE_LINK_EQUIP_ATK_200:
+            case ZONE_LINK_ATK_300_PER_VALUE:
+            case ZONE_LINK_ATK_DOWN_200:
                 RemoveZoneLinkAt(player, zone, i);
                 return;
             default:
-                if (ZB_PZ(player & 1, zone)->links[i] == target) {
+                if (ZONE_AT(player & 1, zone)->links[i] == target) {
                     RemoveZoneLinkAt(player, zone, i);
                     return;
                 }
@@ -550,50 +635,53 @@ void RemoveZoneLink(u16 loc, u16 target, u16 kind)
     }
 }
 
-/* Card number of the face-up Field card (zone 10) of either player, or 0. */
-/* The ROM callers consume the zero-extended card number as a word. */
+/*
+ * Card number of the face-up Field Magic (zone 10), player 0's first, or 0. Returns the u16 card number
+ * zero-extended to a word, as the callers consume it.
+ */
 int GetFaceUpFieldMagicNumber(void)
 {
-    int p;
+    int player;
 
-    for (p = 0; p <= 1; p++) {
-        u16 id = ZONE_CARD(p, 10).id;
+    for (player = 0; player <= 1; player++) {
+        u16 cardId = ZONE_CARD(player, ZONE_FIELD).id;
 
-        if ((ZONEP(p, 10)->flags6 & 2) && id)
-            return (u16)CARD_NUMBER(id);
+        if (ZONEP(player, ZONE_FIELD)->isFaceUp && cardId)
+            return (u16)CARD_NUMBER(cardId);
     }
     return 0;
 }
 
-/* Zone address as (player & 1) * 0xD64 + zone * 0x94 + base; this operand order makes
- * old_agbcc emit zone * 0x94 first, as the ROM does here (ZB's order emits the player term first). */
-#define ZB_PZ(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
-
-/* Find a zone (either player, monster zones only, occupied and face-up) holding a link
- * (kind 1, 2, 5, 7 or 10) whose target is (player, zone); return its loc (zone << 8 | player)
- * or 0xFFFF. The two case groups have identical bodies; cross-jumping merges them. The
- * loops sit inside an if (no early return), so loop.c finds no barrier to move the
- * return block out of the loop. */
+/*
+ * If (player, zone) holds a card: the DUEL_LOC of the first occupied, face-up monster (player 0's zones
+ * first) with a link of kind ZONE_LINK_EQUIP, CONTINUOUS, ABSORBED, 7 or EQUIP_ATK_200 to it; else 0xFFFF.
+ * FAKEMATCH: the two case groups have identical bodies (the ROM's jump table has two targets; cross-jumping
+ * merges them). Matching: the loops sit inside the if with no early return, so loop.c does not move the
+ * return block out of the loop; the DUEL_LOC values are written player first (see RemoveLinksToZone).
+ */
 u16 FindMonsterWithLinkTo(int player, int zone)
 {
-    int p, z, i;
+    int monPlayer, monZone, i;
 
-    if (CARD(ZB_PZ(player & 1, zone)->card).id != 0) {
-        for (p = 0; p <= 1; p++) {
-            for (z = 0; z <= 4; z++) {
-                if (CARD(ZB_PZ(p & 1, z)->card).id != 0 && (ZB_PZ(p & 1, z)->flags6 & 2)) {
-                    for (i = 0; i < ZB_PZ(p & 1, z)->numLinks; i++) {
-                        u16 link = ZB_PZ(p & 1, z)->links[i];
-                        u8 kind = ZB_PZ(p & 1, z)->linkInfo[i];
+    if (CARD(ZONE_AT(player & 1, zone)->card).id != 0) {
+        for (monPlayer = 0; monPlayer <= 1; monPlayer++) {
+            for (monZone = ZONE_MONSTER_0; monZone <= ZONE_MONSTER_4; monZone++) {
+                if (CARD(ZONE_AT(monPlayer & 1, monZone)->card).id != 0 && ZONE_AT(monPlayer & 1, monZone)->isFaceUp) {
+                    for (i = 0; i < ZONE_AT(monPlayer & 1, monZone)->numLinks; i++) {
+                        u16 target = ZONE_AT(monPlayer & 1, monZone)->links[i];
+                        u8 kind = ZONE_AT(monPlayer & 1, monZone)->linkKinds[i];
 
                         switch (kind) {
-                        case 1: case 5: case 10:
-                            if (link == (u16)((u8)player | ((u8)zone << 8)))
-                                return (u8)p | ((u8)z << 8);
+                        case ZONE_LINK_EQUIP:
+                        case ZONE_LINK_ABSORBED:
+                        case ZONE_LINK_EQUIP_ATK_200:
+                            if (target == (u16)((u8)player | ((u8)zone << 8)))
+                                return (u8)monPlayer | ((u8)monZone << 8);
                             break;
-                        case 2: case 7:
-                            if (link == (u16)((u8)player | ((u8)zone << 8)))
-                                return (u8)p | ((u8)z << 8);
+                        case ZONE_LINK_CONTINUOUS:
+                        case 7:
+                            if (target == (u16)((u8)player | ((u8)zone << 8)))
+                                return (u8)monPlayer | ((u8)monZone << 8);
                             break;
                         }
                     }
@@ -603,99 +691,120 @@ u16 FindMonsterWithLinkTo(int player, int zone)
     }
     return 0xFFFF;
 }
-/* True if the marked-zone list has an entry for card `id` whose zone still holds a card
- * (with +0x91 bit 3 clear). */
-u32 IsCardProhibited(u16 id)
+
+/*
+ * TRUE if an active Prohibition declares a card with the same name as cardId: an entry of gDuel's
+ * Prohibition list (DUEL_CMD_ADD_PROHIBITION / DUEL_CMD_REMOVE_PROHIBITION) whose Prohibition card is
+ * still in its zone and not negated.
+ */
+u32 IsCardProhibited(u16 cardId)
 {
     int i;
 
-    for (i = 0; i < gDuel.numMarked; i++) {
-        if (IsSameCardName(gDuel.markedCards[i], id)) {
-            u16 *mz = &gDuel.markedZones[i];
-            int z = *mz >> 8;
-            int p = *(u8 *)mz & 1;
-            struct DuelZone *zone = (struct DuelZone *)((u8 *)gDuel.players[0].zones
-                + (z * 0x94 + p * 0xD64));
+    for (i = 0; i < gDuel.prohibitionCount; i++) {
+        if (IsSameCardName(gDuel.prohibitedCards[i], cardId)) {
+            /* The DUEL_LOC is read in two parts: the zone with ldrh + lsr 8, the player with ldrb. */
+            u16 *loc = &gDuel.prohibitionZones[i];
+            int zone = DUEL_LOC_ZONE(*loc);
+            int side = *(u8 *)loc & 1;
+            struct DuelZone *z = (struct DuelZone *)((u8 *)gDuel.players[0].zones
+                + (zone * 0x94 + side * 0xD64));
 
-            if (CARD(zone->card).id && !(zone->flags91 & 8))
-                return 1;
+            if (CARD(z->card).id && !z->isDisabled)
+                return TRUE;
         }
     }
-    return 0;
+    return FALSE;
 }
 
-/* Put a (non-token) card into its owner's graveyard. */
+/* Append the card to its owner's graveyard, clearing graverobbed; empty slots and tokens are dropped. */
 void AddCardToGraveyard(struct DuelCard *card)
 {
     u32 owner = card->owner;
-    struct DuelCard *dst = &CARD(gDuelPlayers[owner].grave[gDuelPlayers[owner].numGrave]);
+    struct DuelCard *slot = &gDuelPlayers[owner].graveyard[gDuelPlayers[owner].graveCount];
 
     if (card->id && !IS_TOKEN(card->id)) {
-        card->unk18 = 0;
-        CopyDuelCard(dst, card);
-        gDuelPlayers[owner].numGrave++;
+        card->graverobbed = 0;
+        CopyDuelCard((u32 *)slot, (u32 *)card);
+        gDuelPlayers[owner].graveCount++;
     }
 }
 
-/* Put a (non-token) card into its owner's banished list (kind 0). */
+/* Append the card to its owner's banished pile (BANISH_NORMAL), clearing graverobbed; empty slots and
+ * tokens are dropped. */
 void AddCardToBanished(struct DuelCard *card)
 {
     u32 owner = card->owner;
-    struct DuelCard *dst = &CARD(gDuelPlayers[owner].banished[gDuelPlayers[owner].numBanished]);
+    struct DuelCard *slot = &gDuelPlayers[owner].banished[gDuelPlayers[owner].banishedCount];
 
     if (card->id && !IS_TOKEN(card->id)) {
-        card->unk18 = 0;
-        CopyDuelCard(dst, card);
-        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].numBanished] = 0;
-        gDuelPlayers[owner].numBanished++;
+        card->graverobbed = 0;
+        CopyDuelCard((u32 *)slot, (u32 *)card);
+        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].banishedCount] = BANISH_NORMAL;
+        gDuelPlayers[owner].banishedCount++;
     }
 }
 
-/* Temporarily banish a monster from `zone`: banished list entry of kind 1 remembering the zone,
- * and the zone's bit set in the owner's removedMask. The `& 1` on the owner leaves the SImode 1
- * that the ROM keeps in r9; the (u16) gives the ROM's lsl/lsr #16 before the field split. */
+/*
+ * Banish the monster from zone until the End Phase (BANISH_UNTIL_END_PHASE): its banishedInfo entry
+ * remembers the zone, and the zone's bit in the owner's removedMask keeps the zone free for its return
+ * (ReturnTemporarilyBanishedCard). Empty slots and tokens are dropped; graverobbed is kept.
+ * FAKEMATCH: the & 1 on the 1-bit owner makes the constant 1 live in r9 across the call, and the no-op
+ * (u16) cast gives the ROM's lsl/lsr #16 before the store into removedMask, which straddles bytes
+ * +0x0B/+0x0C.
+ */
 void AddCardToBanishedTemporarily(struct DuelCard *card, int zone)
 {
     u32 owner = card->owner & 1;
-    struct DuelCard *dst = &CARD(gDuelPlayers[owner].banished[gDuelPlayers[owner].numBanished]);
+    struct DuelCard *slot = &gDuelPlayers[owner].banished[gDuelPlayers[owner].banishedCount];
 
     if (card->id && !IS_TOKEN(card->id)) {
-        CopyDuelCard(dst, card);
-        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].numBanished] = ((u8)zone << 8) | 1;
-        gDuelPlayers[owner].numBanished++;
+        CopyDuelCard((u32 *)slot, (u32 *)card);
+        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].banishedCount]
+            = ((u8)zone << 8) | BANISH_UNTIL_END_PHASE;
+        gDuelPlayers[owner].banishedCount++;
         gDuelPlayers[owner].removedMask = (u16)(gDuelPlayers[owner].removedMask | 1 << zone);
     }
 }
-/* Return the temporarily banished monster of `zone` (a kind-1 banished entry whose high
- * byte is the zone) to its field zone, compact the banished card list, and clear the zone's
- * bit in the owner's removedMask. The u32 `info` local (not u16) and the separate `j` for
- * the compaction loop are both needed for the ROM's register allocation. */
+
+/*
+ * Bring the monster banished until the End Phase from (player, zone) back: copy the first
+ * BANISH_UNTIL_END_PHASE entry for that zone into the zone, close the gap in banished[] and clear the
+ * zone's removedMask bit.
+ * Original bug: the gap is closed in banished[] only, not in banishedInfo[], so the later info entries no
+ * longer line up with their cards.
+ * Matching: info is a u32 (not u16) and the compaction loop has its own index j (register allocation).
+ */
 void ReturnTemporarilyBanishedCard(int player, int zone)
 {
     int i, j;
 
-    for (i = 0; i < PLAYER(player).numBanished; i++) {
+    for (i = 0; i < PLAYER(player).banishedCount; i++) {
         u32 info = PLAYER(player).banishedInfo[i];
-        if ((u8)info == 1 && info >> 8 == zone) {
-            CopyDuelCard(&ZONE_CARD(player, zone), &CARD(PLAYER(player).banished[i]));
-            PLAYER(player).numBanished--;
-            for (j = i; j < PLAYER(player).numBanished; j++)
-                CopyDuelCard(&CARD(PLAYER(player).banished[j]), &CARD(PLAYER(player).banished[j + 1]));
+
+        if ((u8)info == BANISH_UNTIL_END_PHASE && info >> 8 == zone) {
+            CopyDuelCard((u32 *)&ZONE(player, zone).card, (u32 *)&PLAYER(player).banished[i]);
+            PLAYER(player).banishedCount--;
+            for (j = i; j < PLAYER(player).banishedCount; j++)
+                CopyDuelCard((u32 *)&PLAYER(player).banished[j], (u32 *)&PLAYER(player).banished[j + 1]);
             PLAYER(player).removedMask &= ~(1 << zone);
             return;
         }
     }
 }
 
-/* Put a (non-token) card into its owner's banished list (kind 2). */
+/*
+ * Append the card to its owner's banished pile face down (BANISH_FACE_DOWN, high byte 0). Empty slots and
+ * tokens are dropped; graverobbed is kept.
+ */
 void AddCardToBanishedFaceDown(struct DuelCard *card)
 {
     u32 owner = card->owner;
-    struct DuelCard *dst = &CARD(gDuelPlayers[owner].banished[gDuelPlayers[owner].numBanished]);
+    struct DuelCard *slot = &gDuelPlayers[owner].banished[gDuelPlayers[owner].banishedCount];
 
     if (card->id && !IS_TOKEN(card->id)) {
-        CopyDuelCard(dst, card);
-        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].numBanished] = 2;
-        gDuelPlayers[owner].numBanished++;
+        CopyDuelCard((u32 *)slot, (u32 *)card);
+        gDuelPlayers[owner].banishedInfo[gDuelPlayers[owner].banishedCount] = BANISH_FACE_DOWN;
+        gDuelPlayers[owner].banishedCount++;
     }
 }

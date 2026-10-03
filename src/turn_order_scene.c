@@ -1,229 +1,197 @@
+/*
+ * Pre-duel turn-order screen, first half: the setup steps, the phases and two of the drawers.
+ *
+ * Before a Campaign or Link duel the player turns a carousel of rock/scissors/paper cards with Left/Right and
+ * picks one with A. The CPU or the link partner answers, and JudgeRockPaperScissors shows WIN, LOSE or DRAW;
+ * a draw replays the hands. The winner picks "FIRST to go" or "SECOND to go" (when the player loses to the
+ * CPU, the CPU picks by frame parity), the chosen banner moves to the centre, the DUEL logo drops in and
+ * the screen flashes white. The runners and TurnOrder_RpsMain, which runs the phases below and draws the
+ * carousel, are in turn_order_steps.c; the other sprite drawers are in destiny_board_scene.c.
+ *
+ * Phases (gSceneWork.u.turnOrder.phase, enum TurnOrderPhase):
+ *   TURN_ORDER_CHOOSE_HAND      TurnOrder_ChooseHand         pick a hand; the opponent answers
+ *   TURN_ORDER_SHOW_RESULT      TurnOrder_ShowResult         WIN / LOSE / DRAW
+ *   TURN_ORDER_CHOOSE_TURN      TurnOrder_ChooseTurn         the player won: FIRST or SECOND
+ *   TURN_ORDER_ANIMATE_CHOICE   TurnOrder_AnimateTurnChoice  the chosen banner moves to the centre
+ *   TURN_ORDER_DUEL_LOGO        TurnOrder_ShowDuelLogo       the DUEL logo drops in
+ *   TURN_ORDER_FLASH_WHITE      TurnOrder_FlashWhite         white flash
+ * Over the link the two games exchange the hand (LINKMSG_RPS_HAND), the turn choice (LINKMSG_TURN_CHOICE) and,
+ * after a draw, a rematch flag (LINKMSG_RPS_REMATCH) with LinkSyncStep; the "Wait" sign shows meanwhile.
+ */
 #include "global.h"
-#include "gba.h"
+#include "gba.h"                /* REG_*, CpuFastSet, VRAM, PLTT, keys */
+#include "main.h"               /* gMain */
+#include "sound.h"              /* PlaySE, FadeOutBGM (new sound.h) */
+#include "constants/sound.h"    /* SE_CURSOR, SE_CONFIRM */
+#include "util.h"               /* MemClear16, MemCopy16, Random, Timer_*, Tween*, gSineTable, gSquareTable */
+#include "palette.h"            /* FadeStart, SetBldAlpha, SetBldY */
+#include "sprite.h"             /* struct AnimSeq, OamListClear, ObjAffineInit, AnimBlockInit */
+#include "link.h"               /* LinkSyncStart, LinkSyncStep */
+#include "duel_scenes.h"        /* gSceneWork, struct TurnOrderSceneWork, ChoiceBob, sub_080288DC */
+#include "turn_order.h"         /* the screen's enums, steps, phases and drawers, its graphics */
 
-struct Timer {
-    u8 state;
-    u16 timer;
-};
+/* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
 
-/* Sprite group (0x14 bytes, AnimBlockInit / AnimStateTick / OamListAddSpriteGroup). */
-struct SpriteGroup {
-    u32 unk0;
-    const u16 *templates;   /* +0x4 */
-    u16 x;                  /* +0x8 */
-    u16 y;                  /* +0xA */
-    u8 count;               /* +0xC */
-    u8 unkD;
-    u8 unkE;                /* +0xE */
-    u8 unkF;
-    u8 unk10;
-    u8 unk11[3];
-};
+/* Values and prototypes as in the new headers; this block compiles away once they are installed. */
+#ifndef INTR_FLAG_HBLANK
+#define DISPCNT_MODE_4          0x0004
+#define DISPCNT_BG_ALL_ON       0x0F00
+#define DISPCNT_OBJ_ON          0x1000
+#define BLDCNT_TGT1_ALL         0x003F
+#define BLDCNT_EFFECT_BLEND     0x0040
+#define BLDCNT_EFFECT_LIGHTEN   0x0080
+#define BLDCNT_EFFECT_DARKEN    0x00C0
+#define BLDCNT_TGT2_BG2         0x0400
+#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
+#define CPU_FAST_SET_SRC_FIXED  0x01000000
+#define OAM_ATTR0_AFFINE        0x0100
+#define OAM_ATTR0_AFFINE_DOUBLE 0x0300
+#define OAM_ATTR0_BLEND         0x0400
+#define OAM_ATTR1_MATRIX(n)     ((n) << 9)
+#define VBLANK_COPY_OAM         0x1
+void PlaySE(u32 seId);
+void FadeOutBGM(void);
+#endif
 
-/* Work area at 0x02020310 as used by this screen (0xB24 bytes). */
-struct Work20310 {
-    u8 oam[0x618];          /* +0x000: OAM buffer (OamListFlush / OamListClear) */
-    struct {
-        u16 scaleX;         /* +0x0 (0x100 = 1.0) */
-        u16 scaleY;         /* +0x2 */
-        u16 angle;          /* +0x4 */
-        u8 unk6[0x12];
-    } aff[0x20];            /* +0x618: OBJ affine sets (ObjAffineInit) */
-    struct SpriteGroup grp[5];  /* +0x918 */
-    u8 filler97C[0xAAC - 0x97C];
-    struct {
-        u8 unk0;            /* +0 */
-        s8 offset;          /* +1: slide offset (-4 / +4 when moving) */
-        u8 hand;            /* +2: 0-2 */
-        u8 unk3;
-    } hands[4];             /* +0xAAC */
-    u8 unkABC;              /* +0xABC: opponent hand */
-    u8 unkABD;              /* +0xABD */
-    u8 unkABE;              /* +0xABE: result (JudgeRockPaperScissors) */
-    u8 unkABF;              /* +0xABF: cursor */
-    u16 unkAC0;             /* +0xAC0 */
-    u8 fillerAC2[2];
-    struct {
-        u16 v;
-        u16 unk2;
-    } unkAC4[2];            /* +0xAC4 */
-    u16 unkACC;             /* +0xACC */
-    s8 unkACE;              /* +0xACE */
-    u8 unkACF;              /* +0xACF */
-    u16 unkAD0;             /* +0xAD0 */
-    u16 unkAD2;             /* +0xAD2 */
-    u8 unkAD4;
-    u8 unkAD5;
-    u8 fillerAD6[0xADC - 0xAD6];
-    s16 unkADC[2];          /* +0xADC: object for TweenUpdate / TweenInit */
-    u8 fillerAE0[0xAF0 - 0xAE0];
-    u8 unkAF0;              /* +0xAF0: state of the +0xADC object */
-    u8 fillerAF1[3];
-    u8 unkAF4;              /* +0xAF4 */
-    u8 unkAF5;              /* +0xAF5: step */
-    u8 fillerAF6[2];
-    u8 fade[8];             /* +0xAF8: object for FadeStart */
-    struct Timer timer;     /* +0xB00 */
-    u8 fillerB04[0xB0D - 0xB04];
-    u8 unkB0D;              /* +0xB0D */
-    u8 unkB0E;              /* +0xB0E */
-    u8 fillerB0F;
-    u8 unkB10[6];           /* +0xB10: link exchange (LinkSyncStart / LinkSyncStep) */
-    u16 unkB16;             /* +0xB16: received value */
-    u8 fillerB18[4];
-    u8 unkB1C;
-    u8 unkB1D;
-    u8 unkB1E;
-    u8 fillerB1F;
-    u16 unkB20;             /* +0xB20 */
-    u8 fillerB22[2];
-};
-extern struct Work20310 gSceneWork;
-#define gWork gSceneWork
+/* OamListAddSprite returns the entry; these drawers OR attr0 and attr1 into its first word in one go. */
+#define OAM_ATTR01(attr0, attr1) (((attr1) << 16) | (attr0))
 
-struct Main {
-    u32 rngState;
-    u16 heldKeys;           /* +0x4 */
-    u16 newKeys;            /* +0x6 */
-    u8 filler8[0x40E - 0x8];
-    u16 unk40E;             /* +0x40E */
-};
-extern struct Main gMain;
-#define gMain gMain
+/* Fills `size` bytes at dest with the word `value` (CpuFastSet with a fixed source). */
+#define CpuFastFill(value, dest, size)                                                  \
+{                                                                                       \
+    vu32 tmp = (vu32)(value);                                                           \
+    CpuFastSet((void *)&tmp, dest, CPU_FAST_SET_SRC_FIXED | (((size) / 4) & 0x1FFFFF)); \
+}
 
-void MemCopy16(void *dest, const void *src, u32 size);
-void MemClear16(void *dst, u32 size);
-u32 *OamListAddSprite(u32 a, u32 tile, s32 x, s32 y, u32 w, u32 h, u32 a6, u32 a7, u32 a8,
-                  u32 a9, u32 a10, u32 a11, void *work);
-s32 MulFix8(s32 a, s32 b);     /* 8.8 fixed-point multiply */
-void Timer_Reset(struct Timer *t);
-void Timer_Start(struct Timer *t, u16 time);
-void Timer_Tick(struct Timer *t);
-void SetBldAlpha(u32 a);           /* BLDALPHA */
-void SetBldY(u32 a);           /* BLDY */
-void PlaySE(u16 se);          /* PlaySE */
+/* 16-colour OBJ palette n. */
+#define OBJ_PAL(n) ((void *)(OBJ_PLTT + (n) * 0x20))
 
+/* ---- Local views kept on purpose (matching choices, see build/readability/HEADERS.md) ---- */
+
+/* OamListAddSprite as this unit calls it: every argument as a full word (the definition narrows to u8/u16,
+ * which would add narrowing at these call sites), and the entry returned as a u32 * so attr0 and attr1 can be
+ * ORed in as one word. */
+extern u32 *OamListAddSpriteWide(u32 layer, u32 tile, s32 x, s32 y, u32 width, u32 height, u32 bpp, u32 palette,
+                                 u32 unused, u32 attr0Flags, u32 attr1Bits, u32 priority, struct OamList *list)
+    asm("OamListAddSprite");
+
+/* MulFix8 with int parameters and result: the ROM neither narrows the arguments nor sign-extends the result
+ * (util.h: s16 MulFix8(s16, s16)). */
+extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
+
+/* ---- ROM data used only here ---- */
+
+/* 0x0808270C / 0x08082710: {0x318, 0x398} and {11, 12}: tiles and palettes of the unused sub_080288DC. */
 extern const u16 gUnk_0808270C[];
 extern const u8 gUnk_08082710[];
 
-#define CpuFastFill(value, dest, size)                                  \
-{                                                                       \
-    vu32 tmp = (vu32)(value);                                           \
-    CpuFastSet((void *)&tmp, dest, 0x01000000 | (((size) / 4) & 0x1FFFFF)); \
-}
+/* The screen's own data, at gSceneWork + 0xAAC. */
+#define sTurn gSceneWork.u.turnOrder
 
-void AnimBlockInit(const void *anim, struct SpriteGroup *grp);
-void OamListClear(void *p);
-void ObjAffineInit(void *p);
-void TweenUpdate(void *obj);
-void TweenInit(u32 a, u32 b, u32 c, u32 d, u32 e, u32 f, void *obj, u32 g);
-void TurnOrder_DrawTurnChoiceConfirm(u8 a, u8 b, u16 c, void *d, u8 e, void *obj);
-void TurnOrder_LoadObjTiles(const u8 *src, u32 tile, u32 width, s32 rows);
-void TurnOrder_DrawDuelLogo(u8 a, u8 b, u8 c);
-extern const u8 gTurnOrderWaitAnimList[];
-extern const u8 gDuelLogoTiles0[], gDuelLogoTiles1[], gDuelLogoTiles2[];
-extern const u16 gTurnChoiceBannerTileNums[];
-extern const s16 gSineTable[];   /* sine table (0x100 = 1.0) */
-#define SIN(i) gSineTable[i]
-extern const u16 gDuelLogoTileNums[];
-extern const u16 gSquareTable[];
-void FadeOutBGM(void);
-void TurnOrder_DrawChosenTurnBanner(u32 unused0, u32 unused1, u16 flags, void *unused3, u8 which, s16 *pos);
-void LinkSyncStart(void *p);
-u32 LinkSyncStep(u32 a, u8 b, void *p);
-u16 TurnOrder_AnimateTurnChoice(u8 *step);
-void FadeStart(u32 a, s32 b, u32 c, void *p);
-extern const u8 gEgyptCorridorBitmap[], gEgyptCorridorPal[], gRockCardPal[], gScissorsCardPal[], gPaperCardPal[];
-extern const u8 gTurnChoiceBannerPal[], gSelectCardBannerPal[], gWinBannerPal[], gLoseBannerPal[], gDrawBannerPal[];
-extern const u8 gTurnChoiceBannerDimPal[], gDuelLogoPal[], gWaitSignPal[];
-extern const u8 gRockCardTiles[], gScissorsCardTiles[], gPaperCardTiles[], gTurnChoiceBannerTiles[], gSelectCardBannerTiles[];
-extern const u8 gWinBannerTiles[], gLoseBannerTiles[], gWaitSignTiles[], gDrawBannerTiles[];
-s32 Random(void);             /* Random */
-void TurnOrder_HideWaitSign(void);
-void TurnOrder_ShowWaitSign(void);
-void TurnOrder_DrawBanner(u32 a, u16 b);
-u8 JudgeRockPaperScissors(u8 a, u8 b);
+/* Bytes of gSceneWork the screen uses (0xB24), cleared by TurnOrder_Init. */
+#define TURN_ORDER_WORK_SIZE (OFFSET_OF(struct SceneWork, u) + sizeof(struct TurnOrderSceneWork))
 
-/* Draw the player's hand sprite (which = 0/1), bobbing with pos[0]; flags bit 3 picks the palette. */
-void TurnOrder_DrawChosenTurnBanner(u32 unused0, u32 unused1, u16 flags, void *unused3, u8 which, s16 *pos)
+/* ---- Drawers ---- */
+
+/* Draws the chosen FIRST (0) / SECOND (1) banner at x 0x58 for the DUEL logo phases: `tween` is the struct
+ * Tween as halfwords, [0] the banner's vertical scale (matrix 4 scaleY; 0xC0 squashes it when the logo lands)
+ * and [1] its downward offset: y = 0x50 + tween[1] - tween[0] / 8. Semi-transparent when blendMask has
+ * BLEND_TURN_CHOICE. The other arguments are those of TurnOrder_DrawTurnChoiceConfirm, unused. */
+void TurnOrder_DrawChosenTurnBanner(u32 unused0, u32 unused1, u16 blendMask, void *unused3, u8 choice, s16 *tween)
 {
-    u32 w = 0x40;
-    u32 h = 0x20;
-    u32 *o;
+    u32 width = 0x40;
+    u32 height = 0x20;
+    u32 *oam;
 
-    switch (which) {
-    case 0:
-        o = OamListAddSprite(0, gTurnChoiceBannerTileNums[0], 0x58, pos[1] - (MulFix8(pos[0], 0x2000) >> 8) + 0x50,
-                         w, h, 4, 3, 0x200, 0, 0, 0, &gWork);
-        *o |= (flags & 8) ? 0x08000500 : 0x08000100;
+    switch (choice) {
+    case TURN_CHOICE_FIRST:
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[0], 0x58,
+                                   tween[1] - (MulFix8Int(tween[0], 0x2000) >> 8) + 0x50,
+                                   width, height, 4, 3, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= (blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_AFFINE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                                                : OAM_ATTR01(OAM_ATTR0_AFFINE, OAM_ATTR1_MATRIX(4));
         break;
-    case 1:
-        o = OamListAddSprite(0, gTurnChoiceBannerTileNums[1], 0x58, pos[1] - (MulFix8(pos[0], 0x2000) >> 8) + 0x50,
-                         w, h, 4, 3, 0x200, 0, 0, 0, &gWork);
-        *o |= (flags & 8) ? 0x08000500 : 0x08000100;
+    case TURN_CHOICE_SECOND:
+        oam = OamListAddSpriteWide(0, gTurnChoiceBannerTileNums[1], 0x58,
+                                   tween[1] - (MulFix8Int(tween[0], 0x2000) >> 8) + 0x50,
+                                   width, height, 4, 3, 0x200, 0, 0, 0, &gSceneWork.oamList);
+        *oam |= (blendMask & BLEND_TURN_CHOICE) ? OAM_ATTR01(OAM_ATTR0_AFFINE | OAM_ATTR0_BLEND, OAM_ATTR1_MATRIX(4))
+                                                : OAM_ATTR01(OAM_ATTR0_AFFINE, OAM_ATTR1_MATRIX(4));
         break;
     }
-    gWork.aff[4].angle = 0;
-    gWork.aff[4].scaleX = 0x100;
-    gWork.aff[4].scaleY = pos[0];
+    gSceneWork.aff[4].angle = 0;
+    gSceneWork.aff[4].scaleX = 0x100;
+    gSceneWork.aff[4].scaleY = tween[0];
 }
 
-/* Draw the three opponent hand sprites swinging by `angle`; `k` picks the spread (hypothesis). */
-void TurnOrder_DrawDuelLogo(u8 unused, u8 angle, u8 k)
+/* Draws the three 64x64 pieces of the DUEL logo (double-size affine sprites on matrix 0, palette 10). The
+ * pieces lie on a line through a pivot, turned by `swing` (256 steps per turn; it starts at 0xF4 = -12 and
+ * swings back to 0) and spaced 64 * cos / 64 * sin apart; `drop` (0..16) lowers them along a quadratic curve
+ * (gSquareTable). Matrix 0 turns each piece by `swing` as well. */
+void TurnOrder_DrawDuelLogo(u8 unused, u8 swing, u8 drop)
 {
     u8 i;
-    s32 c, s, a, a2, b, x, y, four = 4;
-    u32 *o;
+    s32 cosSwing, sinSwing, spreadX, spreadY, pivotY, x, y, four = 4;
+    u32 *oam;
 
     for (i = 0; i < 3; i++) {
-        c = SIN(angle + 0x40);
-        a = MulFix8(c, 0x4000);
-        /* `four` stops fold-const from reassociating (A*i - 4) - B into A*i - (B + 4) */
+        cosSwing = gSineTable[swing + 0x40];
+        spreadX = MulFix8Int(cosSwing, 0x4000);
+        /* FAKEMATCH: `four` stops fold-const from reassociating (A*i - 4) - B into A*i - (B + 4) */
         four = 4;
-        x = (s16)(a >> 8) * i - four - (MulFix8(0x60, c - SIN(0x134)) >> 8);
-        s = SIN(angle);
-        a2 = MulFix8(s, 0x4000);
-        b = MulFix8(0x60, s - SIN(0xF4));
-        y = (((a2 + 0xA) >> 8) * i - (b >> 8) + (MulFix8(0x4E0, gSquareTable[k]) >> 4) - 0x5E) & 0xFFFF;
-        o = OamListAddSprite(0, gDuelLogoTileNums[i], x, y, 0x40, 0x40, 4, 0xA, 0x200, 0, 0, 0, &gWork);
-        *o |= 0x300;
-        gWork.aff[0].angle = angle << 8;
-        gWork.aff[0].scaleX = 0x100;
-        gWork.aff[0].scaleY = 0x100;
+        /* gSineTable[0xF4 + 0x40] and [0xF4]: cos and sin of the start angle, so the pivot terms are 0 there */
+        x = (s16)(spreadX >> 8) * i - four - (MulFix8Int(0x60, cosSwing - gSineTable[0xF4 + 0x40]) >> 8);
+        sinSwing = gSineTable[swing];
+        spreadY = MulFix8Int(sinSwing, 0x4000);
+        pivotY = MulFix8Int(0x60, sinSwing - gSineTable[0xF4]);
+        y = (((spreadY + 0xA) >> 8) * i - (pivotY >> 8) + (MulFix8Int(0x4E0, gSquareTable[drop]) >> 4) - 0x5E) & 0xFFFF;
+        oam = OamListAddSpriteWide(0, gDuelLogoTileNums[i], x, y, 0x40, 0x40, 4, 10, 0x200, 0, 0, 0,
+                                   &gSceneWork.oamList);
+        *oam |= OAM_ATTR0_AFFINE_DOUBLE;
+        gSceneWork.aff[0].angle = swing << 8;
+        gSceneWork.aff[0].scaleX = 0x100;
+        gSceneWork.aff[0].scaleY = 0x100;
     }
 }
 
-void sub_080288DC(u8 k)
+/* Unreferenced: a 64x32 sprite (tile gUnk_0808270C[index], palette gUnk_08082710[index]) at (0x58, 0x64).
+ * Nothing is loaded at tile 0x318 or into palettes 11 and 12: a leftover. */
+void sub_080288DC(u8 index)
 {
-    u32 w = 0x40;
-    u32 h = 0x20;
-    OamListAddSprite(0, gUnk_0808270C[k], 0x58, 0x64, w, h, 4, gUnk_08082710[k], 0x200, 0, 0, 0, &gWork);
+    u32 width = 0x40;
+    u32 height = 0x20;
+    OamListAddSpriteWide(0, gUnk_0808270C[index], 0x58, 0x64, width, height, 4, gUnk_08082710[index], 0x200, 0, 0,
+                         0, &gSceneWork.oamList);
 }
 
-u8 JudgeRockPaperScissors(u8 a, u8 b)
+/* ---- Rules ---- */
+
+/* The result for the player (enum RpsResult) of `player` against `opponent` (enum RpsHand): rock beats
+ * scissors, scissors beat paper, paper beats rock. Returns `player` for an out-of-range opponent hand. */
+u8 JudgeRockPaperScissors(u8 player, u8 opponent)
 {
-    switch (b) {
-    case 0:
-        switch (a) {
-        case 0: return 2;
-        case 1: return 1;
-        case 2: return 0;
+    switch (opponent) {
+    case RPS_ROCK:
+        switch (player) {
+        case RPS_ROCK: return RPS_DRAW;
+        case RPS_SCISSORS: return RPS_LOSE;
+        case RPS_PAPER: return RPS_WIN;
         }
         break;
-    case 1:
-        switch (a) {
-        case 0: return 0;
-        case 1: return 2;
-        case 2: return 1;
+    case RPS_SCISSORS:
+        switch (player) {
+        case RPS_ROCK: return RPS_WIN;
+        case RPS_SCISSORS: return RPS_DRAW;
+        case RPS_PAPER: return RPS_LOSE;
         }
         break;
-    case 2:
-        switch (a) {
-        case 0: return 1;
-        case 1: return 0;
-        case 2:
+    case RPS_PAPER:
+        switch (player) {
+        case RPS_ROCK: return RPS_LOSE;
+        case RPS_SCISSORS: return RPS_WIN;
+        case RPS_PAPER:
         {
-            u8 result = 2;
+            u8 result = RPS_DRAW;
 
             /* FAKEMATCH: preserve this initialized result as a separate
              * return block, as in the ROM's final draw case. */
@@ -233,58 +201,63 @@ u8 JudgeRockPaperScissors(u8 a, u8 b)
         }
         break;
     }
-    return a;
+    return player;
 }
 
-struct Pair { s16 v; s16 unk2; };
-
-/* Raise entry `i` by 0x20 (max 0x800), lower the other one by 0x40 (min 0). */
-void TurnOrder_UpdateChoiceBob(u8 i, struct Pair *p)
+/* The highlighted banner's bob grows by 0x20 per frame (up to 0x800), the other's shrinks by 0x40 (down to
+ * 0). `choice` is enum TurnChoice; `bob` is TurnOrderSceneWork.choiceBob. */
+void TurnOrder_UpdateChoiceBob(u8 choice, struct ChoiceBob *bob)
 {
-    u8 j = i;
-    if ((p[j].v += 0x20) > 0x800)
-        p[j].v = 0x800;
-    j ^= 1;
-    if ((p[j].v -= 0x40) < 0)
-        p[j].v = 0;
+    u8 which = choice;
+    if ((bob[which].amp += 0x20) > 0x800)
+        bob[which].amp = 0x800;
+    which ^= 1;
+    if ((bob[which].amp -= 0x40) < 0)
+        bob[which].amp = 0;
 }
 
-u8 TurnOrder_CpuPickTurn(u8 x)
+/* The CPU's turn choice for the player when the player loses: the parity of the frame counter
+ * (enum TurnChoice). */
+u8 TurnOrder_CpuPickTurn(u8 frame)
 {
-    return x & 1;
+    return frame & 1;
 }
 
-/* Clear the work area and reset the display (step 0). */
+/* ---- Script steps ---- */
+
+/* Step 0: clears the work area, resets the BG1-3 scroll, hides every layer, and sets up the OAM list, the
+ * "Wait" sign animation (stopped), the affine records and the phase state. Returns 1. */
 u16 TurnOrder_Init(void)
 {
-    MemClear16(&gWork, sizeof(gWork));
-    gMain.unk40E = 1;
+    MemClear16(&gSceneWork, TURN_ORDER_WORK_SIZE);
+    gMain.vblankFlags = VBLANK_COPY_OAM;
     REG_BG1VOFS = 0;
     REG_BG1HOFS = 0;
     REG_BG2VOFS = 0;
     REG_BG2HOFS = 0;
     REG_BG3VOFS = 0;
     REG_BG3HOFS = 0;
-    REG_DISPCNT &= 0xE0FF;
-    OamListClear(&gWork);
+    REG_DISPCNT &= ~(DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON);
+    OamListClear((u8 *)&gSceneWork.oamList);
     SetBldAlpha(8);
-    gWork.unkAF4 = 0;
-    gWork.unkAF5 = 0;
-    gWork.unkABF = 0xFF;
-    gWork.unkB0D = 0;
-    gWork.unkB1C = 0;
-    gWork.unkB1D = 0;
-    AnimBlockInit(gTurnOrderWaitAnimList, &gWork.grp[0]);
-    gWork.grp[0].unkE = 0;
-    ObjAffineInit(gWork.aff);
-    gWork.unkB20 = 0;
+    sTurn.frame = 0;
+    sTurn.phase = TURN_ORDER_CHOOSE_HAND;
+    sTurn.turnChoice = TURN_CHOICE_NONE;
+    sTurn.linkWaiting = 0;
+    sTurn.rematchSend = 0;
+    sTurn.rematchReady = 0;
+    AnimBlockInit((struct AnimSeq **)gTurnOrderWaitAnimList, (u8 *)gSceneWork.anims);
+    gSceneWork.anims[0].active = ANIM_FINISHED;
+    ObjAffineInit(gSceneWork.aff);
+    sTurn.logoTimer = 0;
     return 1;
 }
 
-/* Copy `rows` rows of `width` tiles into OBJ VRAM at `tile` (row stride 32 tiles). */
+/* Copies `rows` rows of `width` tiles from a linear 4bpp sheet to 2D-mapped OBJ VRAM at OBJ tile 0x200 + tile
+ * (the OBJ tiles usable in bitmap mode 4; one row of the 2D map is 32 tiles, 0x400 bytes). */
 void TurnOrder_LoadObjTiles(const u8 *src, u32 tile, u32 width, s32 rows)
 {
-    u8 *dst = (u8 *)0x06014000 + tile * 32;
+    u8 *dst = (u8 *)(OBJ_VRAM0 + 0x4000) + tile * 32;
     s32 i;
     for (i = 0; i < rows; i++) {
         MemCopy16(dst, src, width * 32);
@@ -293,25 +266,26 @@ void TurnOrder_LoadObjTiles(const u8 *src, u32 tile, u32 width, s32 rows)
     }
 }
 
-/* Load graphics and palettes and reset the hands (step 1). */
+/* Step 1: starts the fade-in, loads the corridor backdrop (mode 4 bitmap), the OBJ palettes and tiles, and
+ * resets the sprite state; then turns on mode 4 (BG2 is the bitmap) and OBJ. Returns 1. */
 u16 TurnOrder_Load(void)
 {
     u8 i;
 
-    FadeStart(0, -0x180, 0, gWork.fade);
-    MemCopy16((void *)VRAM, gEgyptCorridorBitmap, 0x9600);
-    MemCopy16((void *)PLTT, gEgyptCorridorPal, 0x200);
-    MemCopy16((void *)(PLTT + 0x200), gRockCardPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x220), gScissorsCardPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x240), gPaperCardPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x260), gTurnChoiceBannerPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x280), gSelectCardBannerPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x2A0), gWinBannerPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x2C0), gLoseBannerPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x2E0), gDrawBannerPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x320), gTurnChoiceBannerDimPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x340), gDuelLogoPal, 0x20);
-    MemCopy16((void *)(PLTT + 0x3A0), gWaitSignPal, 0x20);
+    FadeStart(FADE_BLACK, -0x180, 0, &sTurn.fade);
+    MemCopy16((void *)VRAM, gEgyptCorridorBitmap, 240 * 160);
+    MemCopy16((void *)BG_PLTT, gEgyptCorridorPal, 0x200);
+    MemCopy16(OBJ_PAL(0), gRockCardPal, 0x20);
+    MemCopy16(OBJ_PAL(1), gScissorsCardPal, 0x20);
+    MemCopy16(OBJ_PAL(2), gPaperCardPal, 0x20);
+    MemCopy16(OBJ_PAL(3), gTurnChoiceBannerPal, 0x20);
+    MemCopy16(OBJ_PAL(4), gSelectCardBannerPal, 0x20);
+    MemCopy16(OBJ_PAL(5), gWinBannerPal, 0x20);
+    MemCopy16(OBJ_PAL(6), gLoseBannerPal, 0x20);
+    MemCopy16(OBJ_PAL(7), gDrawBannerPal, 0x20);
+    MemCopy16(OBJ_PAL(9), gTurnChoiceBannerDimPal, 0x20);
+    MemCopy16(OBJ_PAL(10), gDuelLogoPal, 0x20);
+    MemCopy16(OBJ_PAL(13), gWaitSignPal, 0x20);
     TurnOrder_LoadObjTiles(gRockCardTiles, 0, 4, 8);
     TurnOrder_LoadObjTiles(gScissorsCardTiles, 4, 4, 8);
     TurnOrder_LoadObjTiles(gPaperCardTiles, 8, 4, 8);
@@ -322,272 +296,307 @@ u16 TurnOrder_Load(void)
     TurnOrder_LoadObjTiles(gWaitSignTiles, 0x110, 4, 4);
     TurnOrder_LoadObjTiles(gDrawBannerTiles, 0x190, 0x10, 4);
     for (i = 0; i < 5; i++) {
-        gWork.aff[i].scaleX = 0x100;
-        gWork.aff[i].scaleY = 0x100;
-        gWork.aff[i].angle = 0;
+        gSceneWork.aff[i].scaleX = 0x100;
+        gSceneWork.aff[i].scaleY = 0x100;
+        gSceneWork.aff[i].angle = 0;
     }
     for (i = 0; i < 4; i++) {
-        gWork.hands[i].offset = 0;
-        gWork.hands[i].unk0 = 0;
-        gWork.hands[i].hand = 0;
+        sTurn.scrollers[i].speed = 0;
+        sTurn.scrollers[i].pos = 0;
+        sTurn.scrollers[i].stop = RPS_ROCK;
     }
     for (i = 0; i < 2; i++)
-        gWork.unkAC4[i].v = 0;
-    gWork.unkAD4 = 0;
-    gWork.unkAD5 = 0;
-    gWork.unkABC = 0xFF;
-    gWork.unkABD = 0;
-    gWork.unkAC0 = 0;
-    gWork.unkACE = 0xF4;
-    gWork.unkACF = 0;
-    gWork.unkAD0 = 0;
-    gWork.unkAD2 = 0;
-    REG_DISPCNT = 0x1F04;
+        sTurn.choiceBob[i].amp = 0;
+    sTurn.carouselSpread = 0;
+    sTurn.carouselSpreadSpeed = 0;
+    sTurn.opponentHand = 0xFF;
+    sTurn.opponentAnswered = 0;
+    sTurn.blendMask = 0;
+    sTurn.logoSwing = -12;
+    sTurn.logoDrop = 0;
+    sTurn.brightness = 0;
+    sTurn.brightnessStep = 0;
+    REG_DISPCNT = DISPCNT_MODE_4 | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON;
     return 1;
 }
 
-/* Choose a hand (Left/Right, A); the CPU (or the link partner) answers. */
+/* ---- Phases ---- */
+
+/* TURN_ORDER_CHOOSE_HAND: Left/Right turn the carousel; A (once it has stopped) picks the hand facing the
+ * player. Over the link the hand is exchanged with LINKMSG_RPS_HAND, with the "Wait" sign up until the
+ * partner's arrives. Otherwise the CPU answers: the same hand 1 time in 5 (a draw), else a hand the player
+ * beats or loses to with equal odds. Then the result is judged and the opponent's card slides in. Draws the
+ * SELECT A CARD banner while the opponent's card is still. Returns 0 (the phase moves itself on). */
 u16 TurnOrder_ChooseHand(void)
 {
-    struct Work20310 *w = &gWork;
+    struct SceneWork *work = &gSceneWork;
 
-    if (gWork.unkB0D == 0) {
-        if ((gMain.newKeys & 1) && w->hands[0].offset == 0) {
-            if (w->unkB0E == 1) {
-                w->unkB0D = 1;
-                LinkSyncStart(w->unkB10);
+    if (sTurn.linkWaiting == 0) {
+        if ((gMain.newKeys & A_BUTTON) && work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].speed == 0) {
+            if (work->u.turnOrder.isLink == 1) {
+                work->u.turnOrder.linkWaiting = 1;
+                LinkSyncStart((u8 *)&work->u.turnOrder.linkSync);
             } else {
                 if (Random() % 500 < 100)
-                    w->unkABC = w->hands[0].hand;
-                else if (Random() & 1)
-                    w->unkABC = (w->hands[0].hand + 1) % 3;
-                else
-                    w->unkABC = (w->hands[0].hand + 2) % 3;
-                gWork.unkABD = 1;
-                gWork.unkABE = JudgeRockPaperScissors(gWork.hands[0].hand, gWork.unkABC);
-                gWork.unkAF5++;
-                gWork.hands[1].offset = 4;
-                gWork.unkB1E = 0;
+                    work->u.turnOrder.opponentHand = work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop;
+                else if (Random() & 1)  /* the hand the player's hand beats */
+                    work->u.turnOrder.opponentHand = (work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop + 1) % 3;
+                else                    /* the hand that beats it */
+                    work->u.turnOrder.opponentHand = (work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop + 2) % 3;
+                sTurn.opponentAnswered = 1;
+                sTurn.result = JudgeRockPaperScissors(sTurn.scrollers[SCROLLER_CAROUSEL].stop, sTurn.opponentHand);
+                sTurn.phase++;
+                sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed = 4;
+                sTurn.rematchTimer = 0;
             }
-            PlaySE(1);
-        } else if ((gMain.newKeys & 0x20) && gWork.hands[0].offset == 0) {
-            gWork.hands[0].offset = -4;
-            PlaySE(0);
-        } else if ((gMain.newKeys & 0x10) && gWork.hands[0].offset == 0) {
-            gWork.hands[0].offset = 4;
-            PlaySE(0);
+            PlaySE(SE_CONFIRM);
+        } else if ((gMain.newKeys & DPAD_LEFT) && sTurn.scrollers[SCROLLER_CAROUSEL].speed == 0) {
+            sTurn.scrollers[SCROLLER_CAROUSEL].speed = -4;
+            PlaySE(SE_CURSOR);
+        } else if ((gMain.newKeys & DPAD_RIGHT) && sTurn.scrollers[SCROLLER_CAROUSEL].speed == 0) {
+            sTurn.scrollers[SCROLLER_CAROUSEL].speed = 4;
+            PlaySE(SE_CURSOR);
         }
     }
-    if (gWork.unkB0D != 0) {
-        if (LinkSyncStep(0x51, w->hands[0].hand, w->unkB10)) {
-            gWork.hands[1].offset = 4;
-            gWork.unkABD = 1;
-            gWork.unkABC = gWork.unkB16;
-            gWork.unkABE = JudgeRockPaperScissors(gWork.hands[0].hand, gWork.unkB16);
-            gWork.unkAF5++;
-            gWork.unkB0D = 0;
-            LinkSyncStart(w->unkB10);
+    if (sTurn.linkWaiting != 0) {
+        if (LinkSyncStep(LINKMSG_RPS_HAND, work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop,
+                         &work->u.turnOrder.linkSync)) {
+            sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed = 4;
+            sTurn.opponentAnswered = 1;
+            sTurn.opponentHand = sTurn.linkSync.rx.data;
+            sTurn.result = JudgeRockPaperScissors(sTurn.scrollers[SCROLLER_CAROUSEL].stop, sTurn.linkSync.rx.data);
+            sTurn.phase++;
+            sTurn.linkWaiting = 0;
+            LinkSyncStart((u8 *)&work->u.turnOrder.linkSync);
             TurnOrder_HideWaitSign();
-            gWork.unkB1E = 0;
+            sTurn.rematchTimer = 0;
         } else {
             TurnOrder_ShowWaitSign();
         }
     }
-    if (gWork.hands[1].offset == 0)
-        TurnOrder_DrawBanner(0, gWork.unkAC0);
+    if (sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed == 0)
+        TurnOrder_DrawBanner(BANNER_SELECT_CARD, sTurn.blendMask);
     return 0;
 }
 
-/* Result phase (step 3, hypothesis). Handles the A press and the link partner's answer (0x53), with a saturating unkB1E timer. */
+/* TURN_ORDER_SHOW_RESULT, once the opponent's card is fully in (slide 0x30):
+ *   RPS_DRAW + A: the card slides out and the hands are chosen again (linked: rematchReady instead);
+ *   RPS_WIN + A: the carousel, card and banner turn semi-transparent and the FIRST/SECOND choice starts
+ *     with the cursor on FIRST;
+ *   RPS_LOSE: linked, the partner's choice comes with LINKMSG_TURN_CHOICE (ours is the opposite); else on A
+ *     the CPU picks (TurnOrder_CpuPickTurn) and the phase skips to TURN_ORDER_ANIMATE_CHOICE. Until then the
+ *     banner tween is restarted and TurnOrder_AnimateTurnChoice runs every frame.
+ * On a linked draw both games exchange LINKMSG_RPS_REMATCH (2 = ready); when either side is ready the hands
+ * are chosen again. rematchTimer counts the frames on a draw and stops at 0xFF; from then on the exchange is
+ * polled every frame. Returns 0. */
 u16 TurnOrder_ShowResult(void)
 {
-    struct Work20310 *w = &gWork;
-    u8 *q = &gWork.unkB1C;
+    struct SceneWork *work = &gSceneWork;
+    u8 *rematchSend = &sTurn.rematchSend;
 
-    if (w->unkB0D == 0) {
-        if (w->hands[1].unk0 == 0x30) {
-            if ((gMain.newKeys & 1) && gWork.unkABE == 2) {
-                if (gWork.unkB0E == 1) {
-                    w->unkB1D = 1;
+    if (work->u.turnOrder.linkWaiting == 0) {
+        if (work->u.turnOrder.scrollers[SCROLLER_OPPONENT_CARD].pos == 0x30) {
+            if ((gMain.newKeys & A_BUTTON) && sTurn.result == RPS_DRAW) {
+                if (sTurn.isLink == 1) {
+                    work->u.turnOrder.rematchReady = 1;
                 } else {
-                    gWork.hands[1].offset = -4;
-                    gWork.unkABD = 0;
-                    gWork.unkAF5--;
+                    sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed = -4;
+                    sTurn.opponentAnswered = 0;
+                    sTurn.phase--;
                 }
-                PlaySE(1);
-            } else if ((gMain.newKeys & 1) && gWork.unkABE == 0) {
-                gWork.unkACC = 0;
-                gWork.unkAC0 = 7;
-                gWork.unkAF5++;
-                REG_BLDALPHA = 0x10;
+                PlaySE(SE_CONFIRM);
+            } else if ((gMain.newKeys & A_BUTTON) && sTurn.result == RPS_WIN) {
+                sTurn.blendLevel = 0;
+                sTurn.blendMask = BLEND_CAROUSEL | BLEND_OPPONENT_CARD | BLEND_BANNER;
+                sTurn.phase++;
+                REG_BLDALPHA = BLDALPHA_BLEND(16, 0);
                 REG_BLDY = 8;
-                REG_BLDCNT = 0x440;
-                SetBldAlpha(gWork.unkACC);
-                gWork.unkABF = 0;
-                PlaySE(1);
-            } else if (gWork.unkABE == 1) {
-                if (gWork.unkB0E == 1) {
-                    gWork.unkB0D = 1;
-                    LinkSyncStart(w->unkB10);
-                } else if (gMain.newKeys & 1) {
-                    gWork.unkABF = TurnOrder_CpuPickTurn(gWork.unkAF4);
-                    gWork.unkAF5 += 2;
-                    PlaySE(1);
+                REG_BLDCNT = BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG2;
+                SetBldAlpha(sTurn.blendLevel);
+                sTurn.turnChoice = TURN_CHOICE_FIRST;
+                PlaySE(SE_CONFIRM);
+            } else if (sTurn.result == RPS_LOSE) {
+                if (sTurn.isLink == 1) {
+                    sTurn.linkWaiting = 1;
+                    LinkSyncStart((u8 *)&work->u.turnOrder.linkSync);
+                } else if (gMain.newKeys & A_BUTTON) {
+                    sTurn.turnChoice = TurnOrder_CpuPickTurn(sTurn.frame);
+                    sTurn.phase += 2;
+                    PlaySE(SE_CONFIRM);
                 }
-                TweenInit(0, 0, 0x40, 0xF, 3, 1, gWork.unkADC, 0);
-                TurnOrder_AnimateTurnChoice(&gWork.unkAF5);
+                TweenInit(0, 0, 0x40, 0xF, 3, 1, &sTurn.tween, TWEEN_APPROACH);
+                TurnOrder_AnimateTurnChoice(&sTurn.phase);
             }
         }
     }
-    if (gWork.unkB0D == 1) {
+    if (sTurn.linkWaiting == 1) {
         TurnOrder_ShowWaitSign();
-        if (LinkSyncStep(0x52, w->hands[0].hand, w->unkB10)) {
-            gWork.unkABF = 1 ^ *(u8 *)&gWork.unkB16;
-            gWork.unkAF5 += 2;
-            gWork.unkB0D = 0;
+        if (LinkSyncStep(LINKMSG_TURN_CHOICE, work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop,
+                         &work->u.turnOrder.linkSync)) {
+            sTurn.turnChoice = 1 ^ *(u8 *)&sTurn.linkSync.rx.data;
+            sTurn.phase += 2;
+            sTurn.linkWaiting = 0;
             TurnOrder_HideWaitSign();
         }
     }
-    if (gWork.unkB0E == 1 && gWork.unkABE == 2) {
-        if (LinkSyncStep(0x53, *q, w->unkB10)) {
-            if (w->unkB16 == 2 || *q == 2) {
-                gWork.hands[1].offset = -4;
-                gWork.unkABD = 0;
-                gWork.unkAF5--;
-                gWork.unkB0D = 0;
-                *q = 0;
-                w->unkB1D = 0;
+    if (sTurn.isLink == 1 && sTurn.result == RPS_DRAW) {
+        if (LinkSyncStep(LINKMSG_RPS_REMATCH, *rematchSend, &work->u.turnOrder.linkSync)) {
+            if (work->u.turnOrder.linkSync.rx.data == 2 || *rematchSend == 2) {
+                sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed = -4;
+                sTurn.opponentAnswered = 0;
+                sTurn.phase--;
+                sTurn.linkWaiting = 0;
+                *rematchSend = 0;
+                work->u.turnOrder.rematchReady = 0;
             } else {
-                LinkSyncStart(w->unkB10);
-                if (w->unkB1D != 0)
-                    *q = 2;
+                LinkSyncStart((u8 *)&work->u.turnOrder.linkSync);
+                if (work->u.turnOrder.rematchReady != 0)
+                    *rematchSend = 2;
             }
         }
     }
-    if (gWork.unkABE == 2) {
-        if (++gWork.unkB1E == 0) {
-            gWork.unkB1E = 0xFF;
-            if (LinkSyncStep(0x53, *q, w->unkB10)) {
-                gWork.hands[1].offset = -4;
-                gWork.unkABD = 0;
-                gWork.unkAF5--;
-                gWork.unkB0D = 0;
-                *q = 0;
-                w->unkB1D = 0;
+    if (sTurn.result == RPS_DRAW) {
+        if (++sTurn.rematchTimer == 0) {
+            sTurn.rematchTimer = 0xFF;
+            if (LinkSyncStep(LINKMSG_RPS_REMATCH, *rematchSend, &work->u.turnOrder.linkSync)) {
+                sTurn.scrollers[SCROLLER_OPPONENT_CARD].speed = -4;
+                sTurn.opponentAnswered = 0;
+                sTurn.phase--;
+                sTurn.linkWaiting = 0;
+                *rematchSend = 0;
+                work->u.turnOrder.rematchReady = 0;
             }
         }
     }
     return 0;
 }
 
-/* Choose with Left/Right, confirm with A. */
+/* TURN_ORDER_CHOOSE_TURN (the player won): Left picks FIRST, Right SECOND; A confirms: the DUEL logo pieces
+ * are loaded over the result banners and the banner tween starts. Over the link the choice is sent with
+ * LINKMSG_TURN_CHOICE and the phase moves on when it has arrived. Every frame the blend level rises by 0x80
+ * (up to 0x1000), fading the semi-transparent carousel, card and banner out. Returns 0. */
 u16 TurnOrder_ChooseTurn(void)
 {
-    struct Work20310 *w = &gWork;
+    struct SceneWork *work = &gSceneWork;
 
-    if (w->unkB0D == 0) {
-        if ((gMain.newKeys & 0x20) && w->unkABF == 1) {
-            w->unkABF = 0;
-            PlaySE(0);
-        } else if ((gMain.newKeys & 0x10) && gWork.unkABF == 0) {
-            gWork.unkABF = 1;
-            PlaySE(0);
+    if (work->u.turnOrder.linkWaiting == 0) {
+        if ((gMain.newKeys & DPAD_LEFT) && work->u.turnOrder.turnChoice == TURN_CHOICE_SECOND) {
+            work->u.turnOrder.turnChoice = TURN_CHOICE_FIRST;
+            PlaySE(SE_CURSOR);
+        } else if ((gMain.newKeys & DPAD_RIGHT) && sTurn.turnChoice == TURN_CHOICE_FIRST) {
+            sTurn.turnChoice = TURN_CHOICE_SECOND;
+            PlaySE(SE_CURSOR);
         }
-        if (gMain.newKeys & 1) {
-            gWork.unkACC = 0x1000;
+        if (gMain.newKeys & A_BUTTON) {
+            sTurn.blendLevel = 0x1000;
             TurnOrder_LoadObjTiles(gDuelLogoTiles0, 0x10, 8, 8);
             TurnOrder_LoadObjTiles(gDuelLogoTiles1, 0x18, 8, 8);
             TurnOrder_LoadObjTiles(gDuelLogoTiles2, 0x110, 8, 8);
-            TweenInit(0, 0, 0x40, 0xF, 3, 1, gWork.unkADC, 0);
-            if (gWork.unkB0E == 1) {
-                gWork.unkB0D = 1;
-                LinkSyncStart(w->unkB10);
+            TweenInit(0, 0, 0x40, 0xF, 3, 1, &sTurn.tween, TWEEN_APPROACH);
+            if (sTurn.isLink == 1) {
+                sTurn.linkWaiting = 1;
+                LinkSyncStart((u8 *)&work->u.turnOrder.linkSync);
             } else {
-                TurnOrder_AnimateTurnChoice(&gWork.unkAF5);
-                gWork.unkAF5++;
+                TurnOrder_AnimateTurnChoice(&sTurn.phase);
+                sTurn.phase++;
             }
-            PlaySE(1);
+            PlaySE(SE_CONFIRM);
         }
     }
-    gWork.unkACC += 0x80;
-    if (gWork.unkACC > 0x1000)
-        gWork.unkACC = 0x1000;
-    SetBldAlpha(gWork.unkACC >> 8);
-    if (gWork.unkB0D != 0 && LinkSyncStep(0x52, gWork.unkABF, w->unkB10)) {
-        gWork.unkAF5++;
-        gWork.unkB0D = 0;
-        TurnOrder_AnimateTurnChoice(&gWork.unkAF5);
+    sTurn.blendLevel += 0x80;
+    if (sTurn.blendLevel > 0x1000)
+        sTurn.blendLevel = 0x1000;
+    SetBldAlpha(sTurn.blendLevel >> 8);
+    if (sTurn.linkWaiting != 0 && LinkSyncStep(LINKMSG_TURN_CHOICE, sTurn.turnChoice, &work->u.turnOrder.linkSync)) {
+        sTurn.phase++;
+        sTurn.linkWaiting = 0;
+        TurnOrder_AnimateTurnChoice(&sTurn.phase);
     }
     return 0;
 }
 
-u16 TurnOrder_AnimateTurnChoice(u8 *step)
+/* TURN_ORDER_ANIMATE_CHOICE: steps the banner tween and draws the FIRST/SECOND banners (the chosen one moves
+ * to the centre). When the tween is done, reloads the DUEL logo pieces, sets the tween up as the banner's
+ * (scale 0x100, offset 0) for TurnOrder_ShowDuelLogo and advances *phase (TurnOrderSceneWork.phase).
+ * Returns 0. */
+u16 TurnOrder_AnimateTurnChoice(u8 *phase)
 {
-    TweenUpdate(gWork.unkADC);
-    TurnOrder_DrawTurnChoiceConfirm(gWork.unkABF, gWork.unkAF4, gWork.unkAC0, gWork.unkAC4, gWork.unkABF, gWork.unkADC);
-    if (gWork.unkAF0 == 2) {
+    TweenUpdate(&sTurn.tween);
+    TurnOrder_DrawTurnChoiceConfirm(sTurn.turnChoice, sTurn.frame, sTurn.blendMask, (s16 *)sTurn.choiceBob,
+                                    sTurn.turnChoice, (s16 *)&sTurn.tween);
+    if (sTurn.tween.state == TWEEN_DONE) {
         TurnOrder_LoadObjTiles(gDuelLogoTiles0, 0x10, 8, 8);
         TurnOrder_LoadObjTiles(gDuelLogoTiles1, 0x18, 8, 8);
         TurnOrder_LoadObjTiles(gDuelLogoTiles2, 0x110, 8, 8);
-        TweenInit(0x100, 0, 0x100, 0, 1, 0, gWork.unkADC, 0);
-        (*step)++;
+        TweenInit(0x100, 0, 0x100, 0, 1, 0, &sTurn.tween, TWEEN_APPROACH);
+        (*phase)++;
     }
     return 0;
 }
 
+/* TURN_ORDER_DUEL_LOGO: the DUEL logo drops in over 16 frames, then swings from -12 to rest by 3 per frame
+ * (sound 0x2A as it starts; the music fades out at rest). On frame 15 of the drop the chosen banner is
+ * squashed (scale 0xC0) and then springs back while it moves down 0x38. After 90 frames, or on A, the white
+ * flash starts (BLDCNT brighten, brightness step 0x300). Returns 0. */
 u16 TurnOrder_ShowDuelLogo(void)
 {
-    if (gWork.unkACF < 0x10)
-        gWork.unkACF++;
-    if (gWork.unkACF >= 0x10) {
-        if (gWork.unkACE < 0) {
-            if ((u8)gWork.unkACE == 0xF4)
+    if (sTurn.logoDrop < 0x10)
+        sTurn.logoDrop++;
+    if (sTurn.logoDrop >= 0x10) {
+        if (sTurn.logoSwing < 0) {
+            if ((u8)sTurn.logoSwing == 0xF4)
                 PlaySE(0x2A);
-            gWork.unkACE += 3;
+            sTurn.logoSwing += 3;
         } else {
-            gWork.unkACE = 0;
+            sTurn.logoSwing = 0;
             FadeOutBGM();
         }
     }
-    if (gWork.unkB20++ == 90.0 || (gMain.newKeys & 1)) {
-        SetBldY(gWork.unkAD0);
-        REG_BLDCNT = 0xBF;
-        gWork.unkAD2 = 0x300;
-        gWork.unkAF5++;
-        Timer_Reset(&gWork.timer);
+    /* Matching: the ROM compares the frame count as a double (__floatsidf, __eqdf2). */
+    if (sTurn.logoTimer++ == 90.0 || (gMain.newKeys & A_BUTTON)) {
+        SetBldY(sTurn.brightness);
+        REG_BLDCNT = BLDCNT_TGT1_ALL | BLDCNT_EFFECT_LIGHTEN;
+        sTurn.brightnessStep = 0x300;
+        sTurn.phase++;
+        Timer_Reset(&sTurn.timer);
         FadeOutBGM();
     }
-    if (gWork.unkACF == 0xF && gWork.unkADC[1] == 0)
-        gWork.unkADC[0] = 0xC0;
-    if (gWork.unkACE > -10 && gWork.unkADC[1] == 0)
-        TweenInit(0xC0, 0, 0x100, 0x38, 6, 0x14, gWork.unkADC, 0);
-    TweenUpdate(gWork.unkADC);
-    TurnOrder_DrawChosenTurnBanner(gWork.unkABF, gWork.unkAF4, gWork.unkAC0, gWork.unkAC4, gWork.unkABF, gWork.unkADC);
-    TurnOrder_DrawDuelLogo(gWork.unkABF, gWork.unkACE, gWork.unkACF);
+    /* Matching: tween.y is tested as s16 (ldsh). */
+    if (sTurn.logoDrop == 0xF && (s16)sTurn.tween.y == 0)
+        sTurn.tween.x = 0xC0;
+    if (sTurn.logoSwing > -10 && (s16)sTurn.tween.y == 0)
+        TweenInit(0xC0, 0, 0x100, 0x38, 6, 0x14, &sTurn.tween, TWEEN_APPROACH);
+    TweenUpdate(&sTurn.tween);
+    TurnOrder_DrawChosenTurnBanner(sTurn.turnChoice, sTurn.frame, sTurn.blendMask, sTurn.choiceBob, sTurn.turnChoice,
+                                   (s16 *)&sTurn.tween);
+    TurnOrder_DrawDuelLogo(sTurn.turnChoice, sTurn.logoSwing, sTurn.logoDrop);
     return 0;
 }
 
+/* TURN_ORDER_FLASH_WHITE: the brightness rises by brightnessStep (0x300, then 0x100 from 0xC00). Past 0x10FF
+ * the BG and OBJ palettes are filled with white and a 20-frame timer starts; when it expires the BLDCNT
+ * effect switches to darken for the fade-out (brightness 0, step 0x60) and the phase moves on. Returns 0. */
 u16 TurnOrder_FlashWhite(void)
 {
-    gWork.unkAD0 += gWork.unkAD2;
-    if (gWork.timer.state == 2) {
-        gWork.timer.state = 0;
-        gWork.unkAD0 = 0;
-        gWork.unkAD2 = 0x60;
-        gWork.unkAF5++;
+    sTurn.brightness += sTurn.brightnessStep;
+    if (sTurn.timer.state == TICK_DONE) {
+        sTurn.timer.state = TICK_IDLE;
+        sTurn.brightness = 0;
+        sTurn.brightnessStep = 0x60;
+        sTurn.phase++;
         SetBldY(0);
-        REG_BLDCNT = 0xFF;
+        REG_BLDCNT = BLDCNT_TGT1_ALL | BLDCNT_EFFECT_DARKEN;
         return 0;
     }
-    if (gWork.timer.state != 1 && gWork.unkAD0 == 0xC00)
-        gWork.unkAD2 = 0x100;
-    if (gWork.timer.state != 1 && gWork.unkAD0 > 0x10FF) {
-        CpuFastFill(-1, (void *)PLTT, 0x200);
-        CpuFastFill(-1, (void *)(PLTT + 0x200), 0x200);
-        Timer_Start(&gWork.timer, 0x14);
+    if (sTurn.timer.state != TICK_RUNNING && sTurn.brightness == 0xC00)
+        sTurn.brightnessStep = 0x100;
+    if (sTurn.timer.state != TICK_RUNNING && sTurn.brightness > 0x10FF) {
+        CpuFastFill(-1, (void *)BG_PLTT, 0x200);
+        CpuFastFill(-1, (void *)OBJ_PLTT, 0x200);
+        Timer_Start(&sTurn.timer, 20);
     }
-    SetBldY(gWork.unkAD0 >> 8);
-    TurnOrder_DrawDuelLogo(gWork.unkABF, gWork.unkACE, gWork.unkACF);
-    Timer_Tick(&gWork.timer);
+    SetBldY(sTurn.brightness >> 8);
+    TurnOrder_DrawDuelLogo(sTurn.turnChoice, sTurn.logoSwing, sTurn.logoDrop);
+    Timer_Tick(&sTurn.timer);
     return 0;
 }

@@ -1,440 +1,501 @@
+/*
+ * The duel command queue, the card command menu executor, the CPU's turn and the full-screen duel scenes
+ * (wiki/functions/duel-cmd-queue-c.md).
+ *
+ *  - DuelCmd_Push appends a command to gDuelCmd.queue; DuelCmdQueue_Run (duel_setup.c) pops it and calls
+ *    DuelCmd_Dispatch every frame until the handler clears gDuelCmd.running. The switch in DuelCmd_Dispatch
+ *    is the map from enum DuelCmdId to the DuelCmd_* handlers.
+ *  - CardMenu_Execute carries out the command chosen in the card command menu (enum CardMenuCommand).
+ *  - AiRunTurn plays the CPU's turn with the turn-phase handlers of gAiTurnPhases.
+ *  - DuelScene_* run the full-screen scenes of gDuelScene (coin toss, dice, the Exodia and Destiny Board wins).
+ *  - PlayDuelBGM picks the duel music. The two HBlank wave handlers and DuelScene_FadeInDuelScreen are unused.
+ */
 #include "global.h"
-#include "gba.h"
-#include "main.h"       /* struct Main */
-#include "duel_ui.h"    /* struct DuelCmd/DuelScreen (pulls in duel.h) */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_STATS_TYPE_* */
+#include "constants/duel.h"         /* enum CardMenuCommand, DuelArea, DuelPhase, ChainEntryKind */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_* */
+#include "card_data.h"              /* gCardStats, CARD_ID_MASK, CARD_STATS_TYPE */
+#include "calendar.h"               /* CAL_TOURNAMENT_* */
 
-/* gMain (0x03000040): canonical layout in main.h. */
-#define gMain gMain
+/* ---- BEGIN pre-H0 subset of gba.h, duel.h, main.h and sound.h ---- */
+/*
+ * include/gba.h, duel.h, main.h and sound.h still hold the legacy headers until the header switch (H0,
+ * build/readability/HEADERS.md); chain.h, duel_cmd.h, duel_screen.h, battle.h and summon.h include duel.h.
+ * Until then this block repeats the part of the new headers that the unit uses, with the same tags, field
+ * names, types and bitfield containers (structs are cut after the last field used here and padded to their
+ * size). It defines GUARD_DUEL_H so that the headers below skip the legacy file. After H0, replace the block
+ * (BEGIN to END) with the #include lines of these headers, in this order:
+ *     gba.h duel.h main.h sound.h
+ * (checked: that gives the same assembly with the new headers). The unit has no include line that the H0 sed
+ * rewrites.
+ */
+#define GUARD_DUEL_H
 
-typedef u16 (*StepFunc)(void);
+#define REG_BASE        0x04000000                      /* gba.h */
+#define REG16(off)      (*(vu16 *)(REG_BASE + (off)))
+#define REG_DISPCNT     REG16(0x000)
+#define REG_VCOUNT      REG16(0x006)
+#define REG_BG0HOFS     REG16(0x010)
+#define REG_BG1HOFS     REG16(0x014)
+#define REG_BG2HOFS     REG16(0x018)
+#define REG_BG3HOFS     REG16(0x01C)
 
-/* Message box request block at 0x02017A30. */
-struct DuelMsg {
-    StepFunc func;                  /* 0x0: handler from gDuelSceneHandlers[id] */
-    u16 id:15;                      /* 0x4 bits 0-14 */
-    u16 flag:1;                     /* 0x4 bit 15 */
-    u16 arg;                        /* 0x6 */
-    u8 filler8[2];
-    u8 stepIndex;                   /* 0xA: index into gDuelSceneRunnerSteps */
-    u8 state;                       /* 0xB */
-    u8 unkC;                        /* 0xC */
-    u8 unkD;                        /* 0xD */
+struct DuelCard {
+    u32 id:12;
+    u32 owner:1;
+    u32 unk13:1;
+    u32 unk14:1;
+    u32 normalSummoned:1;
+    u32 specialSummoned:1;
+    u32 planted:1;
+    u32 graverobbed:1;              /* bit 18 */
+    u32 unk19:13;
 };
-extern struct DuelMsg gDuelScene;
-#define gMsg gDuelScene
 
-/* Duel command queue at 0x020185C0: canonical layout in duel_ui.h. */
-
-/* Local view: canonical struct DuelCard puts the owner bit at +0x1 bit 4 and
-   flag20 at bit 20; CardMenu_Execute reads the zone word's flag at bit 18 instead,
-   so keep a unit-specific view. */
-struct ZoneWord {
-    u32 cardId:12;
-    u32 unk0_12:6;
-    u32 flag0_18:1;                 /* bit 18 */
-    u32 unk0_19:13;
+struct DuelLoc {
+    u16 player:1;
+    u16 area:4;
+    u16 index:9;
+    u16 isDefense:1;
+    u16 isFaceUp:1;
+    u16 unk2;
 };
 
-/* Card command menu at 0x020192E0+0x1B2C (see campaign). Canonical duel.h
-   stops at DuelState.phaseStep +0x1B20, so this is a unit-specific view used only
-   by CardMenu_Execute. */
-struct SelMask {
-    u16 flag0:1;
-    u16 active:1;
-    u16 cursor:4;
-    u16 rows:4;
-    u32 mask:16;
+struct DuelZone {
+    struct DuelCard card;
+    u8 unk4[0x94 - 4];
+};
+
+struct DuelPlayer {
+    u8 unk0[0x28];
+    struct DuelZone zones[11];      /* +0x028 */
+    u8 unk684[0xD64 - 0x684];
+};
+
+struct CardMenu {
+    u16 open:1;
+    u16 confirmed:1;
+    u16 command:4;
+    u16 slide:4;
+    u32 available:16;
     u32 state:8;
-    u32 subState:8;                 /* bits 34-41: step counter of the chosen command */
-    u32 unk42:8;
+    u32 step:8;
+    u8 summonSeq:4;
+    u32 tributeSources:4;
     u16 timer:7;
-    u16 player:1;                   /* bit 57 */
-    u32 zone:7;                     /* bits 58-64 */
-    u32 column:8;                   /* bits 65-72 */
-    u32 unk73:23;
+    u16 player:1;
+    u32 area:7;
+    u32 index:8;
+    u32 placeZone:8;
+    u32 unk0A_1:15;
 };
 
-/* Same bits as struct SelMask with a u16 column. CardMenu_Execute's case 7 reads the
-   column through it so the atkSlot bit-field store gets a HImode value and regmove
-   ties the AND to the constant (`movs r1, #7; ands r1, r0`); FAKEMATCH: the u32
-   column gives `ands r1, r0` with the column as destination. */
-struct SelMaskCol {
-    u16 flag0:1;
-    u16 active:1;
-    u16 cursor:4;
-    u16 rows:4;
-    u32 mask:16;
+struct DuelState {
+    u16 serial;
+    u16 unk2;
+    struct DuelPlayer players[2];   /* +0x0004 */
+    u8 unk1ACC[0x1B12 - 0x1ACC];
+    u8 bgmOn:1;                     /* +0x1B12 */
+    u8 turnPlayer:1;
+    u8 phase:3;
+    u8 linkError:1;
+    u8 result:2;
+    u8 unk1B13_0:1;
+    u8 unk1B13_1:7;
+    u16 unk1B14_0:1;                /* +0x1B14 */
+    u16 interruptActive:1;
+    u16 unk1B14_2:7;
+    u32 battleStage:8;
+    u16 battleStep:8;               /* +0x1B16 bits 1-8 */
+    u16 battleArg0:8;
+    u16 battleArg1:8;
+    u16 unk1B19_1:7;
+    u8 unk1B1A[2];
+    struct DuelCard battleCard;
+    u8 phaseStep;                   /* +0x1B20 */
+    u8 phaseCounter;                /* +0x1B21 */
+    u8 unk1B22[0x1B28 - 0x1B22];
+    u16 cardMenuCard;               /* +0x1B28 */
+    u16 summonTributes;
+    struct CardMenu cardMenu;       /* +0x1B2C */
+};
+
+extern struct DuelState gDuel;
+
+u16 TakeDeckCardByNumber(int player, u16 cardNo, struct DuelCard *out);
+
+struct Main {                                   /* main.h */
+    u8 unk0[0x414];
+    void (*vblankCallback)(void);   /* +0x0414 */
+    u8 unk418[0x485E - 0x418];
+    u16 frameCounter;               /* +0x485E */
+    u8 unk4860[0x4870 - 0x4860];
+    u8 firstPlayer:1;               /* +0x4870 */
+    u8 opponent:5;
+    u8 result:2;
+    u8 unk4871[0x487C - 0x4871];
+    u32 events;                     /* +0x487C */
+};
+extern struct Main gMain;
+void ResetBgScroll(void);
+
+void PlayBGM(u32 songId);                       /* sound.h */
+void StopBGM(void);
+void FadeOutBGM(void);
+/* ---- END pre-H0 subset ---- */
+
+#include "duel_cmd.h"               /* gDuelCmd, DuelCmd_Push, the DuelCmd_* handlers */
+#include "duel_flow.h"              /* gDuelCtrl, struct OpponentBGM, PlayDuelBGM */
+#include "duel_screen.h"            /* gDuelScreen, DuelScreen_Init, DuelScreen_FadeOutStep */
+#include "duel_scenes.h"            /* gDuelScene, enum DuelSceneId, the DuelScene_* functions defined here */
+#include "battle.h"                 /* gBattle */
+#include "chain.h"                  /* Chain_AddPending */
+#include "card_menu.h"              /* CardMenu_* */
+#include "duel_actions.h"           /* DiscardHandCard, ShowCardEffect, LoseLifePoints, TributeMonster */
+#include "summon.h"                 /* QueueSpecialSummonChoosePosition */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "ai.h"                     /* gAiState, AiRunTurn */
+#include "palette.h"                /* FadeFromBlack */
+
+/* ---- ROM data used only here ---- */
+
+extern u16 (*const gAiTurnPhases[])(void);          /* 0x08198EDC: the CPU's turn steps, NULL-terminated */
+extern u16 (*const gDuelSceneHandlers[])(void);     /* 0x08198EF8: scene handler per enum DuelSceneId */
+extern u16 (*const gDuelSceneRunnerSteps[])(void);  /* 0x08198F14: fade out the duel screen, run the handler */
+extern const struct OpponentBGM gOpponentDuelBGM[24];   /* 0x08198F20 */
+extern const u8 gStrDoYouSurrender[];               /* "Do you surrender ?" */
+extern const u16 gUnk_0862467A;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
+
+/* ---- Local views kept for matching ---- */
+
+/* The card tables in both of the forms the ROM uses here: gCardStats through the symbol (pointer arithmetic),
+ * and gCardStats / gCardIdToNumber through their constant addresses. */
+#define CARD_TYPE(id)       CARD_STATS_TYPE(*(gCardStats + ((id) & CARD_ID_MASK)))
+#define CARD_STATS_C(id)    (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+#define CARD_NUMBER_C(id)   (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
+
+/* TakeDeckCardByNumber returns u16; CardMenu_Execute tests r0 without narrowing it. */
+#define TakeDeckCardByNumberInt ((int (*)(int, u16, void *))TakeDeckCardByNumber)
+
+/*
+ * gDuel as CardMenu_Execute reads it (through a cast of &gDuel, so the addresses are formed like those of the
+ * other gDuel fields): the phase in a u32 container (duel.h: u8), which drops two extension instructions
+ * before the `phase > PHASE_STANDBY` test so that the reloaded base wins r5, and the card menu with its index
+ * in a u16 container (duel.h: u32), whose HImode value makes regmove tie the AND of the atkSlot store to the
+ * constant (`movs r1, #7; ands r1, r0`). FAKEMATCH: both containers.
+ */
+struct CardMenuIndexU16 {
+    u16 open:1;
+    u16 confirmed:1;
+    u16 command:4;
+    u16 slide:4;
+    u32 available:16;
     u32 state:8;
-    u32 subState:8;
+    u32 step:8;
     u32 unk42:8;
     u16 timer:7;
     u16 player:1;
-    u32 zone:7;
-    u16 column:8;                   /* bits 65-72 */
+    u32 area:7;
+    u16 index:8;                    /* bits 65-72 */
     u32 unk73:23;
 };
-
-/* Unit-specific view: canonical struct DuelPlayer names +0x08/+0x09 unk8/unk9,
-   but this unit's draft reads flags at +0x08 bit 4 and +0x09 bit 5. */
-struct DuelPlayerView {
-    u8 unk0[8];
-    u8 unk8_0:4;
-    u8 flag8_4:1;                   /* 0x08 bit 4 */
-    u8 unk8_5:3;
-    u8 unk9_0:5;
-    u8 flag9_5:1;                   /* 0x09 bit 5 */
-    u8 unk9_6:2;
-    u8 unkA[0x28 - 0xA];
-    struct DuelZone zones[11];      /* 0x28 */
-    u8 filler684[0xD64 - 0x684];
+struct DuelStateMenuView {
+    u8 unk0[0x1B12];
+    u8 bgmOn:1;                     /* +0x1B12 */
+    u8 turnPlayer:1;
+    u32 phase:3;                    /* bits 2-4: enum DuelPhase */
+    u8 linkError:1;
+    u8 result:2;
+    u8 unk1B13[0x1B2C - 0x1B13];
+    struct CardMenuIndexU16 cardMenu;   /* +0x1B2C */
 };
+#define gDuelMenuView (*(struct DuelStateMenuView *)&gDuel)
 
-/* Unit-specific view: canonical struct DuelState has no +0x1B16 bitfield, no
-   selCard +0x1B28 / sel +0x1B2C, names +0x1B12 bits 2..4 phase1B12 (here
-   unk1B12_2) and ends at +0x1B20 phaseStep (here unk1B20), with no +0x1B21. */
-struct DuelStateView {
-    u32 unk0;
-    struct DuelPlayerView players[2];   /* 0x004 */
-    u8 filler1ACC[0x1B12 - 0x1ACC];
-    u8 flag1B12_0:1;                /* 0x1B12 bit 0 */
-    u8 unk1B12_1:1;
-    u32 unk1B12_2:3;                /* 0x1B12 bits 2-4 (u32: see CardMenu_Execute) */
-    u8 unk1B12_5:1;
-    u8 result:2;                    /* 0x1B12 bits 6-7 */
-    u8 filler1B13[0x1B16 - 0x1B13];
-    u16 unk1B16_0:1;
-    u16 unk1B16_1:8;                /* 0x1B16 bits 1-8 */
-    u16 unk1B16_9:7;
-    u8 filler1B18[0x1B20 - 0x1B18];
-    u8 unk1B20;                     /* 0x1B20 (canonical phaseStep) */
-    u8 unk1B21;                     /* 0x1B21 (not in canonical struct) */
-    u8 filler1B22[0x1B28 - 0x1B22];
-    u16 selCard;                    /* 0x1B28 */
-    u16 unk1B2A;
-    union {
-        struct SelMask x;
-        struct SelMaskCol col;
-    } sel;                          /* 0x1B2C */
-};
-extern struct DuelStateView gUnk_020192E0View asm("gDuel");
-#define SEL gUnk_020192E0View.sel.x
-
-struct Battle {
-    u16 unk0_0:6;
-    u16 atkSlot:3;                  /* bits 6-8 */
-    u16 unk0_9:7;
-};
-extern struct Battle gBattle;
-
-struct Unk0201AE60 {
-    u8 filler0[0x14];
-    u16 unk14;
-};
-extern struct Unk0201AE60 gTextBox;
-
-extern const u32 gCardStats[];   /* card stats */
-extern const u16 gCardIdToNumber[];   /* maps card ID to card number */
-extern const u16 gUnk_0862467A;
-extern const u8 gStrDoYouSurrender[];
-#define CARD_TYPE(id) ((*(gCardStats + ((id) & 0x7FF)) & 0x1F00000) >> 20)
-#define CARD_NUMBER(id) (*(gCardIdToNumber + ((id) & 0x7FF)))
-
-void CardMenu_ChangePosition(u32 cmd);
-void CardMenu_FlipSummon(void);
-void CardMenu_SummonMonster(u32 a, u32 b);
-void CardMenu_PlaySpellTrapFromHand(u32 a, u32 b, u32 c);
-void CardMenu_FusionSummon(void);
-void DiscardHandCard(int player, int idx, int a, int b);
-void Chain_AddPending(u32 card, u32 b);
-void ShowCardEffect(int player, u16 id);
-void LoseLifePoints(int player, int lp);
-int TributeMonster(int player, int column);
-u16 TakeDeckCardByNumber(int player, u16 cardNo, void *out);
-void QueueSpecialSummonChoosePosition(int player, void *card, u32 a, u32 b);
-void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
-void TextBoxSetMenu(u32 a, u32 b, u32 c);
-void DuelCmd_Push(u16 cmd, u16 arg2, int arg4Word, int arg6Word);
-
-/* Duel screen state (0x0201CFB0): canonical layout in duel_ui.h. */
-
-struct Unk02015EE8 {
-    u8 phase;
-    u8 link:1;                      /* +1 bit 0: link duel (hypothesis) */
-    u8 unk1_1:7;
-};
-extern struct Unk02015EE8 gDuelCtrl;
-
-/* Step runner state at 0x02015EF0. */
-struct Unk02015EF0 {
-    u8 index;
-    u8 state;
-};
-extern struct Unk02015EF0 gAiState;
-
-struct OpponentBgm {
-    u16 opponent;
-    u16 bgm;
-};
-
-extern StepFunc gAiTurnPhases[];
-extern StepFunc gDuelSceneHandlers[];    /* message handlers by id */
-extern StepFunc gDuelSceneRunnerSteps[];
-extern const struct OpponentBgm gOpponentDuelBGM[0x18];
-
-void StopBGM(void);
-void ResetBgScroll(void);            /* ResetBgScroll */
-u32 DuelScreen_FadeOutStep(void);
-void DuelScreen_Init(void);
-u16 FadeFromBlack(u16 speed);        /* FadeFromBlack */
-void FadeOutBGM(void);
-void PlayBGM(u16 bgm);
-
-/* Execute the command chosen in the card command menu (SEL.cursor = 1..12). */
-/* Zones and players are reached through casts so the field offsets (+6, +8/+9)
-   stay in the ldrb/strb as in the ROM instead of folding into the base constant. */
-struct ZoneFlags1E260 {
-    u32 card;
+/* The head of a zone and the flag bytes of a player, reached through a cast of the element's address to a
+ * struct type of its own, so the field offset (+6, +8/+9) stays in the ldrb/strb as in the ROM instead of
+ * folding into the base address. Same bits as struct DuelZone and struct DuelPlayer. */
+struct DuelZoneHead {
+    struct DuelCard card;           /* +0x00 */
     u16 serial;
-    u8 flag6_0:1;
-    u8 flag6_1:1;                   /* +0x06 bit 1 */
+    u8 isDefense:1;                 /* +0x06 */
+    u8 isFaceUp:1;
     u8 unk6_2:6;
 };
-
-struct PlayerFlags1E260 {
+struct DuelPlayerFlags {
     u8 unk0[8];
-    u8 unk8_0:4;
-    u8 flag8_4:1;                   /* 0x08 bit 4 */
+    u8 unk8_0:4;                    /* +0x08 */
+    u8 normalSummonUsed:1;          /* +0x08 bit 4 */
     u8 unk8_5:3;
-    u8 unk9_0:5;
-    u8 flag9_5:1;                   /* 0x09 bit 5 */
+    u8 unk9_0:5;                    /* +0x09 */
+    u8 magicTrapActivatedThisTurn:1; /* +0x09 bit 5 */
     u8 unk9_6:2;
 };
+#define ZONE_HEAD(player, zone)         ((struct DuelZoneHead *)&gDuel.players[player].zones[zone])
+/* The card word of a zone through a struct DuelCard pointer: that loads the whole word (ldr), as the ROM does;
+ * through the zone head the bit test is narrowed to a byte load. */
+#define ZONE_CARD(player, zone)         ((struct DuelCard *)&gDuel.players[player].zones[zone])
+#define PLAYER_FLAGS(players, player)   ((struct DuelPlayerFlags *)&(players)[player])
 
-#define ZONE_FLAGS(p, i) ((struct ZoneFlags1E260 *)&gUnk_020192E0View.players[p].zones[i])
-#define ZONE_WORD(p, i) ((struct ZoneWord *)&gUnk_020192E0View.players[p].zones[i])
-#define PLAYER_FLAGS(pl, p) ((struct PlayerFlags1E260 *)&(pl)[p])
+/* The card menu of gDuel (the command, its player, area and index were saved when it was confirmed). */
+#define MENU (gDuel.cardMenu)
 
-/* Execute the command chosen in the card command menu (SEL.cursor = 1..12).
-   FAKEMATCH notes: `ev = (zone << 16 | kind)` inside the Chain_AddPending packings stops
-   fold from floating the kind constant out of the OR chain; per-site `pl` locals keep
-   the constant-1 pseudo from inheriting an r4 preference; `unk1B12_2 > 1u` on the u32
-   view (struct DuelStateView) drops two pre-combine extension insns so the reloaded base wins r5 over
-   &column; TakeDeckCardByNumber is called as int-returning (the ROM tests r0 unextended). */
+/*
+ * Carry out the command confirmed in the card command menu (gDuel.cardMenu.command, enum CardMenuCommand) for
+ * the card gDuel.cardMenuCard at (cardMenu.player, area, index). Multi-step commands (the Red-Eyes B. Dragon /
+ * Zoa metal summons, the Surrender prompt) return early and keep cardMenu.confirmed set, so they run again next
+ * frame; every other path clears confirmed and cardMenu.step at the end.
+ *
+ * FAKEMATCH notes: `ev = (...)` inside the Chain_AddPending packings stops fold from floating the kind constant
+ * out of the OR chain; the per-site `players` locals keep the constant-1 pseudo from inheriting an r4
+ * preference.
+ */
 void CardMenu_Execute(void)
 {
-    u8 buf[4];
-    s16 zone;
+    struct DuelCard taken;
+    s16 area;
     u32 ev;
-    int idx;
-    int p;
+    int zone;
+    int player;
 
-    switch (SEL.cursor) {
-    case 1:
-    case 2:
-        if (SEL.zone != 0)
+    switch (MENU.command) {
+    case CARDMENU_CMD_DEF_POS:
+    case CARDMENU_CMD_ATK_POS:
+        if (MENU.area != DUEL_AREA_MONSTER)
             break;
-        CardMenu_ChangePosition(SEL.cursor);
+        CardMenu_ChangePosition(MENU.command);
         return;
-    case 3:
-        if (SEL.zone != 0)
+    case CARDMENU_CMD_FLIP:
+        if (MENU.area != DUEL_AREA_MONSTER)
             break;
         CardMenu_FlipSummon();
         return;
-    case 4:
-        if (SEL.zone != 11)
+    case CARDMENU_CMD_SET:
+        if (MENU.area != DUEL_AREA_HAND)
             break;
-        if (((((const u32 *)0x08621DE0)[gUnk_020192E0View.selCard & 0x7FF] & 0x1F00000) >> 20) <= 20)
+        if (CARD_STATS_TYPE(CARD_STATS_C(gDuel.cardMenuCard)) <= CARD_TYPE_REPTILE)
             CardMenu_SummonMonster(0, 0);
         else
             CardMenu_PlaySpellTrapFromHand(0, 0, 0);
         return;
-    case 5:
+    case CARDMENU_CMD_SUMMON:
         CardMenu_SummonMonster(1, 0);
         return;
-    case 11:
+    case CARDMENU_CMD_SP_SUMMON:
         CardMenu_SummonMonster(1, 1);
         return;
-    case 12:
+    case CARDMENU_CMD_SP_SUMMON_SET:
         CardMenu_SummonMonster(0, 1);
         return;
-    case 10:
+    case CARDMENU_CMD_FUSION:
         CardMenu_FusionSummon();
         return;
-    case 6:
-        zone = SEL.zone;
-        switch (zone) {
-        case 11:
-            if (CARD_TYPE(gUnk_020192E0View.selCard) > 20) {
+    case CARDMENU_CMD_ACTIVATE:
+        area = MENU.area;
+        switch (area) {
+        case DUEL_AREA_HAND:
+            if (CARD_TYPE(gDuel.cardMenuCard) > CARD_TYPE_REPTILE) {
                 CardMenu_PlaySpellTrapFromHand(1, 0, 0);
                 return;
             }
-            switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
-            case 0x47:
+            switch (CARD_NUMBER_C(gDuel.cardMenuCard)) {
+            case CARD_COCOON_OF_EVOLUTION:
+                /* Played like a Magic card; it uses up the turn's Normal Summon. */
                 {
-                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
-                    PLAYER_FLAGS(pl, SEL.player & 1)->flag8_4 = 1;
+                    struct DuelPlayer *players = gDuel.players;
+                    PLAYER_FLAGS(players, MENU.player & 1)->normalSummonUsed = 1;
                 }
                 CardMenu_PlaySpellTrapFromHand(1, 0, 0);
                 return;
-            case 0x1A8:
-                DiscardHandCard(SEL.player, SEL.column, 0, 1);
-                Chain_AddPending(((SEL.player & 1) << 31) | (ev = 0x600000 | gUnk_020192E0View.selCard), 0);
+            case CARD_THUNDER_DRAGON:
+                /* Discarded from the hand for its effect. */
+                DiscardHandCard(MENU.player, MENU.index, 0, 1);
+                Chain_AddPending(((MENU.player & 1) << 31)
+                                 | (ev = CHAIN_KIND_OFF_FIELD << 21 | gDuel.cardMenuCard), 0);
                 break;
             }
             break;
-        case 10:
-            if (!ZONE_FLAGS(SEL.player & 1, 10)->flag6_1)
-                DuelCmd_Push(SEL.player ? 0x807F : 0x7F, 10, 0, 0);
-            Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1u) {
-                {
-                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
-                    PLAYER_FLAGS(pl, SEL.player & 1)->flag9_5 = 1;
-                }
+        case DUEL_AREA_FIELD:
+            if (!ZONE_HEAD(MENU.player & 1, ZONE_FIELD)->isFaceUp)
+                DuelCmd_Push(MENU.player ? DUEL_CMD_PLAYER | DUEL_CMD_FLIP_CARD : DUEL_CMD_FLIP_CARD,
+                             ZONE_FIELD, 0, 0);
+            Chain_AddPending(((MENU.player & 1) << 31)
+                             | (ev = (((MENU.index + MENU.area) & 0x1F) << 16) | CHAIN_KIND_SPELL_TRAP << 21)
+                             | gDuel.cardMenuCard, 0);
+            if (gDuelMenuView.phase > (u32)PHASE_STANDBY) {
+                struct DuelPlayer *players = gDuel.players;
+                PLAYER_FLAGS(players, MENU.player & 1)->magicTrapActivatedThisTurn = 1;
             }
             break;
-        case 5:
-            p = SEL.player & 1;
-            idx = SEL.column;
-            idx += 5;
-            if (!ZONE_FLAGS(p, idx)->flag6_1)
-                DuelCmd_Push(SEL.player ? 0x807F : 0x7F, SEL.column + SEL.zone, 0, 0);
-            if (ZONE_WORD(SEL.player & 1, SEL.column)->flag0_18) {
-                ShowCardEffect(SEL.player, gUnk_0862467A);
-                LoseLifePoints(SEL.player, 2000);
+        case DUEL_AREA_SPELL_TRAP:
+            player = MENU.player & 1;
+            zone = MENU.index;
+            zone += ZONE_SPELL_0;
+            if (!ZONE_HEAD(player, zone)->isFaceUp)
+                DuelCmd_Push(MENU.player ? DUEL_CMD_PLAYER | DUEL_CMD_FLIP_CARD : DUEL_CMD_FLIP_CARD,
+                             MENU.index + MENU.area, 0, 0);
+            /* A card taken with Graverobber costs 2000 LP when activated. This reads the card word of
+             * zones[index] (the monster zone in the same column), not of zones[5 + index]: the ROM does the
+             * same, possibly an original bug. */
+            if (ZONE_CARD(MENU.player & 1, MENU.index)->graverobbed) {
+                ShowCardEffect(MENU.player, gUnk_0862467A);
+                LoseLifePoints(MENU.player, 2000);
             }
-            Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
-            if (gUnk_020192E0View.unk1B12_2 > 1u) {
-                {
-                    struct DuelPlayerView *pl = gUnk_020192E0View.players;
-                    PLAYER_FLAGS(pl, SEL.player & 1)->flag9_5 = 1;
-                }
+            Chain_AddPending(((MENU.player & 1) << 31)
+                             | (ev = (((MENU.index + MENU.area) & 0x1F) << 16) | CHAIN_KIND_SPELL_TRAP << 21)
+                             | gDuel.cardMenuCard, 0);
+            if (gDuelMenuView.phase > (u32)PHASE_STANDBY) {
+                struct DuelPlayer *players = gDuel.players;
+                PLAYER_FLAGS(players, MENU.player & 1)->magicTrapActivatedThisTurn = 1;
             }
             break;
-        case 0:
-            switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
-            case 0x51:
-            case 0x186:
-                switch (SEL.subState) {
+        case DUEL_AREA_MONSTER:
+            switch (CARD_NUMBER_C(gDuel.cardMenuCard)) {
+            case CARD_RED_EYES_B_DRAGON:
+            case CARD_ZOA:
+                /* Step 0: tribute the monster; step 1: Special Summon its metal form from the deck. */
+                switch (MENU.step) {
                 case 0:
-                    if (TributeMonster(SEL.player, SEL.column)) {
-                        SEL.subState++;
+                    if (TributeMonster(MENU.player, MENU.index)) {
+                        MENU.step++;
                         return;
                     }
-                    SEL.active = 0;
-                    SEL.subState = 0;
+                    MENU.confirmed = 0;
+                    MENU.step = 0;
                     return;
                 case 1:
-                    if (((int (*)(int, u16, void *))TakeDeckCardByNumber)(SEL.player, ((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF] == 0x51 ? 0x2E5 : 0x187, buf)) {
-                        QueueSpecialSummonChoosePosition(SEL.player, buf, 1, 1);
-                        SEL.subState++;
+                    if (TakeDeckCardByNumberInt(MENU.player,
+                                                CARD_NUMBER_C(gDuel.cardMenuCard) == CARD_RED_EYES_B_DRAGON
+                                                    ? CARD_RED_EYES_BLACK_METAL_DRAGON : CARD_METALZOA,
+                                                &taken)) {
+                        QueueSpecialSummonChoosePosition(MENU.player, &taken, 1, 1);
+                        MENU.step++;
                         return;
                     }
                 }
-                SEL.active = 0;
-                SEL.subState = 0;
+                MENU.confirmed = 0;
+                MENU.step = 0;
                 return;
-            case 0x1A0:
-            case 0x243:
-            case 0x2DB:
-                Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x4400000) | gUnk_020192E0View.selCard, 0);
+            case CARD_BLAST_JUGGLER:
+            case CARD_PATROL_ROBO:
+            case CARD_JIGEN_BAKUDAN:
+                /* Standby Phase monsters: the effect is queued with the event RESPONSE_OWN_STANDBY. */
+                Chain_AddPending(((MENU.player & 1) << 31)
+                                 | (ev = (((MENU.index + MENU.area) & 0x1F) << 16)
+                                         | RESPONSE_OWN_STANDBY << 25 | CHAIN_KIND_MONSTER << 21)
+                                 | gDuel.cardMenuCard, 0);
                 break;
             default:
-                Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x400000) | gUnk_020192E0View.selCard, 0);
+                Chain_AddPending(((MENU.player & 1) << 31)
+                                 | (ev = (((MENU.index + MENU.area) & 0x1F) << 16) | CHAIN_KIND_MONSTER << 21)
+                                 | gDuel.cardMenuCard, 0);
                 break;
             }
             break;
         }
         break;
-    case 7:
-        gBattle.atkSlot = gUnk_020192E0View.sel.col.column;
-        gUnk_020192E0View.unk1B16_1 = 2;
+    case CARDMENU_CMD_ATTACK:
+        gBattle.atkSlot = gDuelMenuView.cardMenu.index;
+        gDuel.battleStep = 2;
         break;
-    case 8:
-        gUnk_020192E0View.unk1B20++;
-        SEL.active = 0;
-        SEL.subState = 0;
+    case CARDMENU_CMD_DRAW:
+        gDuel.phaseStep++;
+        MENU.confirmed = 0;
+        MENU.step = 0;
         return;
-    case 9:
-        switch (SEL.subState) {
+    case CARDMENU_CMD_SURRENDER:
+        switch (MENU.step) {
         case 0:
-            TextBoxOpen(0x206, 0x412, 0xB, gStrDoYouSurrender);
-            TextBoxSetMenu(1, 0, 0);
-            SEL.subState++;
+            TextBoxOpen(0x206, 0x412, TEXTBOX_FLAGS_DEFAULT, gStrDoYouSurrender);  /* at cell (6, 2), 18 x 4 */
+            TextBoxSetMenu(TEXTBOX_MENU_YES_NO, 0, 0);
+            MENU.step++;
             break;
         case 1:
-            if (gTextBox.unk14)
-                DuelCmd_Push(0x40, 1, 0, 0);
-            SEL.active = 0;
-            SEL.subState = 0;
+            if (gTextBox.result)
+                DuelCmd_Push(DUEL_CMD_SURRENDER, 1, 0, 0);
+            MENU.confirmed = 0;
+            MENU.step = 0;
             break;
         }
         return;
     }
-    SEL.active = 0;
-    SEL.subState = 0;
+    MENU.confirmed = 0;
+    MENU.step = 0;
 }
+#undef MENU
 
+/* One frame of the CPU's turn: run gAiTurnPhases[gAiState.turnPhase] (the turn start, draw, standby and end
+ * handlers of the human's turn, with AiRunStep as the main phase); when it returns nonzero, go to the next
+ * one with fresh step bytes. Returns 1 at the end of the table (the turn is over), else 0. */
 u16 AiRunTurn(void)
 {
-    StepFunc step = gAiTurnPhases[gAiState.index];
-    if (step != NULL) {
-        if (step()) {
-            gUnk_020192E0View.unk1B20 = 0;
-            gUnk_020192E0View.unk1B21 = 0;
-            gAiState.state = 0;
-            gAiState.index++;
+    u16 (*phase)(void) = gAiTurnPhases[gAiState.turnPhase];
+
+    if (phase != NULL) {
+        if (phase()) {
+            gDuel.phaseStep = 0;
+            gDuel.phaseCounter = 0;
+            gAiState.step = 0;
+            gAiState.turnPhase++;
         }
         return 0;
     }
     return 1;
 }
 
-/* Start message `id` (handler gDuelSceneHandlers[id]). */
+/* Start full-screen scene `id` (enum DuelSceneId) with handler gDuelSceneHandlers[id]. The two win scenes
+ * stop the duel BGM. */
 void DuelScene_Start(u16 id, u32 flag)
 {
-    gMsg.stepIndex = 0;
-    gMsg.state = 0;
-    gMsg.unkC = 0;
-    gMsg.unkD = 0;
-    gMsg.flag = flag;
-    gMsg.id = id;
-    gMsg.func = gDuelSceneHandlers[id];
-    switch (gMsg.id) {
-    case 1:
-    case 5:
+    gDuelScene.runnerStep = 0;
+    gDuelScene.sceneStep = 0;
+    gDuelScene.unkC = 0;
+    gDuelScene.unkD = 0;
+    gDuelScene.flag = flag;
+    gDuelScene.id = id;
+    gDuelScene.handler = gDuelSceneHandlers[id];
+    switch (gDuelScene.id) {
+    case DUEL_SCENE_EXODIA_WIN:
+    case DUEL_SCENE_DESTINY_BOARD_WIN:
         StopBGM();
-        gDuel.flag1B12_0 = 0;
+        gDuel.bgmOn = 0;
         break;
     }
-    gDuelScreen.flag0_1 = 0;
+    gDuelScreen.uiGfxLoaded = 0;
 }
 
+/* Runner step 0: on the first call clear the VBlank callback, the BG scroll and the duel screen flags; then
+ * fade the duel screen out. Returns 1 when it is gone. */
 u16 DuelScene_FadeOutDuelScreen(void)
 {
-    if (gMsg.state == 0) {
+    if (gDuelScene.sceneStep == 0) {
         gMain.vblankCallback = NULL;
         ResetBgScroll();
-        gDuelScreen.busy = 0;
-        gDuelScreen.flag0_1 = 0;
-        gDuelScreen.flag0_2 = 0;
-        gMsg.state++;
+        gDuelScreen.showCursor = 0;
+        gDuelScreen.uiGfxLoaded = 0;
+        gDuelScreen.active = 0;
+        gDuelScene.sceneStep++;
     }
     return DuelScreen_FadeOutStep();
 }
 
+/* Runner step 1: run the scene handler; returns its result (1 when the scene is over), 0 without one. */
 u16 DuelScene_RunHandler(void)
 {
-    StepFunc func = gMsg.func;
-    if (func != NULL)
-        return func();
-    return 0;}
+    u16 (*handler)(void) = gDuelScene.handler;
 
+    if (handler != NULL)
+        return handler();
+    return 0;
+}
+
+/* Unreferenced runner step: blank the display, rebuild the duel screen and fade it in. Returns the
+ * FadeFromBlack result (1 when done). The game reopens the field with DUEL_CMD_OPEN_DUEL_SCREEN instead. */
 u16 DuelScene_FadeInDuelScreen(void)
 {
-    struct DuelMsg *msg = &gMsg;
+    struct DuelScene *scene = &gDuelScene;
 
-    switch (msg->state) {
+    switch (scene->sceneStep) {
     case 0:
         REG_DISPCNT = 0;
         break;
@@ -444,46 +505,54 @@ u16 DuelScene_FadeInDuelScreen(void)
     default:
         return FadeFromBlack(4);
     }
-    msg->state++;
+    scene->sceneStep++;
     return 0;
 }
 
+/* Run the current scene: step through gDuelSceneRunnerSteps (fade out the duel screen, run the handler).
+ * Returns 1 when the scene has finished, else 0. */
 u16 DuelScene_Run(void)
 {
-    StepFunc step = gDuelSceneRunnerSteps[gMsg.stepIndex];
+    u16 (*step)(void) = gDuelSceneRunnerSteps[gDuelScene.runnerStep];
+
     if (step != NULL) {
         if (step()) {
-            gMsg.stepIndex++;
-            gMsg.state = 0;
-            gMsg.unkC = 0;
-            gMsg.unkD = 0;
+            gDuelScene.runnerStep++;
+            gDuelScene.sceneStep = 0;
+            gDuelScene.unkC = 0;
+            gDuelScene.unkD = 0;
         }
         return 0;
     }
-    gMsg.stepIndex = 0;
+    gDuelScene.runnerStep = 0;
     return 1;
 }
 
-/* HBlank: wavy BG0/BG1/BG3 HOFS from the per-line table. */
+/* Unused HBlank handler: a 16-line horizontal wave on BG0, BG1 and BG3 from gDuelCmd.hofsTable (which
+ * nothing sets). */
 void HBlank_WaveBg013(void)
 {
     u16 hofs = gDuelCmd.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
+
     REG_BG0HOFS = hofs;
     REG_BG1HOFS = hofs;
     REG_BG3HOFS = hofs;
 }
 
-/* HBlank: same for all four BGs. */
+/* Unused HBlank handler: the same wave on all four BGs. */
 void HBlank_WaveAllBgs(void)
 {
     u16 hofs = gDuelCmd.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
+
     REG_BG0HOFS = hofs;
     REG_BG1HOFS = hofs;
     REG_BG2HOFS = hofs;
     REG_BG3HOFS = hofs;
 }
 
-/* Start the duel BGM for the current opponent (or event / link BGM). */
+/* Start the duel music: the opponent's song from gOpponentDuelBGM, song 0x13 in a tournament duel, song 5 in
+ * a link duel. Fades the BGM out instead when the duel BGM is off (gDuel.bgmOn) or no song was found. Called
+ * after every duel command, so it is cheap when the song already plays. */
 void PlayDuelBGM(void)
 {
     u16 bgm = 0xFFFF;
@@ -495,12 +564,13 @@ void PlayDuelBGM(void)
             bgm = gOpponentDuelBGM[i].bgm;
             break;
         }
-    } while (++i <= 0x17);
-    if (gMain.events & 0xF000000)
+    } while (++i <= ARRAY_COUNT(gOpponentDuelBGM) - 1);
+    if (gMain.events & (CAL_TOURNAMENT_ROUND1 | CAL_TOURNAMENT_ROUND2 | CAL_TOURNAMENT_SEMIFINAL
+                        | CAL_TOURNAMENT_FINAL))
         bgm = 0x13;
-    if (gDuelCtrl.link)
+    if (gDuelCtrl.isLinkDuel)
         bgm = 5;
-    if (!gDuel.flag1B12_0)
+    if (!gDuel.bgmOn)
         bgm = 0xFFFF;
     if (bgm == 0xFFFF)
         FadeOutBGM();
@@ -508,13 +578,15 @@ void PlayDuelBGM(void)
         PlayBGM(bgm);
 }
 
-/* Append a command to the duel command queue (max 256).
- * The original r2/r3 entry shifts explicitly decode both final words as u16. */
+/* Append {cmd, arg2, arg4, arg6} to the duel command queue (dropped when 256 commands are queued). cmd is an
+ * enum DuelCmdId, with DUEL_CMD_PLAYER set when player 1 acts. arg4 and arg6 come in as words and are
+ * truncated to u16 here (the ROM decodes both from r2/r3 with explicit shifts). */
 void DuelCmd_Push(u16 cmd, u16 arg2, int arg4Word, int arg6Word)
 {
     u16 arg4 = arg4Word;
     u16 arg6 = arg6Word;
-    if (gDuelCmd.queueCount < 0x100) {
+
+    if (gDuelCmd.queueCount < ARRAY_COUNT(gDuelCmd.queue)) {
         gDuelCmd.queue[gDuelCmd.queueCount].cmd = cmd;
         gDuelCmd.queue[gDuelCmd.queueCount].arg2 = arg2;
         gDuelCmd.queue[gDuelCmd.queueCount].arg4 = arg4;
@@ -523,640 +595,489 @@ void DuelCmd_Push(u16 cmd, u16 arg2, int arg4Word, int arg6Word)
     }
 }
 
-void DuelCmd_Attack(void);
-void DuelCmd_DirectAttack(void);
-void DuelCmd_PrepareBattlePhase(void);
-void DuelCmd_MarkAttacked(void);
-void DuelCmd_StartBattleScene(void);
-void DuelCmd_PlayBattleScene(void);
-void DuelCmd_SetBattleProtection(void);
-void DuelCmd_EndBattlePhase(void);
-void DuelCmd_SetAttackTarget(void);
-void DuelCmd_SetAttacker(void);
-void DuelCmd_ZeroAttackerAtk(void);
-void DuelCmd_NegateAttack(void);
-void DuelCmd_PlaceCard(void);
-void DuelCmd_ClearZoneCard(void);
-void DuelCmd_AddCardToGraveyard(void);
-void DuelCmd_AddCardToBanished(void);
-void DuelCmd_ChangePosition(void);
-void DuelCmd_FlipCard(void);
-void DuelCmd_SendToGraveyard(void);
-void DuelCmd_Banish(void);
-void DuelCmd_BanishFlagged(void);
-void DuelCmd_ReturnToHand(void);
-void DuelCmd_ReturnToDeck(void);
-void DuelCmd_MoveToZone(void);
-void DuelCmd_SwapZones(void);
-void DuelCmd_AddEquipLink(void);
-void DuelCmd_AddZoneLink(void);
-void DuelCmd_RemoveZoneLink(void);
-void DuelCmd_SetZoneDeclaredValue(void);
-void DuelCmd_SetDestroyedByOpponentFlag(void);
-void DuelCmd_AddZoneTurnCounter(void);
-void DuelCmd_SetZoneTurnCounter(void);
-void DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue(void);
-void DuelCmd_ClearZoneLinks(void);
-void DuelCmd_MoveZoneLinks(void);
-void DuelCmd_AddProhibition(void);
-void DuelCmd_RemoveProhibition(void);
-void DuelCmd_ShuffleDeck(void);
-void DuelCmd_DrawCards(void);
-void DuelCmd_SendTopDeckCardsToGraveyard(void);
-void DuelCmd_BanishTopDeckCards(void);
-void DuelCmd_AddDeckCardToHand(void);
-void DuelCmd_RemoveCardFromDeck(void);
-void DuelCmd_SummonFromDeck(void);
-void DuelCmd_SendDeckCardToGraveyard(void);
-void DuelCmd_BanishDeckCard(void);
-void DuelCmd_SendFusionDeckCardToGraveyard(void);
-void DuelCmd_AddCardToDeckTop(void);
-void DuelCmd_AddCardToDeckBottom(void);
-void DuelCmd_SetCrushCardTurns(void);
-void DuelCmd_RemoveCardFromFusionDeck(void);
-void DuelCmd_ReturnGraveyardCardToHand(void);
-void DuelCmd_ReturnGraveyardCardToDeckTop(void);
-void DuelCmd_ReturnGraveyardCardToDeckBottom(void);
-void DuelCmd_BanishGraveyardCard(void);
-void DuelCmd_RemoveCardFromGraveyard(void);
-void DuelCmd_ReturnGraveyardToDeck(void);
-void DuelCmd_TakeOpponentGraveyardCard(void);
-void DuelCmd_ReturnBanishedCardToGraveyard(void);
-void DuelCmd_AddCardToGraveyardNoRedraw(void);
-void DuelCmd_ClearPendingEquip(void);
-void DuelCmd_EquipGraveyardCardToOpponent(void);
-void sub_080106BC(void);
-void sub_08010708(void);
-void DuelCmd_SendHandCardToGraveyard(void);
-void DuelCmd_BanishHandCard(void);
-void DuelCmd_ReturnHandCardToDeck(void);
-void DuelCmd_RemoveCardFromHand(void);
-void DuelCmd_PlaceMonsterFromHand(void);
-void DuelCmd_PlaceSpellTrapFromHand(void);
-void DuelCmd_CompactHand(void);
-void DuelCmd_AddCardToHand(void);
-void DuelCmd_BanishHandCardFaceDown(void);
-void DuelCmd_ReturnBanishedCardToHand(void);
-void DuelCmd_ExchangeHandCards(void);
-void DuelCmd_SendHandFusionMaterialToGraveyard(void);
-void DuelCmd_BanishHandFusionMaterial(void);
-void DuelCmd_NegateActivation(void);
-void DuelCmd_NopB2(void);
-void DuelCmd_SetSpellTrapDisabled(void);
-void DuelCmd_UpdateZoneLpPaid(void);
-void DuelCmd_IncrementZoneTurnCounter(void);
-void DuelCmd_SetZoneStatusFlags(void);
-void DuelCmd_ClearZoneStatusFlags(void);
-void DuelCmd_SetEffectUnused(void);
-void DuelCmd_TributeMonster(void);
-void DuelCmd_PlantInOpponentDeck(void);
-void DuelCmd_SetDestroyCountdown(void);
-void DuelCmd_Nop99(void);
-void DuelCmd_Nop9A(void);
-void DuelCmd_Nop9B(void);
-void DuelCmd_Nop9C(void);
-void DuelCmd_Nop9D(void);
-void DuelCmd_Nop9E(void);
-void DuelCmd_HalveAttack(void);
-void DuelCmd_SetCannotAttackNextTurn(void);
-void DuelCmd_SetCannotAttack(void);
-void DuelCmd_Nop9F(void);
-void DuelCmd_SetPositionLocked(void);
-void DuelCmd_SetReturnAfterBattle(void);
-void DuelCmd_SummonToken(void);
-void DuelCmd_SetZoneCardWord(void);
-void DuelCmd_MoveMonsterFaceDown(void);
-void DuelCmd_SetMagicalHatsCard(void);
-void DuelCmd_BanishMonsterUntilEndPhase(void);
-void DuelCmd_ReturnBanishedMonster(void);
-void DuelCmd_SendFusionMaterialToGrave(void);
-void sub_08013104(void);
-void DuelCmd_ClearZoneLinks2(void);
-void DuelCmd_ShowDuelResult(void);
-void DuelCmd_Surrender(void);
-void DuelCmd_ShowJustAMomentBanner(void);
-void DuelCmd_SetNegationFlag(void);
-void DuelCmd_TurnStart(void);
-void DuelCmd_TurnEnd(void);
-void DuelCmd_ShowEndTurnHand(void);
-void DuelCmd_SkipNextDrawPhase(void);
-void DuelCmd_SkipNextStandbyPhase(void);
-void DuelCmd_SkipNextTurn(void);
-void DuelCmd_SetExtraBattlePhase(void);
-void DuelCmd_SetPositionChangeLock(void);
-void DuelCmd_SetSummonLocks(void);
-void DuelCmd_SetMagicTrapLockTurns(void);
-void DuelCmd_SetStatChangesReversed(void);
-void DuelCmd_SetAtkDefSwapped(void);
-void DuelCmd_AdjustDelayedSummonCount(void);
-void sub_08014B5C(void);
-void DuelCmd_ShowCardDetail(void);
-void DuelCmd_ShowCardAssemble(void);
-void DuelCmd_ShowCardZoomIn(void);
-void DuelCmd_ShowCardEffect(void);
-void DuelCmd_ShowCardScatter(void);
-void DuelCmd_ShowCardUnrollDown(void);
-void DuelCmd_ShowCardUnrollSideways(void);
-void DuelCmd_ResetDuelState(void);
-void DuelCmd_OpenDuelScreen(void);
-void DuelCmd_CloseDuelScreen(void);
-void DuelCmd_SetFieldBackground(void);
-void DuelCmd_EnterBattlePhase(void);
-void DuelCmd_ShowChainBanner(void);
-void DuelCmd_PointAtCard(void);
-void DuelCmd_MoveCursor(void);
-void DuelCmd_StartDuelBanner(void);
-void DuelCmd_ExodiaWinScene(void);
-void DuelCmd_DestinyBoardWinScene(void);
-void DuelCmd_TossCoin(void);
-void DuelCmd_TossThreeCoins(void);
-void DuelCmd_RollGracefulDice(void);
-void DuelCmd_RollSkullDice(void);
-void DuelCmd_RollPlainDie(void);
-void DuelCmd_ChangeLifePoints(u32);
-void DuelCmd_EnterPhase(u32);
-
-/* Run the current duel command (id = bits 0-11 of gDuelCmd.cmd). */
+/* Run one frame of the current duel command: call the handler of its id (bits 0-11 of gDuelCmd.cmd). One
+ * handler can serve several ids (the negation flags, the two life-point commands, the phase banners). Unknown
+ * ids just finish. */
 void DuelCmd_Dispatch(void)
 {
-    gDuelScreen.busy = 0;
-    switch (gDuelCmd.cmd & 0xFFF) {
-    case 0x01:
+    gDuelScreen.showCursor = 0;
+    switch (gDuelCmd.cmd & DUEL_CMD_ID_MASK) {
+    case DUEL_CMD_TURN_START:
         DuelCmd_TurnStart();
         break;
-    case 0x02:
+    case DUEL_CMD_TURN_END:
         DuelCmd_TurnEnd();
         break;
-    case 0x03:
+    case DUEL_CMD_SHOW_END_TURN_HAND:
         DuelCmd_ShowEndTurnHand();
         break;
-    case 0x04:
+    case DUEL_CMD_SHOW_DUEL_RESULT:
         DuelCmd_ShowDuelResult();
         break;
-    case 0x05:
+    case DUEL_CMD_EXODIA_WIN_SCENE:
         DuelCmd_ExodiaWinScene();
         break;
-    case 0x06:
+    case DUEL_CMD_DESTINY_BOARD_WIN_SCENE:
         DuelCmd_DestinyBoardWinScene();
         break;
-    case 0x07:
+    case DUEL_CMD_CHAIN_BANNER:
         DuelCmd_ShowChainBanner();
         break;
-    case 0x08:
+    case DUEL_CMD_POINT_AT_CARD:
         DuelCmd_PointAtCard();
         break;
-    case 0x09:
+    case DUEL_CMD_MOVE_CURSOR:
         DuelCmd_MoveCursor();
         break;
-    case 0x10:
+    case DUEL_CMD_RESET_DUEL_STATE:
         DuelCmd_ResetDuelState();
         break;
-    case 0x11:
+    case DUEL_CMD_SET_FIELD_BACKGROUND:
         DuelCmd_SetFieldBackground();
         break;
-    case 0x12:
+    case DUEL_CMD_OPEN_DUEL_SCREEN:
         DuelCmd_OpenDuelScreen();
         break;
-    case 0x13:
+    case DUEL_CMD_CLOSE_DUEL_SCREEN:
         DuelCmd_CloseDuelScreen();
         break;
-    case 0x14:
+    case DUEL_CMD_START_DUEL_BANNER:
         DuelCmd_StartDuelBanner();
         break;
-    case 0x15:
-    case 0x16:
-    case 0x17:
-    case 0x18:
-    case 0x19:
-    case 0x1A:
-    case 0x1B:
+    case DUEL_CMD_NEGATE_EQUIP_THIS_TURN:
+    case DUEL_CMD_NEGATE_FIELD_THIS_TURN:
+    case DUEL_CMD_NEGATE_CONT_TRAP_THIS_TURN:
+    case DUEL_CMD_NEGATE_CONT_MAGIC_THIS_TURN:
+    case DUEL_CMD_NEGATE_TRAPS:
+    case DUEL_CMD_NEGATE_MAGIC:
+    case DUEL_CMD_NEGATE_EQUIP:
         DuelCmd_SetNegationFlag();
         break;
-    case 0x1C:
+    case DUEL_CMD_SET_STAT_CHANGES_REVERSED:
         DuelCmd_SetStatChangesReversed();
         break;
-    case 0x1D:
+    case DUEL_CMD_SET_ATK_DEF_SWAPPED:
         DuelCmd_SetAtkDefSwapped();
         break;
-    case 0x30:
+    case DUEL_CMD_START_BATTLE_SCENE:
         DuelCmd_StartBattleScene();
         break;
-    case 0x31:
+    case DUEL_CMD_PLAY_BATTLE_SCENE:
         DuelCmd_PlayBattleScene();
         break;
-    case 0x32:
+    case DUEL_CMD_PREPARE_BATTLE_PHASE:
         DuelCmd_PrepareBattlePhase();
         break;
-    case 0x33:
+    case DUEL_CMD_ATTACK:
         DuelCmd_Attack();
         break;
-    case 0x34:
+    case DUEL_CMD_DIRECT_ATTACK:
         DuelCmd_DirectAttack();
         break;
-    case 0x35:
+    case DUEL_CMD_MARK_ATTACKED:
         DuelCmd_MarkAttacked();
         break;
-    case 0x36:
+    case DUEL_CMD_SET_BATTLE_PROTECTION:
         DuelCmd_SetBattleProtection();
         break;
-    case 0x37:
+    case DUEL_CMD_END_BATTLE_PHASE:
         DuelCmd_EndBattlePhase();
         break;
-    case 0x38:
+    case DUEL_CMD_SET_ATTACK_TARGET:
         DuelCmd_SetAttackTarget();
         break;
-    case 0x39:
+    case DUEL_CMD_SET_ATTACKER:
         DuelCmd_SetAttacker();
         break;
-    case 0x3A:
+    case DUEL_CMD_ZERO_ATTACKER_ATK:
         DuelCmd_ZeroAttackerAtk();
         break;
-    case 0x3B:
+    case DUEL_CMD_NEGATE_ATTACK:
         DuelCmd_NegateAttack();
         break;
-    case 0x40:
+    case DUEL_CMD_SURRENDER:
         DuelCmd_Surrender();
         break;
-    case 0x41:
+    case DUEL_CMD_SHOW_JUST_A_MOMENT:
         DuelCmd_ShowJustAMomentBanner();
         break;
-    case 0x42:
+    case DUEL_CMD_GAIN_LP:
         DuelCmd_ChangeLifePoints(1);
         break;
-    case 0x43:
+    case DUEL_CMD_LOSE_LP:
         DuelCmd_ChangeLifePoints(0);
         break;
-    case 0x44:
+    case DUEL_CMD_SKIP_NEXT_DRAW_PHASE:
         DuelCmd_SkipNextDrawPhase();
         break;
-    case 0x45:
+    case DUEL_CMD_SKIP_NEXT_STANDBY_PHASE:
         DuelCmd_SkipNextStandbyPhase();
         break;
-    case 0x46:
+    case DUEL_CMD_SKIP_NEXT_TURN:
         DuelCmd_SkipNextTurn();
         break;
-    case 0x47:
+    case DUEL_CMD_SET_EXTRA_BATTLE_PHASE:
         DuelCmd_SetExtraBattlePhase();
         break;
-    case 0x48:
+    case DUEL_CMD_SET_POSITION_CHANGE_LOCK:
         DuelCmd_SetPositionChangeLock();
         break;
-    case 0x49:
+    case DUEL_CMD_SET_SUMMON_LOCKS:
         DuelCmd_SetSummonLocks();
         break;
-    case 0x4A:
+    case DUEL_CMD_SET_MAGIC_TRAP_LOCK_TURNS:
         DuelCmd_SetMagicTrapLockTurns();
         break;
-    case 0x4B:
+    case DUEL_CMD_ADJUST_DELAYED_SUMMON_COUNT:
         DuelCmd_AdjustDelayedSummonCount();
         break;
-    case 0x4C:
+    case DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING:
         sub_08014B5C();
         break;
-    case 0x50:
+    case DUEL_CMD_DRAW_PHASE:
         DuelCmd_EnterPhase(0);
         break;
-    case 0x51:
+    case DUEL_CMD_STANDBY_PHASE:
         DuelCmd_EnterPhase(1);
         break;
-    case 0x52:
+    case DUEL_CMD_MAIN1_PHASE:
         DuelCmd_EnterPhase(2);
         break;
-    case 0x53:
+    case DUEL_CMD_BATTLE_PHASE:
         DuelCmd_EnterBattlePhase();
         break;
-    case 0x54:
+    case DUEL_CMD_MAIN2_PHASE:
         DuelCmd_EnterPhase(4);
         break;
-    case 0x55:
+    case DUEL_CMD_END_PHASE:
         DuelCmd_EnterPhase(5);
         break;
-    case 0x61:
+    case DUEL_CMD_DRAW_CARDS:
         DuelCmd_DrawCards();
         break;
-    case 0x62:
+    case DUEL_CMD_SEND_TOP_DECK_CARDS_TO_GRAVEYARD:
         DuelCmd_SendTopDeckCardsToGraveyard();
         break;
-    case 0x63:
+    case DUEL_CMD_BANISH_TOP_DECK_CARDS:
         DuelCmd_BanishTopDeckCards();
         break;
-    case 0x60:
+    case DUEL_CMD_SHUFFLE_DECK:
         DuelCmd_ShuffleDeck();
         break;
-    case 0x64:
+    case DUEL_CMD_ADD_DECK_CARD_TO_HAND:
         DuelCmd_AddDeckCardToHand();
         break;
-    case 0x65:
+    case DUEL_CMD_REMOVE_CARD_FROM_DECK:
         DuelCmd_RemoveCardFromDeck();
         break;
-    case 0x66:
+    case DUEL_CMD_SUMMON_FROM_DECK:
         DuelCmd_SummonFromDeck();
         break;
-    case 0x67:
+    case DUEL_CMD_SEND_DECK_CARD_TO_GRAVEYARD:
         DuelCmd_SendDeckCardToGraveyard();
         break;
-    case 0x68:
+    case DUEL_CMD_BANISH_DECK_CARD:
         DuelCmd_BanishDeckCard();
         break;
-    case 0x69:
+    case DUEL_CMD_SET_CRUSH_CARD_TURNS:
         DuelCmd_SetCrushCardTurns();
         break;
-    case 0x6A:
+    case DUEL_CMD_ADD_CARD_TO_DECK_TOP:
         DuelCmd_AddCardToDeckTop();
         break;
-    case 0x6B:
+    case DUEL_CMD_ADD_CARD_TO_DECK_BOTTOM:
         DuelCmd_AddCardToDeckBottom();
         break;
-    case 0x70:
+    case DUEL_CMD_SHOW_CARD_DETAIL:
         DuelCmd_ShowCardDetail();
         break;
-    case 0x71:
+    case DUEL_CMD_SHOW_CARD_ASSEMBLE:
         DuelCmd_ShowCardAssemble();
         break;
-    case 0x72:
+    case DUEL_CMD_SHOW_CARD_ZOOM_IN:
         DuelCmd_ShowCardZoomIn();
         break;
-    case 0x73:
+    case DUEL_CMD_SHOW_CARD_EFFECT:
         DuelCmd_ShowCardEffect();
         break;
-    case 0x74:
+    case DUEL_CMD_SHOW_CARD_SCATTER:
         DuelCmd_ShowCardScatter();
         break;
-    case 0x75:
+    case DUEL_CMD_SHOW_CARD_UNROLL_DOWN:
         DuelCmd_ShowCardUnrollDown();
         break;
-    case 0x76:
+    case DUEL_CMD_SHOW_CARD_UNROLL_SIDEWAYS:
         DuelCmd_ShowCardUnrollSideways();
         break;
-    case 0x77:
+    case DUEL_CMD_PLACE_CARD:
         DuelCmd_PlaceCard();
         break;
-    case 0x78:
+    case DUEL_CMD_CLEAR_ZONE_CARD:
         DuelCmd_ClearZoneCard();
         break;
-    case 0x7C:
+    case DUEL_CMD_ADD_CARD_TO_GRAVEYARD:
         DuelCmd_AddCardToGraveyard();
         break;
-    case 0x7D:
+    case DUEL_CMD_ADD_CARD_TO_BANISHED:
         DuelCmd_AddCardToBanished();
         break;
-    case 0x7E:
+    case DUEL_CMD_CHANGE_POSITION:
         DuelCmd_ChangePosition();
         break;
-    case 0x7F:
+    case DUEL_CMD_FLIP_CARD:
         DuelCmd_FlipCard();
         break;
-    case 0x79:
+    case DUEL_CMD_SEND_TO_GRAVEYARD:
         DuelCmd_SendToGraveyard();
         break;
-    case 0x7A:
+    case DUEL_CMD_BANISH:
         DuelCmd_Banish();
         break;
-    case 0x7B:
+    case DUEL_CMD_BANISH_FLAGGED:
         DuelCmd_BanishFlagged();
         break;
-    case 0x80:
+    case DUEL_CMD_RETURN_TO_HAND:
         DuelCmd_ReturnToHand();
         break;
-    case 0x81:
+    case DUEL_CMD_RETURN_TO_DECK:
         DuelCmd_ReturnToDeck();
         break;
-    case 0x82:
+    case DUEL_CMD_MOVE_TO_ZONE:
         DuelCmd_MoveToZone();
         break;
-    case 0x83:
+    case DUEL_CMD_ADD_EQUIP_LINK:
         DuelCmd_AddEquipLink();
         break;
-    case 0x84:
+    case DUEL_CMD_SWAP_ZONES:
         DuelCmd_SwapZones();
         break;
-    case 0x85:
+    case DUEL_CMD_ADD_ZONE_LINK:
         DuelCmd_AddZoneLink();
         break;
-    case 0x86:
+    case DUEL_CMD_REMOVE_ZONE_LINK:
         DuelCmd_RemoveZoneLink();
         break;
-    case 0x87:
+    case DUEL_CMD_SET_ZONE_DECLARED_VALUE:
         DuelCmd_SetZoneDeclaredValue();
         break;
-    case 0x88:
+    case DUEL_CMD_RESET_ZONE_TURN_COUNTER_AND_SET_DECLARED_VALUE:
         DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue();
         break;
-    case 0x89:
+    case DUEL_CMD_SET_ZONE_TURN_COUNTER:
         DuelCmd_SetZoneTurnCounter();
         break;
-    case 0x8A:
+    case DUEL_CMD_ADD_ZONE_TURN_COUNTER:
         DuelCmd_AddZoneTurnCounter();
         break;
-    case 0x8B:
+    case DUEL_CMD_SET_DESTROYED_BY_OPPONENT_FLAG:
         DuelCmd_SetDestroyedByOpponentFlag();
         break;
-    case 0x8C:
+    case DUEL_CMD_CLEAR_ZONE_LINKS:
         DuelCmd_ClearZoneLinks();
         break;
-    case 0x8D:
+    case DUEL_CMD_MOVE_ZONE_LINKS:
         DuelCmd_MoveZoneLinks();
         break;
-    case 0x8E:
+    case DUEL_CMD_ADD_PROHIBITION:
         DuelCmd_AddProhibition();
         break;
-    case 0x8F:
+    case DUEL_CMD_REMOVE_PROHIBITION:
         DuelCmd_RemoveProhibition();
         break;
-    case 0x90:
+    case DUEL_CMD_SET_ZONE_STATUS_FLAGS:
         DuelCmd_SetZoneStatusFlags();
         break;
-    case 0x91:
+    case DUEL_CMD_CLEAR_ZONE_STATUS_FLAGS:
         DuelCmd_ClearZoneStatusFlags();
         break;
-    case 0x92:
+    case DUEL_CMD_SET_EFFECT_UNUSED:
         DuelCmd_SetEffectUnused();
         break;
-    case 0x93:
+    case DUEL_CMD_TRIBUTE_MONSTER:
         DuelCmd_TributeMonster();
         break;
-    case 0x94:
+    case DUEL_CMD_PLANT_IN_OPPONENT_DECK:
         DuelCmd_PlantInOpponentDeck();
         break;
-    case 0x95:
+    case DUEL_CMD_SET_DESTROY_COUNTDOWN:
         DuelCmd_SetDestroyCountdown();
         break;
-    case 0x96:
+    case DUEL_CMD_SET_CANNOT_ATTACK:
         DuelCmd_SetCannotAttack();
         break;
-    case 0x97:
+    case DUEL_CMD_SET_CANNOT_ATTACK_NEXT_TURN:
         DuelCmd_SetCannotAttackNextTurn();
         break;
-    case 0x98:
+    case DUEL_CMD_HALVE_ATTACK:
         DuelCmd_HalveAttack();
         break;
-    case 0x99:
+    case DUEL_CMD_NOP_99:
         DuelCmd_Nop99();
         break;
-    case 0x9A:
+    case DUEL_CMD_NOP_9A:
         DuelCmd_Nop9A();
         break;
-    case 0x9B:
+    case DUEL_CMD_NOP_9B:
         DuelCmd_Nop9B();
         break;
-    case 0x9C:
+    case DUEL_CMD_NOP_9C:
         DuelCmd_Nop9C();
         break;
-    case 0x9D:
+    case DUEL_CMD_NOP_9D:
         DuelCmd_Nop9D();
         break;
-    case 0x9E:
+    case DUEL_CMD_NOP_9E:
         DuelCmd_Nop9E();
         break;
-    case 0x9F:
+    case DUEL_CMD_NOP_9F:
         DuelCmd_Nop9F();
         break;
-    case 0xA0:
+    case DUEL_CMD_CLEAR_ZONE_LINKS_2:
         DuelCmd_ClearZoneLinks2();
         break;
-    case 0xA1:
+    case DUEL_CMD_SET_POSITION_LOCKED:
         DuelCmd_SetPositionLocked();
         break;
-    case 0xA2:
+    case DUEL_CMD_SET_RETURN_AFTER_BATTLE:
         DuelCmd_SetReturnAfterBattle();
         break;
-    case 0xA3:
+    case DUEL_CMD_SUMMON_TOKEN:
         DuelCmd_SummonToken();
         break;
-    case 0xA4:
+    case DUEL_CMD_SET_ZONE_CARD_WORD:
         DuelCmd_SetZoneCardWord();
         break;
-    case 0xA5:
+    case DUEL_CMD_FUSION_MATERIAL_TO_GRAVE:
         DuelCmd_SendFusionMaterialToGrave();
         break;
-    case 0xA6:
+    case DUEL_CMD_SET_ZONE_LEVEL_CHECK_FLAG:
         sub_08013104();
         break;
-    case 0xA7:
+    case DUEL_CMD_MOVE_MONSTER_FACE_DOWN:
         DuelCmd_MoveMonsterFaceDown();
         break;
-    case 0xA8:
+    case DUEL_CMD_SET_MAGICAL_HATS_CARD:
         DuelCmd_SetMagicalHatsCard();
         break;
-    case 0xA9:
+    case DUEL_CMD_BANISH_UNTIL_END_PHASE:
         DuelCmd_BanishMonsterUntilEndPhase();
         break;
-    case 0xAA:
+    case DUEL_CMD_RETURN_BANISHED_MONSTER:
         DuelCmd_ReturnBanishedMonster();
         break;
-    case 0xB0:
+    case DUEL_CMD_NEGATE_ACTIVATION:
         DuelCmd_NegateActivation();
         break;
-    case 0xB2:
+    case DUEL_CMD_NOP_B2:
         DuelCmd_NopB2();
         break;
-    case 0xB1:
+    case DUEL_CMD_SET_SPELL_TRAP_DISABLED:
         DuelCmd_SetSpellTrapDisabled();
         break;
-    case 0xB3:
+    case DUEL_CMD_UPDATE_ZONE_LP_PAID:
         DuelCmd_UpdateZoneLpPaid();
         break;
-    case 0xB4:
+    case DUEL_CMD_INCREMENT_ZONE_TURN_COUNTER:
         DuelCmd_IncrementZoneTurnCounter();
         break;
-    case 0xC0:
+    case DUEL_CMD_SEND_HAND_CARD_TO_GRAVEYARD:
         DuelCmd_SendHandCardToGraveyard();
         break;
-    case 0xC1:
+    case DUEL_CMD_BANISH_HAND_CARD:
         DuelCmd_BanishHandCard();
         break;
-    case 0xC3:
+    case DUEL_CMD_RETURN_HAND_CARD_TO_DECK:
         DuelCmd_ReturnHandCardToDeck();
         break;
-    case 0xC2:
+    case DUEL_CMD_REMOVE_CARD_FROM_HAND:
         DuelCmd_RemoveCardFromHand();
         break;
-    case 0xC4:
+    case DUEL_CMD_PLACE_MONSTER_FROM_HAND:
         DuelCmd_PlaceMonsterFromHand();
         break;
-    case 0xC5:
+    case DUEL_CMD_PLACE_SPELL_TRAP_FROM_HAND:
         DuelCmd_PlaceSpellTrapFromHand();
         break;
-    case 0xC7:
+    case DUEL_CMD_EXCHANGE_HAND_CARDS:
         DuelCmd_ExchangeHandCards();
         break;
-    case 0xCB:
+    case DUEL_CMD_ADD_CARD_TO_HAND:
         DuelCmd_AddCardToHand();
         break;
-    case 0xCA:
+    case DUEL_CMD_COMPACT_HAND:
         DuelCmd_CompactHand();
         break;
-    case 0xCC:
+    case DUEL_CMD_SEND_HAND_FUSION_MATERIAL_TO_GRAVEYARD:
         DuelCmd_SendHandFusionMaterialToGraveyard();
         break;
-    case 0xCD:
+    case DUEL_CMD_BANISH_HAND_FUSION_MATERIAL:
         DuelCmd_BanishHandFusionMaterial();
         break;
-    case 0xCE:
+    case DUEL_CMD_BANISH_HAND_CARD_FACE_DOWN:
         DuelCmd_BanishHandCardFaceDown();
         break;
-    case 0xCF:
+    case DUEL_CMD_RETURN_BANISHED_CARD_TO_HAND:
         DuelCmd_ReturnBanishedCardToHand();
         break;
-    case 0xD0:
+    case DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_TOP:
         DuelCmd_ReturnGraveyardCardToDeckTop();
         break;
-    case 0xD1:
+    case DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_BOTTOM:
         DuelCmd_ReturnGraveyardCardToDeckBottom();
         break;
-    case 0xD2:
+    case DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_HAND:
         DuelCmd_ReturnGraveyardCardToHand();
         break;
-    case 0xD4:
+    case DUEL_CMD_BANISH_GRAVEYARD_CARD:
         DuelCmd_BanishGraveyardCard();
         break;
-    case 0xD3:
+    case DUEL_CMD_REMOVE_CARD_FROM_GRAVEYARD:
         DuelCmd_RemoveCardFromGraveyard();
         break;
-    case 0xD5:
+    case DUEL_CMD_TAKE_OPPONENT_GRAVEYARD_CARD:
         DuelCmd_TakeOpponentGraveyardCard();
         break;
-    case 0xD6:
+    case DUEL_CMD_RETURN_GRAVEYARD_TO_DECK:
         DuelCmd_ReturnGraveyardToDeck();
         break;
-    case 0xD7:
+    case DUEL_CMD_ADD_CARD_TO_GRAVEYARD_NO_REDRAW:
         DuelCmd_AddCardToGraveyardNoRedraw();
         break;
-    case 0xD8:
+    case DUEL_CMD_CLEAR_PENDING_EQUIP:
         DuelCmd_ClearPendingEquip();
         break;
-    case 0xD9:
+    case DUEL_CMD_EQUIP_GRAVEYARD_CARD_TO_OPPONENT:
         DuelCmd_EquipGraveyardCardToOpponent();
         break;
-    case 0xDA:
+    case DUEL_CMD_CLEAR_PENDING_OPPONENT_SUMMON:
         sub_080106BC();
         break;
-    case 0xDB:
+    case DUEL_CMD_MARK_GRAVEYARD_CARD:
         sub_08010708();
         break;
-    case 0xDC:
+    case DUEL_CMD_REMOVE_CARD_FROM_FUSION_DECK:
         DuelCmd_RemoveCardFromFusionDeck();
         break;
-    case 0xDD:
+    case DUEL_CMD_SEND_FUSION_DECK_CARD_TO_GRAVEYARD:
         DuelCmd_SendFusionDeckCardToGraveyard();
         break;
-    case 0xDE:
+    case DUEL_CMD_RETURN_BANISHED_CARD_TO_GRAVEYARD:
         DuelCmd_ReturnBanishedCardToGraveyard();
         break;
-    case 0xE0:
+    case DUEL_CMD_TOSS_COIN:
         DuelCmd_TossCoin();
         break;
-    case 0xE1:
+    case DUEL_CMD_TOSS_THREE_COINS:
         DuelCmd_TossThreeCoins();
         break;
-    case 0xE2:
+    case DUEL_CMD_ROLL_GRACEFUL_DICE:
         DuelCmd_RollGracefulDice();
         break;
-    case 0xE4:
+    case DUEL_CMD_ROLL_PLAIN_DIE:
         DuelCmd_RollPlainDie();
         break;
-    case 0xE3:
-    case 0xE5:
+    case DUEL_CMD_ROLL_SKULL_DICE:
+    case DUEL_CMD_ROLL_SKULL_DICE_ALT:
         DuelCmd_RollSkullDice();
         break;
     default:

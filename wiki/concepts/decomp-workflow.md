@@ -59,7 +59,7 @@ Three compiler builds are in use. `check.py` and the Makefile choose one per uni
 See [[compiler-flags]] for the details and the evidence matrix, and [[agbcc]] for the compiler itself.
 
 > [!note] Resolved contradiction (2026-09-29)
-> Early on this page said game code used `agbcc -fprologue-bugfix`. That was based on `sub_08000838`, which matches under both compilers. The compiler survey ([[compiler-flags]]) showed that game code needs `old_agbcc`, and the default was switched.
+> Early on this page said game code used `agbcc -fprologue-bugfix`. That was based on `Bustup_ShowPage`, which matches under both compilers. The compiler survey ([[compiler-flags]]) showed that game code needs `old_agbcc`, and the default was switched.
 
 ## Decompiling a unit
 
@@ -78,7 +78,7 @@ See [[compiler-flags]] for the details and the evidence matrix, and [[agbcc]] fo
 - **No new data in C (yet):** string literals, `const` tables and initialised globals would create `.rodata` or `.data` sections that have to be placed in the ROM layout. Instead, reference the existing ROM data by address:
 
   ```c
-  extern const char gUnk_08080A20[];
+  extern const char gStrDebugChangeBg[];
   ```
 
   Don't define globals in C either. Declare them `extern` and let autosyms place them.
@@ -100,11 +100,11 @@ refs/live change in the source that fixes the order, checked by recompiling.
 `check.py` no longer reports a size delta that is only the trailing `.align 2, 0` pad after a function ending on a 2-byte boundary, so such byte-identical functions now score 0.
 
 ## agbcc matching tips
-- DMA sequences: write the DMA *set* and the DMA *wait* as two separate blocks, each with its own `vu32 *` register pointer, the way the SDK `DmaSet`/`DmaWait` macros are written (sub_0800257C; verified).
+- DMA sequences: write the DMA *set* and the DMA *wait* as two separate blocks, each with its own `vu32 *` register pointer, the way the SDK `DmaSet`/`DmaWait` macros are written (Calendar_Init; verified).
 - A range test that looks odd in the asm is often a small `switch` (possibly inside a static inline).
 - gcc 2.95 loop optimisation: loop-invariant motion runs only on `for`/`while`/`do` loops, not on loops built with `goto`. loop.c runs twice (hoisting cutoffs differ between passes) and moves loop-exit blocks next to a nearby barrier. Global PRE (gcse) can still hoist when a loop has a clean preheader.
 - A `u16` running counter makes the compiler re-load constants from the literal pool on each use.
-- A `return 1` shared through a `done:` label gives a different block layout than the same `return 1` duplicated inline, so try both (sub_08052CE8).
+- A `return 1` shared through a `done:` label gives a different block layout than the same `return 1` duplicated inline, so try both (DuelCursor_FindTarget).
 
 - `add rX, rY, #0` is how agbcc moves registers. `mov rX, rY` between low registers never appears in its output.
 - Constants: agbcc uses `mov` + `lsl` when the constant is a shifted 8-bit value (`0x04000000` is `mov #0x80; lsl #19`), `mov` + `neg` for small negatives, and a literal pool (`ldr rX, =...`) otherwise. `mov r2, #0x11; neg r2, r2` is the int `~0x10`, so do the arithmetic in `int`/`s32`, not `u16`, or you get a pooled `0xFFEF`.

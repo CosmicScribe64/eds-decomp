@@ -10,65 +10,65 @@ struct ActRec {
     u32 active:1, ready:1, kind:3, step:7, phase:4;
     u32 aux0:3, aux3:8, aux11:8, pad19:13;
 };
-extern struct ActRec gUnk_0201CF90;
+extern struct ActRec gSummonAction;
 struct DuelPlayer { u8 pad0[8]; u8 f8lo:4, handAction:1, queued:1, f8hi:2; u8 rest[0xD64-9]; };
-extern struct DuelPlayer gUnk_020192E4[];
-extern u8 gUnk_02015EE8[];
+extern struct DuelPlayer gDuelPlayers[];
+extern u8 gDuelCtrl[];
 struct DuelWork { u8 pad[0x306]; u8 flags; };
-extern struct DuelWork gUnk_02017FB0;
-void sub_080229BC(int command, void *data, int size);
-void sub_0801EC58(int command, int a, int b, int c);
-void sub_08024134(int player, int zone, int index);
-void sub_0801FBCC(u32 action, u32 target);
+extern struct DuelWork gLinkState;
+void DuelLink_SendMessageData(int command, void *data, int size);
+void DuelCmd_Push(int command, int a, int b, int c);
+void DuelCursor_Select(int player, int zone, int index);
+void Chain_AddPending(u32 action, u32 target);
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-void sub_08017FF4(int player, int zone);
+void TributeMonster(int player, int zone);
 struct Menu { u8 pad[0x14]; u16 selection; };
-extern struct Menu gUnk_0201AE60;
-int sub_080576BC(int id, int flag);
-void sub_080602A4(int a, int b, int c, const void *text);
-void sub_08060308(int kind, void (*draw)(void), int (*keys)(void));
-void sub_08054770(void);
-int sub_0805487C(void);
-extern const u8 gUnk_08086370[];
-void sub_08007558(struct DuelCard *dst, struct DuelCard *src);
-void sub_08018544(int player, int zone, int flag);
-int sub_08008524(int player, u16 number);
-void sub_08046A74(int player);
-extern u32 gUnk_02019968[];
-void sub_08055A00(void);
-int sub_0800756C(int number);
-u16 sub_08054900(void), sub_08054B60(void), sub_08054E7C(void), sub_080555B0(void);
-void sub_080199E0(int player, int zone);
-void sub_08046738(int player, int zone);
-void sub_080469DC(void), sub_08046AD0(void);
-void sub_08046B54(int player, int zone);
-void sub_08046808(int player);
-void sub_08042AB0(int player, int kind, int target);
-void sub_0802297C(int command, int a, int b, int c);
+extern struct Menu gTextBox;
+int AiShouldSetMonster(int id, int flag);
+void TextBoxOpen(int a, int b, int c, const void *text);
+void TextBoxSetMenu(int kind, void (*draw)(void), int (*keys)(void));
+void SummonPositionMenu_Draw(void);
+int SummonPositionMenu_HandleInput(void);
+extern const u8 gStrSelectDisplayPosition[];
+void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
+void DestroyFieldCard(int player, int zone, int flag);
+int CountActiveCardsOnField(int player, u16 number);
+void PayChainEnergyCost(int player);
+extern u32 gDuelHands[];
+void SummonAction_Start(void);
+int IsToonMonster(int number);
+u16 ExecuteSummonAction(void), ExecuteSummonActionAskPosition(void), SummonStep_Flip(void), SummonStep_SpecialFromHand(void);
+void DrawCards(int player, int zone);
+void ApplyPumpkingBoost(int player, int zone);
+void DisableFaceUpTraps(void), ApplyKotodama(void);
+void ApplyKotodamaToZone(int player, int zone);
+void ApplyDragonCaptureJar(int player);
+void EventResponse_Request(int player, int kind, int target);
+void DuelLink_SendMessage(int command, int a, int b, int c);
 struct Zone { u32 card; u8 pad[2]; u8 flag0:1, flag1:1, rest:6; u8 tail[0x94-7]; };
-extern u8 gUnk_0201930C[];
-#define ZONE(p,z) ((struct Zone *)((z)*0x94 + (p)*0xD64 + (u32)gUnk_0201930C))
-extern const u16 gUnk_08623DF4[];
+extern u8 gDuelZones[];
+#define ZONE(p,z) ((struct Zone *)((z)*0x94 + (p)*0xD64 + (u32)gDuelZones))
+extern const u16 gCardNumberToId[];
 static inline int NumberId(int number)
 {
     /* FAKEMATCH: the original table lookup keeps its initialized address in r0. */
     register u32 address __asm__("r0") = number * 2;
-    address += (u32)gUnk_08623DF4;
+    address += (u32)gCardNumberToId;
     return *(const u16 *)address;
 }
 #define NUMBER_ID(n) NumberId(n)
 
-int sub_0802CFA0(int player, u16 id, u16 x);
-u32 sub_08007590(u16 number, u16 flag);
-void sub_080197E0(int player, u16 id);
-void sub_080467B0(int player);
-void sub_08018ED8(int player, int zone, u16 a, u16 b);
+int CanActivateEffectOfCard(int player, u16 id, u16 x);
+u32 HasFlipEffect(u16 number, u16 flag);
+void ShowCardEffect(int player, u16 id);
+void TriggerMysteriousPuppeteer(int player);
+void ChangeBattlePosition(int player, int zone, u16 a, u16 b);
 /* Zone address terms are staged in the same order as the record loads. */
 static inline struct Zone *ActionZone(int player, int zone)
 {
     int off = zone * 0x94;
     off += player * 0xD64;
-    off += (u32)gUnk_0201930C;
+    off += (u32)gDuelZones;
     return (struct Zone *)off;
 }
 
@@ -83,7 +83,7 @@ static inline u16 ActionNumberId(int number)
 {
     /* FAKEMATCH: retain the initialized doubled table index in r1. */
     register u32 off asm("r1") = number * 2;
-    off += (u32)gUnk_08623DF4;
+    off += (u32)gCardNumberToId;
     return *(const u16 *)off;
 }
 
@@ -101,9 +101,9 @@ static inline u32 ActionCardLevel(u32 id)
     }
 }
 
-u16 sub_08054E7C(void)
+u16 SummonStep_Flip(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     switch (r->step) {
     case 0: {
         int p = r->player;
@@ -111,9 +111,9 @@ u16 sub_08054E7C(void)
         int z = r->zone5;
         if (ActionZone(side, z)->flag0) {
             u32 id;
-            sub_0801EC58(p ? 0x807E : 0x7E, z, 1, 0);
+            DuelCmd_Push(p ? 0x807E : 0x7E, z, 1, 0);
             id = ((RecordZone(r)->card << 20) >> 20);
-            if (CARD_NUMBER(id) == 0x5E && sub_0802CFA0(r->player, id, 0)) {
+            if (CARD_NUMBER(id) == 0x5E && CanActivateEffectOfCard(r->player, id, 0)) {
                 int player = r->player & 1;
                 u32 action = (u32)player << 31;
                 int zone = r->zone5;
@@ -121,37 +121,37 @@ u16 sub_08054E7C(void)
                 destination |= 0x14400000;
                 action |= destination;
                 action |= ((ActionZone(player, zone)->card << 20) >> 20);
-                sub_0801FBCC(action, 0);
+                Chain_AddPending(action, 0);
             }
         } else {
-            sub_0801EC58(p ? 0x807F : 0x7F, z, 1, 0);
+            DuelCmd_Push(p ? 0x807F : 0x7F, z, 1, 0);
         }
-        gUnk_0201CF90.step++;
+        gSummonAction.step++;
         return 0;
     }
     case 1:
-        sub_08024134(r->player, 0, r->zone5);
-        sub_0801EC58(0x71, r->cardId, 1, 0);
+        DuelCursor_Select(r->player, 0, r->zone5);
+        DuelCmd_Push(0x71, r->cardId, 1, 0);
         r->step++;
         return 0;
     case 2:
         if (ActionCardLevel(r->cardId) <= 2) {
             int number = 0x2AE;
-            if (sub_08008524(0, number) > 0 || sub_08008524(1, number) > 0) {
-                sub_080197E0(gUnk_0201CF90.player, ActionNumberId(number));
-                sub_08018544(gUnk_0201CF90.player, gUnk_0201CF90.zone5, 1);
+            if (CountActiveCardsOnField(0, number) > 0 || CountActiveCardsOnField(1, number) > 0) {
+                ShowCardEffect(gSummonAction.player, ActionNumberId(number));
+                DestroyFieldCard(gSummonAction.player, gSummonAction.zone5, 1);
                 return 1;
             }
         }
-        gUnk_0201CF90.step++;
+        gSummonAction.step++;
         return 0;
     case 3:
-        sub_0801EC58(r->player ? 0x8090 : 0x90, r->zone5, r->h0C, 0);
+        DuelCmd_Push(r->player ? 0x8090 : 0x90, r->zone5, r->h0C, 0);
         {
             /* FAKEMATCH: preserve the initialized record byte in its original scratch. */
             register u32 byte asm("r3") = *(u8 *)r;
             asm("" : : "r"(byte));
-            sub_080467B0((byte << 31) >> 31);
+            TriggerMysteriousPuppeteer((byte << 31) >> 31);
         }
         switch (CARD_NUMBER(r->cardId)) {
         case 0x1F3:
@@ -160,44 +160,44 @@ u16 sub_08054E7C(void)
         case 0x4D8:
         case 0x4DE:
         case 0x534:
-            if (sub_0802CFA0(gUnk_0201CF90.player, ((RecordZone(&gUnk_0201CF90)->card << 20) >> 20), 0)) {
-                int player = gUnk_0201CF90.player;
+            if (CanActivateEffectOfCard(gSummonAction.player, ((RecordZone(&gSummonAction)->card << 20) >> 20), 0)) {
+                int player = gSummonAction.player;
                 u32 action = (u32)(player & 1) << 31;
-                int zone = gUnk_0201CF90.zone5;
+                int zone = gSummonAction.zone5;
                 u32 destination = zone << 16;
                 destination |= 0xC400000;
                 action |= destination;
-                action |= gUnk_0201CF90.cardId;
-                sub_0801FBCC(action, player | zone << 8);
+                action |= gSummonAction.cardId;
+                Chain_AddPending(action, player | zone << 8);
             }
             break;
         case 0x31C:
-            sub_08018ED8(r->player, r->zone5, 0, 0);
+            ChangeBattlePosition(r->player, r->zone5, 0, 0);
             break;
         }
-        if (sub_08007590(CARD_NUMBER(gUnk_0201CF90.cardId), 0)) {
-            if (sub_0802CFA0(gUnk_0201CF90.player, ((RecordZone(&gUnk_0201CF90)->card << 20) >> 20), 0) &&
-                !sub_08008524(0, 0x5FA) && !sub_08008524(1, 0x5FA)) {
-                int player = gUnk_0201CF90.player;
+        if (HasFlipEffect(CARD_NUMBER(gSummonAction.cardId), 0)) {
+            if (CanActivateEffectOfCard(gSummonAction.player, ((RecordZone(&gSummonAction)->card << 20) >> 20), 0) &&
+                !CountActiveCardsOnField(0, 0x5FA) && !CountActiveCardsOnField(1, 0x5FA)) {
+                int player = gSummonAction.player;
                 u32 action = (u32)(player & 1) << 31;
-                int zone = gUnk_0201CF90.zone5;
+                int zone = gSummonAction.zone5;
                 u32 destination = zone << 16;
                 destination |= 0xC400000;
                 action |= destination;
-                action |= gUnk_0201CF90.cardId;
-                sub_0801FBCC(action, player | zone << 8);
+                action |= gSummonAction.cardId;
+                Chain_AddPending(action, player | zone << 8);
             }
         }
-        gUnk_0201CF90.step++;
+        gSummonAction.step++;
         return 0;
     default:
         return 1;
     }
 }
 
-u16 sub_08055298(void)
+u16 SummonStep_Special(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     switch (r->step) {
     case 0: {
         int command = r->player ? 0x8077 : 0x77;
@@ -205,20 +205,20 @@ u16 sub_08055298(void)
         int flag = r->f14;
         int flags = r->f15 << 1;
         flags |= flag;
-        sub_0801EC58(command, zone | (flags << 8),
+        DuelCmd_Push(command, zone | (flags << 8),
                     *(u16 *)&r->card, *((u16 *)&r->card + 1));
         r->step++;
         return 0;
     }
     case 1:
-        sub_08024134(r->player, 0, r->zone5);
-        sub_0801EC58(0x71, r->cardId, 1, 0);
+        DuelCursor_Select(r->player, 0, r->zone5);
+        DuelCmd_Push(0x71, r->cardId, 1, 0);
         r->step++;
         return 0;
     case 2: {
         int command = r->player ? 0x8090 : 0x90;
         int id;
-        sub_0801EC58(command, r->zone5, r->h0C, 0);
+        DuelCmd_Push(command, r->zone5, r->h0C, 0);
         id = r->cardId;
         if (CARD_NUMBER(id) == 0x4DE) {
             int player = r->player;
@@ -228,7 +228,7 @@ u16 sub_08055298(void)
             destination |= 0xC400000;
             action |= destination;
             action |= id;
-            sub_0801FBCC(action, player | (zone << 8));
+            Chain_AddPending(action, player | (zone << 8));
         }
         r->step++;
         return 0;
@@ -237,44 +237,44 @@ u16 sub_08055298(void)
         return 1;
     }
 }
-u16 sub_080553B0(void)
+u16 SummonStep_SpecialChoosePosition(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     struct DuelCard copy;
     switch (r->step) {
     case 0:
         if (r->player) {
-            gUnk_0201AE60.selection = sub_080576BC(r->cardId, r->f14);
+            gTextBox.selection = AiShouldSetMonster(r->cardId, r->f14);
         } else {
-            sub_080602A4(0x207, 0x30F, 11, gUnk_08086370);
-            sub_08060308(5, sub_08054770, sub_0805487C);
+            TextBoxOpen(0x207, 0x30F, 11, gStrSelectDisplayPosition);
+            TextBoxSetMenu(5, SummonPositionMenu_Draw, SummonPositionMenu_HandleInput);
         }
         r->step++;
         return 0;
     case 1: {
         int command, zone, flag, flags;
         u32 word;
-        r->f15 = gUnk_0201AE60.selection;
+        r->f15 = gTextBox.selection;
         if (!r->f15) r->f14 = 1;
-        sub_08007558(&copy, &r->card);
+        CopyDuelCard(&copy, &r->card);
         command = r->player ? 0x8077 : 0x77;
         zone = r->zone5;
         flag = r->f14;
         flags = r->f15 << 1;
         flags |= flag;
-        sub_0801EC58(command, zone | (flags << 8), (u16)*(u32 *)&copy, *(u32 *)&copy >> 16);
+        DuelCmd_Push(command, zone | (flags << 8), (u16)*(u32 *)&copy, *(u32 *)&copy >> 16);
         r->step++;
         return 0;
     }
     case 2:
-        sub_08024134(r->player, 0, r->zone5);
-        sub_0801EC58(0x71, r->cardId, 1, 0);
+        DuelCursor_Select(r->player, 0, r->zone5);
+        DuelCmd_Push(0x71, r->cardId, 1, 0);
         r->step++;
         return 0;
     case 3: {
         int command = r->player ? 0x8090 : 0x90;
         int id, number;
-        sub_0801EC58(command, r->zone5, r->h0C, 0);
+        DuelCmd_Push(command, r->zone5, r->h0C, 0);
         id = r->cardId;
         number = CARD_NUMBER(id);
         switch (number) {
@@ -286,35 +286,35 @@ u16 sub_080553B0(void)
             destination |= 0xC400000;
             action |= destination;
             action |= id;
-            sub_0801FBCC(action, player | (zone << 8));
+            Chain_AddPending(action, player | (zone << 8));
         }
         break;
         case 0x5F6: {
             int i;
             for (i = 0; i < 5; i++) {
-                if (i != gUnk_0201CF90.zone5)
-                    sub_08018544(gUnk_0201CF90.player, i, 1);
+                if (i != gSummonAction.zone5)
+                    DestroyFieldCard(gSummonAction.player, i, 1);
             }
         }
         break;
         }
-        gUnk_0201CF90.step++;
+        gSummonAction.step++;
         return 0;
     }
     default:
         return 1;
     }
 }
-u16 sub_080555B0(void)
+u16 SummonStep_SpecialFromHand(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     switch (r->step) {
     case 0: {
         u16 msg;
         int id;
-        if (r->f25) sub_08017FF4(r->player, r->f16);
-        if (r->f26) sub_08017FF4(r->player, r->f19);
-        if (r->f27) sub_08017FF4(r->player, r->f22);
+        if (r->f25) TributeMonster(r->player, r->f16);
+        if (r->f26) TributeMonster(r->player, r->f19);
+        if (r->f27) TributeMonster(r->player, r->f22);
         msg = r->player ? 0x80C4 : 0xC4;
         id = r->cardId;
         {
@@ -327,20 +327,20 @@ u16 sub_080555B0(void)
             mask &= r->zone5;
             packed |= mask;
             packed |= (r->f14 | r->f15 << 1) << 8;
-            sub_0801EC58(msg,id,packed,0);
+            DuelCmd_Push(msg,id,packed,0);
         }
         r->step++;
         return 0;
     }
     case 1:
-        sub_08024134(r->player, 0, r->zone5);
-        sub_0801EC58(0x71, r->cardId, 1, 0);
+        DuelCursor_Select(r->player, 0, r->zone5);
+        DuelCmd_Push(0x71, r->cardId, 1, 0);
         r->step++;
         return 0;
     case 2: {
         int command = r->player ? 0x8090 : 0x90;
         int id;
-        sub_0801EC58(command, r->zone5, r->h0C, 0);
+        DuelCmd_Push(command, r->zone5, r->h0C, 0);
         id = r->cardId;
         if (CARD_NUMBER(id) == 0x4DE) {
             int player = r->player;
@@ -350,7 +350,7 @@ u16 sub_080555B0(void)
             destination |= 0xA400000;
             action |= destination;
             action |= id;
-            sub_0801FBCC(action, player | (zone << 8));
+            Chain_AddPending(action, player | (zone << 8));
         }
         r->step++;
         return 0;
@@ -363,25 +363,25 @@ u16 sub_080555B0(void)
 
 /* FAKEMATCH: the initialized u16 copy below preserves the original r8-to-r2
  * transfer. Its input is a 12-bit card id, so narrowing is lossless. */
-u16 sub_08055728(void)
+u16 SummonAction_Update(void)
 {
     struct RawAct { u8 pad[14]; u8 flags; };
-    int flags = ((struct RawAct *)&gUnk_0201CF90)->flags;
+    int flags = ((struct RawAct *)&gSummonAction)->flags;
     if (flags & 1) {
-        if (!(2 & flags) || !gUnk_0201CF90.player) {
+        if (!(2 & flags) || !gSummonAction.player) {
             switch (((u32)flags << 27) >> 29) {
-            case 1: if (!sub_08054900()) return 1; break;
-            case 2: if (!sub_08054B60()) return 1; break;
-            case 3: if (!sub_08054E7C()) return 1; break;
-            case 4: if (!sub_08055298()) return 1; break;
-            case 5: if (!sub_080553B0()) return 1; break;
-            case 6: if (!sub_080555B0()) return 1; break;
+            case 1: if (!ExecuteSummonAction()) return 1; break;
+            case 2: if (!ExecuteSummonActionAskPosition()) return 1; break;
+            case 3: if (!SummonStep_Flip()) return 1; break;
+            case 4: if (!SummonStep_Special()) return 1; break;
+            case 5: if (!SummonStep_SpecialChoosePosition()) return 1; break;
+            case 6: if (!SummonStep_SpecialFromHand()) return 1; break;
             }
         } else {
-            if (!(gUnk_02017FB0.flags >> 7)) return 1;
+            if (!(gLinkState.flags >> 7)) return 1;
         }
         {
-            struct ActRec *r = &gUnk_0201CF90;
+            struct ActRec *r = &gSummonAction;
             struct Zone *zone;
             int card;
             r->active = 0;
@@ -394,21 +394,21 @@ u16 sub_08055728(void)
             if (card != 0) {
                 int id = card;
                 int wasFlagged = zone->flag1;
-                sub_08024134(r->player, 0, r->zone5);
+                DuelCursor_Select(r->player, 0, r->zone5);
                 if (r->h0C & 0x20) {
                     int player = r->player;
                     int number = 0x595;
-                    int index = sub_08008524(player, number);
+                    int index = CountActiveCardsOnField(player, number);
                     if (index > 0) {
-                        sub_0801EC58(r->player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
-                        sub_080199E0(r->player, index);
+                        DuelCmd_Push(r->player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
+                        DrawCards(r->player, index);
                     }
                 }
                 if (wasFlagged) {
                     int number = 0x610;
-                    if (sub_08008524(0, number) || sub_08008524(1, number)) {
-                        sub_0801EC58(gUnk_0201CF90.player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
-                        sub_0801EC58(gUnk_0201CF90.player ? 0x8096 : 0x96, gUnk_0201CF90.zone5, 1, 0);
+                    if (CountActiveCardsOnField(0, number) || CountActiveCardsOnField(1, number)) {
+                        DuelCmd_Push(gSummonAction.player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
+                        DuelCmd_Push(gSummonAction.player ? 0x8096 : 0x96, gSummonAction.zone5, 1, 0);
                     }
                 }
                 {
@@ -419,47 +419,47 @@ u16 sub_08055728(void)
                     number = ((const u16 *)0x08622AB4)[index];
                     switch (number) {
                     case 0x62:
-                        sub_08046738(gUnk_0201CF90.player, gUnk_0201CF90.zone5);
+                        ApplyPumpkingBoost(gSummonAction.player, gSummonAction.zone5);
                         break;
                     case 0x2EF:
                         if (wasFlagged) {
-                            sub_0801EC58(gUnk_0201CF90.player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
-                            sub_080469DC();
+                            DuelCmd_Push(gSummonAction.player ? 0x8073 : 0x73, NUMBER_ID(number), 1, 0);
+                            DisableFaceUpTraps();
                         }
                         break;
                     case 0x464:
-                        if (wasFlagged) sub_08046AD0();
+                        if (wasFlagged) ApplyKotodama();
                         break;
                     }
                 }
                 if (wasFlagged)
-                    sub_08046B54(gUnk_0201CF90.player, gUnk_0201CF90.zone5);
+                    ApplyKotodamaToZone(gSummonAction.player, gSummonAction.zone5);
                 {
-                    u32 byte = *(u8 *)&gUnk_0201CF90;
-                    sub_08046808((byte << 31) >> 31);
+                    u32 byte = *(u8 *)&gSummonAction;
+                    ApplyDragonCaptureJar((byte << 31) >> 31);
                 }
                 {
                     int kind;
-                    u32 kindFlags = ((struct RawAct *)&gUnk_0201CF90)->flags;
+                    u32 kindFlags = ((struct RawAct *)&gSummonAction)->flags;
                     switch ((int)((kindFlags << 27) >> 29)) {
-                    case 1: case 2: { int choice = gUnk_0201CF90.f14 ? 5 : 8; kind = choice; break; }
+                    case 1: case 2: { int choice = gSummonAction.f14 ? 5 : 8; kind = choice; break; }
                     case 3: kind = 6; break;
                     default: kind = 7; break;
                     }
-                    sub_08042AB0(1 - gUnk_0201CF90.player, kind,
-                                 gUnk_0201CF90.player | (gUnk_0201CF90.zone5 << 8));
+                    EventResponse_Request(1 - gSummonAction.player, kind,
+                                 gSummonAction.player | (gSummonAction.zone5 << 8));
                 }
             }
         }
-        if ((((struct RawAct *)&gUnk_0201CF90)->flags & 2) && !gUnk_0201CF90.player)
-            sub_0802297C(0xF05B, 0, 0, 0);
+        if ((((struct RawAct *)&gSummonAction)->flags & 2) && !gSummonAction.player)
+            DuelLink_SendMessage(0xF05B, 0, 0, 0);
     }
-    return gUnk_0201CF90.active;
+    return gSummonAction.active;
 }
 
-void sub_08055A00(void)
+void SummonAction_Start(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     r->step = 0;
     r->phase = 0;
     r->aux0 = 0;
@@ -467,16 +467,16 @@ void sub_08055A00(void)
     r->aux11 = 0;
     r->active = 1;
     r->ready = 0;
-    gUnk_020192E4[r->player & 1].queued = 1;
-    if (r->player && (gUnk_02015EE8[1] & 1)) {
+    gDuelPlayers[r->player & 1].queued = 1;
+    if (r->player && (gDuelCtrl[1] & 1)) {
         r->ready = 1;
-        sub_080229BC(0xF05A, r, 0x14);
-        gUnk_02017FB0.flags &= 0x7F;
+        DuelLink_SendMessageData(0xF05A, r, 0x14);
+        gLinkState.flags &= 0x7F;
     }
 }
-void sub_08055AB4(void)
+void SummonAction_StartFromLink(void)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
     r->player = 0;
     r->step = 0;
     r->phase = 0;
@@ -499,7 +499,7 @@ void sub_08055AB4(void)
 struct QueueBytes {
     u8 byte0, byte1;
 };
-void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWord)
+void QueueNormalSummon(int player, int zone, int target, int tributeWord, int faceWord)
 {
     u16 tribute = tributeWord;
     u16 faceUp = faceWord;
@@ -507,35 +507,35 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
     u32 mask;
     register u32 idmask asm("r8");
     const u16 *table;
-    gUnk_0201CF90.player = player;
-    gUnk_0201CF90.zone5 = target;
-    gUnk_0201CF90.zone8 = zone;
+    gSummonAction.player = player;
+    gSummonAction.zone5 = target;
+    gSummonAction.zone8 = zone;
     if (faceUp != 0) {
-        gUnk_0201CF90.f14 = 1;
-        gUnk_0201CF90.f15 = 0;
+        gSummonAction.f14 = 1;
+        gSummonAction.f15 = 0;
     }
     else {
-        gUnk_0201CF90.f14 = 0;
-        gUnk_0201CF90.f15 = 1;
+        gSummonAction.f14 = 0;
+        gSummonAction.f15 = 1;
     }
-    if (sub_08008524(0, 0x47F) || sub_08008524(1, 0x47F)) gUnk_0201CF90.f14 = 1;
+    if (CountActiveCardsOnField(0, 0x47F) || CountActiveCardsOnField(1, 0x47F)) gSummonAction.f14 = 1;
     if (tribute != 0) {
         u8 lo = tribute;
         u8 hi = tribute >> 8;
-        gUnk_0201CF90.f16 = lo & 7;
-        gUnk_0201CF90.f19 = hi & 7;
-        gUnk_0201CF90.f25 = lo >> 7;
-        gUnk_0201CF90.f26 = hi >> 7;
-        gUnk_0201CF90.f28 = (lo >> 4) & 1;
-        gUnk_0201CF90.f29 = (hi >> 4) & 1;
-        r = &gUnk_0201CF90;
+        gSummonAction.f16 = lo & 7;
+        gSummonAction.f19 = hi & 7;
+        gSummonAction.f25 = lo >> 7;
+        gSummonAction.f26 = hi >> 7;
+        gSummonAction.f28 = (lo >> 4) & 1;
+        gSummonAction.f29 = (hi >> 4) & 1;
+        r = &gSummonAction;
     }
     else {
-        gUnk_0201CF90.f16 = 0;
-        gUnk_0201CF90.f19 = 0;
-        gUnk_0201CF90.f25 = 0;
-        gUnk_0201CF90.f26 = 0;
-        r = &gUnk_0201CF90;
+        gSummonAction.f16 = 0;
+        gSummonAction.f19 = 0;
+        gSummonAction.f25 = 0;
+        gSummonAction.f26 = 0;
+        r = &gSummonAction;
     }
     {
         struct ActRec *first = r;
@@ -548,7 +548,7 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
             address = (u32)zone * 4;
             offset = side * 0xD64;
             address += offset;
-            address += (u32)gUnk_02019968;
+            address += (u32)gDuelHands;
             address = *(u32 *)address;
             address <<= 20;
             {
@@ -568,7 +568,7 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
         }
         first->kind = 1;
         first->h0C = 3;
-        if (!sub_0800756C(({
+        if (!IsToonMonster(({
             u32 value;
             packed >>= 7;
             value = mask;
@@ -584,7 +584,7 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
         ))) {
             first->h0C = 2;
             {
-                u32 base = (u32)gUnk_02019968 - 0x684;
+                u32 base = (u32)gDuelHands - 0x684;
                 base = offset + base;
                 {
                     u32 flags = *((u8 *)base + 8);
@@ -593,7 +593,7 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
             }
         }
     }
-    if (sub_0800756C(({
+    if (IsToonMonster(({
         struct ActRec *rp = r;
         u32 low = ((u8 *)rp)[3];
         u32 bit = low >> 7;
@@ -622,23 +622,23 @@ void sub_08055B28(int player, int zone, int target, int tributeWord, int faceWor
             dst->byte1 = flags;
         }
     }
-    sub_08046A74(player);
-    sub_08055A00();
+    PayChainEnergyCost(player);
+    SummonAction_Start();
 }
 
-void sub_08055D3C(int player, int zone, int target, u16 tribute)
+void QueueNormalSummonChoosePosition(int player, int zone, int target, u16 tribute)
 {
     struct ActRec *r;
-    gUnk_0201CF90.player = player;
-    gUnk_0201CF90.zone5 = target;
-    gUnk_0201CF90.zone8 = zone;
-    gUnk_0201CF90.f14 = 0;
-    if (sub_08008524(0, 0x47F) || sub_08008524(1, 0x47F))
-        gUnk_0201CF90.f14 = 1;
+    gSummonAction.player = player;
+    gSummonAction.zone5 = target;
+    gSummonAction.zone8 = zone;
+    gSummonAction.f14 = 0;
+    if (CountActiveCardsOnField(0, 0x47F) || CountActiveCardsOnField(1, 0x47F))
+        gSummonAction.f14 = 1;
     if (tribute != 0) {
         u8 lo = tribute;
         u8 hi = tribute >> 8;
-        r = &gUnk_0201CF90;
+        r = &gSummonAction;
         r->f16 = lo & 7;
         r->f19 = hi & 7;
         r->f25 = lo >> 7;
@@ -646,15 +646,15 @@ void sub_08055D3C(int player, int zone, int target, u16 tribute)
         r->f28 = (lo >> 4) & 1;
         r->f29 = (hi >> 4) & 1;
     } else {
-        gUnk_0201CF90.f16 = 0;
-        gUnk_0201CF90.f19 = 0;
-        gUnk_0201CF90.f25 = 0;
-        gUnk_0201CF90.f26 = 0;
-        r = &gUnk_0201CF90;
+        gSummonAction.f16 = 0;
+        gSummonAction.f19 = 0;
+        gSummonAction.f25 = 0;
+        gSummonAction.f26 = 0;
+        r = &gSummonAction;
     }
-    r->cardId = ((*(u32 *)((player & 1) * 0xD64 + zone * 4 + (u32)gUnk_02019968)) << 20) >> 20;
+    r->cardId = ((*(u32 *)((player & 1) * 0xD64 + zone * 4 + (u32)gDuelHands)) << 20) >> 20;
     r->kind = 2;
     r->h0C = 3;
-    sub_08046A74(player);
-    sub_08055A00();
+    PayChainEnergyCost(player);
+    SummonAction_Start();
 }

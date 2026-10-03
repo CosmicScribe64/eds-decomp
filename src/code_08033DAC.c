@@ -7,9 +7,9 @@
  * Same conventions as code_08032CB0 (see wiki/functions/code-08033dac.md).
  *
  * DuelCard/DuelZone/DuelZonesPlayer/DuelPlayer/DuelScreen and the globals
- * gUnk_020192E0/gUnk_020192E4/gUnk_0201930C/gUnk_0201CFB0 come from duel.h and duel_ui.h.
- * The unit keeps struct EffCtx (not in any shared header) and the local gUnk_02017A40
- * (ActBlk) / gUnk_0201D810 (SelBlk) / gUnk_0201AE60 views, which have no shared header.
+ * gDuel/gDuelPlayers/gDuelZones/gDuelScreen come from duel.h and duel_ui.h.
+ * The unit keeps struct EffCtx (not in any shared header) and the local gChain
+ * (ActBlk) / gCardListView (SelBlk) / gTextBox views, which have no shared header.
  */
 
 #define CARD_WORD(c) (*(u32 *)&(c))
@@ -47,36 +47,36 @@ struct ActBlk {
     u8 step;            /* +0x3E0 */
     u8 sub;             /* +0x3E1 */
 };
-extern struct ActBlk gUnk_02017A40;
+extern struct ActBlk gChain;
 /*
- * Local view: duel.h models gUnk_020192E0 as struct DuelState, whose u32 at +0x1ACC
- * (unk1ACC_0:15) has no byte-sized field at +0x1ACD. sub_08033DAC tests bit 6 of the byte at
+ * Local view: duel.h models gDuel as struct DuelState, whose u32 at +0x1ACC
+ * (unk1ACC_0:15) has no byte-sized field at +0x1ACD. EffectShieldAndSwordResolve tests bit 6 of the byte at
  * +0x1ACD (u32 bit 14) and only matches with a u8 load, so keep a unit-local byte view.
  */
 struct DuelStateByteView {
     u8 filler[0x1ACD];
     u8 unk1ACD;
 };
-extern struct DuelStateByteView gDuelStateBytes asm("gUnk_020192E0");
+extern struct DuelStateByteView gDuelStateBytes asm("gDuel");
 
-void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
-int sub_0802E784(struct EffCtx *ctx, int a, int b);
-int sub_0802BE70(struct EffCtx *ctx, u16 pos);
-int sub_08008A44(int player);
-void sub_08019078(int player, u16 pos, int c);
-int sub_08044224(int player, int number, int b);
-void sub_0802AF34(int player, int a, u16 number, int b);
-void sub_080199E0(int player, int a);
-int sub_080074A0(u16 a, u16 b);
-void sub_080193D4(int player, int index, int a, int b);
-void sub_08019E0C(int player, u16 number, int a);
-void sub_08018544(int player, int zone, int a);
-void sub_08030028(int player, int zone);
-void sub_08046CB0(int a, int player, int zone);
-int sub_080090C8(int player, u16 number);
-int sub_08008A1C(int player);
-int sub_08009C08(int player, u16 id, u32 *out);
-void sub_08056094(int player, u32 *card, int a, int b);
+void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
+int EffectAttackResponsePrepare(struct EffCtx *ctx, int a, int b);
+int EffectMagicArmShieldCheck(struct EffCtx *ctx, u16 pos);
+int FindFreeMonsterZone(int player);
+void MoveFieldCard(int player, u16 pos, int c);
+int CollectEffectTargets(int player, int number, int b);
+void CardListView_Open(int player, int a, u16 number, int b);
+void DrawCards(int player, int a);
+int IsSameCardName(u16 a, u16 b);
+void DiscardHandCard(int player, int index, int a, int b);
+void SendDeckCopiesToGraveyard(int player, u16 number, int a);
+void DestroyFieldCard(int player, int zone, int a);
+void DestroyFieldCardByEffect(int player, int zone);
+void OnCardDestroyedByEffect(int a, int player, int zone);
+int CountActiveCardsOnField2(int player, u16 number);
+int CountFreeMonsterZones(int player);
+int GetGraveyardCardById(int player, u16 id, u32 *out);
+void QueueSpecialSummonChoosePosition(int player, u32 *card, int a, int b);
 struct CardWord {
     u32 id : 12;
     u32 flag12 : 1;
@@ -90,109 +90,109 @@ struct SelBlk {
     u8 filler8[4];
     u32 cards[64];          /* +0xC: card words */
 };
-extern struct SelBlk gUnk_0201D810;
-extern struct { u8 filler[0x14]; u16 unk14; } gUnk_0201AE60;
-extern const char gUnk_08082CA8[];
-extern const char gUnk_08082CE0[];
-void sub_080602A4(u16 a, u16 b, int c, const char *text);
-void sub_08060308(int a, int b, int c);
-int sub_08052F38(u32 mask);
-void sub_08019788(int player, u16 id);
-void sub_08017AB4(int a, int b, int c, int d);
-int sub_0802B1B8(u16 id, int player, int zone);
-int sub_0800C894(int player, int zone);
-int sub_0800C8A8(int player, int zone);
-int sub_0802B28C(int player, int zone);
-void sub_080197E0(int player, u16 id);
-extern const char *const gUnk_0819D1C4[];
-extern const char gUnk_08082D24[];
-int sub_08054398(int player, u16 id);
-int sub_08007834(u16 id);
-int sub_08008A6C(u32 a, u32 b);
-void sub_08077AEC(u16 id);
-void sub_08055D3C(int player, u16 a, u16 b, u16 c);
+extern struct SelBlk gCardListView;
+extern struct { u8 filler[0x14]; u16 unk14; } gTextBox;
+extern const char gStrSelectGraveyardCardToBanish[];
+extern const char gStrBanishAnotherGraveyardCardQuestion[];
+void TextBoxOpen(u16 a, u16 b, int c, const char *text);
+void TextBoxSetMenu(int a, int b, int c);
+int DuelCursor_PickTarget(u32 mask);
+void ShowCardDetail(int player, u16 id);
+void QueueAddZoneLink(int a, int b, int c, int d);
+int CanCardTargetZone(u16 id, int player, int zone);
+int GetZoneCardAtk(int player, int zone);
+int GetZoneCardDef(int player, int zone);
+int IsZoneTargetable(int player, int zone);
+void ShowCardEffect(int player, u16 id);
+extern const char *const gTributeSummonPrompts[];
+extern const char gStrSelectMonsterToSummonFromHand[];
+int CanSummonFromHand(int player, u16 id);
+int IsSpecialSummonOnly(u16 id);
+int IsTributableMonster(u32 a, u32 b);
+void PlaySE(u16 id);
+void QueueNormalSummonChoosePosition(int player, u16 a, u16 b, u16 c);
 #define CARD_LEVEL(id) ((CARD_STATS(id) & 0x1E000000) >> 25)
-void sub_0802272C(int player, int a, int b, int c);
+void DuelPrompt_PostDiscard(int player, int a, int b, int c);
 
-int sub_08033DAC(struct EffCtx *ctx)
+int EffectShieldAndSwordResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4))
-        sub_0801EC58(PLAYER_RAW(ctx) ? 0x801D : 0x1D, !((gDuelStateBytes.unk1ACD >> 6) & 1), 0, 0);
+        DuelCmd_Push(PLAYER_RAW(ctx) ? 0x801D : 0x1D, !((gDuelStateBytes.unk1ACD >> 6) & 1), 0, 0);
     return 0;
 }
-int sub_08033DF4(struct EffCtx *ctx)
+int EffectGracefulCharityResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        switch (gUnk_02017A40.step) {
+        switch (gChain.step) {
         case 0x80:
-            sub_080199E0(ctx->player, 3);
+            DrawCards(ctx->player, 3);
             return 0x7F;
         case 0x7F:
-            sub_0802272C(ctx->player, 2, 0, 0);
+            DuelPrompt_PostDiscard(ctx->player, 2, 0, 0);
             return 0x7E;
         }
     }
     return 0;
 }
-int sub_08033E44(struct EffCtx *ctx)
+int EffectChainDestructionResolve(struct EffCtx *ctx)
 {
     int player = ((u8 *)&ctx->pos6)[0];
     int zone = ctx->pos6 >> 8;
     int p = 1 & player;
-    struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+    struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gDuelZones);
     u16 id = CARD_ID(CARD_WORD(z->card));
     u32 zero = (u8)(ctx->flags4 & 4);
 
     if (zero == 0) {
-        switch (gUnk_02017A40.step) {
+        switch (gChain.step) {
         case 0x80:
             if (id == 0)
                 return 0;
-            gUnk_02017A40.sub = zero;
-            gUnk_02017A40.step--;
+            gChain.sub = zero;
+            gChain.step--;
             /* fall through */
         case 0x7F:
-            while (gUnk_02017A40.sub < gUnk_020192E4[1 & player].handCount) {
-                if (sub_080074A0(CARD_ID(CARD_WORD(gUnk_020192E4[1 & player].hand[gUnk_02017A40.sub])), id) != 0) {
-                    sub_080193D4(player, gUnk_02017A40.sub, 1, 1);
+            while (gChain.sub < gDuelPlayers[1 & player].handCount) {
+                if (IsSameCardName(CARD_ID(CARD_WORD(gDuelPlayers[1 & player].hand[gChain.sub])), id) != 0) {
+                    DiscardHandCard(player, gChain.sub, 1, 1);
                     return 0x7F;
                 }
-                gUnk_02017A40.sub++;
+                gChain.sub++;
             }
             return 0x7E;
         case 0x7E:
-            sub_08019E0C(player, CARD_NUMBER(id), 1);
+            SendDeckCopiesToGraveyard(player, CARD_NUMBER(id), 1);
             return 0x7D;
         case 0x7D:
-            sub_0801EC58(player ? 0x8060 : 0x60, 0, 0, 0);
+            DuelCmd_Push(player ? 0x8060 : 0x60, 0, 0, 0);
             return 0x78;
         }
     }
     return 0;
 }
-int sub_08033F7C(struct EffCtx *ctx)
+int EffectMesmericControlResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4))
-        sub_0801EC58(PLAYER_RAW(ctx) == 0 ? 0x8048 : 0x48, 1, 0, 0);
+        DuelCmd_Push(PLAYER_RAW(ctx) == 0 ? 0x8048 : 0x48, 1, 0, 0);
     return 0;
 }
-int sub_08033FB0(struct EffCtx *ctx, int a)
+int EffectMagicArmShieldResolve(struct EffCtx *ctx, int a)
 {
-    if (!(ctx->flags4 & 4) && sub_0802E784(ctx, a, 0) != 0) {
+    if (!(ctx->flags4 & 4) && EffectAttackResponsePrepare(ctx, a, 0) != 0) {
         int phase = 7 & ((u8 *)ctx)[0xA];
 
-        if (phase == 1 && sub_0802BE70(ctx, ctx->pos) != 0) {
-            int v = sub_08008A44(ctx->player);
+        if (phase == 1 && EffectMagicArmShieldCheck(ctx, ctx->pos) != 0) {
+            int v = FindFreeMonsterZone(ctx->player);
 
             ctx->unkE = ctx->player | ((u8)v << 8);
-            sub_0801EC58(PLAYER_RAW(ctx) ? 0x80A2 : 0xA2, ctx->pos, 1, 0);
-            sub_08019078(ctx->player, ctx->pos, ctx->unkE);
-            sub_0801EC58(PLAYER_RAW(ctx) ? 0x8038 : 0x38, ctx->unkE, 1, 0);
+            DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80A2 : 0xA2, ctx->pos, 1, 0);
+            MoveFieldCard(ctx->player, ctx->pos, ctx->unkE);
+            DuelCmd_Push(PLAYER_RAW(ctx) ? 0x8038 : 0x38, ctx->unkE, 1, 0);
         }
     }
     return 0;
 }
-int sub_08034044(struct EffCtx *ctx)
+int EffectFissureResolve(struct EffCtx *ctx)
 {
     int best = 99999;
     int idx = -1;
@@ -202,16 +202,16 @@ int sub_08034044(struct EffCtx *ctx)
 
         for (i = 0; i <= 4; i++) {
             int p = (1 - ctx->player) & 1;
-            struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+            struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
             /* Keep the player shift and zone product in the ROM scratch registers. */
             __asm__("" : : : "r1");
             if (CARD_WORD(z->card) << 20 != 0) {
                 int p2 = (1 - ctx->player) & 1;
-                struct DuelZone *z2 = (struct DuelZone *)(i * 0x94 + p2 * 0xD64 + (u32)gUnk_0201930C);
+                struct DuelZone *z2 = (struct DuelZone *)(i * 0x94 + p2 * 0xD64 + (u32)gDuelZones);
 
                 if (z2->flag6_1) {
-                    int a = sub_0800C894(1 - ctx->player, i);
+                    int a = GetZoneCardAtk(1 - ctx->player, i);
 
                     if (a < best) {
                         best = a;
@@ -221,15 +221,15 @@ int sub_08034044(struct EffCtx *ctx)
             }
         }
         if (idx != -1) {
-            if (sub_0802B28C(1 - ctx->player, idx) != 0) {
-                sub_08030028(1 - ctx->player, idx);
-                sub_08046CB0(ctx->player, 1 - ctx->player, idx);
+            if (IsZoneTargetable(1 - ctx->player, idx) != 0) {
+                DestroyFieldCardByEffect(1 - ctx->player, idx);
+                OnCardDestroyedByEffect(ctx->player, 1 - ctx->player, idx);
             } else {
                 int p3 = (1 - ctx->player) & 1;
-                struct DuelZone *z3 = (struct DuelZone *)(idx * 0x94 + p3 * 0xD64 + (u32)gUnk_0201930C);
+                struct DuelZone *z3 = (struct DuelZone *)(idx * 0x94 + p3 * 0xD64 + (u32)gDuelZones);
 
                 if (CARD_WORD(z3->card) << 20 != 0) {
-                    sub_080197E0(ctx->player, CARD_ID(CARD_WORD(((struct DuelZone *)(((1 - ctx->player) & 1) * 0xD64 + idx * 0x94 + (u32)gUnk_0201930C))->card)));
+                    ShowCardEffect(ctx->player, CARD_ID(CARD_WORD(((struct DuelZone *)(((1 - ctx->player) & 1) * 0xD64 + idx * 0x94 + (u32)gDuelZones))->card)));
                 }
             }
         }
@@ -254,7 +254,7 @@ static inline int Gt999(int value)
     return r;
 }
 
-int sub_0803415C(struct EffCtx *ctx)
+int EffectTrapHoleResolve(struct EffCtx *ctx)
 {
     int player = ((u8 *)&ctx->pos6)[0];
     int zone = ctx->pos6 >> 8;
@@ -265,23 +265,23 @@ int sub_0803415C(struct EffCtx *ctx)
     __asm__("" : "+r"(ok));
     if (!(ctx->flags4 & 4) && (ctx->kind == 5 || ctx->kind == 6)) {
         int p = 1 & player;
-        struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+        struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
-        if (CARD_WORD(z->card) << 20 != 0 && sub_0802B1B8(ctx->id, player, zone) != 0) {
+        if (CARD_WORD(z->card) << 20 != 0 && CanCardTargetZone(ctx->id, player, zone) != 0) {
             switch (CARD_NUMBER(ctx->id)) {
             case 0x3EA:
-                ok = Gt999(sub_0800C894(player, zone));
+                ok = Gt999(GetZoneCardAtk(player, zone));
                 break;
             case 0x2A8:
-                ok = Le500(sub_0800C8A8(player, zone));
+                ok = Le500(GetZoneCardDef(player, zone));
                 break;
             case 0x2A9:
-                ok = Le500(sub_0800C894(player, zone));
+                ok = Le500(GetZoneCardAtk(player, zone));
                 break;
             }
             if (ok != 0) {
-                sub_08030028(player, zone);
-                sub_08046CB0(ctx->player, player, zone);
+                DestroyFieldCardByEffect(player, zone);
+                OnCardDestroyedByEffect(ctx->player, player, zone);
             }
         }
     }
@@ -289,7 +289,7 @@ int sub_0803415C(struct EffCtx *ctx)
     __asm__("" : : : "r5");
     return 0;
 }
-int sub_08034240(struct EffCtx *ctx)
+int EffectRemoveTrapResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
         int phase = 7 & ((u8 *)ctx)[0xA];
@@ -298,16 +298,16 @@ int sub_08034240(struct EffCtx *ctx)
             int player = ((u8 *)&ctx->pos)[0];
             int zone = ctx->pos >> 8;
             int p = phase & player;
-            struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+            struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gDuelZones);
             u32 id = CARD_ID(CARD_WORD(z->card));
 
             if (id != 0 && CARD_TYPE(id) == 0x15 && (z->flag6_1))
-                sub_08018544(player, zone, 1);
+                DestroyFieldCard(player, zone, 1);
         }
     }
     return 0;
 }
-int sub_080342C0(struct EffCtx *ctx)
+int EffectTwoProngedAttackResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4) && (7 & ((u8 *)ctx)[0xA]) == 3) {
         int i;
@@ -328,7 +328,7 @@ int sub_080342C0(struct EffCtx *ctx)
             e = (u16 *)(loopbase + off);
             zone = *e >> 8;
             p = 1 & ((u8 *)e)[0];
-            z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+            z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
             if (!CARD_ID(CARD_WORD(z->card)))
                 return 0;
@@ -347,33 +347,33 @@ int sub_080342C0(struct EffCtx *ctx)
             player = ((u8 *)e)[0];
             zone = *e >> 8;
 
-            sub_08030028(player, zone);
-            sub_08046CB0(ctx->player, player, zone);
+            DestroyFieldCardByEffect(player, zone);
+            OnCardDestroyedByEffect(ctx->player, player, zone);
         }
     }
     return 0;
 }
-int sub_0803435C(struct EffCtx *ctx)
+int EffectMonsterRebornResolve(struct EffCtx *ctx)
 {
     u32 out;
     struct CardWord card;
 
     if (!(ctx->flags4 & 4)) {
         if (CARD_NUMBER(ctx->id) == 0x3F0) {
-            if (sub_080090C8(0, 0x402) > 0 || sub_080090C8(1, 0x402) > 0)
+            if (CountActiveCardsOnField2(0, 0x402) > 0 || CountActiveCardsOnField2(1, 0x402) > 0)
                 return 0;
         }
-        if ((7 & ((u8 *)ctx)[0xA]) == 2 && sub_08008A1C(ctx->player) > 0) {
+        if ((7 & ((u8 *)ctx)[0xA]) == 2 && CountFreeMonsterZones(ctx->player) > 0) {
             *(u32 *)&card = ctx->unkE << 16 | ctx->pos;
-            if (sub_08009C08(card.flag12, card.id, &out) != 0) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80D3 : 0xD3, ctx->pos, ctx->unkE, 0);
-                sub_08056094(ctx->player, (u32 *)&card, 1, 0x30);
+            if (GetGraveyardCardById(card.flag12, card.id, &out) != 0) {
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80D3 : 0xD3, ctx->pos, ctx->unkE, 0);
+                QueueSpecialSummonChoosePosition(ctx->player, (u32 *)&card, 1, 0x30);
             }
         }
     }
     return 0;
 }
-int sub_08034414(struct EffCtx *ctx)
+int EffectDrawCardsResolve(struct EffCtx *ctx)
 {
     int n = 0;
 
@@ -388,65 +388,65 @@ int sub_08034414(struct EffCtx *ctx)
             break;
         }
         if (n > 0)
-            sub_080199E0(ctx->player, n);
+            DrawCards(ctx->player, n);
     }
     return 0;
 }
-int sub_0803447C(struct EffCtx *ctx)
+int EffectBanishGraveyardCardsResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        switch (gUnk_02017A40.step) {
+        switch (gChain.step) {
         case 0x80:
             switch (CARD_NUMBER(ctx->id)) {
             case 0x3F3:
-                gUnk_02017A40.sub = 2;
+                gChain.sub = 2;
                 break;
             case 0x400:
-                gUnk_02017A40.sub = 5;
+                gChain.sub = 5;
                 break;
             }
-            gUnk_02017A40.step--;
+            gChain.step--;
             /* fall through */
         case 0x7F:
-            if (sub_08044224(ctx->player, CARD_NUMBER(ctx->id), 0) <= 0)
+            if (CollectEffectTargets(ctx->player, CARD_NUMBER(ctx->id), 0) <= 0)
                 return 0;
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_08082CA8);
+            TextBoxOpen(0x206, 0x712, 0xB, gStrSelectGraveyardCardToBanish);
             return 0x7E;
         case 0x7E:
-            sub_0802AF34(ctx->player, -1, CARD_NUMBER(ctx->id), 0);
+            CardListView_Open(ctx->player, -1, CARD_NUMBER(ctx->id), 0);
             return 0x7D;
         case 0x7D: {
-            u32 *card = &gUnk_0201D810.cards[gUnk_0201D810.sel + gUnk_0201D810.base];
+            u32 *card = &gCardListView.cards[gCardListView.sel + gCardListView.base];
 
-            sub_0801EC58((int)(gUnk_0201D810.cards[gUnk_0201D810.sel + gUnk_0201D810.base] << 19) < 0 ? 0x80D4 : 0xD4,
+            DuelCmd_Push((int)(gCardListView.cards[gCardListView.sel + gCardListView.base] << 19) < 0 ? 0x80D4 : 0xD4,
                          ((u16 *)card)[0], ((u16 *)card)[1], 0);
-            gUnk_02017A40.sub--;
-            if (gUnk_02017A40.sub == 0)
+            gChain.sub--;
+            if (gChain.sub == 0)
                 return 0;
             return 0x7C;
         }
         case 0x7C:
-            if (sub_08044224(ctx->player, CARD_NUMBER(ctx->id), 0) == 0)
+            if (CollectEffectTargets(ctx->player, CARD_NUMBER(ctx->id), 0) == 0)
                 return 0;
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_08082CE0);
-            sub_08060308(1, 0, 0);
+            TextBoxOpen(0x206, 0x712, 0xB, gStrBanishAnotherGraveyardCardQuestion);
+            TextBoxSetMenu(1, 0, 0);
             return 0x7B;
         case 0x7B:
-            if (gUnk_0201AE60.unk14 == 0)
+            if (gTextBox.unk14 == 0)
                 return 0;
             return 0x7F;
         }
     }
     return 0;
 }
-int sub_08034644(struct EffCtx *ctx)
+int EffectTheInexperiencedSpyResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        if (gUnk_020192E4[1 & ctx->player].handCount != 0) {
-            if (sub_08052F38(0x10000) != 0) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x8008 : 0x8, (u16)gUnk_0201CFB0.player,
-                             *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
-                sub_08019788(ctx->player, CARD_ID(CARD_WORD(gUnk_020192E4[(1 - ctx->player) & 1].hand[gUnk_0201CFB0.cursor])));
+        if (gDuelPlayers[1 & ctx->player].handCount != 0) {
+            if (DuelCursor_PickTarget(0x10000) != 0) {
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x8008 : 0x8, (u16)gDuelScreen.player,
+                             *(u8 *)&gDuelScreen.zone | (*(u8 *)&gDuelScreen.cursor << 8), 0);
+                ShowCardDetail(ctx->player, CARD_ID(CARD_WORD(gDuelPlayers[(1 - ctx->player) & 1].hand[gDuelScreen.cursor])));
             } else
                 goto r80;
         }
@@ -455,7 +455,7 @@ int sub_08034644(struct EffCtx *ctx)
 r80:
     return 0x80;
 }
-int sub_08034708(struct EffCtx *ctx)
+int EffectAddStatModifierResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
         int phase = 7 & ((u8 *)ctx)[0xA];
@@ -464,37 +464,37 @@ int sub_08034708(struct EffCtx *ctx)
             u16 pos = ctx->pos;
             int zone = pos >> 8;
             int p = phase & ((u8 *)&ctx->pos)[0];
-            struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+            struct DuelZone *z = (struct DuelZone *)(zone * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
             if ((z->flag6_1) && CARD_ID(CARD_WORD(z->card)))
-                sub_08017AB4(ctx->player, ctx->id, pos, 3);
+                QueueAddZoneLink(ctx->player, ctx->id, pos, 3);
         }
     }
     return 0;
 }
-int sub_08034768(struct EffCtx *ctx)
+int EffectUltimateOfferingResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        switch (gUnk_02017A40.step) {
+        switch (gChain.step) {
         case 0x80: {
             int i;
 
-            for (i = 0; i < gUnk_020192E4[1 & ctx->player].handCount; i++) {
-                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ctx->player].hand[i]));
+            for (i = 0; i < gDuelPlayers[1 & ctx->player].handCount; i++) {
+                u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & ctx->player].hand[i]));
 
-                if (sub_08054398(ctx->player, id) != 0 && sub_08007834(id) == 0) {
-                    sub_080602A4(0x206, 0x712, 0xB, gUnk_08082D24);
+                if (CanSummonFromHand(ctx->player, id) != 0 && IsSpecialSummonOnly(id) == 0) {
+                    TextBoxOpen(0x206, 0x712, 0xB, gStrSelectMonsterToSummonFromHand);
                     return 0x7F;
                 }
             }
             break;
         }
         case 0x7F:
-            if (sub_08052F38(1) != 0) {
-                u32 cursor = gUnk_0201CFB0.cursor;
-                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[ctx->player].hand[cursor]));
+            if (DuelCursor_PickTarget(1) != 0) {
+                u32 cursor = gDuelScreen.cursor;
+                u16 id = CARD_ID(CARD_WORD(gDuelPlayers[ctx->player].hand[cursor]));
 
-                if (sub_08054398(ctx->player, id) != 0 && sub_08007834(id) == 0) {
+                if (CanSummonFromHand(ctx->player, id) != 0 && IsSpecialSummonOnly(id) == 0) {
                     int v;
 
                     ctx->pos = cursor;
@@ -516,7 +516,7 @@ int sub_08034768(struct EffCtx *ctx)
                     case 2:
                     case 3:
                     case 4:
-                        ctx->unkE = sub_08008A44(ctx->player);
+                        ctx->unkE = FindFreeMonsterZone(ctx->player);
                         ctx->unk10 = 0;
                         return 0x64;
                     case 5:
@@ -526,83 +526,83 @@ int sub_08034768(struct EffCtx *ctx)
                         return 0x78;
                     }
                 }
-                sub_08077AEC(3);
+                PlaySE(3);
             }
             return 0x7F;
         case 0x78:
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_0819D1C4[1]);
-            sub_08060308(1, 0, 0);
+            TextBoxOpen(0x206, 0x712, 0xB, gTributeSummonPrompts[1]);
+            TextBoxSetMenu(1, 0, 0);
             return 0x77;
         case 0x77:
-            if (gUnk_0201AE60.unk14 == 0)
+            if (gTextBox.unk14 == 0)
                 return 0x80;
-            sub_080602A4(0x206, 0x412, 0xB, gUnk_0819D1C4[2]);
+            TextBoxOpen(0x206, 0x412, 0xB, gTributeSummonPrompts[2]);
             return 0x76;
         case 0x76:
-            if (sub_08052F38(0xF0) != 0) {
-                if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0) {
-                    sub_08077AEC(1);
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
-                    ctx->unkE = gUnk_0201CFB0.cursor;
-                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80) << 8;
+            if (DuelCursor_PickTarget(0xF0) != 0) {
+                if (IsTributableMonster(gDuelScreen.player, gDuelScreen.cursor) != 0) {
+                    PlaySE(1);
+                    DuelCmd_Push(8, (u16)gDuelScreen.player, *(u8 *)&gDuelScreen.zone | (*(u8 *)&gDuelScreen.cursor << 8), 0);
+                    ctx->unkE = gDuelScreen.cursor;
+                    ctx->unk10 = (u8)((int)gDuelScreen.cursor | 0x80) << 8;
                     return 0x75;
                 }
-                sub_08077AEC(3);
+                PlaySE(3);
             }
             return 0x76;
         case 0x75:
-            sub_080602A4(0x206, 0x412, 0xB, gUnk_0819D1C4[3]);
+            TextBoxOpen(0x206, 0x412, 0xB, gTributeSummonPrompts[3]);
             return 0x74;
         case 0x74:
-            if (sub_08052F38(0xF0) != 0) {
-                if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0 && gUnk_0201CFB0.cursor != ctx->unkE) {
-                    sub_08077AEC(1);
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
-                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80) | ctx->unk10;
+            if (DuelCursor_PickTarget(0xF0) != 0) {
+                if (IsTributableMonster(gDuelScreen.player, gDuelScreen.cursor) != 0 && gDuelScreen.cursor != ctx->unkE) {
+                    PlaySE(1);
+                    DuelCmd_Push(8, (u16)gDuelScreen.player, *(u8 *)&gDuelScreen.zone | (*(u8 *)&gDuelScreen.cursor << 8), 0);
+                    ctx->unk10 = (u8)((int)gDuelScreen.cursor | 0x80) | ctx->unk10;
                     return 0x64;
                 }
-                sub_08077AEC(3);
+                PlaySE(3);
             }
             return 0x74;
         case 0x6E:
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_0819D1C4[0]);
-            sub_08060308(1, 0, 0);
+            TextBoxOpen(0x206, 0x712, 0xB, gTributeSummonPrompts[0]);
+            TextBoxSetMenu(1, 0, 0);
             return 0x6D;
         case 0x6D:
-            if (gUnk_0201AE60.unk14 == 0)
+            if (gTextBox.unk14 == 0)
                 return 0x80;
-            sub_080602A4(0x206, 0x412, 0xB, gUnk_0819D1C4[4]);
+            TextBoxOpen(0x206, 0x412, 0xB, gTributeSummonPrompts[4]);
             return 0x6C;
         case 0x6C:
-            if (sub_08052F38(0xF0) != 0) {
-                if (sub_08008A6C(gUnk_0201CFB0.player, gUnk_0201CFB0.cursor) != 0) {
-                    sub_08077AEC(1);
-                    sub_0801EC58(8, (u16)gUnk_0201CFB0.player, *(u8 *)&gUnk_0201CFB0.zone | (*(u8 *)&gUnk_0201CFB0.cursor << 8), 0);
-                    ctx->unkE = gUnk_0201CFB0.cursor;
-                    ctx->unk10 = (u8)((int)gUnk_0201CFB0.cursor | 0x80);
+            if (DuelCursor_PickTarget(0xF0) != 0) {
+                if (IsTributableMonster(gDuelScreen.player, gDuelScreen.cursor) != 0) {
+                    PlaySE(1);
+                    DuelCmd_Push(8, (u16)gDuelScreen.player, *(u8 *)&gDuelScreen.zone | (*(u8 *)&gDuelScreen.cursor << 8), 0);
+                    ctx->unkE = gDuelScreen.cursor;
+                    ctx->unk10 = (u8)((int)gDuelScreen.cursor | 0x80);
                     return 0x64;
                 }
-                sub_08077AEC(3);
+                PlaySE(3);
             }
             return 0x6C;
         case 0x64:
-            sub_08055D3C(ctx->player, ctx->pos, ctx->unkE, ctx->unk10);
+            QueueNormalSummonChoosePosition(ctx->player, ctx->pos, ctx->unkE, ctx->unk10);
             return 0xA;
         }
     }
     return 0;
 }
-int sub_08034BA8(struct EffCtx *ctx)
+int EffectAncientTelescopeResolve(struct EffCtx *ctx)
 {
     if (!(ctx->flags4 & 4)) {
-        sub_08044224(ctx->player, CARD_NUMBER(ctx->id), 0);
-        sub_0802AF34(ctx->player, -1, CARD_NUMBER(ctx->id), 0);
+        CollectEffectTargets(ctx->player, CARD_NUMBER(ctx->id), 0);
+        CardListView_Open(ctx->player, -1, CARD_NUMBER(ctx->id), 0);
     }
     return 0;
 }
-int sub_08007590(u16 number, int flag);
+int HasFlipEffect(u16 number, int flag);
 
-int sub_08034BFC(struct EffCtx *ctx, struct EffCtx *other)
+int EffectNegateChainedCardResolve(struct EffCtx *ctx, struct EffCtx *other)
 {
     int i;
 
@@ -610,71 +610,71 @@ int sub_08034BFC(struct EffCtx *ctx, struct EffCtx *other)
         switch (CARD_NUMBER(ctx->id)) {
         case 0x3FB:
             if (CARD_NUMBER(other->id) == 0x14F && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
                 for (i = 0; i <= 4; i++) {
                     int p = (1 - ctx->player) & 1;
-                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
                     if (CARD_WORD(z->card) << 20 != 0) {
-                        sub_08030028(1 - ctx->player, i);
-                        sub_08046CB0(ctx->player, 1 - ctx->player, i);
+                        DestroyFieldCardByEffect(1 - ctx->player, i);
+                        OnCardDestroyedByEffect(ctx->player, 1 - ctx->player, i);
                     }
                 }
             }
             return 0;
         case 0x3FD:
             if (CARD_NUMBER(other->id) == 0x3F0 && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
             }
             break;
         case 0x3FE:
             if (CARD_NUMBER(other->id) == 0x150 && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
                 for (i = 0; i <= 4; i++) {
                     int p = (1 - ctx->player) & 1;
-                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
                     if (CARD_WORD(z->card) << 20 != 0) {
-                        sub_08030028(1 - ctx->player, i);
-                        sub_08046CB0(ctx->player, 1 - ctx->player, i);
+                        DestroyFieldCardByEffect(1 - ctx->player, i);
+                        OnCardDestroyedByEffect(ctx->player, 1 - ctx->player, i);
                     }
                 }
             }
             return 0;
         case 0x405:
             if (CARD_TYPE(other->id) == 0x16) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
             }
             return 0;
         case 0x406:
             if (CARD_TYPE(other->id) == 0x15) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
             }
             return 0;
         case 0x426:
             if (CARD_NUMBER(other->id) == 0x29F && PLAYER_RAW(other) != PLAYER_RAW(ctx)) {
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
                 for (i = 5; i <= 10; i++) {
                     int p = (1 - ctx->player) & 1;
-                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gUnk_0201930C);
+                    struct DuelZone *z = (struct DuelZone *)(i * 0x94 + p * 0xD64 + (u32)gDuelZones);
 
                     if (CARD_WORD(z->card) << 20 != 0) {
-                        sub_0801EC58(PLAYER_RAW(ctx) == 0 ? 0x808B : 0x8B, i, 1, 0);
-                        sub_08018544(1 - ctx->player, i, 1);
+                        DuelCmd_Push(PLAYER_RAW(ctx) == 0 ? 0x808B : 0x8B, i, 1, 0);
+                        DestroyFieldCard(1 - ctx->player, i, 1);
                     }
                 }
             }
             return 0;
         case 0x5FA:
             if (CARD_TYPE(other->id) <= 0x14
-                && (sub_08007590(CARD_NUMBER(other->id), 1) != 0 || sub_08007590(CARD_NUMBER(other->id), 0) != 0))
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                && (HasFlipEffect(CARD_NUMBER(other->id), 1) != 0 || HasFlipEffect(CARD_NUMBER(other->id), 0) != 0))
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
             break;
         case 0x5FB:
             switch (CARD_NUMBER(other->id)) {
@@ -713,8 +713,8 @@ int sub_08034BFC(struct EffCtx *ctx, struct EffCtx *other)
             case 0x60A:
             case 0x60C:
             case 0x60E:
-                sub_0801EC58(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
-                sub_0801EC58(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
+                DuelCmd_Push(PLAYER_RAW(ctx) ? 0x80B0 : 0xB0, 1, 0, 0);
+                DuelCmd_Push(PLAYER_RAW(other) ? 0x80B1 : 0xB1, other->zone, 1, 0);
                 break;
             }
             break;

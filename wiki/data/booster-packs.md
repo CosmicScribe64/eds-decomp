@@ -59,12 +59,12 @@ Display order of all 28 IDs: `u16[28]` at `0x080819BE` (1–7, 41, 21, 11, 22, 1
 
 **ROM layout (verified by an exact re-pack, 2026-10-02).** `0x081A452C`–`0x081A562C` holds, for each pack in table order, its non-empty slot lists, then 0 or 2 bytes of padding to a 4-byte boundary, then its `PackSlots`. An empty slot is `{NULL, 0}`. Packs 11, 12, 501, 502, 503, 505, 507, 802, 901 and 902 have the 2-byte pad. The contents extract to `tables/rodata2/booster_packs.json` ([[assets]]). Slot lists may change size if everything still fits before `0x081A562C`, but the number of packs is fixed at 28.
 
-### Rarity roll (`sub_08062A0C`)
+### Rarity roll (`RollPackRarity`)
 - It draws `r = rand() % 180`, or `% 270` when buying the same pack again.
-- It walks slots 0..6 using the cumulative thresholds `s32[8]` at `0x081A570C`, which hold `{1, 3, 6, 10, 16, 28, 64, 180}`, and takes the first *non-empty* slot with `r < thresh[i]`. Otherwise it falls back to the highest non-empty slot (`sub_080629F0`, normally 7 = commons).
+- It walks slots 0..6 using the cumulative thresholds `s32[8]` at `0x081A570C`, which hold `{1, 3, 6, 10, 16, 28, 64, 180}`, and takes the first *non-empty* slot with `r < thresh[i]`. Otherwise it falls back to the highest non-empty slot (`GetPackCommonSlot`, normally 7 = commons).
 - A pity counter at `0x02013D76` counts commons-only packs. Once it exceeds 5 (or 10 when re-buying the same pack), the roll becomes `rand() % 12`, which forces one of the rare slots. This is an approximate reading.
 
-### Pack generation (`sub_08062AF4(u16 *out5, u16 packId)`)
+### Pack generation (`GeneratePackCards(u16 *out5, u16 packId)`)
 - **Normal packs:** the output holds 1 random card from the rolled slot plus 4 cards taken in order from a shuffled copy of the common slot, skipping copies of the rolled card. The 5 cards are then shuffled (25 random swaps).
 - **Pack IDs 0x66 (102), 0x67 (103), and 0x6E (110)** are special random packs that draw 5 distinct random card IDs from 0..820, excluding card numbers 1920–1999. Pack 0x66 accepts only Traps (type 21), 0x67 only Magic (type 22), and 0x6E anything. These IDs have no table entry, and their shop names haven't been found yet.
 
@@ -96,7 +96,7 @@ Example: Vol.1 slot 4 holds {Dark Magician, Gaia The Fierce Knight}, and slot 5 
 ## Method
 - The pack names were found by a string search for "Expert Pack". Stepping back and forth in 0x48 increments then located `0x080865DC`, which has 5 code references.
 - The `image` pointers were checked and are 8bpp tile data 0x1880 apart. An earlier guess that they pointed to pack contents was wrong.
-- `sub_08062AF4` loads `0x081A562C` and scans 28 8-byte entries for a matching `u16` ID at +4. Disassembling it and its helpers `sub_08062A0C`, `sub_080629F0`, and `sub_08062AD4` gave the slot layout and the thresholds.
+- `GeneratePackCards` loads `0x081A562C` and scans 28 8-byte entries for a matching `u16` ID at +4. Disassembling it and its helpers `RollPackRarity`, `GetPackCommonSlot`, and `PickPackSlotCard` gave the slot layout and the thresholds.
 - Reproduce: `python3 tools/extract_cards.py packs`, or read `assets/tables/rodata2/booster_packs.json` after `make setup`.
 
 Related: [[deck-lists]], [[card-id-map]], [[card-data-functions]].

@@ -54,10 +54,10 @@ struct TitleState {
     u16 continueSelected : 1;            /* 0x2 bit 1 */
 };
 
-extern struct Main gUnk_03000040;
-#define gMain gUnk_03000040
-extern struct TitleState gUnk_0201527C;
-#define gTitleState gUnk_0201527C
+extern struct Main gMain;
+#define gMain gMain
+extern struct TitleState gTitleState;
+#define gTitleState gTitleState
 /* gSaveData at 0x02011C20 (0x2170-byte save image) */
 struct SaveData {
     u8 filler0[0x2150];
@@ -66,25 +66,25 @@ struct SaveData {
     u16 unk215E;                        /* 0x215E: unlock counter (hypothesis) */
     u16 unk2160;                        /* 0x2160 */
 };
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
 
-extern u16 (*const gUnk_0819879C[])(void);
-extern const u8 gUnk_087D01F4[];
-extern const u8 gUnk_087C056C[];
+extern u16 (*const gLicenseSteps[])(void);
+extern const u8 gKonamiLogoImage[];
+extern const u8 gTitleCopyrightImage[];
 /* IWRAM 0x03000000: interrupt vectors (hypothesis: +4 = HBlank callback) */
 struct IntrVectors {
     u32 unk0;
     void (*hblankCallback)(void);
 };
-extern struct IntrVectors gUnk_03000000;
-u16 sub_08075AE4(u16 step);
-u16 sub_080057BC(void);
-s32 sub_080753CC(const u8 *str); /* StrLen */
-void sub_0807501C(s32 x, s32 y, u16 color, const u8 *str); /* DrawText (hypothesis) */
-void sub_08075114(void *dest, u16 b);
-void sub_08074B08(u8 a, u8 b);
-extern const u8 gUnk_087D292C[];
+extern struct IntrVectors IntrTable;
+u16 FadeFromBlack(u16 step);
+u16 CB_Title(void);
+s32 StrLen(const u8 *str); /* StrLen */
+void TextDrawString(s32 x, s32 y, u16 color, const u8 *str); /* DrawText (hypothesis) */
+void TextCanvasToTiles(void *dest, u16 b);
+void TextCanvasInit(u8 a, u8 b);
+extern const u8 gKcejLogoImage[];
 
 /* Starting-deck card pool (0x08198744, 11 entries). See [[deck-lists]]. */
 struct DeckPool {
@@ -94,13 +94,13 @@ struct DeckPool {
     u32 take1:5;        /* ... choice 1 */
     u32 take2:5;        /* ... choice 2 */
 };
-extern const struct DeckPool gUnk_08198744[];
-extern const u16 gUnk_08623DF4[]; /* card ID to card index */
-extern const u8 gUnk_080813E4[];
-s32 sub_08076F9C(void); /* Random */
-void sub_080774EC(u16 card);
-void sub_0801A7DC(const u8 *fmt, u32 arg);
-void sub_0801A7E8(void);
+extern const struct DeckPool gStarterDeckPools[];
+extern const u16 gCardNumberToId[]; /* card ID to card index */
+extern const u8 gStrStarterDeckErrorFmt[];
+s32 Random(void); /* Random */
+void AddCardToSavedDeck(u16 card);
+void DebugPrintf(const u8 *fmt, u32 arg);
+void DebugPrintFlush(void);
 
 /* Converts a card ID (0..1999 and 2000+) to a card index; 0xFFFF maps to 0. Inlined wherever it appears. */
 static inline u16 CardIdToIndex(u16 id)
@@ -117,7 +117,7 @@ static inline u16 CardIdToIndex(u16 id)
 
         asm("" : : "r"(mask));
         off = (id & copy) * 2;
-        table = gUnk_08623DF4;
+        table = gCardNumberToId;
         off += (u32)table;
         return *(const u16 *)off;
     }
@@ -126,18 +126,18 @@ static inline u16 CardIdToIndex(u16 id)
         /* FAKEMATCH: the alternate-ID path uses a separate table scratch. */
         register const u16 *table asm("r3");
 
-        table = gUnk_08623DF4;
+        table = gCardNumberToId;
         off += (u32)table;
         return *(const u16 *)off + 1;
     }
 }
-extern const u8 gUnk_080813F0[];
-void sub_0807326C(u16 a, u16 b, u16 c, const void *img);
+extern const u8 gStrLicensedByNintendo[];
+void LoadBgImage4bpp(u16 a, u16 b, u16 c, const void *img);
 
-u32 sub_080042D8(u32 year, u32 month, u32 day); /* day of week */
-u32 sub_08004280(u32 year);
-u32 sub_08004358(u32 year, u32 month, u32 day);
-u32 sub_08004494(u32 a, u32 b, u32 c);
+u32 GetDayOfWeek(u32 year, u32 month, u32 day); /* day of week */
+u32 IsLeapYear(u32 year);
+u32 GetHolidayFlags(u32 year, u32 month, u32 day);
+u32 IsDayOff(u32 a, u32 b, u32 c);
 /* Unpacked date */
 struct Date {
     u32 year:12;
@@ -145,44 +145,44 @@ struct Date {
     u32 day:5;
     u32 weekday:3;
 };
-void sub_080047F4(struct Date *date, u16 days);
-extern const u8 gUnk_08198628[]; /* days per month */
-void sub_08004F2C(void);
-void sub_08004FA4(void);
-void sub_08004FD8(void);
-void sub_08072FAC(u16 mapBase, u16 palIdx, u16 tileBase, const void *img);
-void sub_08073498(void);
-void sub_08073574(void);
-void sub_08075278(void *dst, u32 size);
-void sub_080757AC(void);
-void sub_080759F4(void);
-void sub_08075A30(void);
-u16 sub_08075A6C(u16 step);
-u16 sub_08075B58(u16 step);
-u16 sub_08075BD0(u16 step);
-void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
-u32 sub_08077034(void);
-void sub_08077AEC(u16 id);
-void sub_08077B54(u16 id);
-void sub_08077BCC(void);
+void DayCountToDate(struct Date *date, u16 days);
+extern const u8 gDaysPerMonth[]; /* days per month */
+void Title_DrawMenu(void);
+void Title_InitBgCnt(void);
+void Title_LoadGraphics(void);
+void LoadBgImage(u16 mapBase, u16 palIdx, u16 tileBase, const void *img);
+void ClearBgMapBuffers(void);
+void ResetVideo(void);
+void MemClear16(void *dst, u32 size);
+void ResetBgScroll(void);
+void SetBrightnessBlack(void);
+void SetBrightnessWhite(void);
+u16 FadeToBlack(u16 step);
+u16 FadeToWhite(u16 step);
+u16 FadeFromWhite(u16 step);
+void AddSprite(u32 yx, u16 shapeSize, u16 attr2);
+u32 IsSaveChecksumValid(void);
+void PlaySE(u16 id);
+void PlayBGMNoTrack(u16 id);
+void FadeOutBGM(void);
 
 /*
  * Returns a bitmask of restrictions/flags for the calendar entry (arg0, arg1, arg2),
- * which is a year, a month and a day-like value. Starts from sub_08004358()'s flags and
- * ORs in bits per case, then checks surrounding days via sub_08004494 (day-info) and
+ * which is a year, a month and a day-like value. Starts from GetHolidayFlags()'s flags and
+ * ORs in bits per case, then checks surrounding days via IsDayOff (day-info) and
  * the save-data unlock counters.
  */
 static inline u32 WeekOfMonth(u32 year, u32 month, u32 day)
 {
-    sub_080042D8(year, month, 1);
-    sub_080042D8(year, month, day);
+    GetDayOfWeek(year, month, 1);
+    GetDayOfWeek(year, month, day);
     return (day - 1) / 7 + 1;
 }
 
-u32 sub_080044E4(u32 year, u32 month, u32 day)
+u32 GetCalendarEvents(u32 year, u32 month, u32 day)
 {
     u32 bit20, bit21;
-    u32 flags = sub_08004358(year, month, day);
+    u32 flags = GetHolidayFlags(year, month, day);
 
     switch (month - 2) {
     case 0:
@@ -196,9 +196,9 @@ u32 sub_080044E4(u32 year, u32 month, u32 day)
     case 4:
         if (day == 0x1C)
             flags |= 0x8000;
-        if (WeekOfMonth(year, month, day) == 1 && sub_080042D8(year, month, day) == 6)
+        if (WeekOfMonth(year, month, day) == 1 && GetDayOfWeek(year, month, day) == 6)
             flags |= 0x10000000;
-        if (WeekOfMonth(year, month, day - 1) == 1 && sub_080042D8(year, month, day - 1) == 6
+        if (WeekOfMonth(year, month, day - 1) == 1 && GetDayOfWeek(year, month, day - 1) == 6
             && gSaveData.unk2160 != 0)
             flags |= 0x20000000;
         break;
@@ -207,7 +207,7 @@ u32 sub_080044E4(u32 year, u32 month, u32 day)
             flags |= 0x10000;
         break;
     case 9:
-        if (sub_080042D8(year, month, day) == 0) {
+        if (GetDayOfWeek(year, month, day) == 0) {
             switch (WeekOfMonth(year, month, day)) {
             case 1:
                 flags |= 0x1000000;
@@ -232,38 +232,38 @@ u32 sub_080044E4(u32 year, u32 month, u32 day)
             flags |= 0x20000;
         break;
     }
-    if (sub_080042D8(year, month, day) == 6) {
+    if (GetDayOfWeek(year, month, day) == 6) {
         u32 v = WeekOfMonth(year, month, day);
         if (v == 2 || v == 4)
             flags |= 0x400000;
     }
     /* The shared exit keeps flags at one return use, which lets month win r6 over flags. */
-    if ((sub_08004494(year, month, day) << 16) != 0)
+    if ((IsDayOff(year, month, day) << 16) != 0)
         goto end;
     bit20 = 0;
     bit21 = 0;
-    if (sub_080042D8(year, month, day) == 2
+    if (GetDayOfWeek(year, month, day) == 2
         && (year > 0x7D1 || month > 1 || day > 2))
         bit20 = 1;
-    if (sub_080042D8(year, month, day) == 1
-        && (sub_08004494(year, month, day + 1) << 16) != 0)
+    if (GetDayOfWeek(year, month, day) == 1
+        && (IsDayOff(year, month, day + 1) << 16) != 0)
         bit20 = 1;
-    if (sub_080042D8(year, month, day) == 6
-        && (sub_08004494(year, month, day + 2) << 16) != 0
-        && (sub_08004494(year, month, day + 3) << 16) != 0)
+    if (GetDayOfWeek(year, month, day) == 6
+        && (IsDayOff(year, month, day + 2) << 16) != 0
+        && (IsDayOff(year, month, day + 3) << 16) != 0)
         bit20 = 1;
     if (bit20 != 0)
         flags |= 0x100000;
     if (day == 0x15)
         bit21 = 1;
-    if (day == 0x14 && (sub_08004494(year, month, 0x15) << 16) != 0)
+    if (day == 0x14 && (IsDayOff(year, month, 0x15) << 16) != 0)
         bit21 = 1;
-    if (day == 0x13 && (sub_08004494(year, month, 0x14) << 16) != 0
-        && (sub_08004494(year, month, 0x15) << 16) != 0)
+    if (day == 0x13 && (IsDayOff(year, month, 0x14) << 16) != 0
+        && (IsDayOff(year, month, 0x15) << 16) != 0)
         bit21 = 1;
-    if (day == 0x12 && (sub_08004494(year, month, 0x13) << 16) != 0
-        && (sub_08004494(year, month, 0x14) << 16) != 0
-        && (sub_08004494(year, month, 0x15) << 16) != 0)
+    if (day == 0x12 && (IsDayOff(year, month, 0x13) << 16) != 0
+        && (IsDayOff(year, month, 0x14) << 16) != 0
+        && (IsDayOff(year, month, 0x15) << 16) != 0)
         bit21 = 1;
     if (bit21 != 0)
         flags |= 0x200000;
@@ -273,7 +273,7 @@ end:
 
 /* Converts a day count (day 0 = 2001-01-01) into a packed date plus weekday.
  * Day 36524 (2100-02-29, not a leap day) is skipped. */
-void sub_080047F4(struct Date *date, u16 days)
+void DayCountToDate(struct Date *date, u16 days)
 {
     u16 year, month;
     s32 monthLen = 31;
@@ -293,35 +293,35 @@ void sub_080047F4(struct Date *date, u16 days)
     while (days >= monthLen) {
         days -= monthLen;
         month++;
-        monthLen = gUnk_08198628[month];
+        monthLen = gDaysPerMonth[month];
         if (month == 1)
-            monthLen += sub_08004280(year);
+            monthLen += IsLeapYear(year);
     }
     date->year = year;
     date->month = month + 1;
     date->day = days + 1;
-    date->weekday = sub_080042D8(year, month + 1, days + 1);
+    date->weekday = GetDayOfWeek(year, month + 1, days + 1);
     if (date->day == 0)
         date->day++;
 }
-void sub_08004914(struct Date *date)
+void GetCurrentDate(struct Date *date)
 {
-    sub_080047F4(date, gSaveData.days);
+    DayCountToDate(date, gSaveData.days);
 }
 
-u32 sub_08004930(u32 a, u32 b, u32 c)
+u32 GetWeekOfMonth(u32 a, u32 b, u32 c)
 {
-    sub_080042D8(a, b, 1);
-    sub_080042D8(a, b, c);
+    GetDayOfWeek(a, b, 1);
+    GetDayOfWeek(a, b, c);
     return (c - 1) / 7 + 1;
 }
 
 /* Builds the starting deck for `choice` (choice % 3) by shuffling each of the 11 pools
  * and adding the first take<n> cards of each. The scene supplies choice 0..2. */
-void sub_0800495C(s32 choice)
+void BuildStarterDeck(s32 choice)
 {
     u16 buf[64];
-    const struct DeckPool *pool = gUnk_08198744;
+    const struct DeckPool *pool = gStarterDeckPools;
     u32 p;
     s32 i, n;
 
@@ -331,8 +331,8 @@ void sub_0800495C(s32 choice)
         for (i = 0; i < pool->count; i++)
             buf[i] = src[i];
         for (i = 0; i < pool->count * 4; i++) {
-            s32 a = sub_08076F9C() % pool->count;
-            s32 b = sub_08076F9C() % pool->count;
+            s32 a = Random() % pool->count;
+            s32 b = Random() % pool->count;
             u16 t = buf[a];
             buf[a] = buf[b];
             buf[b] = t;
@@ -353,35 +353,35 @@ void sub_0800495C(s32 choice)
             u16 idx = CardIdToIndex(id);
 
             if (idx)
-                sub_080774EC(idx);
+                AddCardToSavedDeck(idx);
             else
-                sub_0801A7DC(gUnk_080813E4, id);
+                DebugPrintf(gStrStarterDeckErrorFmt, id);
         }
     }
-    sub_0801A7E8();
+    DebugPrintFlush();
 }
 
 /* HBlank handler: wavy BG1 horizontal scroll */
-void sub_08004ABC(void)
+void Title_HBlank(void)
 {
     REG_BG1HOFS = gMain.hblankScroll[(REG_VCOUNT + gMain.frameCounter) & 0xF];
 }
 
 /* License step 0: License_InitVideo */
-u16 sub_08004AF8(void)
+u16 License_InitVideo(void)
 {
     switch (gMain.seqState0) {
     default:
         return 1;
     case 0:
-        sub_08075A30();
+        SetBrightnessWhite();
         REG_DISPCNT = 0;
         gMain.seqState0++;
         return 0;
     case 1:
         gMain.vblankFlags = 3;
-        sub_08073574();
-        sub_080757AC();
+        ResetVideo();
+        ResetBgScroll();
         REG_BG0CNT = 0x84;
         REG_BG1CNT = 0x105;
         REG_BG2CNT = 0x206;
@@ -392,27 +392,27 @@ u16 sub_08004AF8(void)
     }
 }
 /* License step 1: draws the centred notice text 0x080813F0 (drawn twice, offset, as an outline) and holds it. */
-u16 sub_08004B84(void)
+u16 License_ShowNintendoNotice(void)
 {
     s32 x, i, j, k;
 
     switch (gMain.seqState0) {
     case 0:
-        sub_08073498();
-        sub_08074B08(0x20, 3);
-        x = (240 - sub_080753CC(gUnk_080813F0) * 9) / 2;
+        ClearBgMapBuffers();
+        TextCanvasInit(0x20, 3);
+        x = (240 - StrLen(gStrLicensedByNintendo) * 9) / 2;
         for (i = 1; i >= 0; i--)
             for (j = 0; j <= 1; j++)
                 for (k = 0; k <= 0; k++)
-                    sub_0807501C(x + j + i, k + i, i == 1 ? 0x100F : 0x1008, gUnk_080813F0);
-        sub_08075114((void *)0x06004400, 0);
+                    TextDrawString(x + j + i, k + i, i == 1 ? 0x100F : 0x1008, gStrLicensedByNintendo);
+        TextCanvasToTiles((void *)0x06004400, 0);
         for (j = 0; j < 96; j++)
             gMain.bgMapBuffer[1][0x120 + j] = j + 0x20;
         gMain.seqState0++;
         return 0;
     case 1:
         REG_DISPCNT |= 0x200;
-        if (!sub_08075BD0(1))
+        if (!FadeFromWhite(1))
             return 0;
         gMain.seqState0++;
         return 0;
@@ -423,7 +423,7 @@ u16 sub_08004B84(void)
         gMain.seqState0++;
         return 0;
     default:
-        if (!sub_08075B58(1))
+        if (!FadeToWhite(1))
             break;
         REG_DISPCNT &= ~0x200;
         return 1;
@@ -431,17 +431,17 @@ u16 sub_08004B84(void)
     return 0;
 }
 /* License step 2: shows the logo image 0x087D01F4, holds it 120 frames, fades out. */
-u16 sub_08004CBC(void)
+u16 License_ShowKonamiLogo(void)
 {
     switch (gMain.seqState0) {
     case 0:
-        sub_08073498();
-        sub_08072FAC(0, 0, 0x20, gUnk_087D01F4);
+        ClearBgMapBuffers();
+        LoadBgImage(0, 0, 0x20, gKonamiLogoImage);
         gMain.seqState0++;
         return 0;
     case 1:
         REG_DISPCNT |= 0x100;
-        if (!sub_08075BD0(1))
+        if (!FadeFromWhite(1))
             return 0;
         gMain.seqState0++;
         return 0;
@@ -452,7 +452,7 @@ u16 sub_08004CBC(void)
         gMain.seqState0++;
         return 0;
     default:
-        if (!sub_08075B58(1))
+        if (!FadeToWhite(1))
             break;
         REG_DISPCNT &= ~0x100;
         return 1;
@@ -460,17 +460,17 @@ u16 sub_08004CBC(void)
     return 0;
 }
 /* License step 3: second logo (0x087D292C), then hands over to the title screen. */
-u16 sub_08004D60(void)
+u16 License_ShowKcejLogo(void)
 {
     switch (gMain.seqState0) {
     case 0:
-        sub_08073498();
-        sub_08072FAC(0, 0, 0x20, gUnk_087D292C);
+        ClearBgMapBuffers();
+        LoadBgImage(0, 0, 0x20, gKcejLogoImage);
         gMain.seqState0++;
         return 0;
     case 1:
         REG_DISPCNT |= 0x100;
-        if (sub_08075BD0(1))
+        if (FadeFromWhite(1))
             gMain.seqState0++;
         return 0;
     case 2:
@@ -480,7 +480,7 @@ u16 sub_08004D60(void)
         }
         return 0;
     case 3:
-        if (sub_08075A6C(1)) {
+        if (FadeToBlack(1)) {
             REG_DISPCNT &= ~0x100;
             gMain.seqState0++;
         }
@@ -493,7 +493,7 @@ u16 sub_08004D60(void)
         REG_IME = 1;
         REG_IME = 0;
         REG_IE &= ~2;
-        gUnk_03000000.hblankCallback = NULL;
+        IntrTable.hblankCallback = NULL;
         REG_IME = 1;
         gMain.seqIndexTop = 0;
         gMain.unk4879 = 0;
@@ -503,15 +503,15 @@ u16 sub_08004D60(void)
         gMain.seqIndex1 = 0;
         gMain.seqState1 = 0;
         gMain.seqState2 = 0;
-        gMain.callback = sub_080057BC;
+        gMain.callback = CB_Title;
         return 0;
     }
 }
 
 /* CB_License: runs the step table at 0x0819879C */
-u16 sub_08004EAC(void)
+u16 CB_License(void)
 {
-    u16 (*step)(void) = gUnk_0819879C[gMain.seqIndexTop];
+    u16 (*step)(void) = gLicenseSteps[gMain.seqIndexTop];
 
     if (step != NULL) {
         if (step()) {
@@ -527,7 +527,7 @@ u16 sub_08004EAC(void)
 }
 
 /* Title VBlank callback: scroll BG3 diagonally */
-void sub_08004F08(void)
+void Title_VBlank(void)
 {
     gTitleState.scroll--;
     REG_BG3VOFS = gTitleState.scroll >> 2;
@@ -538,7 +538,7 @@ void sub_08004F08(void)
  * Draws the "New Game" / "Continue" labels (a 64x32 + 32x32 sprite each).
  * The unselected option uses the tiles 12 further on (the dimmed version).
  */
-void sub_08004F2C(void)
+void Title_DrawMenu(void)
 {
     s32 i;
 
@@ -548,12 +548,12 @@ void sub_08004F2C(void)
         u16 tile = t;
         if (gTitleState.continueSelected != i)
             tile += 12;
-        sub_080761F0(x | (0x68 << 16), 0x40C0, tile);
-        sub_080761F0((0x58 + i * 0x70) | (0x68 << 16), 0x80, tile + 8);
+        AddSprite(x | (0x68 << 16), 0x40C0, tile);
+        AddSprite((0x58 + i * 0x70) | (0x68 << 16), 0x80, tile + 8);
     }
 }
 
-void sub_08004FA4(void)
+void Title_InitBgCnt(void)
 {
     REG_DISPCNT = 0;
     REG_BG0CNT = 0x84;
@@ -566,41 +566,41 @@ void sub_08004FA4(void)
  * 4x4-tile pattern into the IWRAM tile map, halves the brightness of palette entries
  * 0xC0..0xCF, copies the HBlank scroll table and installs the VBlank/HBlank callbacks. */
 extern u8 gUnk_03004876[];
-extern const u8 gUnk_0822C300[];
-extern const u8 gUnk_08081408[];
-extern const u8 gUnk_08081414[];
-extern const u8 gUnk_08198830[];
-extern const u8 gUnk_087BDAA8[];
-extern const u8 gUnk_087C1DCC[];
-extern const u8 gUnk_087C0CD4[];
-extern const u8 gUnk_0867DFCC[];
-void sub_080752B0(void *dst, const void *src, u32 size);
-void sub_08075294(void *dst, const void *src, u32 size);
-void sub_08004F08(void);
-void sub_08004ABC(void);
+extern const u8 gSystemFontPal[];
+extern const u8 gStrNewGame[];
+extern const u8 gStrContinue[];
+extern const u8 gTitleLogoWave[];
+extern const u8 gTitleLogoImage[];
+extern const u8 gTitleFlameImage[];
+extern const u8 gTitleCoinImage[];
+extern const u8 gTitleGridImage[];
+void CopyDoubleWords(void *dst, const void *src, u32 size);
+void MemCopy16(void *dst, const void *src, u32 size);
+void Title_VBlank(void);
+void Title_HBlank(void);
 /* Title screen setup: palettes and graphics, a repeating 4x4 tile block over BG map 3,
  * half-brightness palette entries 0xC0..0xCF, HBlank scroll table and the VBlank/HBlank callbacks. */
-void sub_08004FD8(void)
+void Title_LoadGraphics(void)
 {
     s32 x, i;
 
-    sub_080752B0((void *)0x05000200, gUnk_0822C300, 0x20);
-    sub_08074B08(0x20, 0x10);
-    sub_0807501C(9, 9, 0x100F, gUnk_08081408);
-    sub_0807501C(8, 8, 0x1007, gUnk_08081408);
-    sub_0807501C(0x73, 0xB, 0xC01, gUnk_08081408);
-    sub_0807501C(0x72, 0xA, 0xC0D, gUnk_08081408);
-    sub_0807501C(1, 0x29, 0x100F, gUnk_08081414);
-    sub_0807501C(0, 0x28, 0x1007, gUnk_08081414);
-    sub_0807501C(0x69, 0x2B, 0xC01, gUnk_08081414);
-    sub_0807501C(0x68, 0x2A, 0xC0D, gUnk_08081414);
-    sub_08075114((void *)0x06014000, 0);
-    sub_08075294((void *)0x05000000, gUnk_0822C300, 0x20);
+    CopyDoubleWords((void *)0x05000200, gSystemFontPal, 0x20);
+    TextCanvasInit(0x20, 0x10);
+    TextDrawString(9, 9, 0x100F, gStrNewGame);
+    TextDrawString(8, 8, 0x1007, gStrNewGame);
+    TextDrawString(0x73, 0xB, 0xC01, gStrNewGame);
+    TextDrawString(0x72, 0xA, 0xC0D, gStrNewGame);
+    TextDrawString(1, 0x29, 0x100F, gStrContinue);
+    TextDrawString(0, 0x28, 0x1007, gStrContinue);
+    TextDrawString(0x69, 0x2B, 0xC01, gStrContinue);
+    TextDrawString(0x68, 0x2A, 0xC0D, gStrContinue);
+    TextCanvasToTiles((void *)0x06014000, 0);
+    MemCopy16((void *)0x05000000, gSystemFontPal, 0x20);
     *(s16 *)0x05000000 = 0;
-    sub_08072FAC(0x20, 0x10, 0x10, gUnk_087BDAA8);
-    sub_0807326C(0x409, 0xA0, 0x2B8, gUnk_087C1DCC);
-    sub_0807326C(0x809, 0xB0, 0x310, gUnk_087C0CD4);
-    sub_0807326C(0xC00, 0xC0, 0x388, gUnk_0867DFCC);
+    LoadBgImage(0x20, 0x10, 0x10, gTitleLogoImage);
+    LoadBgImage4bpp(0x409, 0xA0, 0x2B8, gTitleFlameImage);
+    LoadBgImage4bpp(0x809, 0xB0, 0x310, gTitleCoinImage);
+    LoadBgImage4bpp(0xC00, 0xC0, 0x388, gTitleGridImage);
     /* Plain constants: postreload move2add turns the reloads into the ROM's `adds r1, #1` chain.
      * The outer counter shares `i` with the palette loop, which puts it in r5. */
     for (i = 0; i <= 0x1F; i += 4) {
@@ -636,23 +636,23 @@ void sub_08004FD8(void)
         b = (b >> 1) & 0x7C00;
         ((u16 *)0x05000180)[i] = r | g | b;
     }
-    sub_08075294(gMain.hblankScroll, gUnk_08198830, 0x20);
-    gMain.vblankCallback = sub_08004F08;
+    MemCopy16(gMain.hblankScroll, gTitleLogoWave, 0x20);
+    gMain.vblankCallback = Title_VBlank;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
-    gUnk_03000000.hblankCallback = sub_08004ABC;
+    IntrTable.hblankCallback = Title_HBlank;
     REG_IME = 1;
     REG_IME = 0;
     REG_IE |= 2;
     REG_IME = 1;
 }
 /* Title step 0: Title_Init */
-u16 sub_0800527C(void)
+u16 Title_Init(void)
 {
     switch (gMain.seqState0) {
     case 0:
-        sub_08075278(&gTitleState, 4);
-        gTitleState.savePresent = sub_08077034();
+        MemClear16(&gTitleState, 4);
+        gTitleState.savePresent = IsSaveChecksumValid();
         gTitleState.continueSelected = gTitleState.savePresent;
         gMain.seqState0++;
         return 0;
@@ -661,10 +661,10 @@ u16 sub_0800527C(void)
         gMain.seqState0++;
         return 0;
     case 2:
-        sub_080759F4();
-        sub_08073574();
-        sub_080757AC();
-        sub_08004FA4();
+        SetBrightnessBlack();
+        ResetVideo();
+        ResetBgScroll();
+        Title_InitBgCnt();
         gMain.vblankFlags = 3;
         gMain.seqState0++;
         return 0;
@@ -672,64 +672,64 @@ u16 sub_0800527C(void)
     return 1;
 }
 /* Title step 1: Title_Setup */
-u16 sub_08005310(void)
+u16 Title_Setup(void)
 {
     switch (gMain.seqState0) {
     default:
-        sub_08004FD8();
-        sub_08077B54(0);
+        Title_LoadGraphics();
+        PlayBGMNoTrack(0);
         return 1;
     case 0:
         REG_DISPCNT = 0;
         gMain.seqState0++;
         return 0;
     case 1:
-        sub_080759F4();
-        sub_08073574();
-        sub_080757AC();
-        sub_08004FA4();
+        SetBrightnessBlack();
+        ResetVideo();
+        ResetBgScroll();
+        Title_InitBgCnt();
         gMain.vblankFlags = 3;
         gMain.seqState0++;
         return 0;
     }
 }
 /* Title step 2: fade in, then drop the HBlank handler and draw the menu labels. */
-u16 sub_08005368(void)
+u16 Title_FadeIn(void)
 {
     switch (gMain.seqState0) {
     case 0:
         REG_DISPCNT = 0x600;
         gMain.seqState0++;
     case 1:
-        if (!(gMain.frameCounter & 3) && sub_08075AE4(1))
+        if (!(gMain.frameCounter & 3) && FadeFromBlack(1))
             gMain.seqState0++;
         return 0;
     case 2:
-        if (sub_08075B58(4)) {
+        if (FadeToWhite(4)) {
             REG_IME = 0;
             REG_IE &= ~2;
-            gUnk_03000000.hblankCallback = NULL;
+            IntrTable.hblankCallback = NULL;
             REG_IME = 1;
             REG_IME = 0;
             REG_IE &= ~2;
             REG_IME = 1;
             REG_DISPCNT |= 0x1900;
-            sub_0807326C(0xA20, 0x90, 0x284, gUnk_087C056C);
-            sub_08004F2C();
+            LoadBgImage4bpp(0xA20, 0x90, 0x284, gTitleCopyrightImage);
+            Title_DrawMenu();
             gMain.seqState0++;
         }
         return 0;
     default:
-        sub_08004F2C();
-        return sub_08075BD0(1);
+        Title_DrawMenu();
+        return FadeFromWhite(1);
     }
 }
 
 /* Title step 4: Title_FadeOut */
-u16 sub_0800545C(void)
+u16 Title_FadeOut(void)
 {
-    sub_08004F2C();
-    if (sub_08075A6C(4)) {
+    Title_DrawMenu();
+    if (FadeToBlack(4)) {
         gMain.vblankCallback = NULL;
         return 1;
     }
@@ -737,20 +737,20 @@ u16 sub_0800545C(void)
 }
 
 /* Title step 3: Title_HandleInput */
-u16 sub_0800548C(void)
+u16 Title_HandleInput(void)
 {
-    sub_08004F2C();
+    Title_DrawMenu();
     if (gMain.newKeys & (DPAD_LEFT | DPAD_RIGHT)) {
         if (gTitleState.savePresent) {
             gTitleState.continueSelected = 1 - gTitleState.continueSelected;
-            sub_08077AEC(0);
+            PlaySE(0);
         } else {
-            sub_08077AEC(3);
+            PlaySE(3);
         }
     }
     if (gMain.newKeys & A_BUTTON) {
-        sub_08077AEC(1);
-        sub_08077BCC();
+        PlaySE(1);
+        FadeOutBGM();
         return 1;
     }
     return 0;

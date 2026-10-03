@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# FrameSyncUpdate `sub_08075CB4` / FlushOamBuffer `sub_08075C44`
+# FrameSyncUpdate `FrameSyncUpdate` / FlushOamBuffer `FlushOamBuffer`
 
 | Function | Address | Size | Mode | Unit | Match |
 |---|---|---|---|---|---|

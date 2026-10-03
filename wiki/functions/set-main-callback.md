@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# SetMainCallback `sub_080754F8` and step runners
+# SetMainCallback `SetMainCallback` and step runners
 
 | Field | Value |
 |---|---|
@@ -29,9 +29,9 @@ void SetMainCallback(u16 (*cb)(void)) {
     gMain.callback = cb;                      // 0x03000450
 }
 ```
-**Every scene change writes the save to SRAM.** `SaveGame` is also called directly from `0x0801C02E` (×3), `0x08021628`, `0x08062AF4`, `0x08064604` and `0x0807D1F4` (Card Trading), and from the uncalled `sub_080755A0`. The same inline sequence (without the save) appears in `sub_08004D60` (the last License step installs `CB_Title` directly), and `sub_080755A0` is a variant that saves and clears the state but keeps the callback and returns 1. It has **no callers** (dead code).
+**Every scene change writes the save to SRAM.** `SaveGame` is also called directly from `0x0801C02E` (×3), `0x08021628`, `0x08062AF4`, `0x08064604` and `0x0807D1F4` (Card Trading), and from the uncalled `SaveAndResetSceneState`. The same inline sequence (without the save) appears in `License_ShowKcejLogo` (the last License step installs `CB_Title` directly), and `SaveAndResetSceneState` is a variant that saves and clears the state but keeps the callback and returns 1. It has **no callers** (dead code).
 
-Callers (6): `MainLoop` (fallback to the main menu), `sub_08002FBC` (goes to the menu), main-menu launch `0x08003A84` (goes to `gMainMenuTable[cursor]`), `0x0801BCBA` (Campaign: `SetMainCallback(NULL)`, a probable soft reset), `0x08029DF8` (card viewer, B goes to the menu), debug menu `0x08074A08`.
+Callers (6): `MainLoop` (fallback to the main menu), `OpponentSelect_ExitToMainMenu` (goes to the menu), main-menu launch `0x08003A84` (goes to `gMainMenuTable[cursor]`), `0x0801BCBA` (Campaign: `SetMainCallback(NULL)`, a probable soft reset), `0x08029DF8` (card viewer, B goes to the menu), debug menu `0x08074A08`.
 
 ## The step-runner pattern (verified)
 Almost every main callback (and many steps) is a copy of this template, with a different table and index byte:

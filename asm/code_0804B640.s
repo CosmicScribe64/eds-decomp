@@ -3,8 +3,8 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0804B640/sub_0804B640.s"
-	.include "asm/nonmatching/code_0804B640/sub_0804BA1C.s"
-	.include "asm/nonmatching/code_0804B640/sub_0804BAAC.s"
-	.include "asm/nonmatching/code_0804B640/sub_0804BC78.s"
-	.include "asm/nonmatching/code_0804B640/sub_0804BFF0.s"
+	.include "asm/nonmatching/code_0804B640/BattleStage_DeclareAttack.s"
+	.include "asm/nonmatching/code_0804B640/BattleStage_PayAttackCosts.s"
+	.include "asm/nonmatching/code_0804B640/BattleStage_RespondToAttack.s"
+	.include "asm/nonmatching/code_0804B640/BattleStage_RevealDefender.s"
+	.include "asm/nonmatching/code_0804B640/BattleStage_DamageCalc.s"

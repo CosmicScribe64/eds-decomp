@@ -4,9 +4,9 @@
 @   ROM 0x0807EAD0 - 0x0807ECF8 (0x228 bytes, .text), between the Thumb sound
 @   driver and the SDK SWI stubs (libagbsyscall, 0x0807ECF8).
 @
-@   0x0807EAD0  sub_0807EAD0  SoundMixAll      (proposed) mix both FIFOs
-@   0x0807EAF0  sub_0807EAF0  SoundMixFifo     (proposed) clear + mix one FIFO
-@   0x0807EC1C  sub_0807EC1C  SoundMixChannel  (proposed) inner mix loop; the
+@   0x0807EAD0  SoundMixAll  SoundMixAll      (proposed) mix both FIFOs
+@   0x0807EAF0  SoundMixFifo  SoundMixFifo     (proposed) clear + mix one FIFO
+@   0x0807EC1C  SoundMixChannel  SoundMixChannel  (proposed) inner mix loop; the
 @               driver copies 0x38 words of it to IWRAM 0x03005A54 and
 @               SoundMixFifo calls that copy, not this ROM image.
 @
@@ -31,7 +31,7 @@
 	.size \name, .-\name
 	.endm
 
-@ struct SoundPcmChannel (0x10 bytes; 6 at gUnk_030053AC, 3 per FIFO)
+@ struct SoundPcmChannel (0x10 bytes; 6 at gSoundPcmChannels, 3 per FIFO)
 	.equ PCM_DATA,      0x0     @ u32  current sample pointer
 	.equ PCM_REMAINING, 0x4     @ s32  samples left before the end/loop point
 	.equ PCM_STEP,      0x8     @ u16  pitch step (0x1000 = one sample per byte)
@@ -45,18 +45,18 @@
 
 @ void SoundMixAll(void)
 @ Mixes voices 0-2 into FIFO A (r1 = 0) and 3-5 into FIFO B (r1 = 4).
-@ r7 walks gUnk_030053AC across both calls.
-	arm_func_start sub_0807EAD0
-sub_0807EAD0: @ 0x0807EAD0
+@ r7 walks gSoundPcmChannels across both calls.
+	arm_func_start SoundMixAll
+SoundMixAll: @ 0x0807EAD0
 	push {r4, r5, r6, r7, r8, sb, sl, fp, ip, lr}
 	ldr r7, .Lvoices
 	mov r1, #0
-	bl sub_0807EAF0
+	bl SoundMixFifo
 	mov r1, #4
-	bl sub_0807EAF0
+	bl SoundMixFifo
 	pop {r4, r5, r6, r7, r8, sb, sl, fp, ip, lr}
 	bx lr
-	arm_func_end sub_0807EAD0
+	arm_func_end SoundMixAll
 
 @ SoundMixFifo(r1 = 0 for FIFO A | 4 for FIFO B, r7 = first voice)
 @ Refills the part of the ring buffer the FIFO DMA consumed since the last
@@ -64,8 +64,8 @@ sub_0807EAD0: @ 0x0807EAD0
 @ cleared with a DMA0 32-bit fill from a zero word on the stack, then every
 @ active voice with a nonzero volume is mixed into it by the IWRAM routine.
 @ Returns with r7 advanced past the three voices.
-	arm_func_start sub_0807EAF0
-sub_0807EAF0: @ 0x0807EAF0
+	arm_func_start SoundMixFifo
+SoundMixFifo: @ 0x0807EAF0
 	stmdb sp!, {lr}
 	sub sp, sp, #0xc
 	ldr r6, .Ldma_pos
@@ -143,18 +143,18 @@ sub_0807EAF0: @ 0x0807EAF0
 	add sp, sp, #0xc
 	ldm sp!, {pc}
 .Lvoices:
-	.4byte gUnk_030053AC        @ struct SoundPcmChannel[6]
+	.4byte gSoundPcmChannels        @ struct SoundPcmChannel[6]
 .Ldma_pos:
-	.4byte gUnk_0300540C        @ u16 cur/prev DMA positions per FIFO
+	.4byte gSoundDmaPos        @ u16 cur/prev DMA positions per FIFO
 .Lbuffers:
-	.4byte gUnk_03005414        @ FIFO A buffer; FIFO B at +0x320
+	.4byte gSoundPcmBuffer        @ FIFO A buffer; FIFO B at +0x320
 .Ldma0:
 	.4byte 0x040000B0           @ REG_DMA0SAD
 .Lmix_channel:
-	.4byte gUnk_03005A54        @ IWRAM copy of sub_0807EC1C
+	.4byte gSoundMixCodeRam        @ IWRAM copy of SoundMixChannel
 .Lmix_channel_wrap:
-	.4byte gUnk_03005A54
-	arm_func_end sub_0807EAF0
+	.4byte gSoundMixCodeRam
+	arm_func_end SoundMixFifo
 
 @ SoundMixChannel: runs from its IWRAM copy at 0x03005A54.
 @ In:  r4 = bytes to mix, r5 = sample pointer, r6 = destination,
@@ -164,8 +164,8 @@ sub_0807EAF0: @ 0x0807EAF0
 @      a non-looping sample. Each output byte gets += (sample * r8) >> 4,
 @      without saturation. A step of 0x800 takes a path that writes every
 @      sample twice.
-	arm_func_start sub_0807EC1C
-sub_0807EC1C: @ 0x0807EC1C
+	arm_func_start SoundMixChannel
+SoundMixChannel: @ 0x0807EC1C
 	stmdb sp!, {lr}
 	cmp r2, #0x800
 	beq .Lhalf_speed
@@ -227,7 +227,7 @@ sub_0807EC1C: @ 0x0807EC1C
 	adr r1, .Lhalf_speed
 	b .Lsample_end
 .Lsample_bank0:
-	.4byte gUnk_0811B420        @ sample headers, id bit 15 clear
+	.4byte gPcmSampleTable        @ sample headers, id bit 15 clear
 .Lsample_bank1:
-	.4byte gUnk_08088A20        @ sample headers, id bit 15 set
-	arm_func_end sub_0807EC1C
+	.4byte gPcmSampleTable2        @ sample headers, id bit 15 set
+	arm_func_end SoundMixChannel

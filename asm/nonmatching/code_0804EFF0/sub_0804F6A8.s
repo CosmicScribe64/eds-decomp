@@ -19,7 +19,7 @@ _0804F6BC:
 _0804F6C4:
 	add r0, r5, #0
 	add r1, r4, #0
-	bl sub_0802B9EC
+	bl EffectBlastJugglerCheck
 	cmp r0, #0
 	beq _0804F6D2
 	add r6, #1

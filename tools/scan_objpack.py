@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scan the ROM for EDS "image packs" (palette + tiles + sparse BG map; stdlib only).
 
-Format (reverse-engineered from the loaders sub_08072EB0 / sub_08072FAC,
+Format (reverse-engineered from the loaders LoadBgImageMap1 / LoadBgImage,
 see wiki/data/graphics-formats.md):
   u16 nColors  x4 (the value is stored four times)
   u16 palette[nColors]                 BGR555 (bit 15 often set, ignored)

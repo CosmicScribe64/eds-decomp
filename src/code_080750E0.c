@@ -54,82 +54,82 @@ struct Main {
     u8 seq4879;
     u8 seq487A;
 };
-extern struct Main gUnk_03000040;
-#define gMain gUnk_03000040
+extern struct Main gMain;
+#define gMain gMain
 
 /* Save mirror (0x02011C20). */
 struct SaveData {
     u32 unk0;
     u8 flags4;                      /* +0x04 bit 7: Shift-JIS text mode */
 };
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
 
-extern void (*gUnk_03000000[16])(void); /* IntrTable */
+extern void (*IntrTable[16])(void); /* IntrTable */
 
 struct Timer2State {
     u8 filler0[0x82C];
     u16 counter;                    /* +0x82C incremented by Timer2Intr */
 };
-extern struct Timer2State gUnk_030049D0;
+extern struct Timer2State gLinkBuf;
 
 struct ScrollReg {
     vu16 *reg;
     u16 mask;
     u16 pad;
 };
-extern const struct ScrollReg gUnk_081A7764[4]; /* HOFS registers, mask bits 4-7 */
-extern const struct ScrollReg gUnk_081A7784[4]; /* VOFS registers, mask bits 8-11 */
+extern const struct ScrollReg gBgHofsRegs[4]; /* HOFS registers, mask bits 4-7 */
+extern const struct ScrollReg gBgVofsRegs[4]; /* VOFS registers, mask bits 8-11 */
 
-void sub_08075050(u32 a, u32 b, u16 c);
-void sub_0807509C(u32 a, u32 b, u16 c);
-void sub_08077080(void);
+void TextDrawSjisNumber(u32 a, u32 b, u16 c);
+void TextDrawLatinNumber(u32 a, u32 b, u16 c);
+void UpdateSaveChecksum(void);
 void WriteSram(const void *src, void *dst, u32 size);
 u32 VerifySram(const void *src, void *dst, u32 size);
-void sub_0807E3B0(void);
-void sub_0807E554(void);
-u16 sub_08076F9C(void);
-void sub_08075228(void);
-void sub_080752B0(void *dst, const void *src, u32 size);
-void sub_08075294(void *dst, const void *src, u32 size);
-void sub_080752E8(char *dst, const char *src);
-void sub_08075370(char *dst, s32 n);
-void sub_080757F4(void);
-void sub_08075C44(void);
-void sub_080754BC(void);
-u16 sub_08003AA4(void);
-void sub_08075740(void);
-void sub_0807570C(void);
-void sub_0807569C(void);
-void sub_0807E324(void);
-u16 sub_08004EAC(void);
+void SoundVBlank(void);
+void SoundMain(void);
+u16 Random(void);
+void ReadKeys(void);
+void CopyDoubleWords(void *dst, const void *src, u32 size);
+void MemCopy16(void *dst, const void *src, u32 size);
+void StrCat(char *dst, const char *src);
+void StrCatNumber(char *dst, s32 n);
+void ClearBlend(void);
+void FlushOamBuffer(void);
+void SaveGame(void);
+u16 CB_MainMenu(void);
+void GamepakIntr(void);
+void Timer2Intr(void);
+void VBlankIntr(void);
+void SoundDma1Intr(void);
+u16 CB_License(void);
 void ReadSram(const void *src, void *dst, u32 size);
-void sub_0807D578(u32 a);
-void sub_080757AC(void);
-void sub_08075A30(void);
-void sub_08077A74(u32 a);
-void sub_08077AB0(u32 a);
-void sub_080770DC(void);
-void sub_08075D6C(void);
-void sub_08075CB4(void);
-void sub_08075D70(void);
-void sub_08075DF4(void);
-extern vu16 gUnk_0300044C;
+void SoundInit(u32 a);
+void ResetBgScroll(void);
+void SetBrightnessWhite(void);
+void SetSeEnabled(u32 a);
+void SetBgmEnabled(u32 a);
+void SetTextModeLatin(void);
+void DebugHook_Nop(void);
+void FrameSyncUpdate(void);
+void MainLoop(void);
+void GameInit(void);
+extern vu16 gMain_intrCheck;
 
-void sub_080750E0(u32 a, u32 b, u16 c)
+void TextDrawNumber(u32 a, u32 b, u16 c)
 {
     /* Keep both coordinates in the callee-saved registers used by the ROM. */
     __asm__ __volatile__("" : : : "r3");
     if (gSaveData.flags4 & 0x80)
-        sub_08075050(a, b, c);
+        TextDrawSjisNumber(a, b, c);
     else
-        sub_0807509C(a, b, c);
+        TextDrawLatinNumber(a, b, c);
 }
-extern u8 gUnk_02000000[];      /* text bitmap; +0x10000 width, +0x10001 height (tiles) */
+extern u8 gTextCanvas[];      /* text bitmap; +0x10000 width, +0x10001 height (tiles) */
 
 /* Converts the 1-byte-per-pixel bitmap at 0x02000000 into 4bpp tiles at
  * dst; pixels of value 0 take the background nibble from bits 0-3 of bg. */
-void sub_08075114(u16 *dst, u16 bg)
+void TextCanvasToTiles(u16 *dst, u16 bg)
 {
     s32 i, next;
 
@@ -139,8 +139,8 @@ void sub_08075114(u16 *dst, u16 bg)
         bg |= bg << 4;
         bg |= bg << 8;
     } while (0);
-    for (i = 0; i < gUnk_02000000[0x10000] * gUnk_02000000[0x10001]; i = next) {
-        const u8 *src = gUnk_02000000 + i * 64;
+    for (i = 0; i < gTextCanvas[0x10000] * gTextCanvas[0x10001]; i = next) {
+        const u8 *src = gTextCanvas + i * 64;
         s32 j;
 
         next = i + 1;
@@ -168,7 +168,7 @@ void sub_08075114(u16 *dst, u16 bg)
     }
 }
 
-void sub_08075228(void)
+void ReadKeys(void)
 {
     u32 keys = (u16)~REG_KEYINPUT;
     u32 newKeys = keys & ~gMain.heldKeys;
@@ -189,7 +189,7 @@ void sub_08075228(void)
         }
     }
 }
-void sub_08075278(void *dstp, s32 size)
+void MemClear16(void *dstp, s32 size)
 {
     u16 *dst = dstp;
 
@@ -199,7 +199,7 @@ void sub_08075278(void *dstp, s32 size)
         size--;
     }
 }
-void sub_08075294(void *dstp, const void *srcp, u32 size)
+void MemCopy16(void *dstp, const void *srcp, u32 size)
 {
     u16 *dst = dstp;
     const u16 *src = srcp;
@@ -211,7 +211,7 @@ void sub_08075294(void *dstp, const void *srcp, u32 size)
     }
 }
 
-void sub_080752B0(void *dstp, const void *srcp, u32 size)
+void CopyDoubleWords(void *dstp, const void *srcp, u32 size)
 {
     const struct OamEntry *src = srcp;
     struct OamEntry *dst = dstp;
@@ -222,14 +222,14 @@ void sub_080752B0(void *dstp, const void *srcp, u32 size)
         size--;
     }
 }
-void sub_080752D0(char *dst, const char *src)
+void StrCopy(char *dst, const char *src)
 {
     while (*src != 0) {
         *dst++ = *src++;
     }
     *dst = 0;
 }
-void sub_080752E8(char *dst, const char *src)
+void StrCat(char *dst, const char *src)
 {
     while (*dst != 0) {
         dst++;
@@ -239,7 +239,7 @@ void sub_080752E8(char *dst, const char *src)
     }
     *dst = 0;
 }
-void sub_08075308(char *dst, s32 n)
+void StrCatNumberFullwidth(char *dst, s32 n)
 {
     u16 buf[12];
     s32 i, j;
@@ -254,9 +254,9 @@ void sub_08075308(char *dst, s32 n)
         n /= 10;
         i--;
     }
-    sub_080752E8(dst, (char *)&buf[i + 1]);
+    StrCat(dst, (char *)&buf[i + 1]);
 }
-void sub_08075370(char *dst, s32 n)
+void StrCatNumber(char *dst, s32 n)
 {
     char buf[12];
     s32 i, j;
@@ -271,9 +271,9 @@ void sub_08075370(char *dst, s32 n)
         n /= 10;
         i--;
     }
-    sub_080752E8(dst, &buf[i + 1]);
+    StrCat(dst, &buf[i + 1]);
 }
-s32 sub_080753CC(const char *s)
+s32 StrLen(const char *s)
 {
     s32 n = 0;
 
@@ -283,7 +283,7 @@ s32 sub_080753CC(const char *s)
     }
     return n;
 }
-s32 sub_080753E0(const u16 *s)
+s32 StrLenWide(const u16 *s)
 {
     s32 n = 0;
 
@@ -293,54 +293,54 @@ s32 sub_080753E0(const u16 *s)
     }
     return n;
 }
-void sub_080753F4(char *dst, const char *fmt, const char *arg)
+void FormatStr(char *dst, const char *fmt, const char *arg)
 {
     while (*fmt != 0) {
         if (*fmt == '%' && fmt[1] == 's') {
             *dst = 0;
             fmt += 2;
-            sub_080752E8(dst, arg);
-            sub_080752E8(dst, fmt);
+            StrCat(dst, arg);
+            StrCat(dst, fmt);
             return;
         }
         *dst++ = *fmt++;
     }
 }
-void sub_08075434(char *dst, const char *fmt, s32 arg)
+void FormatInt(char *dst, const char *fmt, s32 arg)
 {
     while (*fmt != 0) {
         if (*fmt == '%' && fmt[1] == 'd') {
             *dst = 0;
             fmt++;
-            sub_08075370(dst, arg);
+            StrCatNumber(dst, arg);
             fmt++;
-            sub_080752E8(dst, fmt);
+            StrCat(dst, fmt);
             return;
         }
         *dst++ = *fmt++;
     }
 }
-s32 sub_08075474(s32 x)
+s32 RoundTo10(s32 x)
 {
     return (x + 5) / 10 * 10;
 }
-s32 sub_0807548C(s32 x)
+s32 HalveRoundUp(s32 x)
 {
     x = x * 5;
     x += 5;
     return x / 10;
 }
-s32 sub_080754A4(s32 x)
+s32 HalveRoundDown(s32 x)
 {
     x = x * 5;
     x += 4;
     return x / 10;
 }
-void sub_080754BC(void)
+void SaveGame(void)
 {
     s32 i;
 
-    sub_08077080();
+    UpdateSaveChecksum();
     i = 0;
     do {
         WriteSram(&gSaveData, (void *)SRAM, 0x2170);
@@ -350,9 +350,9 @@ void sub_080754BC(void)
         i++;
     } while (i <= 31);
 }
-void sub_080754F8(u16 (*cb)(void))
+void SetMainCallback(u16 (*cb)(void))
 {
-    sub_080754BC();
+    SaveGame();
     gMain.vblankCallbackEarly = NULL;
     gMain.vblankCallback = NULL;
     REG_IME = 0;
@@ -360,7 +360,7 @@ void sub_080754F8(u16 (*cb)(void))
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
-    gUnk_03000000[1] = NULL;
+    IntrTable[1] = NULL;
     REG_IME = 1;
     gMain.seq4878 = 0;
     gMain.seq4879 = 0;
@@ -372,9 +372,9 @@ void sub_080754F8(u16 (*cb)(void))
     gMain.seq485B = 0;
     gMain.callback = cb;
 }
-u32 sub_080755A0(void)
+u32 SaveAndResetSceneState(void)
 {
-    sub_080754BC();
+    SaveGame();
     gMain.vblankCallbackEarly = NULL;
     gMain.vblankCallback = NULL;
     REG_IME = 0;
@@ -382,7 +382,7 @@ u32 sub_080755A0(void)
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
-    gUnk_03000000[1] = NULL;
+    IntrTable[1] = NULL;
     REG_IME = 1;
     gMain.seq4858 = 0;
     gMain.seq4859 = 0;
@@ -390,19 +390,19 @@ u32 sub_080755A0(void)
     gMain.seq485B = 0;
     return 1;
 }
-extern const u16 gUnk_0822C300[];
-extern const u16 gUnk_0822C320[];
+extern const u16 gSystemFontPal[];
+extern const u16 gSystemTiles[];
 
-void sub_08075630(void)
+void LoadSystemGfx(void)
 {
-    sub_08075294((void *)BG_PLTT, gUnk_0822C300, 0x20);
+    MemCopy16((void *)BG_PLTT, gSystemFontPal, 0x20);
     *(u16 *)BG_PLTT = 0;
-    sub_08075294((void *)(VRAM + 0x4000), gUnk_0822C320, 0x200);
-    sub_08075294((void *)OBJ_PLTT, gUnk_0822C300, 0x20);
-    sub_08075294((void *)OBJ_VRAM0, gUnk_0822C320, 0x200);
+    MemCopy16((void *)(VRAM + 0x4000), gSystemTiles, 0x200);
+    MemCopy16((void *)OBJ_PLTT, gSystemFontPal, 0x20);
+    MemCopy16((void *)OBJ_VRAM0, gSystemTiles, 0x200);
     *(u16 *)OBJ_PLTT = 0;
 }
-void sub_0807569C(void)
+void VBlankIntr(void)
 {
     gMain.intrCheck |= 1;
     gMain.vblankCounter++;
@@ -410,24 +410,24 @@ void sub_0807569C(void)
     if (gMain.vblankCallbackEarly != NULL) {
         gMain.vblankCallbackEarly();
     }
-    sub_0807E3B0();
+    SoundVBlank();
     if (gMain.vblankCallback != NULL) {
         gMain.vblankCallback();
     }
     gMain.vblankCounter8++;
 }
-void sub_0807570C(void)
+void Timer2Intr(void)
 {
     REG_TM2CNT_L = 0xF400;
     REG_TM2CNT_H |= 0xC3;
-    gUnk_030049D0.counter++;
+    gLinkBuf.counter++;
 }
-void sub_08075740(void)
+void GamepakIntr(void)
 {
     while (1) {
     }
 }
-void sub_08075744(void)
+void ResetBgHofs(void)
 {
     struct Main *m = &gMain;
     u16 zero = 0;
@@ -450,7 +450,7 @@ void sub_08075744(void)
         *reg = z;
     }
 }
-void sub_08075778(void)
+void ResetBgVofs(void)
 {
     struct Main *m = &gMain;
     u16 zero = 0;
@@ -473,24 +473,24 @@ void sub_08075778(void)
         *reg = z;
     }
 }
-void sub_080757AC(void)
+void ResetBgScroll(void)
 {
-    sub_08075744();
-    sub_08075778();
+    ResetBgHofs();
+    ResetBgVofs();
 }
-void sub_080757BC(u16 bldcnt)
+void SetBrightnessFull(u16 bldcnt)
 {
     gMain.brightness = 0x1F;
     REG_BLDCNT = bldcnt;
     REG_BLDY = gMain.brightness;
 }
-void sub_080757F4(void)
+void ClearBlend(void)
 {
     gMain.brightness = 0;
     REG_BLDCNT = 0;
     REG_BLDY = 0;
 }
-u32 sub_0807581C(u16 bldcnt)
+u32 FadeBrightnessDown(u16 bldcnt)
 {
     u32 ret;
 
@@ -500,7 +500,7 @@ u32 sub_0807581C(u16 bldcnt)
         gMain.brightness = 0;
     }
     if (gMain.brightness == 0) {
-        sub_080757F4();
+        ClearBlend();
         ret = 1;
     } else {
         REG_BLDY = gMain.brightness;
@@ -509,7 +509,7 @@ u32 sub_0807581C(u16 bldcnt)
     }
     return ret;
 }
-u32 sub_0807588C(u16 bldcnt)
+u32 FadeBrightnessUp(u16 bldcnt)
 {
     REG_BLDCNT = bldcnt;
     if (gMain.brightness <= 0x1E) {
@@ -528,7 +528,7 @@ u32 sub_0807588C(u16 bldcnt)
         return 1;
     }
 }
-u32 sub_080758FC(u16 bldcnt)
+u32 FadeAlphaDown(u16 bldcnt)
 {
     u32 ret;
 
@@ -538,7 +538,7 @@ u32 sub_080758FC(u16 bldcnt)
         gMain.brightness = 0;
     }
     if (gMain.brightness == 0) {
-        sub_080757F4();
+        ClearBlend();
         ret = 1;
     } else {
         REG_BLDALPHA = gMain.brightness + ((0x1F - gMain.brightness) << 8);
@@ -547,7 +547,7 @@ u32 sub_080758FC(u16 bldcnt)
     }
     return ret;
 }
-u32 sub_0807597C(u16 bldcnt)
+u32 FadeAlphaUp(u16 bldcnt)
 {
     REG_BLDCNT = bldcnt;
     if (gMain.brightness <= 0x1E) {
@@ -566,19 +566,19 @@ u32 sub_0807597C(u16 bldcnt)
         return 1;
     }
 }
-void sub_080759F4(void)
+void SetBrightnessBlack(void)
 {
     gMain.brightness = 0x1F;
     REG_BLDCNT = 0x3FFF;
     REG_BLDY = gMain.brightness;
 }
-void sub_08075A30(void)
+void SetBrightnessWhite(void)
 {
     gMain.brightness = 0x1F;
     REG_BLDCNT = 0x3FBF;
     REG_BLDY = gMain.brightness;
 }
-u32 sub_08075A6C(s32 step)
+u32 FadeToBlack(s32 step)
 {
     REG_BLDCNT = 0x3FFF;
     if (gMain.brightness <= 0x1E) {
@@ -597,7 +597,7 @@ u32 sub_08075A6C(s32 step)
         return 1;
     }
 }
-u32 sub_08075AE4(s32 step)
+u32 FadeFromBlack(s32 step)
 {
     u32 ret;
 
@@ -607,7 +607,7 @@ u32 sub_08075AE4(s32 step)
         gMain.brightness = 0;
     }
     if (gMain.brightness == 0) {
-        sub_080757F4();
+        ClearBlend();
         ret = 1;
     } else {
         REG_BLDY = gMain.brightness;
@@ -616,7 +616,7 @@ u32 sub_08075AE4(s32 step)
     }
     return ret;
 }
-u32 sub_08075B58(s32 step)
+u32 FadeToWhite(s32 step)
 {
     REG_BLDCNT = 0x3FBF;
     if (gMain.brightness <= 0x1E) {
@@ -635,7 +635,7 @@ u32 sub_08075B58(s32 step)
         return 1;
     }
 }
-u32 sub_08075BD0(s32 step)
+u32 FadeFromWhite(s32 step)
 {
     u32 ret;
 
@@ -645,7 +645,7 @@ u32 sub_08075BD0(s32 step)
         gMain.brightness = 0;
     }
     if (gMain.brightness == 0) {
-        sub_080757F4();
+        ClearBlend();
         ret = 1;
     } else {
         REG_BLDY = gMain.brightness;
@@ -654,14 +654,14 @@ u32 sub_08075BD0(s32 step)
     }
     return ret;
 }
-void sub_08075C44(void)
+void FlushOamBuffer(void)
 {
     s32 i;
     u32 *p;
     u8 *q;
 
     if (gMain.vblankFlags & 1) {
-        sub_080752B0((void *)OAM, gMain.oam, 0x400);
+        CopyDoubleWords((void *)OAM, gMain.oam, 0x400);
         gMain.oamCount = 0;
         gMain.oamCount2 = 0;
         for (i = 0; i < 128; i++) {
@@ -673,48 +673,48 @@ void sub_08075C44(void)
         }
     }
 }
-void sub_08075CB4(void)
+void FrameSyncUpdate(void)
 {
     s32 i;
 
     for (i = 0; i < 4; i++) {
-        if (gMain.vblankFlags & gUnk_081A7764[i].mask) {
-            *gUnk_081A7764[i].reg = gMain.bgHofs[i];
+        if (gMain.vblankFlags & gBgHofsRegs[i].mask) {
+            *gBgHofsRegs[i].reg = gMain.bgHofs[i];
         }
-        if (gMain.vblankFlags & gUnk_081A7784[i].mask) {
-            *gUnk_081A7784[i].reg = gMain.bgVofs[i];
+        if (gMain.vblankFlags & gBgVofsRegs[i].mask) {
+            *gBgVofsRegs[i].reg = gMain.bgVofs[i];
         }
     }
     if (gMain.vblankFlags & 2) {
         for (i = 0; i < 8; i++) {
-            sub_080752B0((void *)(VRAM + i * 0x800), gMain.bgMapBuffer[i], 0x800);
+            CopyDoubleWords((void *)(VRAM + i * 0x800), gMain.bgMapBuffer[i], 0x800);
         }
     }
-    sub_08075C44();
-    sub_08075228();
-    sub_0807E554();
-    sub_08076F9C();
+    FlushOamBuffer();
+    ReadKeys();
+    SoundMain();
+    Random();
 }
-void sub_08075D6C(void)
+void DebugHook_Nop(void)
 {
 }
-void sub_08075D70(void)
+void MainLoop(void)
 {
     while (1) {
         gMain.intrCheck &= 0xFFFE;
         while (!(gMain.intrCheck & 1)) {
         }
-        sub_08075CB4();
+        FrameSyncUpdate();
         gMain.lagCounter = 0;
         if (gMain.callback()) {
-            sub_080754F8(sub_08003AA4);
+            SetMainCallback(CB_MainMenu);
         }
-        sub_08075D6C();
+        DebugHook_Nop();
         gMain.frameCounter++;
         gMain.frameCounter8++;
     }
 }
-void sub_08075DF4(void)
+void GameInit(void)
 {
     u32 zero = 0;
     vu32 *dma = &REG_DMA3SAD;
@@ -729,22 +729,22 @@ void sub_08075DF4(void)
     dma[2] = 0x85001E80;
     dma[2];
     ReadSram((void *)SRAM, &gSaveData, 0x2170);
-    gUnk_03000000[0] = NULL;
-    gUnk_03000000[1] = NULL;
-    gUnk_03000000[2] = sub_0807569C;
-    gUnk_03000000[3] = NULL;
-    gUnk_03000000[4] = NULL;
-    gUnk_03000000[5] = NULL;
-    gUnk_03000000[6] = sub_0807570C;
-    gUnk_03000000[7] = NULL;
-    gUnk_03000000[8] = NULL;
-    gUnk_03000000[9] = sub_0807E324;
-    gUnk_03000000[10] = NULL;
-    gUnk_03000000[11] = NULL;
-    gUnk_03000000[12] = NULL;
-    gUnk_03000000[13] = sub_08075740;
-    gUnk_03000000[14] = NULL;
-    gUnk_03000000[15] = NULL;
+    IntrTable[0] = NULL;
+    IntrTable[1] = NULL;
+    IntrTable[2] = VBlankIntr;
+    IntrTable[3] = NULL;
+    IntrTable[4] = NULL;
+    IntrTable[5] = NULL;
+    IntrTable[6] = Timer2Intr;
+    IntrTable[7] = NULL;
+    IntrTable[8] = NULL;
+    IntrTable[9] = SoundDma1Intr;
+    IntrTable[10] = NULL;
+    IntrTable[11] = NULL;
+    IntrTable[12] = NULL;
+    IntrTable[13] = GamepakIntr;
+    IntrTable[14] = NULL;
+    IntrTable[15] = NULL;
     dma[0] = 0x080000FC;
     dma[1] = (u32)gMain.intrMainBuf;
     dma[2] = 0x80000200;
@@ -760,22 +760,22 @@ void sub_08075DF4(void)
     REG_DISPSTAT |= 0x10;
     REG_IME = 1;
     REG_WAITCNT = 0x4014;
-    gMain.callback = sub_08004EAC;
+    gMain.callback = CB_License;
     gMain.vblankCallback = NULL;
-    sub_0807D578(0);
+    SoundInit(0);
     REG_TM2CNT_L = 0xF400;
     REG_TM2CNT_H |= 0xC3;
     gMain.vblankFlags = 3;
-    sub_080757AC();
-    sub_08075A30();
-    sub_08077A74(1);
-    sub_08077AB0(1);
-    sub_080770DC();
+    ResetBgScroll();
+    SetBrightnessWhite();
+    SetSeEnabled(1);
+    SetBgmEnabled(1);
+    SetTextModeLatin();
 }
 void AgbMain(void)
 {
-    sub_08075DF4();
-    sub_08075D70();
+    GameInit();
+    MainLoop();
 }
 /* Link-cable SIO state (0x03005B60); only the fields the serial IRQ uses. */
 struct LinkSio {
@@ -790,38 +790,38 @@ struct LinkSio {
     u8 filler0A38[4];
     u16 txBuf[10];              /* +0xA3C words sent one per transfer */
     u8 filler0A50[0xAE4 - 0xA50];
-    u16 recv[4];                /* +0xAE4 SIOMULTI copy (alias of gUnk_03006644) */
+    u16 recv[4];                /* +0xAE4 SIOMULTI copy (alias of gSioMultiRecv) */
     u32 saved;                  /* +0xAEC */
     u8 filler0AF0[0xAFC - 0xAF0];
     s32 i;                      /* +0xAFC */
 };
-extern struct LinkSio gUnk_03005B60;
-extern u16 gUnk_03006644[4]; /* SIOMULTI0-3 snapshot (overlaps LinkSio.recv) */
+extern struct LinkSio gLinkSio;
+extern u16 gSioMultiRecv[4]; /* SIOMULTI0-3 snapshot (overlaps LinkSio.recv) */
 
-void sub_08075F74(void)
+void LinkSerialIntr(void)
 {
     struct LinkSio *link;
 
-    *(unsigned long long *)gUnk_03005B60.recv = *(volatile unsigned long long *)0x04000120;
-    if (gUnk_03005B60.recv[0] == 0xFEFE && gUnk_03005B60.state > 9) {
-        gUnk_03005B60.state = -3;
-    } else if (gUnk_03005B60.state >= 0) {
-        gUnk_03005B60.i = 0;
+    *(unsigned long long *)gLinkSio.recv = *(volatile unsigned long long *)0x04000120;
+    if (gLinkSio.recv[0] == 0xFEFE && gLinkSio.state > 9) {
+        gLinkSio.state = -3;
+    } else if (gLinkSio.state >= 0) {
+        gLinkSio.i = 0;
         do {
-            gUnk_03005B60.rxBuf[gUnk_03005B60.i][gUnk_03005B60.state] = gUnk_03005B60.recv[gUnk_03005B60.i];
-            gUnk_03005B60.i++;
-        } while (gUnk_03005B60.i <= 1);
-        if (gUnk_03005B60.state == 9) {
+            gLinkSio.rxBuf[gLinkSio.i][gLinkSio.state] = gLinkSio.recv[gLinkSio.i];
+            gLinkSio.i++;
+        } while (gLinkSio.i <= 1);
+        if (gLinkSio.state == 9) {
             u16 (*t)[12];
 
-            gUnk_03005B60.saved = (u32)gUnk_03005B60.rxDone;
-            t = gUnk_03005B60.rxDone;
-            gUnk_03005B60.rxDone = gUnk_03005B60.rxBuf;
-            gUnk_03005B60.rxBuf = t;
-            gUnk_03005B60.dataReady = 1;
+            gLinkSio.saved = (u32)gLinkSio.rxDone;
+            t = gLinkSio.rxDone;
+            gLinkSio.rxDone = gLinkSio.rxBuf;
+            gLinkSio.rxBuf = t;
+            gLinkSio.dataReady = 1;
         }
     }
-    link = &gUnk_03005B60;
+    link = &gLinkSio;
     if (link->state <= 10) {
         link->state++;
     }
@@ -840,16 +840,16 @@ void sub_08075F74(void)
         }
     }
 }
-extern const u16 gUnk_081A77A8[];
+extern const u16 gSineTable128[];
 
 /* Sets the affine parameters of OAM group `idx` from a rotation angle
  * (low 7 bits, 0x80 = full turn) and a scale in the top nibble. */
-void sub_0807609C(u16 idx, u16 angle)
+void SetOamMatrixPacked(u16 idx, u16 angle)
 {
     u8 *oam = (u8 *)gMain.oam;
-    u16 a = gUnk_081A77A8[angle & 0x7F];
-    u16 b = gUnk_081A77A8[(angle + 0x20) & 0x7F];
-    u16 c = gUnk_081A77A8[(angle + 0x40) & 0x7F];
+    u16 a = gSineTable128[angle & 0x7F];
+    u16 b = gSineTable128[(angle + 0x20) & 0x7F];
+    u16 c = gSineTable128[(angle + 0x40) & 0x7F];
     u32 t;
     s32 scale;
 

@@ -41,7 +41,7 @@ const u16 gCardIdToNumber[821];   /* proposal */
 const u16 gCardNumberToId[2048];  /* proposal */
 ```
 
-The canonical lookup is at `0x08000FC0` (inside `sub_08000C54`):
+The canonical lookup is at `0x08000FC0` (inside `Bustup_UpdateTextBox`):
 ```c
 u16 CardNumberToId(u16 no) {
     if (no == 0xFFFF) return 0;
@@ -99,6 +99,6 @@ The values are 820 distinct numbers in the range 2..1112. **Sorting cards by thi
 ## Method
 - The lookup code at `0x08000FC0` shows the three branches, the mask `0x7FF`, the `+1` for numbers ≥ 2000, and the `(result)*0x40 + 0x0822C720` name access.
 - A script checked that `B[A[id]] == id` for every non-alternate ID and that the inverse table has no inconsistencies (`tools/extract_cards.py --verify` repeats this).
-- `sub_08005A70` compares ID-to-number results against 812, 730, and 1910–1912. The code at `0x080541D4` subtracts 1514 and tests `<= 5`. Both show game logic keying off card numbers.
+- `CardDetail_DrawInfo` compares ID-to-number results against 812, 730, and 1910–1912. The code at `0x080541D4` subtracts 1514 and tests `<= 5`. Both show game logic keying off card numbers.
 
 Related: [[card-table]], [[card-name-table]], [[cards]], [[deck-lists]].

@@ -1,7 +1,7 @@
 #include "global.h"
 #include "gba.h"
 
-/* Card location descriptor (4 bytes) passed to the card-move animation sub_080242C4. */
+/* Card location descriptor (4 bytes) passed to the card-move animation DuelAnim_MoveCard. */
 struct CardLoc {
     u16 player:1;       /* bit 0 */
     u16 area:4;         /* bits 1-4 */
@@ -25,8 +25,8 @@ struct DuelScreen {
     u8 unk7_4:4;
     u8 tiles[0x800];    /* +0x008: tile buffer copied to VRAM 0x060091C0 */
     u16 tilesDirty:1;   /* +0x808 bit 0 */
-    u16 flag808_1:1;    /* +0x808 bit 1: call sub_0805ED78 after the tile copy */
-    u16 cursorDone:1;   /* +0x808 bit 2: cursor move finished (sub_0805F96C is called) */
+    u16 flag808_1:1;    /* +0x808 bit 1: call TextCellsResetMap after the tile copy */
+    u16 cursorDone:1;   /* +0x808 bit 2: cursor move finished (DuelScreen_DrawCursorInfo is called) */
     u16 cursorShow:1;   /* +0x808 bit 3 */
     u16 cursorFlipA:1;  /* +0x808 bit 4: OAM attr1 0x40 (hypothesis) */
     u16 cursorFlipB:1;  /* +0x808 bit 5: OAM attr2 0x30 (hypothesis: palette) */
@@ -43,7 +43,7 @@ struct DuelScreen {
     s32 zone828;        /* +0x828 */
     s32 idx82C;         /* +0x82C */
     u8 animActive:1;    /* +0x830 bit 0: card animation pending */
-    u8 animKind:7;      /* +0x830 bits 1-7: 1..5, dispatched by sub_080243CC */
+    u8 animKind:7;      /* +0x830 bits 1-7: 1..5, dispatched by DuelAnim_Update */
     u8 filler831[3];
     u32 animArg;        /* +0x834: card id and other fields */
     u8 animStep;        /* +0x838 */
@@ -56,29 +56,29 @@ struct DuelScreen {
     u8 unk848[1];        /* +0x848 (= 0x0201D7F8): sub-object passed to sub_08076xxx */
 };
 
-extern struct DuelScreen gUnk_0201CFB0;
-#define sScreen gUnk_0201CFB0
+extern struct DuelScreen gDuelScreen;
+#define sScreen gDuelScreen
 
-extern const u16 gUnk_081A43A4[][16];
+extern const u16 gDuelZoneScrollTargets[][16];
 struct ZoneAnimEntry { u32 unk0; u32 unk4; };
-extern const struct ZoneAnimEntry gUnk_081A42A4[][16];
+extern const struct ZoneAnimEntry gDuelZonePositions[][16];
 
-void sub_0805D58C(void);
-void sub_0805D708(void);
-void sub_0805D848(void);
-void sub_0805DA1C(void);
-void sub_0805DB90(void);
-s32 sub_0807B4D0(s32 a, s32 b);     /* 8.8 fixed-point multiply */
+void DuelAnim_UpdateChangePosition(void);
+void DuelAnim_UpdateFlip(void);
+void DuelAnim_UpdateMoveCard(void);
+void DuelAnim_UpdateSwapCards(void);
+void DuelAnim_UpdateZoneEffect(void);
+s32 MulFix8(s32 a, s32 b);     /* 8.8 fixed-point multiply */
 
 /* Message/sequence block at 0x02017A30 (fields used here). */
 struct DuelMsg {
     u8 unk0[6];
     u16 opts;           /* +0x6: options (bit 7, bits 8-14, bit 15) */
     u8 unk8[3];
-    u8 step;            /* +0xB: sequence step, index into gUnk_08198FAC */
+    u8 step;            /* +0xB: sequence step, index into gCoinTossSteps */
 };
-extern struct DuelMsg gUnk_02017A30;
-extern u16 (*const gUnk_08198FAC[])(void);
+extern struct DuelMsg gDuelScene;
+extern u16 (*const gCoinTossSteps[])(void);
 
 /* One animated token of the toss animation (12 bytes). */
 struct TossSlot {
@@ -101,7 +101,7 @@ struct Toss {
     u8 mode;            /* +0x62: 0 or 4 (opts bit 15) */
     u8 unk63;           /* +0x63: 0 or 10 (opts bit 7) */
     u8 landed;          /* +0x64: tokens that landed with result 0 */
-    u8 done;            /* +0x65: set when sub_080251C8 reports all finished */
+    u8 done;            /* +0x65: set when CoinToss_CountUnfinished reports all finished */
 };
 
 /* Overlay work area at 0x02015280 (0xC58 bytes, fields used here). */
@@ -111,7 +111,7 @@ struct Work15280 {
         u16 unk0;
         u16 unk2;
         u8 unk4[0x14];
-    } unk618[3];                /* +0x618: passed to sub_0807B534 */
+    } unk618[3];                /* +0x618: passed to ObjAffineInit */
     u8 filler660[0xAAC - 0x660];
     struct Toss toss;           /* +0xAAC (0x68 bytes) */
     struct {
@@ -119,7 +119,7 @@ struct Work15280 {
         u8 unk1;
         u8 unk2;
         u8 unk3;
-    } unkB14[4];                /* +0xB14: [0] is passed to sub_08027CB8/sub_08027CDC, [1] to sub_08027D1C */
+    } unkB14[4];                /* +0xB14: [0] is passed to Scroller_Move/Scroller_SnapToStop, [1] to Scroller_StopAtEnds */
     u8 unkB24;
     u8 unkB25;
     u8 unkB26;
@@ -141,63 +141,63 @@ struct Work15280 {
     u16 timer;                  /* +0xB40: frame counter; the toss ends after 0x140 frames */
     u8 unkB42;
     u8 fillerB43[0xB48 - 0xB43];
-    u8 unkB48[6];               /* +0xB48: sub_0807883C / sub_080787F4 */
+    u8 unkB48[6];               /* +0xB48: FadeTick / FadeStart */
     u8 unkB4E;                  /* +0xB4E: 2 = done, 3 = set BLDCNT */
     u8 unkB4F;
-    u8 objB50[0xC54 - 0xB50];   /* +0xB50: sub_08025258/sub_080252D4/sub_08025344 */
+    u8 objB50[0xC54 - 0xB50];   /* +0xB50: CoinToss_UpdateSparkles/CoinToss_DrawSparkles/CoinToss_ClearSparkles */
     u8 phase;                   /* +0xC54: 0 = launch all, 1 = launch one every 16 frames */
     u8 delay;                   /* +0xC55 */
     u8 launched;                /* +0xC56 */
     u8 fillerC57;
 };
-extern struct Work15280 gUnk_02015280;
-#define gWork gUnk_02015280
-void sub_08024D48(struct Toss *t);
+extern struct Work15280 gCoinTossWork;
+#define gWork gCoinTossWork
+void CoinToss_InitCoins(struct Toss *t);
 /* Toss screen graphics (ROM). */
-extern const u8 gUnk_086A12EC[];
-extern const u8 gUnk_086AA8EC[];
-extern const u8 gUnk_086AFA28[];
-extern const u8 gUnk_086B2148[];
-extern const u8 gUnk_086AFA48[];
-extern const u8 gUnk_086AFC48[];
-extern const u8 gUnk_086AFE48[];
-extern const u8 gUnk_086B0048[];
-extern const u8 gUnk_086B0248[];
-extern const u8 gUnk_086B0448[];
-extern const u8 gUnk_086B0648[];
-extern const u8 gUnk_086B0848[];
-extern const u8 gUnk_086B0A48[];
-extern const u8 gUnk_086B0C48[];
-extern const u8 gUnk_086B0E48[];
-extern const u8 gUnk_086B1048[];
-extern const u8 gUnk_086B1248[];
-extern const u8 gUnk_086B1448[];
-extern const u8 gUnk_086B1648[];
-extern const u8 gUnk_086B1848[];
-extern const u8 gUnk_086B1A48[];
-extern const u8 gUnk_086B1C48[];
-extern const u8 gUnk_086B1E48[];
-extern const u8 gUnk_086B1EC8[];
-extern const u8 gUnk_086B1F48[];
-extern const u8 gUnk_086B1FC8[];
-extern const u8 gUnk_086B2048[];
-extern const u8 gUnk_086B20C8[];
-void sub_08025258(void *p);
-void sub_080252D4(void *p);
-void sub_0807883C(void *p);
-u32 sub_080251C8(struct Toss *t, u8 n);
-void sub_08077AEC(u32 se);
-void sub_080787F4(u32 a, u32 b, u32 c, void *p);
-void sub_0802515C(struct TossSlot *s, u8 n, u8 mode);
-void sub_08025108(struct TossSlot *s, u8 n);
-void sub_0807A298(void *p);
-void sub_08027CB8(void *p);
-void sub_08027CDC(void *p);
-void sub_08027D1C(void *p);
-void sub_08024DD4(struct TossSlot *s, u8 n);
-void sub_08024EC8(struct TossSlot *s, u8 n, u32 unused, u8 *count);
-void sub_08024FBC(struct TossSlot *s, u8 n);
-void sub_08025054(struct TossSlot *s, u8 n, u8 mode);
+extern const u8 gEgyptCorridorBitmap[];
+extern const u8 gEgyptCorridorPal[];
+extern const u8 gCoinPalette[];
+extern const u8 gSparklePalette[];
+extern const u8 gCoinSpinGfx[];
+extern const u8 gCoinSpinGfx_Frame1[];
+extern const u8 gCoinSpinGfx_Frame2[];
+extern const u8 gCoinSpinGfx_Frame3[];
+extern const u8 gCoinSpinGfx_Frame4[];
+extern const u8 gCoinSpinGfx_Frame5[];
+extern const u8 gCoinSpinGfx_Frame6[];
+extern const u8 gCoinSpinGfx_Frame7[];
+extern const u8 gCoinGlintGfx[];
+extern const u8 gCoinGlintGfx_Frame1[];
+extern const u8 gCoinGlintGfx_Frame2[];
+extern const u8 gCoinGlintGfx_Frame3[];
+extern const u8 gCoinGlintGfx_Frame4[];
+extern const u8 gCoinGlintGfx_Frame5[];
+extern const u8 gCoinGlintGfx_Frame6[];
+extern const u8 gCoinGlintGfx_Frame7[];
+extern const u8 gCoinGlintGfx_Frame8[];
+extern const u8 gCoinGlintGfx_Frame9[];
+extern const u8 gSparkleGfx[];
+extern const u8 gSparkleGfx_Frame1[];
+extern const u8 gSparkleGfx_Frame2[];
+extern const u8 gSparkleGfx_Frame3[];
+extern const u8 gSparkleGfx_Frame4[];
+extern const u8 gSparkleGfx_Frame5[];
+void CoinToss_UpdateSparkles(void *p);
+void CoinToss_DrawSparkles(void *p);
+void FadeTick(void *p);
+u32 CoinToss_CountUnfinished(struct Toss *t, u8 n);
+void PlaySE(u32 se);
+void FadeStart(u32 a, u32 b, u32 c, void *p);
+void CoinToss_MarkMatchingCoins(struct TossSlot *s, u8 n, u8 mode);
+void CoinToss_AnimateHighlights(struct TossSlot *s, u8 n);
+void OamListFlush(void *p);
+void Scroller_Move(void *p);
+void Scroller_SnapToStop(void *p);
+void Scroller_StopAtEnds(void *p);
+void CoinToss_AnimateSpin(struct TossSlot *s, u8 n);
+void CoinToss_UpdateFlight(struct TossSlot *s, u8 n, u32 unused, u8 *count);
+void CoinToss_DrawCoins(struct TossSlot *s, u8 n);
+void CoinToss_DrawGlints(struct TossSlot *s, u8 n, u8 mode);
 
 
 /* gMain (0x03000040): only the fields used here. */
@@ -208,21 +208,21 @@ struct Main {
     u16 bgScroll4422;   /* +0x4422 */
     u16 bgScroll4424;   /* +0x4424 */
 };
-extern struct Main gUnk_03000040;
-#define gMain gUnk_03000040
-void sub_08075278(void *dst, u32 size); /* MemClear16 */
-void sub_0807A2EC(void *p);
-void sub_0807B534(void *p);
-void sub_0807B4A8(u32 a);
-void sub_08025344(void *p);
+extern struct Main gMain;
+#define gMain gMain
+void MemClear16(void *dst, u32 size); /* MemClear16 */
+void OamListClear(void *p);
+void ObjAffineInit(void *p);
+void SetBldAlpha(u32 a);
+void CoinToss_ClearSparkles(void *p);
 
-extern const u16 gUnk_08081F80[];   /* toss token tile per anim frame */
-extern const u16 gUnk_08081F90[];   /* result tile (+5: second set) */
-void sub_0807B6B8(u32 a, u32 tile, s32 x, s32 y, u32 w, u32 h, u32 a6, u32 a7, u32 a8,
+extern const u16 gCoinSpinTiles[];   /* toss token tile per anim frame */
+extern const u16 gCoinGlintTiles[];   /* result tile (+5: second set) */
+void OamListAddSprite(u32 a, u32 tile, s32 x, s32 y, u32 w, u32 h, u32 a6, u32 a7, u32 a8,
                   u32 a9, u32 a10, u32 a11, void *work);
 
-extern u8 gUnk_02015DD0[];
-void sub_08025200(u8 x, u8 y, void *work);
+extern u8 gCoinTossSparkles[];
+void CoinToss_SpawnSparkle(u8 x, u8 y, void *work);
 
 /* Second tile buffer at 0x0201AE60 (fields used here). */
 struct TileBuf {
@@ -232,39 +232,39 @@ struct TileBuf {
     u8 filler1[0x24 - 1];
     u8 tiles[0x1B00];   /* +0x24: copied to VRAM 0x06009AE0 */
 };
-extern struct TileBuf gUnk_0201AE60;
-extern const u16 gUnk_081A429C[];   /* interpolation weights (8.8), indexed by steps left */
-void sub_080752B0(void *dst, const void *src, u32 size);
-void sub_0805ED78(void);
-void sub_0805F96C(void);
-void sub_08076714(u32 yx, u16 shapeSize, u16 attr2, u32 affine);
+extern struct TileBuf gTextBox;
+extern const u16 gDuelScreenLerpWeights[];   /* interpolation weights (8.8), indexed by steps left */
+void CopyDoubleWords(void *dst, const void *src, u32 size);
+void TextCellsResetMap(void);
+void DuelScreen_DrawCursorInfo(void);
+void AddAffineSprite(u32 yx, u16 shapeSize, u16 attr2, u32 affine);
 
-void sub_0802408C(u32 bg);
-void sub_080240A8(u32 player, u32 zone);
-void sub_080240D4(u32 x, u32 y);
-void sub_08024134(s32 player, s32 zone, s32 idx);
-u32 sub_080623AC(u32 player, u32 a, u32 b);
-void sub_0807695C(u32 a, void *obj);
-void sub_080769DC(void *obj);
-void sub_08076A20(s16 a, s16 b, void *obj, u16 c);
-void sub_08076BEC(s16 a, s16 b, void *obj, u16 c);
-void sub_08076DAC(u32 a, void *obj, u16 b, u16 c);
+void DuelScreen_StartScroll(u32 bg);
+void DuelScreen_ScrollToZone(u32 player, u32 zone);
+void DuelCursor_MoveTo(u32 x, u32 y);
+void DuelCursor_Select(s32 player, s32 zone, s32 idx);
+u32 GetAreaX(u32 player, u32 a, u32 b);
+void SprAnimLoad(u32 a, void *obj);
+void SprAnimRewind(void *obj);
+void SprAnimDrawFrame(s16 a, s16 b, void *obj, u16 c);
+void SprAnimDrawFrameAt(s16 a, s16 b, void *obj, u16 c);
+void SprAnimDrawFrameAtFlip(u32 a, void *obj, u16 b, u16 c);
 
 
-void sub_0802408C(u32 bg)
+void DuelScreen_StartScroll(u32 bg)
 {
     sScreen.scrollFrom = sScreen.scroll;
     sScreen.scrollTo = bg;
     sScreen.scrollSteps = 4;
 }
-void sub_080240A8(u32 player, u32 zone)
+void DuelScreen_ScrollToZone(u32 player, u32 zone)
 {
-    u16 v = gUnk_081A43A4[player][zone];
+    u16 v = gDuelZoneScrollTargets[player][zone];
     if (sScreen.scrollTo != (u8)v)
-        sub_0802408C(v);
+        DuelScreen_StartScroll(v);
 }
 /* Start moving the field cursor from its current position to (x, y) over 4 frames. */
-void sub_080240D4(u32 x, u32 y)
+void DuelCursor_MoveTo(u32 x, u32 y)
 {
     sScreen.cursorFromX = sScreen.cursorX;
     sScreen.cursorFromY = sScreen.cursorY;
@@ -272,7 +272,7 @@ void sub_080240D4(u32 x, u32 y)
     sScreen.cursorToY = y;
     sScreen.cursorSteps = 4;
 }
-void sub_08024134(s32 player, s32 zone, s32 idx)
+void DuelCursor_Select(s32 player, s32 zone, s32 idx)
 {
     s32 i;
 
@@ -293,41 +293,41 @@ void sub_08024134(s32 player, s32 zone, s32 idx)
         i = zone + idx;
     else
         i = zone;
-    sub_080240D4(sub_080623AC(player, zone, idx), gUnk_081A42A4[player][i].unk4);
-    sub_080240A8(sScreen.player824, sScreen.zone828);
+    DuelCursor_MoveTo(GetAreaX(player, zone, idx), gDuelZonePositions[player][i].unk4);
+    DuelScreen_ScrollToZone(sScreen.player824, sScreen.zone828);
 }
-void sub_080241C4(void)
+void DuelCursor_Refresh(void)
 {
-    sub_08024134(sScreen.player824, sScreen.zone828, sScreen.idx82C);
+    DuelCursor_Select(sScreen.player824, sScreen.zone828, sScreen.idx82C);
 }
 
-void sub_080241F0(u32 a)
+void DuelSprAnim_Load(u32 a)
 {
-    sub_0807695C(a, sScreen.unk848);
+    SprAnimLoad(a, sScreen.unk848);
     sScreen.cursorOn = 0;
 }
 
-void sub_08024218(void)
+void DuelSprAnim_Rewind(void)
 {
-    sub_080769DC(sScreen.unk848);
+    SprAnimRewind(sScreen.unk848);
 }
 
-void sub_08024228(s16 a, s16 b, u16 c)
+void DuelSprAnim_DrawAt(s16 a, s16 b, u16 c)
 {
-    sub_08076A20(a, b, sScreen.unk848, c);
+    SprAnimDrawFrame(a, b, sScreen.unk848, c);
 }
 
-void sub_08024248(s16 a, s16 b, u16 c)
+void DuelSprAnim_Draw(s16 a, s16 b, u16 c)
 {
-    sub_08076BEC(a, b, sScreen.unk848, c);
+    SprAnimDrawFrameAt(a, b, sScreen.unk848, c);
 }
 
-void sub_08024268(u32 a, u16 b, u16 c)
+void DuelSprAnim_DrawFlip(u32 a, u16 b, u16 c)
 {
-    sub_08076DAC(a, sScreen.unk848, b, c);
+    SprAnimDrawFrameAtFlip(a, sScreen.unk848, b, c);
 }
 
-void sub_08024288(u16 kind, u32 arg)
+void DuelAnim_Request(u16 kind, u32 arg)
 {
     sScreen.animKind = kind;
     sScreen.animArg = arg;
@@ -336,7 +336,7 @@ void sub_08024288(u16 kind, u32 arg)
     sScreen.animActive = 1;
 }
 
-void sub_080242C4(u16 id, struct CardLoc *from, struct CardLoc *to)
+void DuelAnim_MoveCard(u16 id, struct CardLoc *from, struct CardLoc *to)
 {
     sScreen.animKind = 3;
     sScreen.animArg = id;
@@ -347,7 +347,7 @@ void sub_080242C4(u16 id, struct CardLoc *from, struct CardLoc *to)
     sScreen.animActive = 1;
 }
 
-void sub_0802432C(struct CardLoc *from, struct CardLoc *to)
+void DuelAnim_SwapCards(struct CardLoc *from, struct CardLoc *to)
 {
     sScreen.animKind = 4;
     sScreen.from = *from;
@@ -357,7 +357,7 @@ void sub_0802432C(struct CardLoc *from, struct CardLoc *to)
     sScreen.animActive = 1;
 }
 
-void sub_08024380(struct CardLoc *from, u32 arg, u32 a, u32 b)
+void DuelAnim_PlayZoneEffect(struct CardLoc *from, u32 arg, u32 a, u32 b)
 {
     sScreen.animKind = 5;
     sScreen.animArg = arg;
@@ -369,53 +369,53 @@ void sub_08024380(struct CardLoc *from, u32 arg, u32 a, u32 b)
     sScreen.animActive = 1;
 }
 
-u16 sub_080243CC(void)
+u16 DuelAnim_Update(void)
 {
     if (sScreen.animActive) {
         switch (sScreen.animKind) {
         case 1:
-            sub_0805D58C();
+            DuelAnim_UpdateChangePosition();
             return 1;
         case 2:
-            sub_0805D708();
+            DuelAnim_UpdateFlip();
             return 1;
         case 3:
-            sub_0805D848();
+            DuelAnim_UpdateMoveCard();
             return 1;
         case 4:
-            sub_0805DA1C();
+            DuelAnim_UpdateSwapCards();
             return 1;
         case 5:
-            sub_0805DB90();
+            DuelAnim_UpdateZoneEffect();
             return 1;
         }
     }
     return 0;
 }
-u32 sub_08024440(void)
+u32 DuelScreen_Update(void)
 {
     u32 busy = 0;
 
     if (sScreen.active) {
         if (sScreen.tilesDirty) {
-            sub_080752B0((void *)0x060091C0, sScreen.tiles, 0x800);
+            CopyDoubleWords((void *)0x060091C0, sScreen.tiles, 0x800);
             if (sScreen.flag808_1) {
-                sub_0805ED78();
+                TextCellsResetMap();
                 sScreen.flag808_1 = 0;
             }
             sScreen.tilesDirty = 0;
         }
         if (sScreen.active) {
-            if (gUnk_0201AE60.dirty) {
-                sub_080752B0((void *)0x06009AE0, gUnk_0201AE60.tiles, 0x1B00);
-                gUnk_0201AE60.dirty = 0;
+            if (gTextBox.dirty) {
+                CopyDoubleWords((void *)0x06009AE0, gTextBox.tiles, 0x1B00);
+                gTextBox.dirty = 0;
             }
             if (sScreen.active) {
                 int steps = sScreen.scrollSteps;
                 if (steps > 0) {
                     s32 d = sScreen.scrollTo - sScreen.scrollFrom;
                     sScreen.scrollSteps = steps - 1;
-                    d *= gUnk_081A429C[sScreen.scrollSteps];
+                    d *= gDuelScreenLerpWeights[sScreen.scrollSteps];
                     d /= 256;
                     sScreen.scroll = sScreen.scrollFrom + d;
                     busy = 1;
@@ -427,14 +427,14 @@ u32 sub_08024440(void)
     }
     if (sScreen.cursorDone) {
         sScreen.cursorDone = 0;
-        sub_0805F96C();
+        DuelScreen_DrawCursorInfo();
     }
     if (sScreen.cursorSteps) {
         sScreen.cursorX = sScreen.cursorToX - sScreen.cursorFromX;
         sScreen.cursorY = sScreen.cursorToY - sScreen.cursorFromY;
         sScreen.cursorSteps--;
-        sScreen.cursorX *= gUnk_081A429C[sScreen.cursorSteps];
-        sScreen.cursorY *= gUnk_081A429C[sScreen.cursorSteps];
+        sScreen.cursorX *= gDuelScreenLerpWeights[sScreen.cursorSteps];
+        sScreen.cursorY *= gDuelScreenLerpWeights[sScreen.cursorSteps];
         sScreen.cursorX /= 256;
         sScreen.cursorY /= 256;
         sScreen.cursorX += sScreen.cursorFromX;
@@ -449,16 +449,16 @@ u32 sub_08024440(void)
             u16 pal = sScreen.cursorFlipB ? 0x30 : 0;
             u32 flip = sScreen.cursorFlipA ? 0x40 : 0;
             if (sScreen.cursorOn && sScreen.cursorShow)
-                sub_08076714((sScreen.cursorX + 8) | (y << 16), 0x80, pal, flip | 0x1000000);
+                AddAffineSprite((sScreen.cursorX + 8) | (y << 16), 0x80, pal, flip | 0x1000000);
         }
     }
-    if (sub_080243CC())
+    if (DuelAnim_Update())
         busy = 1;
     return busy;
 }
-u32 sub_080246A8(void)
+u32 CoinToss_Init(void)
 {
-    sub_08075278(&gUnk_02015280, sizeof(gUnk_02015280));
+    MemClear16(&gCoinTossWork, sizeof(gCoinTossWork));
     gMain.unk40E = 1;
     REG_BG1VOFS = 0;
     REG_BG1HOFS = 0;
@@ -467,59 +467,59 @@ u32 sub_080246A8(void)
     REG_BG3VOFS = 0;
     REG_BG3HOFS = 0;
     REG_DISPCNT &= 0xE0FF;
-    sub_0807A2EC(&gUnk_02015280);
-    sub_0807B534(gUnk_02015280.unk618);
-    sub_0807B4A8(8);
-    gUnk_02015280.timer = 0;
-    gUnk_02015280.unkB42 = 0;
-    gUnk_02015280.unkB27 = 0xFF;
-    sub_08025344(gUnk_02015280.objB50);
+    OamListClear(&gCoinTossWork);
+    ObjAffineInit(gCoinTossWork.unk618);
+    SetBldAlpha(8);
+    gCoinTossWork.timer = 0;
+    gCoinTossWork.unkB42 = 0;
+    gCoinTossWork.unkB27 = 0xFF;
+    CoinToss_ClearSparkles(gCoinTossWork.objB50);
     return 1;
 }
-u32 sub_08024744(void)
+u32 CoinToss_Load(void)
 {
     vu16 zero;
     vu16 zero2;
     u8 i;
 
-    sub_080787F4(0, -0x180, 0, gWork.unkB48);
-    CpuSet(gUnk_086A12EC, (void *)0x06000000, 0x4B00);
-    CpuSet(gUnk_086AA8EC, (void *)0x05000000, 0x100);
-    CpuSet(gUnk_086AFA28, (void *)0x05000200, 0x10);
+    FadeStart(0, -0x180, 0, gWork.unkB48);
+    CpuSet(gEgyptCorridorBitmap, (void *)0x06000000, 0x4B00);
+    CpuSet(gEgyptCorridorPal, (void *)0x05000000, 0x100);
+    CpuSet(gCoinPalette, (void *)0x05000200, 0x10);
     zero = 0;
     CpuSet((void *)&zero, (void *)0x06014000, 0x01000010);
-    CpuSet(gUnk_086AFA48, (void *)0x06014020, 0x100);
-    CpuSet(gUnk_086AFC48, (void *)0x06014220, 0x100);
-    CpuSet(gUnk_086AFE48, (void *)0x06014420, 0x100);
-    CpuSet(gUnk_086B0048, (void *)0x06014620, 0x100);
-    CpuSet(gUnk_086B0248, (void *)0x06014820, 0x100);
-    CpuSet(gUnk_086B0448, (void *)0x06014A20, 0x100);
-    CpuSet(gUnk_086B0648, (void *)0x06014C20, 0x100);
-    CpuSet(gUnk_086B0848, (void *)0x06014E20, 0x100);
-    CpuSet(gUnk_086B0A48, (void *)0x06015020, 0x100);
-    CpuSet(gUnk_086B0C48, (void *)0x06015220, 0x100);
-    CpuSet(gUnk_086B0E48, (void *)0x06015420, 0x100);
-    CpuSet(gUnk_086B1048, (void *)0x06015620, 0x100);
-    CpuSet(gUnk_086B1248, (void *)0x06015820, 0x100);
-    CpuSet(gUnk_086B1448, (void *)0x06015A20, 0x100);
-    CpuSet(gUnk_086B1648, (void *)0x06015C20, 0x100);
-    CpuSet(gUnk_086B1848, (void *)0x06015E20, 0x100);
-    CpuSet(gUnk_086B1A48, (void *)0x06016020, 0x100);
-    CpuSet(gUnk_086B1C48, (void *)0x06016220, 0x100);
-    CpuSet(gUnk_086B1E48, (void *)0x060164A0, 0x40);
-    CpuSet(gUnk_086B1EC8, (void *)0x06016520, 0x40);
-    CpuSet(gUnk_086B1F48, (void *)0x060165A0, 0x40);
-    CpuSet(gUnk_086B1FC8, (void *)0x06016620, 0x40);
-    CpuSet(gUnk_086B2048, (void *)0x060166A0, 0x40);
-    CpuSet(gUnk_086B20C8, (void *)0x06016720, 0x40);
-    CpuSet(gUnk_086B2148, (void *)0x05000220, 0x10);
+    CpuSet(gCoinSpinGfx, (void *)0x06014020, 0x100);
+    CpuSet(gCoinSpinGfx_Frame1, (void *)0x06014220, 0x100);
+    CpuSet(gCoinSpinGfx_Frame2, (void *)0x06014420, 0x100);
+    CpuSet(gCoinSpinGfx_Frame3, (void *)0x06014620, 0x100);
+    CpuSet(gCoinSpinGfx_Frame4, (void *)0x06014820, 0x100);
+    CpuSet(gCoinSpinGfx_Frame5, (void *)0x06014A20, 0x100);
+    CpuSet(gCoinSpinGfx_Frame6, (void *)0x06014C20, 0x100);
+    CpuSet(gCoinSpinGfx_Frame7, (void *)0x06014E20, 0x100);
+    CpuSet(gCoinGlintGfx, (void *)0x06015020, 0x100);
+    CpuSet(gCoinGlintGfx_Frame1, (void *)0x06015220, 0x100);
+    CpuSet(gCoinGlintGfx_Frame2, (void *)0x06015420, 0x100);
+    CpuSet(gCoinGlintGfx_Frame3, (void *)0x06015620, 0x100);
+    CpuSet(gCoinGlintGfx_Frame4, (void *)0x06015820, 0x100);
+    CpuSet(gCoinGlintGfx_Frame5, (void *)0x06015A20, 0x100);
+    CpuSet(gCoinGlintGfx_Frame6, (void *)0x06015C20, 0x100);
+    CpuSet(gCoinGlintGfx_Frame7, (void *)0x06015E20, 0x100);
+    CpuSet(gCoinGlintGfx_Frame8, (void *)0x06016020, 0x100);
+    CpuSet(gCoinGlintGfx_Frame9, (void *)0x06016220, 0x100);
+    CpuSet(gSparkleGfx, (void *)0x060164A0, 0x40);
+    CpuSet(gSparkleGfx_Frame1, (void *)0x06016520, 0x40);
+    CpuSet(gSparkleGfx_Frame2, (void *)0x060165A0, 0x40);
+    CpuSet(gSparkleGfx_Frame3, (void *)0x06016620, 0x40);
+    CpuSet(gSparkleGfx_Frame4, (void *)0x060166A0, 0x40);
+    CpuSet(gSparkleGfx_Frame5, (void *)0x06016720, 0x40);
+    CpuSet(gSparklePalette, (void *)0x05000220, 0x10);
     zero2 = 0;
     CpuSet((void *)&zero2, (void *)0x06016420, 0x01000040);
     for (i = 0; i < 3; i++) {
         gWork.unk618[i].unk0 = 0;
         gWork.unk618[i].unk2 = 0;
     }
-    sub_08024D48(&gWork.toss);
+    CoinToss_InitCoins(&gWork.toss);
     for (i = 0; i < 4; i++) {
         gWork.unkB14[i].unk1 = 0;
         gWork.unkB14[i].unk0 = 0;
@@ -540,16 +540,16 @@ u32 sub_08024744(void)
     REG_DISPCNT = 0x1F44;
     return 1;
 }
-u32 sub_08024AA0(void)
+u32 CoinToss_Update(void)
 {
-    sub_08025258(gWork.objB50);
-    sub_080252D4(gWork.objB50);
-    sub_0807883C(gWork.unkB48);
+    CoinToss_UpdateSparkles(gWork.objB50);
+    CoinToss_DrawSparkles(gWork.objB50);
+    FadeTick(gWork.unkB48);
     if (gWork.unkB4E == 2)
         return 1;
     if (gWork.unkB4E == 3)
         REG_BLDCNT = 0x1040;
-    if (gWork.toss.done == 0 && sub_080251C8(&gWork.toss, gWork.toss.count) == 0) {
+    if (gWork.toss.done == 0 && CoinToss_CountUnfinished(&gWork.toss, gWork.toss.count) == 0) {
         gWork.toss.done = 1;
         gWork.delay = 100;
     }
@@ -562,10 +562,10 @@ u32 sub_08024AA0(void)
             if (gWork.toss.next == gWork.toss.count + 1)
                 gWork.toss.next = gWork.toss.count;
             else
-                sub_08077AEC(30);
+                PlaySE(30);
             break;
         case 1:
-            sub_080787F4(0, 0x180, 0, gWork.unkB48);
+            FadeStart(0, 0x180, 0, gWork.unkB48);
             break;
         }
         break;
@@ -579,55 +579,55 @@ u32 sub_08024AA0(void)
                 if (gWork.toss.next == gWork.toss.count + 1)
                     gWork.toss.next = gWork.toss.count;
                 if (gWork.launched++ < gWork.toss.count)
-                    sub_08077AEC(30);
+                    PlaySE(30);
                 break;
             case 1:
-                sub_080787F4(0, 0x180, 0, gWork.unkB48);
+                FadeStart(0, 0x180, 0, gWork.unkB48);
                 break;
             }
         }
         break;
     }
-    sub_08024DD4(gWork.toss.slots, gWork.toss.count);
-    sub_08024EC8(gWork.toss.slots, gWork.toss.count, gWork.timer, &gWork.toss.landed);
-    sub_08024FBC(gWork.toss.slots, gWork.toss.count);
-    sub_0802515C(gWork.toss.slots, gWork.toss.count, gWork.toss.mode);
-    sub_08025108(gWork.toss.slots, gWork.toss.count);
-    sub_08025054(gWork.toss.slots, gWork.toss.count, gWork.toss.mode);
-    sub_0807A298(&gWork);
-    sub_0807A2EC(&gWork);
-    sub_08027CB8(&gWork.unkB14[0]);
-    sub_08027CDC(&gWork.unkB14[0]);
-    sub_08027D1C(&gWork.unkB14[1]);
+    CoinToss_AnimateSpin(gWork.toss.slots, gWork.toss.count);
+    CoinToss_UpdateFlight(gWork.toss.slots, gWork.toss.count, gWork.timer, &gWork.toss.landed);
+    CoinToss_DrawCoins(gWork.toss.slots, gWork.toss.count);
+    CoinToss_MarkMatchingCoins(gWork.toss.slots, gWork.toss.count, gWork.toss.mode);
+    CoinToss_AnimateHighlights(gWork.toss.slots, gWork.toss.count);
+    CoinToss_DrawGlints(gWork.toss.slots, gWork.toss.count, gWork.toss.mode);
+    OamListFlush(&gWork);
+    OamListClear(&gWork);
+    Scroller_Move(&gWork.unkB14[0]);
+    Scroller_SnapToStop(&gWork.unkB14[0]);
+    Scroller_StopAtEnds(&gWork.unkB14[1]);
     if (gWork.timer++ > 0x140)
         return 1;
     return 0;
 }
-u32 sub_08024CB8(void)
+u32 CoinToss_Run(void)
 {
-    if (gUnk_08198FAC[gUnk_02017A30.step]) {
-        if (gUnk_08198FAC[gUnk_02017A30.step]())
-            gUnk_02017A30.step++;
+    if (gCoinTossSteps[gDuelScene.step]) {
+        if (gCoinTossSteps[gDuelScene.step]())
+            gDuelScene.step++;
         return 0;
     }
     return 1;
 }
 
-u32 sub_08024CF0(void)
+u32 CoinToss_RunStaggered(void)
 {
-    if (gUnk_02017A30.step == 1) {
-        gUnk_02015280.phase = 1;
-        gUnk_02015280.delay = 30;
+    if (gDuelScene.step == 1) {
+        gCoinTossWork.phase = 1;
+        gCoinTossWork.delay = 30;
     }
-    if (gUnk_08198FAC[gUnk_02017A30.step]) {
-        if (gUnk_08198FAC[gUnk_02017A30.step]())
-            gUnk_02017A30.step++;
+    if (gCoinTossSteps[gDuelScene.step]) {
+        if (gCoinTossSteps[gDuelScene.step]())
+            gDuelScene.step++;
         return 0;
     }
     return 1;
 }
 
-void sub_08024D48(struct Toss *t)
+void CoinToss_InitCoins(struct Toss *t)
 {
     u8 i;
 
@@ -647,15 +647,15 @@ void sub_08024D48(struct Toss *t)
     t->count = 3;
     t->mode = 0;
     t->unk63 = 2;
-    t->count = (gUnk_02017A30.opts & 0x7F00) >> 8;
-    t->mode = (gUnk_02017A30.opts >> 13) & 4;
-    if (gUnk_02017A30.opts & 0x80)
+    t->count = (gDuelScene.opts & 0x7F00) >> 8;
+    t->mode = (gDuelScene.opts >> 13) & 4;
+    if (gDuelScene.opts & 0x80)
         t->unk63 = 0;
     else
         t->unk63 = 10;
 }
 
-void sub_08024DD4(struct TossSlot *s, u8 n)
+void CoinToss_AnimateSpin(struct TossSlot *s, u8 n)
 {
     u8 i;
 
@@ -672,7 +672,7 @@ void sub_08024DD4(struct TossSlot *s, u8 n)
     }
 }
 
-void sub_08024E24(struct TossSlot *s, u8 n, u8 mask, u8 *count)
+void CoinToss_UpdateFlightUniform(struct TossSlot *s, u8 n, u8 mask, u8 *count)
 {
     u8 i;
 
@@ -680,7 +680,7 @@ void sub_08024E24(struct TossSlot *s, u8 n, u8 mask, u8 *count)
         u8 st = s[i].state;
         if (st == 1) {
             s[i].t += 40;
-            s[i].y = sub_0807B4D0(0x3000, s[i].t) - sub_0807B4D0(0x500, sub_0807B4D0(s[i].t, s[i].t));
+            s[i].y = MulFix8(0x3000, s[i].t) - MulFix8(0x500, MulFix8(s[i].t, s[i].t));
             if (s[i].y < 0) {
                 u8 f;
                 s[i].y = 0;
@@ -695,7 +695,7 @@ void sub_08024E24(struct TossSlot *s, u8 n, u8 mask, u8 *count)
     }
 }
 
-void sub_08024EC8(struct TossSlot *s, u8 n, u32 unused, u8 *count)
+void CoinToss_UpdateFlight(struct TossSlot *s, u8 n, u32 unused, u8 *count)
 {
     u8 i;
 
@@ -703,42 +703,42 @@ void sub_08024EC8(struct TossSlot *s, u8 n, u32 unused, u8 *count)
         u8 st = s[i].state;
         if (st == 1) {
             s[i].t += 40;
-            s[i].y = sub_0807B4D0(0x3000, s[i].t) - sub_0807B4D0(0x500, sub_0807B4D0(s[i].t, s[i].t));
+            s[i].y = MulFix8(0x3000, s[i].t) - MulFix8(0x500, MulFix8(s[i].t, s[i].t));
             if (s[i].y < 0) {
                 s[i].y = 0;
                 s[i].t = 0;
                 s[i].state++;
-                if ((gUnk_02017A30.opts >> i) & st)
+                if ((gDuelScene.opts >> i) & st)
                     s[i].frame = 4;
                 else
                     s[i].frame = 0;
                 if (s[i].frame == 0)
                     (*count)++;
             } else if ((s[i].t & 0xF) == 0) {
-                sub_08025200((i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8), gUnk_02015DD0);
+                CoinToss_SpawnSparkle((i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8), gCoinTossSparkles);
             }
         }
     }
 }
-void sub_08024FBC(struct TossSlot *s, u8 n)
+void CoinToss_DrawCoins(struct TossSlot *s, u8 n)
 {
     u8 i;
 
     for (i = 0; i < n; i++) {
-        int tile = gUnk_08081F80[s[i].frame] + 0x200;
-        sub_0807B6B8(0, tile, (i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8),
-                     32, 32, 4, 0, 0x200, 0, 0, 0, &gUnk_02015280);
+        int tile = gCoinSpinTiles[s[i].frame] + 0x200;
+        OamListAddSprite(0, tile, (i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8),
+                     32, 32, 4, 0, 0x200, 0, 0, 0, &gCoinTossWork);
     }
 }
-void sub_08025054(struct TossSlot *s, u8 n, u8 mode)
+void CoinToss_DrawGlints(struct TossSlot *s, u8 n, u8 mode)
 {
     u8 i;
 
     for (i = 0; i < n; i++) {
         if (s[i].unkA == 1) {
-            int tile = gUnk_08081F90[s[i].unk9 + (mode != 4 ? 5 : 0)] + 0x200;
-            sub_0807B6B8(0, tile, (i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8),
-                         32, 32, 4, 0, 0x200, 0, 0, 0, &gUnk_02015280);
+            int tile = gCoinGlintTiles[s[i].unk9 + (mode != 4 ? 5 : 0)] + 0x200;
+            OamListAddSprite(0, tile, (i + 1) * 240 / (n + 1) - 16, 0x78 - (s[i].y >> 8),
+                         32, 32, 4, 0, 0x200, 0, 0, 0, &gCoinTossWork);
         }
     }
 }

@@ -20,7 +20,7 @@
 0x0807570C Timer2Intr  # IntrTable[6]: reload 0xF400, ++u16 at 0x030051FC
 0x08075740 GamepakIntr  # IntrTable[13]: while(1); unreachable (IntrMain loops on GAMEPAK itself)
 0x0807E324 SoundDma1Intr  # IntrTable[9]: FIFO ring position +16, rewinds DMA1/DMA2 at 0x2C0
-0x08075F74 LinkSerialIntr  # serial+timer3 IRQ (installed by sub_080735D4); reads SIOMULTI, 0xFEFE sync; hyp Nintendo MultiSio-derived
+0x08075F74 LinkSerialIntr  # serial+timer3 IRQ (installed by LinkSioInit); reads SIOMULTI, 0xFEFE sync; hyp Nintendo MultiSio-derived
 0x080735D4 LinkSioInit  # sets SIO multi-player 115200, installs LinkSerialIntr into 2 IntrTable slots, IE |= SERIAL|TIMER3
 
 ## --- fades / video / memory helpers ---

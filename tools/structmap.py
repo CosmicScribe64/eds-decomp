@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Map every named field of a shared global, across all C units, to its byte/bit offset (agbcc layout rules).
 
-  python3 tools/structmap.py 0x03000040            # merged field map of gUnk_03000040 (all units' declarations)
+  python3 tools/structmap.py 0x03000040            # merged field map of gMain (all units' declarations)
   python3 tools/structmap.py 0x020192E4 --elem     # for arrays: offsets within one element
   python3 tools/structmap.py --check               # self-test the layout rules against old_agbcc
 

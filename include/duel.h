@@ -6,8 +6,8 @@
  * (tools/structmap.py + tools/mkheader.py, 2026-09-30). Field names are the most-used ones; "(hypothesis)"
  * marks meanings that are not verified. Unknown bytes are named unk<offset>.
  *
- * Memory: gUnk_020192E0 (struct DuelState): a u32 then the two players; gUnk_020192E4 = &players[0] (stride
- * 0xD64); gUnk_0201930C = &players[0].zones[0] (each zone 0x94 bytes).
+ * Memory: gDuel (struct DuelState): a u32 then the two players; gDuelPlayers = &players[0] (stride
+ * 0xD64); gDuelZones = &players[0].zones[0] (each zone 0x94 bytes).
  *
  * Migrating a unit: replace its local struct definitions with #include "duel.h", adapt field names, and verify
  * with tools/check.py. If a unit only matches with a different declared type for some field (for example u8
@@ -74,7 +74,7 @@ struct DuelPlayer {
     u16 arrCC4[80];                 /* +0xCC4 */
 };
 
-/* gUnk_020192E0: the duel (players, then the marked-card queue and duel flags; known up to +0x1B20). */
+/* gDuel: the duel (players, then the marked-card queue and duel flags; known up to +0x1B20). */
 struct DuelState {
     u32 unk0;                       /* +0x0000 */
     struct DuelPlayer players[2];   /* +0x0004 */
@@ -95,15 +95,15 @@ struct DuelState {
     u8 phaseStep;                   /* +0x1B20 */
 };
 
-/* gUnk_0201930C is &players[0].zones[0]: this view (used by most units) indexes zones per player. */
+/* gDuelZones is &players[0].zones[0]: this view (used by most units) indexes zones per player. */
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
     u8 rest[0xD64 - 11 * 0x94];
 };
 
-extern struct DuelState gUnk_020192E0;
-extern struct DuelPlayer gUnk_020192E4[2];
-extern struct DuelZonesPlayer gUnk_0201930C[2];
+extern struct DuelState gDuel;
+extern struct DuelPlayer gDuelPlayers[2];
+extern struct DuelZonesPlayer gDuelZones[2];
 
 /* Compile-time layout checks (agbcc: structs are padded to 4 bytes). */
 typedef char duel_h_check_zone[sizeof(struct DuelZone) == 0x94 ? 1 : -1];

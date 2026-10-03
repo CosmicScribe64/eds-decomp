@@ -4,7 +4,7 @@
   python3 tools/objdiff_resolve.py IN.o OUT.o [IN.o OUT.o ...]
 
 Why: the original asm writes some literal-pool words as plain numbers (`.4byte 0x02013D90`) while the C
-refers to a symbol (`gUnk_02013D90`), or the other way round. The linked bytes are identical, but
+refers to a symbol (`gCardDetail`), or the other way round. The linked bytes are identical, but
 objdiff compares unlinked objects and would count every such word as a mismatch. After this pass
 both sides hold the same plain value and only real code differences remain.
 

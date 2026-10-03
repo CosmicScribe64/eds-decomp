@@ -4,29 +4,29 @@
 #include "duel_ui.h"    /* struct DuelCmd/DuelScreen (pulls in duel.h) */
 
 /* gMain (0x03000040): canonical layout in main.h. */
-#define gMain gUnk_03000040
+#define gMain gMain
 
 typedef u16 (*StepFunc)(void);
 
 /* Message box request block at 0x02017A30. */
 struct DuelMsg {
-    StepFunc func;                  /* 0x0: handler from gUnk_08198EF8[id] */
+    StepFunc func;                  /* 0x0: handler from gDuelSceneHandlers[id] */
     u16 id:15;                      /* 0x4 bits 0-14 */
     u16 flag:1;                     /* 0x4 bit 15 */
     u16 arg;                        /* 0x6 */
     u8 filler8[2];
-    u8 stepIndex;                   /* 0xA: index into gUnk_08198F14 */
+    u8 stepIndex;                   /* 0xA: index into gDuelSceneRunnerSteps */
     u8 state;                       /* 0xB */
     u8 unkC;                        /* 0xC */
     u8 unkD;                        /* 0xD */
 };
-extern struct DuelMsg gUnk_02017A30;
-#define gMsg gUnk_02017A30
+extern struct DuelMsg gDuelScene;
+#define gMsg gDuelScene
 
 /* Duel command queue at 0x020185C0: canonical layout in duel_ui.h. */
 
 /* Local view: canonical struct DuelCard puts the owner bit at +0x1 bit 4 and
-   flag20 at bit 20; sub_0801E260 reads the zone word's flag at bit 18 instead,
+   flag20 at bit 20; CardMenu_Execute reads the zone word's flag at bit 18 instead,
    so keep a unit-specific view. */
 struct ZoneWord {
     u32 cardId:12;
@@ -37,7 +37,7 @@ struct ZoneWord {
 
 /* Card command menu at 0x020192E0+0x1B2C (see code_0801CE68). Canonical duel.h
    stops at DuelState.phaseStep +0x1B20, so this is a unit-specific view used only
-   by sub_0801E260. */
+   by CardMenu_Execute. */
 struct SelMask {
     u16 flag0:1;
     u16 active:1;
@@ -54,7 +54,7 @@ struct SelMask {
     u32 unk73:23;
 };
 
-/* Same bits as struct SelMask with a u16 column. sub_0801E260's case 7 reads the
+/* Same bits as struct SelMask with a u16 column. CardMenu_Execute's case 7 reads the
    column through it so the atkSlot bit-field store gets a HImode value and regmove
    ties the AND to the constant (`movs r1, #7; ands r1, r0`); FAKEMATCH: the u32
    column gives `ands r1, r0` with the column as destination. */
@@ -98,7 +98,7 @@ struct DuelStateView {
     u8 filler1ACC[0x1B12 - 0x1ACC];
     u8 flag1B12_0:1;                /* 0x1B12 bit 0 */
     u8 unk1B12_1:1;
-    u32 unk1B12_2:3;                /* 0x1B12 bits 2-4 (u32: see sub_0801E260) */
+    u32 unk1B12_2:3;                /* 0x1B12 bits 2-4 (u32: see CardMenu_Execute) */
     u8 unk1B12_5:1;
     u8 result:2;                    /* 0x1B12 bits 6-7 */
     u8 filler1B13[0x1B16 - 0x1B13];
@@ -116,7 +116,7 @@ struct DuelStateView {
         struct SelMaskCol col;
     } sel;                          /* 0x1B2C */
 };
-extern struct DuelStateView gUnk_020192E0View asm("gUnk_020192E0");
+extern struct DuelStateView gUnk_020192E0View asm("gDuel");
 #define SEL gUnk_020192E0View.sel.x
 
 struct Battle {
@@ -124,36 +124,36 @@ struct Battle {
     u16 atkSlot:3;                  /* bits 6-8 */
     u16 unk0_9:7;
 };
-extern struct Battle gUnk_02018450;
+extern struct Battle gBattle;
 
 struct Unk0201AE60 {
     u8 filler0[0x14];
     u16 unk14;
 };
-extern struct Unk0201AE60 gUnk_0201AE60;
+extern struct Unk0201AE60 gTextBox;
 
-extern const u32 gUnk_08621DE0[];   /* card stats */
-extern const u16 gUnk_08622AB4[];   /* maps card ID to card number */
+extern const u32 gCardStats[];   /* card stats */
+extern const u16 gCardIdToNumber[];   /* maps card ID to card number */
 extern const u16 gUnk_0862467A;
-extern const u8 gUnk_08081CA4[];
-#define CARD_TYPE(id) ((*(gUnk_08621DE0 + ((id) & 0x7FF)) & 0x1F00000) >> 20)
-#define CARD_NUMBER(id) (*(gUnk_08622AB4 + ((id) & 0x7FF)))
+extern const u8 gStrDoYouSurrender[];
+#define CARD_TYPE(id) ((*(gCardStats + ((id) & 0x7FF)) & 0x1F00000) >> 20)
+#define CARD_NUMBER(id) (*(gCardIdToNumber + ((id) & 0x7FF)))
 
-void sub_080493D0(u32 cmd);
-void sub_08048FE0(void);
-void sub_080471E8(u32 a, u32 b);
-void sub_08049048(u32 a, u32 b, u32 c);
-void sub_08049450(void);
-void sub_080193D4(int player, int idx, int a, int b);
-void sub_0801FBCC(u32 card, u32 b);
-void sub_080197E0(int player, u16 id);
-void sub_08019860(int player, int lp);
-int sub_08017FF4(int player, int column);
-u16 sub_08007FEC(int player, u16 cardNo, void *out);
-void sub_08056094(int player, void *card, u32 a, u32 b);
-void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
-void sub_08060308(u32 a, u32 b, u32 c);
-void sub_0801EC58(u16 cmd, u16 arg2, int arg4Word, int arg6Word);
+void CardMenu_ChangePosition(u32 cmd);
+void CardMenu_FlipSummon(void);
+void CardMenu_SummonMonster(u32 a, u32 b);
+void CardMenu_PlaySpellTrapFromHand(u32 a, u32 b, u32 c);
+void CardMenu_FusionSummon(void);
+void DiscardHandCard(int player, int idx, int a, int b);
+void Chain_AddPending(u32 card, u32 b);
+void ShowCardEffect(int player, u16 id);
+void LoseLifePoints(int player, int lp);
+int TributeMonster(int player, int column);
+u16 TakeDeckCardByNumber(int player, u16 cardNo, void *out);
+void QueueSpecialSummonChoosePosition(int player, void *card, u32 a, u32 b);
+void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
+void TextBoxSetMenu(u32 a, u32 b, u32 c);
+void DuelCmd_Push(u16 cmd, u16 arg2, int arg4Word, int arg6Word);
 
 /* Duel screen state (0x0201CFB0): canonical layout in duel_ui.h. */
 
@@ -162,32 +162,32 @@ struct Unk02015EE8 {
     u8 link:1;                      /* +1 bit 0: link duel (hypothesis) */
     u8 unk1_1:7;
 };
-extern struct Unk02015EE8 gUnk_02015EE8;
+extern struct Unk02015EE8 gDuelCtrl;
 
 /* Step runner state at 0x02015EF0. */
 struct Unk02015EF0 {
     u8 index;
     u8 state;
 };
-extern struct Unk02015EF0 gUnk_02015EF0;
+extern struct Unk02015EF0 gAiState;
 
 struct OpponentBgm {
     u16 opponent;
     u16 bgm;
 };
 
-extern StepFunc gUnk_08198EDC[];
-extern StepFunc gUnk_08198EF8[];    /* message handlers by id */
-extern StepFunc gUnk_08198F14[];
-extern const struct OpponentBgm gUnk_08198F20[0x18];
+extern StepFunc gAiTurnPhases[];
+extern StepFunc gDuelSceneHandlers[];    /* message handlers by id */
+extern StepFunc gDuelSceneRunnerSteps[];
+extern const struct OpponentBgm gOpponentDuelBGM[0x18];
 
-void sub_08077BA0(void);
-void sub_080757AC(void);            /* ResetBgScroll */
-u32 sub_08060B4C(void);
-void sub_080609C4(void);
-u16 sub_08075AE4(u16 speed);        /* FadeFromBlack */
-void sub_08077BCC(void);
-void sub_08077B24(u16 bgm);
+void StopBGM(void);
+void ResetBgScroll(void);            /* ResetBgScroll */
+u32 DuelScreen_FadeOutStep(void);
+void DuelScreen_Init(void);
+u16 FadeFromBlack(u16 speed);        /* FadeFromBlack */
+void FadeOutBGM(void);
+void PlayBGM(u16 bgm);
 
 /* Execute the command chosen in the card command menu (SEL.cursor = 1..12). */
 /* Zones and players are reached through casts so the field offsets (+6, +8/+9)
@@ -215,12 +215,12 @@ struct PlayerFlags1E260 {
 #define PLAYER_FLAGS(pl, p) ((struct PlayerFlags1E260 *)&(pl)[p])
 
 /* Execute the command chosen in the card command menu (SEL.cursor = 1..12).
-   FAKEMATCH notes: `ev = (zone << 16 | kind)` inside the sub_0801FBCC packings stops
+   FAKEMATCH notes: `ev = (zone << 16 | kind)` inside the Chain_AddPending packings stops
    fold from floating the kind constant out of the OR chain; per-site `pl` locals keep
    the constant-1 pseudo from inheriting an r4 preference; `unk1B12_2 > 1u` on the u32
    view (struct DuelStateView) drops two pre-combine extension insns so the reloaded base wins r5 over
-   &column; sub_08007FEC is called as int-returning (the ROM tests r0 unextended). */
-void sub_0801E260(void)
+   &column; TakeDeckCardByNumber is called as int-returning (the ROM tests r0 unextended). */
+void CardMenu_Execute(void)
 {
     u8 buf[4];
     s16 zone;
@@ -233,39 +233,39 @@ void sub_0801E260(void)
     case 2:
         if (SEL.zone != 0)
             break;
-        sub_080493D0(SEL.cursor);
+        CardMenu_ChangePosition(SEL.cursor);
         return;
     case 3:
         if (SEL.zone != 0)
             break;
-        sub_08048FE0();
+        CardMenu_FlipSummon();
         return;
     case 4:
         if (SEL.zone != 11)
             break;
         if (((((const u32 *)0x08621DE0)[gUnk_020192E0View.selCard & 0x7FF] & 0x1F00000) >> 20) <= 20)
-            sub_080471E8(0, 0);
+            CardMenu_SummonMonster(0, 0);
         else
-            sub_08049048(0, 0, 0);
+            CardMenu_PlaySpellTrapFromHand(0, 0, 0);
         return;
     case 5:
-        sub_080471E8(1, 0);
+        CardMenu_SummonMonster(1, 0);
         return;
     case 11:
-        sub_080471E8(1, 1);
+        CardMenu_SummonMonster(1, 1);
         return;
     case 12:
-        sub_080471E8(0, 1);
+        CardMenu_SummonMonster(0, 1);
         return;
     case 10:
-        sub_08049450();
+        CardMenu_FusionSummon();
         return;
     case 6:
         zone = SEL.zone;
         switch (zone) {
         case 11:
             if (CARD_TYPE(gUnk_020192E0View.selCard) > 20) {
-                sub_08049048(1, 0, 0);
+                CardMenu_PlaySpellTrapFromHand(1, 0, 0);
                 return;
             }
             switch (((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF]) {
@@ -274,18 +274,18 @@ void sub_0801E260(void)
                     struct DuelPlayerView *pl = gUnk_020192E0View.players;
                     PLAYER_FLAGS(pl, SEL.player & 1)->flag8_4 = 1;
                 }
-                sub_08049048(1, 0, 0);
+                CardMenu_PlaySpellTrapFromHand(1, 0, 0);
                 return;
             case 0x1A8:
-                sub_080193D4(SEL.player, SEL.column, 0, 1);
-                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = 0x600000 | gUnk_020192E0View.selCard), 0);
+                DiscardHandCard(SEL.player, SEL.column, 0, 1);
+                Chain_AddPending(((SEL.player & 1) << 31) | (ev = 0x600000 | gUnk_020192E0View.selCard), 0);
                 break;
             }
             break;
         case 10:
             if (!ZONE_FLAGS(SEL.player & 1, 10)->flag6_1)
-                sub_0801EC58(SEL.player ? 0x807F : 0x7F, 10, 0, 0);
-            sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
+                DuelCmd_Push(SEL.player ? 0x807F : 0x7F, 10, 0, 0);
+            Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
             if (gUnk_020192E0View.unk1B12_2 > 1u) {
                 {
                     struct DuelPlayerView *pl = gUnk_020192E0View.players;
@@ -298,12 +298,12 @@ void sub_0801E260(void)
             idx = SEL.column;
             idx += 5;
             if (!ZONE_FLAGS(p, idx)->flag6_1)
-                sub_0801EC58(SEL.player ? 0x807F : 0x7F, SEL.column + SEL.zone, 0, 0);
+                DuelCmd_Push(SEL.player ? 0x807F : 0x7F, SEL.column + SEL.zone, 0, 0);
             if (ZONE_WORD(SEL.player & 1, SEL.column)->flag0_18) {
-                sub_080197E0(SEL.player, gUnk_0862467A);
-                sub_08019860(SEL.player, 2000);
+                ShowCardEffect(SEL.player, gUnk_0862467A);
+                LoseLifePoints(SEL.player, 2000);
             }
-            sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
+            Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x200000) | gUnk_020192E0View.selCard, 0);
             if (gUnk_020192E0View.unk1B12_2 > 1u) {
                 {
                     struct DuelPlayerView *pl = gUnk_020192E0View.players;
@@ -317,7 +317,7 @@ void sub_0801E260(void)
             case 0x186:
                 switch (SEL.subState) {
                 case 0:
-                    if (sub_08017FF4(SEL.player, SEL.column)) {
+                    if (TributeMonster(SEL.player, SEL.column)) {
                         SEL.subState++;
                         return;
                     }
@@ -325,8 +325,8 @@ void sub_0801E260(void)
                     SEL.subState = 0;
                     return;
                 case 1:
-                    if (((int (*)(int, u16, void *))sub_08007FEC)(SEL.player, ((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF] == 0x51 ? 0x2E5 : 0x187, buf)) {
-                        sub_08056094(SEL.player, buf, 1, 1);
+                    if (((int (*)(int, u16, void *))TakeDeckCardByNumber)(SEL.player, ((const u16 *)0x08622AB4)[gUnk_020192E0View.selCard & 0x7FF] == 0x51 ? 0x2E5 : 0x187, buf)) {
+                        QueueSpecialSummonChoosePosition(SEL.player, buf, 1, 1);
                         SEL.subState++;
                         return;
                     }
@@ -337,17 +337,17 @@ void sub_0801E260(void)
             case 0x1A0:
             case 0x243:
             case 0x2DB:
-                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x4400000) | gUnk_020192E0View.selCard, 0);
+                Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x4400000) | gUnk_020192E0View.selCard, 0);
                 break;
             default:
-                sub_0801FBCC(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x400000) | gUnk_020192E0View.selCard, 0);
+                Chain_AddPending(((SEL.player & 1) << 31) | (ev = (((SEL.column + SEL.zone) & 0x1F) << 16) | 0x400000) | gUnk_020192E0View.selCard, 0);
                 break;
             }
             break;
         }
         break;
     case 7:
-        gUnk_02018450.atkSlot = gUnk_020192E0View.sel.col.column;
+        gBattle.atkSlot = gUnk_020192E0View.sel.col.column;
         gUnk_020192E0View.unk1B16_1 = 2;
         break;
     case 8:
@@ -358,13 +358,13 @@ void sub_0801E260(void)
     case 9:
         switch (SEL.subState) {
         case 0:
-            sub_080602A4(0x206, 0x412, 0xB, gUnk_08081CA4);
-            sub_08060308(1, 0, 0);
+            TextBoxOpen(0x206, 0x412, 0xB, gStrDoYouSurrender);
+            TextBoxSetMenu(1, 0, 0);
             SEL.subState++;
             break;
         case 1:
-            if (gUnk_0201AE60.unk14)
-                sub_0801EC58(0x40, 1, 0, 0);
+            if (gTextBox.unk14)
+                DuelCmd_Push(0x40, 1, 0, 0);
             SEL.active = 0;
             SEL.subState = 0;
             break;
@@ -375,23 +375,23 @@ void sub_0801E260(void)
     SEL.subState = 0;
 }
 
-u16 sub_0801E944(void)
+u16 AiRunTurn(void)
 {
-    StepFunc step = gUnk_08198EDC[gUnk_02015EF0.index];
+    StepFunc step = gAiTurnPhases[gAiState.index];
     if (step != NULL) {
         if (step()) {
             gUnk_020192E0View.unk1B20 = 0;
             gUnk_020192E0View.unk1B21 = 0;
-            gUnk_02015EF0.state = 0;
-            gUnk_02015EF0.index++;
+            gAiState.state = 0;
+            gAiState.index++;
         }
         return 0;
     }
     return 1;
 }
 
-/* Start message `id` (handler gUnk_08198EF8[id]). */
-void sub_0801E998(u16 id, u32 flag)
+/* Start message `id` (handler gDuelSceneHandlers[id]). */
+void DuelScene_Start(u16 id, u32 flag)
 {
     gMsg.stepIndex = 0;
     gMsg.state = 0;
@@ -399,38 +399,38 @@ void sub_0801E998(u16 id, u32 flag)
     gMsg.unkD = 0;
     gMsg.flag = flag;
     gMsg.id = id;
-    gMsg.func = gUnk_08198EF8[id];
+    gMsg.func = gDuelSceneHandlers[id];
     switch (gMsg.id) {
     case 1:
     case 5:
-        sub_08077BA0();
-        gUnk_020192E0.flag1B12_0 = 0;
+        StopBGM();
+        gDuel.flag1B12_0 = 0;
         break;
     }
-    gUnk_0201CFB0.flag0_1 = 0;
+    gDuelScreen.flag0_1 = 0;
 }
 
-u16 sub_0801EA1C(void)
+u16 DuelScene_FadeOutDuelScreen(void)
 {
     if (gMsg.state == 0) {
         gMain.vblankCallback = NULL;
-        sub_080757AC();
-        gUnk_0201CFB0.busy = 0;
-        gUnk_0201CFB0.flag0_1 = 0;
-        gUnk_0201CFB0.flag0_2 = 0;
+        ResetBgScroll();
+        gDuelScreen.busy = 0;
+        gDuelScreen.flag0_1 = 0;
+        gDuelScreen.flag0_2 = 0;
         gMsg.state++;
     }
-    return sub_08060B4C();
+    return DuelScreen_FadeOutStep();
 }
 
-u16 sub_0801EA7C(void)
+u16 DuelScene_RunHandler(void)
 {
     StepFunc func = gMsg.func;
     if (func != NULL)
         return func();
     return 0;}
 
-u16 sub_0801EA9C(void)
+u16 DuelScene_FadeInDuelScreen(void)
 {
     struct DuelMsg *msg = &gMsg;
 
@@ -439,18 +439,18 @@ u16 sub_0801EA9C(void)
         REG_DISPCNT = 0;
         break;
     case 1:
-        sub_080609C4();
+        DuelScreen_Init();
         break;
     default:
-        return sub_08075AE4(4);
+        return FadeFromBlack(4);
     }
     msg->state++;
     return 0;
 }
 
-u16 sub_0801EAD8(void)
+u16 DuelScene_Run(void)
 {
-    StepFunc step = gUnk_08198F14[gMsg.stepIndex];
+    StepFunc step = gDuelSceneRunnerSteps[gMsg.stepIndex];
     if (step != NULL) {
         if (step()) {
             gMsg.stepIndex++;
@@ -465,18 +465,18 @@ u16 sub_0801EAD8(void)
 }
 
 /* HBlank: wavy BG0/BG1/BG3 HOFS from the per-line table. */
-void sub_0801EB1C(void)
+void HBlank_WaveBg013(void)
 {
-    u16 hofs = gUnk_020185C0.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
+    u16 hofs = gDuelCmd.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
     REG_BG0HOFS = hofs;
     REG_BG1HOFS = hofs;
     REG_BG3HOFS = hofs;
 }
 
 /* HBlank: same for all four BGs. */
-void sub_0801EB60(void)
+void HBlank_WaveAllBgs(void)
 {
-    u16 hofs = gUnk_020185C0.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
+    u16 hofs = gDuelCmd.hofsTable[(REG_VCOUNT + gMain.frameCounter) & 0xF];
     REG_BG0HOFS = hofs;
     REG_BG1HOFS = hofs;
     REG_BG2HOFS = hofs;
@@ -484,244 +484,244 @@ void sub_0801EB60(void)
 }
 
 /* Start the duel BGM for the current opponent (or event / link BGM). */
-void sub_0801EBA8(void)
+void PlayDuelBGM(void)
 {
     u16 bgm = 0xFFFF;
     u32 i;
 
     i = 0;
     do {
-        if (gUnk_08198F20[i].opponent == gMain.opponent) {
-            bgm = gUnk_08198F20[i].bgm;
+        if (gOpponentDuelBGM[i].opponent == gMain.opponent) {
+            bgm = gOpponentDuelBGM[i].bgm;
             break;
         }
     } while (++i <= 0x17);
     if (gMain.events & 0xF000000)
         bgm = 0x13;
-    if (gUnk_02015EE8.link)
+    if (gDuelCtrl.link)
         bgm = 5;
-    if (!gUnk_020192E0.flag1B12_0)
+    if (!gDuel.flag1B12_0)
         bgm = 0xFFFF;
     if (bgm == 0xFFFF)
-        sub_08077BCC();
+        FadeOutBGM();
     else
-        sub_08077B24(bgm);
+        PlayBGM(bgm);
 }
 
 /* Append a command to the duel command queue (max 256).
  * The original r2/r3 entry shifts explicitly decode both final words as u16. */
-void sub_0801EC58(u16 cmd, u16 arg2, int arg4Word, int arg6Word)
+void DuelCmd_Push(u16 cmd, u16 arg2, int arg4Word, int arg6Word)
 {
     u16 arg4 = arg4Word;
     u16 arg6 = arg6Word;
-    if (gUnk_020185C0.queueCount < 0x100) {
-        gUnk_020185C0.queue[gUnk_020185C0.queueCount].cmd = cmd;
-        gUnk_020185C0.queue[gUnk_020185C0.queueCount].arg2 = arg2;
-        gUnk_020185C0.queue[gUnk_020185C0.queueCount].arg4 = arg4;
-        gUnk_020185C0.queue[gUnk_020185C0.queueCount].arg6 = arg6;
-        gUnk_020185C0.queueCount++;
+    if (gDuelCmd.queueCount < 0x100) {
+        gDuelCmd.queue[gDuelCmd.queueCount].cmd = cmd;
+        gDuelCmd.queue[gDuelCmd.queueCount].arg2 = arg2;
+        gDuelCmd.queue[gDuelCmd.queueCount].arg4 = arg4;
+        gDuelCmd.queue[gDuelCmd.queueCount].arg6 = arg6;
+        gDuelCmd.queueCount++;
     }
 }
 
-void sub_0800CE28(void);
-void sub_0800D234(void);
-void sub_0800D398(void);
-void sub_0800D43C(void);
-void sub_0800D468(void);
-void sub_0800D498(void);
-void sub_0800D4C8(void);
-void sub_0800D524(void);
-void sub_0800D594(void);
-void sub_0800D634(void);
-void sub_0800D6D4(void);
-void sub_0800D6FC(void);
-void sub_0800D784(void);
-void sub_0800D7D4(void);
-void sub_0800D824(void);
-void sub_0800D864(void);
-void sub_0800D8A4(void);
-void sub_0800D990(void);
-void sub_0800DA84(void);
-void sub_0800DD04(void);
-void sub_0800DF94(void);
-void sub_0800E1E0(void);
-void sub_0800E438(void);
-void sub_0800E630(void);
-void sub_0800E874(void);
-void sub_0800EAA8(void);
-void sub_0800EADC(void);
-void sub_0800EB10(void);
-void sub_0800EB44(void);
-void sub_0800EBA0(void);
-void sub_0800EBF4(void);
-void sub_0800EC54(void);
-void sub_0800ECB0(void);
-void sub_0800ED1C(void);
-void sub_0800ED58(void);
-void sub_0800EDCC(void);
-void sub_0800EE50(void);
-void sub_0800EF38(void);
-void sub_0800F0F8(void);
-void sub_0800F294(void);
-void sub_0800F3D0(void);
-void sub_0800F544(void);
-void sub_0800F678(void);
-void sub_0800F6B0(void);
-void sub_0800F7F0(void);
-void sub_0800F8F8(void);
-void sub_0800FA04(void);
-void sub_0800FB10(void);
-void sub_0800FB48(void);
-void sub_0800FB80(void);
-void sub_0800FBC8(void);
-void sub_0800FC00(void);
-void sub_0800FDD0(void);
-void sub_0800FF04(void);
-void sub_08010038(void);
-void sub_08010124(void);
-void sub_08010160(void);
-void sub_080102B0(void);
-void sub_080103DC(void);
-void sub_080104B8(void);
-void sub_080104EC(void);
-void sub_08010538(void);
+void DuelCmd_Attack(void);
+void DuelCmd_DirectAttack(void);
+void DuelCmd_PrepareBattlePhase(void);
+void DuelCmd_MarkAttacked(void);
+void DuelCmd_StartBattleScene(void);
+void DuelCmd_PlayBattleScene(void);
+void DuelCmd_SetBattleProtection(void);
+void DuelCmd_EndBattlePhase(void);
+void DuelCmd_SetAttackTarget(void);
+void DuelCmd_SetAttacker(void);
+void DuelCmd_ZeroAttackerAtk(void);
+void DuelCmd_NegateAttack(void);
+void DuelCmd_PlaceCard(void);
+void DuelCmd_ClearZoneCard(void);
+void DuelCmd_AddCardToGraveyard(void);
+void DuelCmd_AddCardToBanished(void);
+void DuelCmd_ChangePosition(void);
+void DuelCmd_FlipCard(void);
+void DuelCmd_SendToGraveyard(void);
+void DuelCmd_Banish(void);
+void DuelCmd_BanishFlagged(void);
+void DuelCmd_ReturnToHand(void);
+void DuelCmd_ReturnToDeck(void);
+void DuelCmd_MoveToZone(void);
+void DuelCmd_SwapZones(void);
+void DuelCmd_AddEquipLink(void);
+void DuelCmd_AddZoneLink(void);
+void DuelCmd_RemoveZoneLink(void);
+void DuelCmd_SetZoneDeclaredValue(void);
+void DuelCmd_SetDestroyedByOpponentFlag(void);
+void DuelCmd_AddZoneTurnCounter(void);
+void DuelCmd_SetZoneTurnCounter(void);
+void DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue(void);
+void DuelCmd_ClearZoneLinks(void);
+void DuelCmd_MoveZoneLinks(void);
+void DuelCmd_AddProhibition(void);
+void DuelCmd_RemoveProhibition(void);
+void DuelCmd_ShuffleDeck(void);
+void DuelCmd_DrawCards(void);
+void DuelCmd_SendTopDeckCardsToGraveyard(void);
+void DuelCmd_BanishTopDeckCards(void);
+void DuelCmd_AddDeckCardToHand(void);
+void DuelCmd_RemoveCardFromDeck(void);
+void DuelCmd_SummonFromDeck(void);
+void DuelCmd_SendDeckCardToGraveyard(void);
+void DuelCmd_BanishDeckCard(void);
+void DuelCmd_SendFusionDeckCardToGraveyard(void);
+void DuelCmd_AddCardToDeckTop(void);
+void DuelCmd_AddCardToDeckBottom(void);
+void DuelCmd_SetCrushCardTurns(void);
+void DuelCmd_RemoveCardFromFusionDeck(void);
+void DuelCmd_ReturnGraveyardCardToHand(void);
+void DuelCmd_ReturnGraveyardCardToDeckTop(void);
+void DuelCmd_ReturnGraveyardCardToDeckBottom(void);
+void DuelCmd_BanishGraveyardCard(void);
+void DuelCmd_RemoveCardFromGraveyard(void);
+void DuelCmd_ReturnGraveyardToDeck(void);
+void DuelCmd_TakeOpponentGraveyardCard(void);
+void DuelCmd_ReturnBanishedCardToGraveyard(void);
+void DuelCmd_AddCardToGraveyardNoRedraw(void);
+void DuelCmd_ClearPendingEquip(void);
+void DuelCmd_EquipGraveyardCardToOpponent(void);
 void sub_080106BC(void);
 void sub_08010708(void);
-void sub_08010794(void);
-void sub_080108FC(void);
-void sub_08010A5C(void);
-void sub_08010BDC(void);
-void sub_08010C14(void);
-void sub_08010D94(void);
-void sub_08010F84(void);
-void sub_08010FAC(void);
-void sub_08010FE4(void);
-void sub_08011148(void);
-void sub_08011278(void);
-void sub_08011498(void);
-void sub_08011610(void);
-void sub_08011C18(void);
-void sub_08011C98(void);
-void sub_08011CB4(void);
-void sub_08011F38(void);
-void sub_08011FA0(void);
-void sub_08011FFC(void);
-void sub_080120E0(void);
-void sub_08012264(void);
-void sub_080122B4(void);
-void sub_080124E8(void);
-void sub_08012670(void);
-void sub_080126F0(void);
-void sub_0801270C(void);
-void sub_08012728(void);
-void sub_08012744(void);
-void sub_08012760(void);
-void sub_0801277C(void);
-void sub_08012798(void);
-void sub_080127E0(void);
-void sub_08012834(void);
-void sub_08012888(void);
-void sub_080128A4(void);
-void sub_080128F8(void);
-void sub_0801296C(void);
-void sub_08012AE0(void);
-void sub_08012B34(void);
-void sub_08012C4C(void);
-void sub_08012D7C(void);
-void sub_08012ED4(void);
-void sub_08012FA4(void);
+void DuelCmd_SendHandCardToGraveyard(void);
+void DuelCmd_BanishHandCard(void);
+void DuelCmd_ReturnHandCardToDeck(void);
+void DuelCmd_RemoveCardFromHand(void);
+void DuelCmd_PlaceMonsterFromHand(void);
+void DuelCmd_PlaceSpellTrapFromHand(void);
+void DuelCmd_CompactHand(void);
+void DuelCmd_AddCardToHand(void);
+void DuelCmd_BanishHandCardFaceDown(void);
+void DuelCmd_ReturnBanishedCardToHand(void);
+void DuelCmd_ExchangeHandCards(void);
+void DuelCmd_SendHandFusionMaterialToGraveyard(void);
+void DuelCmd_BanishHandFusionMaterial(void);
+void DuelCmd_NegateActivation(void);
+void DuelCmd_NopB2(void);
+void DuelCmd_SetSpellTrapDisabled(void);
+void DuelCmd_UpdateZoneLpPaid(void);
+void DuelCmd_IncrementZoneTurnCounter(void);
+void DuelCmd_SetZoneStatusFlags(void);
+void DuelCmd_ClearZoneStatusFlags(void);
+void DuelCmd_SetEffectUnused(void);
+void DuelCmd_TributeMonster(void);
+void DuelCmd_PlantInOpponentDeck(void);
+void DuelCmd_SetDestroyCountdown(void);
+void DuelCmd_Nop99(void);
+void DuelCmd_Nop9A(void);
+void DuelCmd_Nop9B(void);
+void DuelCmd_Nop9C(void);
+void DuelCmd_Nop9D(void);
+void DuelCmd_Nop9E(void);
+void DuelCmd_HalveAttack(void);
+void DuelCmd_SetCannotAttackNextTurn(void);
+void DuelCmd_SetCannotAttack(void);
+void DuelCmd_Nop9F(void);
+void DuelCmd_SetPositionLocked(void);
+void DuelCmd_SetReturnAfterBattle(void);
+void DuelCmd_SummonToken(void);
+void DuelCmd_SetZoneCardWord(void);
+void DuelCmd_MoveMonsterFaceDown(void);
+void DuelCmd_SetMagicalHatsCard(void);
+void DuelCmd_BanishMonsterUntilEndPhase(void);
+void DuelCmd_ReturnBanishedMonster(void);
+void DuelCmd_SendFusionMaterialToGrave(void);
 void sub_08013104(void);
-void sub_08013154(void);
-void sub_08013190(void);
-void sub_08013390(void);
-void sub_080134EC(void);
-void sub_08013BB0(void);
-void sub_08013CDC(void);
-void sub_0801401C(void);
-void sub_08014710(void);
-void sub_08014804(void);
-void sub_08014844(void);
-void sub_08014884(void);
-void sub_080148C4(void);
-void sub_08014914(void);
-void sub_08014964(void);
-void sub_080149D8(void);
-void sub_08014A24(void);
-void sub_08014A64(void);
-void sub_08014AA8(void);
+void DuelCmd_ClearZoneLinks2(void);
+void DuelCmd_ShowDuelResult(void);
+void DuelCmd_Surrender(void);
+void DuelCmd_ShowJustAMomentBanner(void);
+void DuelCmd_SetNegationFlag(void);
+void DuelCmd_TurnStart(void);
+void DuelCmd_TurnEnd(void);
+void DuelCmd_ShowEndTurnHand(void);
+void DuelCmd_SkipNextDrawPhase(void);
+void DuelCmd_SkipNextStandbyPhase(void);
+void DuelCmd_SkipNextTurn(void);
+void DuelCmd_SetExtraBattlePhase(void);
+void DuelCmd_SetPositionChangeLock(void);
+void DuelCmd_SetSummonLocks(void);
+void DuelCmd_SetMagicTrapLockTurns(void);
+void DuelCmd_SetStatChangesReversed(void);
+void DuelCmd_SetAtkDefSwapped(void);
+void DuelCmd_AdjustDelayedSummonCount(void);
 void sub_08014B5C(void);
-void sub_08014BAC(void);
-void sub_08014C30(void);
-void sub_080150DC(void);
-void sub_080153D4(void);
-void sub_08015720(void);
-void sub_08015A2C(void);
-void sub_08015E40(void);
-void sub_080162C4(void);
-void sub_08016424(void);
-void sub_08016460(void);
-void sub_08016488(void);
-void sub_080164D0(void);
-void sub_08016A18(void);
-void sub_08016D24(void);
-void sub_08016E74(void);
-void sub_08016EB8(void);
-void sub_08017024(void);
-void sub_08017084(void);
-void sub_080170E4(void);
-void sub_0801715C(void);
-void sub_080171D0(void);
-void sub_0801723C(void);
-void sub_080172A8(void);
-void sub_08013888(u32);
-void sub_08016848(u32);
+void DuelCmd_ShowCardDetail(void);
+void DuelCmd_ShowCardAssemble(void);
+void DuelCmd_ShowCardZoomIn(void);
+void DuelCmd_ShowCardEffect(void);
+void DuelCmd_ShowCardScatter(void);
+void DuelCmd_ShowCardUnrollDown(void);
+void DuelCmd_ShowCardUnrollSideways(void);
+void DuelCmd_ResetDuelState(void);
+void DuelCmd_OpenDuelScreen(void);
+void DuelCmd_CloseDuelScreen(void);
+void DuelCmd_SetFieldBackground(void);
+void DuelCmd_EnterBattlePhase(void);
+void DuelCmd_ShowChainBanner(void);
+void DuelCmd_PointAtCard(void);
+void DuelCmd_MoveCursor(void);
+void DuelCmd_StartDuelBanner(void);
+void DuelCmd_ExodiaWinScene(void);
+void DuelCmd_DestinyBoardWinScene(void);
+void DuelCmd_TossCoin(void);
+void DuelCmd_TossThreeCoins(void);
+void DuelCmd_RollGracefulDice(void);
+void DuelCmd_RollSkullDice(void);
+void DuelCmd_RollPlainDie(void);
+void DuelCmd_ChangeLifePoints(u32);
+void DuelCmd_EnterPhase(u32);
 
-/* Run the current duel command (id = bits 0-11 of gUnk_020185C0.cmd). */
-void sub_0801ECA8(void)
+/* Run the current duel command (id = bits 0-11 of gDuelCmd.cmd). */
+void DuelCmd_Dispatch(void)
 {
-    gUnk_0201CFB0.busy = 0;
-    switch (gUnk_020185C0.cmd & 0xFFF) {
+    gDuelScreen.busy = 0;
+    switch (gDuelCmd.cmd & 0xFFF) {
     case 0x01:
-        sub_08013CDC();
+        DuelCmd_TurnStart();
         break;
     case 0x02:
-        sub_0801401C();
+        DuelCmd_TurnEnd();
         break;
     case 0x03:
-        sub_08014710();
+        DuelCmd_ShowEndTurnHand();
         break;
     case 0x04:
-        sub_08013190();
+        DuelCmd_ShowDuelResult();
         break;
     case 0x05:
-        sub_08017024();
+        DuelCmd_ExodiaWinScene();
         break;
     case 0x06:
-        sub_08017084();
+        DuelCmd_DestinyBoardWinScene();
         break;
     case 0x07:
-        sub_08016A18();
+        DuelCmd_ShowChainBanner();
         break;
     case 0x08:
-        sub_08016D24();
+        DuelCmd_PointAtCard();
         break;
     case 0x09:
-        sub_08016E74();
+        DuelCmd_MoveCursor();
         break;
     case 0x10:
-        sub_080162C4();
+        DuelCmd_ResetDuelState();
         break;
     case 0x11:
-        sub_08016488();
+        DuelCmd_SetFieldBackground();
         break;
     case 0x12:
-        sub_08016424();
+        DuelCmd_OpenDuelScreen();
         break;
     case 0x13:
-        sub_08016460();
+        DuelCmd_CloseDuelScreen();
         break;
     case 0x14:
-        sub_08016EB8();
+        DuelCmd_StartDuelBanner();
         break;
     case 0x15:
     case 0x16:
@@ -730,403 +730,403 @@ void sub_0801ECA8(void)
     case 0x19:
     case 0x1A:
     case 0x1B:
-        sub_08013BB0();
+        DuelCmd_SetNegationFlag();
         break;
     case 0x1C:
-        sub_08014A24();
+        DuelCmd_SetStatChangesReversed();
         break;
     case 0x1D:
-        sub_08014A64();
+        DuelCmd_SetAtkDefSwapped();
         break;
     case 0x30:
-        sub_0800D468();
+        DuelCmd_StartBattleScene();
         break;
     case 0x31:
-        sub_0800D498();
+        DuelCmd_PlayBattleScene();
         break;
     case 0x32:
-        sub_0800D398();
+        DuelCmd_PrepareBattlePhase();
         break;
     case 0x33:
-        sub_0800CE28();
+        DuelCmd_Attack();
         break;
     case 0x34:
-        sub_0800D234();
+        DuelCmd_DirectAttack();
         break;
     case 0x35:
-        sub_0800D43C();
+        DuelCmd_MarkAttacked();
         break;
     case 0x36:
-        sub_0800D4C8();
+        DuelCmd_SetBattleProtection();
         break;
     case 0x37:
-        sub_0800D524();
+        DuelCmd_EndBattlePhase();
         break;
     case 0x38:
-        sub_0800D594();
+        DuelCmd_SetAttackTarget();
         break;
     case 0x39:
-        sub_0800D634();
+        DuelCmd_SetAttacker();
         break;
     case 0x3A:
-        sub_0800D6D4();
+        DuelCmd_ZeroAttackerAtk();
         break;
     case 0x3B:
-        sub_0800D6FC();
+        DuelCmd_NegateAttack();
         break;
     case 0x40:
-        sub_08013390();
+        DuelCmd_Surrender();
         break;
     case 0x41:
-        sub_080134EC();
+        DuelCmd_ShowJustAMomentBanner();
         break;
     case 0x42:
-        sub_08013888(1);
+        DuelCmd_ChangeLifePoints(1);
         break;
     case 0x43:
-        sub_08013888(0);
+        DuelCmd_ChangeLifePoints(0);
         break;
     case 0x44:
-        sub_08014804();
+        DuelCmd_SkipNextDrawPhase();
         break;
     case 0x45:
-        sub_08014844();
+        DuelCmd_SkipNextStandbyPhase();
         break;
     case 0x46:
-        sub_08014884();
+        DuelCmd_SkipNextTurn();
         break;
     case 0x47:
-        sub_080148C4();
+        DuelCmd_SetExtraBattlePhase();
         break;
     case 0x48:
-        sub_08014914();
+        DuelCmd_SetPositionChangeLock();
         break;
     case 0x49:
-        sub_08014964();
+        DuelCmd_SetSummonLocks();
         break;
     case 0x4A:
-        sub_080149D8();
+        DuelCmd_SetMagicTrapLockTurns();
         break;
     case 0x4B:
-        sub_08014AA8();
+        DuelCmd_AdjustDelayedSummonCount();
         break;
     case 0x4C:
         sub_08014B5C();
         break;
     case 0x50:
-        sub_08016848(0);
+        DuelCmd_EnterPhase(0);
         break;
     case 0x51:
-        sub_08016848(1);
+        DuelCmd_EnterPhase(1);
         break;
     case 0x52:
-        sub_08016848(2);
+        DuelCmd_EnterPhase(2);
         break;
     case 0x53:
-        sub_080164D0();
+        DuelCmd_EnterBattlePhase();
         break;
     case 0x54:
-        sub_08016848(4);
+        DuelCmd_EnterPhase(4);
         break;
     case 0x55:
-        sub_08016848(5);
+        DuelCmd_EnterPhase(5);
         break;
     case 0x61:
-        sub_0800F0F8();
+        DuelCmd_DrawCards();
         break;
     case 0x62:
-        sub_0800F294();
+        DuelCmd_SendTopDeckCardsToGraveyard();
         break;
     case 0x63:
-        sub_0800F3D0();
+        DuelCmd_BanishTopDeckCards();
         break;
     case 0x60:
-        sub_0800EF38();
+        DuelCmd_ShuffleDeck();
         break;
     case 0x64:
-        sub_0800F544();
+        DuelCmd_AddDeckCardToHand();
         break;
     case 0x65:
-        sub_0800F678();
+        DuelCmd_RemoveCardFromDeck();
         break;
     case 0x66:
-        sub_0800F6B0();
+        DuelCmd_SummonFromDeck();
         break;
     case 0x67:
-        sub_0800F7F0();
+        DuelCmd_SendDeckCardToGraveyard();
         break;
     case 0x68:
-        sub_0800F8F8();
+        DuelCmd_BanishDeckCard();
         break;
     case 0x69:
-        sub_0800FB80();
+        DuelCmd_SetCrushCardTurns();
         break;
     case 0x6A:
-        sub_0800FB10();
+        DuelCmd_AddCardToDeckTop();
         break;
     case 0x6B:
-        sub_0800FB48();
+        DuelCmd_AddCardToDeckBottom();
         break;
     case 0x70:
-        sub_08014BAC();
+        DuelCmd_ShowCardDetail();
         break;
     case 0x71:
-        sub_08014C30();
+        DuelCmd_ShowCardAssemble();
         break;
     case 0x72:
-        sub_080150DC();
+        DuelCmd_ShowCardZoomIn();
         break;
     case 0x73:
-        sub_080153D4();
+        DuelCmd_ShowCardEffect();
         break;
     case 0x74:
-        sub_08015720();
+        DuelCmd_ShowCardScatter();
         break;
     case 0x75:
-        sub_08015A2C();
+        DuelCmd_ShowCardUnrollDown();
         break;
     case 0x76:
-        sub_08015E40();
+        DuelCmd_ShowCardUnrollSideways();
         break;
     case 0x77:
-        sub_0800D784();
+        DuelCmd_PlaceCard();
         break;
     case 0x78:
-        sub_0800D7D4();
+        DuelCmd_ClearZoneCard();
         break;
     case 0x7C:
-        sub_0800D824();
+        DuelCmd_AddCardToGraveyard();
         break;
     case 0x7D:
-        sub_0800D864();
+        DuelCmd_AddCardToBanished();
         break;
     case 0x7E:
-        sub_0800D8A4();
+        DuelCmd_ChangePosition();
         break;
     case 0x7F:
-        sub_0800D990();
+        DuelCmd_FlipCard();
         break;
     case 0x79:
-        sub_0800DA84();
+        DuelCmd_SendToGraveyard();
         break;
     case 0x7A:
-        sub_0800DD04();
+        DuelCmd_Banish();
         break;
     case 0x7B:
-        sub_0800DF94();
+        DuelCmd_BanishFlagged();
         break;
     case 0x80:
-        sub_0800E1E0();
+        DuelCmd_ReturnToHand();
         break;
     case 0x81:
-        sub_0800E438();
+        DuelCmd_ReturnToDeck();
         break;
     case 0x82:
-        sub_0800E630();
+        DuelCmd_MoveToZone();
         break;
     case 0x83:
-        sub_0800EAA8();
+        DuelCmd_AddEquipLink();
         break;
     case 0x84:
-        sub_0800E874();
+        DuelCmd_SwapZones();
         break;
     case 0x85:
-        sub_0800EADC();
+        DuelCmd_AddZoneLink();
         break;
     case 0x86:
-        sub_0800EB10();
+        DuelCmd_RemoveZoneLink();
         break;
     case 0x87:
-        sub_0800EB44();
+        DuelCmd_SetZoneDeclaredValue();
         break;
     case 0x88:
-        sub_0800ECB0();
+        DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue();
         break;
     case 0x89:
-        sub_0800EC54();
+        DuelCmd_SetZoneTurnCounter();
         break;
     case 0x8A:
-        sub_0800EBF4();
+        DuelCmd_AddZoneTurnCounter();
         break;
     case 0x8B:
-        sub_0800EBA0();
+        DuelCmd_SetDestroyedByOpponentFlag();
         break;
     case 0x8C:
-        sub_0800ED1C();
+        DuelCmd_ClearZoneLinks();
         break;
     case 0x8D:
-        sub_0800ED58();
+        DuelCmd_MoveZoneLinks();
         break;
     case 0x8E:
-        sub_0800EDCC();
+        DuelCmd_AddProhibition();
         break;
     case 0x8F:
-        sub_0800EE50();
+        DuelCmd_RemoveProhibition();
         break;
     case 0x90:
-        sub_08011FFC();
+        DuelCmd_SetZoneStatusFlags();
         break;
     case 0x91:
-        sub_080120E0();
+        DuelCmd_ClearZoneStatusFlags();
         break;
     case 0x92:
-        sub_08012264();
+        DuelCmd_SetEffectUnused();
         break;
     case 0x93:
-        sub_080122B4();
+        DuelCmd_TributeMonster();
         break;
     case 0x94:
-        sub_080124E8();
+        DuelCmd_PlantInOpponentDeck();
         break;
     case 0x95:
-        sub_08012670();
+        DuelCmd_SetDestroyCountdown();
         break;
     case 0x96:
-        sub_08012834();
+        DuelCmd_SetCannotAttack();
         break;
     case 0x97:
-        sub_080127E0();
+        DuelCmd_SetCannotAttackNextTurn();
         break;
     case 0x98:
-        sub_08012798();
+        DuelCmd_HalveAttack();
         break;
     case 0x99:
-        sub_080126F0();
+        DuelCmd_Nop99();
         break;
     case 0x9A:
-        sub_0801270C();
+        DuelCmd_Nop9A();
         break;
     case 0x9B:
-        sub_08012728();
+        DuelCmd_Nop9B();
         break;
     case 0x9C:
-        sub_08012744();
+        DuelCmd_Nop9C();
         break;
     case 0x9D:
-        sub_08012760();
+        DuelCmd_Nop9D();
         break;
     case 0x9E:
-        sub_0801277C();
+        DuelCmd_Nop9E();
         break;
     case 0x9F:
-        sub_08012888();
+        DuelCmd_Nop9F();
         break;
     case 0xA0:
-        sub_08013154();
+        DuelCmd_ClearZoneLinks2();
         break;
     case 0xA1:
-        sub_080128A4();
+        DuelCmd_SetPositionLocked();
         break;
     case 0xA2:
-        sub_080128F8();
+        DuelCmd_SetReturnAfterBattle();
         break;
     case 0xA3:
-        sub_0801296C();
+        DuelCmd_SummonToken();
         break;
     case 0xA4:
-        sub_08012AE0();
+        DuelCmd_SetZoneCardWord();
         break;
     case 0xA5:
-        sub_08012FA4();
+        DuelCmd_SendFusionMaterialToGrave();
         break;
     case 0xA6:
         sub_08013104();
         break;
     case 0xA7:
-        sub_08012B34();
+        DuelCmd_MoveMonsterFaceDown();
         break;
     case 0xA8:
-        sub_08012C4C();
+        DuelCmd_SetMagicalHatsCard();
         break;
     case 0xA9:
-        sub_08012D7C();
+        DuelCmd_BanishMonsterUntilEndPhase();
         break;
     case 0xAA:
-        sub_08012ED4();
+        DuelCmd_ReturnBanishedMonster();
         break;
     case 0xB0:
-        sub_08011C18();
+        DuelCmd_NegateActivation();
         break;
     case 0xB2:
-        sub_08011C98();
+        DuelCmd_NopB2();
         break;
     case 0xB1:
-        sub_08011CB4();
+        DuelCmd_SetSpellTrapDisabled();
         break;
     case 0xB3:
-        sub_08011F38();
+        DuelCmd_UpdateZoneLpPaid();
         break;
     case 0xB4:
-        sub_08011FA0();
+        DuelCmd_IncrementZoneTurnCounter();
         break;
     case 0xC0:
-        sub_08010794();
+        DuelCmd_SendHandCardToGraveyard();
         break;
     case 0xC1:
-        sub_080108FC();
+        DuelCmd_BanishHandCard();
         break;
     case 0xC3:
-        sub_08010A5C();
+        DuelCmd_ReturnHandCardToDeck();
         break;
     case 0xC2:
-        sub_08010BDC();
+        DuelCmd_RemoveCardFromHand();
         break;
     case 0xC4:
-        sub_08010C14();
+        DuelCmd_PlaceMonsterFromHand();
         break;
     case 0xC5:
-        sub_08010D94();
+        DuelCmd_PlaceSpellTrapFromHand();
         break;
     case 0xC7:
-        sub_08011278();
+        DuelCmd_ExchangeHandCards();
         break;
     case 0xCB:
-        sub_08010FAC();
+        DuelCmd_AddCardToHand();
         break;
     case 0xCA:
-        sub_08010F84();
+        DuelCmd_CompactHand();
         break;
     case 0xCC:
-        sub_08011498();
+        DuelCmd_SendHandFusionMaterialToGraveyard();
         break;
     case 0xCD:
-        sub_08011610();
+        DuelCmd_BanishHandFusionMaterial();
         break;
     case 0xCE:
-        sub_08010FE4();
+        DuelCmd_BanishHandCardFaceDown();
         break;
     case 0xCF:
-        sub_08011148();
+        DuelCmd_ReturnBanishedCardToHand();
         break;
     case 0xD0:
-        sub_0800FDD0();
+        DuelCmd_ReturnGraveyardCardToDeckTop();
         break;
     case 0xD1:
-        sub_0800FF04();
+        DuelCmd_ReturnGraveyardCardToDeckBottom();
         break;
     case 0xD2:
-        sub_0800FC00();
+        DuelCmd_ReturnGraveyardCardToHand();
         break;
     case 0xD4:
-        sub_08010038();
+        DuelCmd_BanishGraveyardCard();
         break;
     case 0xD3:
-        sub_08010124();
+        DuelCmd_RemoveCardFromGraveyard();
         break;
     case 0xD5:
-        sub_080102B0();
+        DuelCmd_TakeOpponentGraveyardCard();
         break;
     case 0xD6:
-        sub_08010160();
+        DuelCmd_ReturnGraveyardToDeck();
         break;
     case 0xD7:
-        sub_080104B8();
+        DuelCmd_AddCardToGraveyardNoRedraw();
         break;
     case 0xD8:
-        sub_080104EC();
+        DuelCmd_ClearPendingEquip();
         break;
     case 0xD9:
-        sub_08010538();
+        DuelCmd_EquipGraveyardCardToOpponent();
         break;
     case 0xDA:
         sub_080106BC();
@@ -1135,32 +1135,32 @@ void sub_0801ECA8(void)
         sub_08010708();
         break;
     case 0xDC:
-        sub_0800FBC8();
+        DuelCmd_RemoveCardFromFusionDeck();
         break;
     case 0xDD:
-        sub_0800FA04();
+        DuelCmd_SendFusionDeckCardToGraveyard();
         break;
     case 0xDE:
-        sub_080103DC();
+        DuelCmd_ReturnBanishedCardToGraveyard();
         break;
     case 0xE0:
-        sub_080170E4();
+        DuelCmd_TossCoin();
         break;
     case 0xE1:
-        sub_0801715C();
+        DuelCmd_TossThreeCoins();
         break;
     case 0xE2:
-        sub_080171D0();
+        DuelCmd_RollGracefulDice();
         break;
     case 0xE4:
-        sub_080172A8();
+        DuelCmd_RollPlainDie();
         break;
     case 0xE3:
     case 0xE5:
-        sub_0801723C();
+        DuelCmd_RollSkullDice();
         break;
     default:
-        gUnk_020185C0.running = 0;
+        gDuelCmd.running = 0;
         break;
     }
 }

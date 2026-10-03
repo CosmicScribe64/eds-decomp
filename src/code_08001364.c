@@ -22,8 +22,8 @@ struct ScriptState {
     u8 textBox[0xAA8 - 0x9AC];  /* +0x09AC dialogue box / text state */
     u8 unkAA8[0x10C0 - 0xAA8];  /* +0x0AA8 sparkle line state */
     u8 objs[0x12E9 - 0x10C0];   /* +0x10C0 second animation-object array */
-    u8 unk12E9;                 /* +0x12E9 index into gUnk_08080AB6 (sparkle start x) */
-    u8 unk12EA;                 /* +0x12EA index into gUnk_08080AE0 */
+    u8 unk12E9;                 /* +0x12E9 index into gBustupBannerTiles (sparkle start x) */
+    u8 unk12EA;                 /* +0x12EA index into gBustupOpponentIds */
     u8 speaker;                 /* +0x12EB current speaker character id */
     u8 filler12EC[0x12EE - 0x12EC];
     u16 unk12EE;                /* +0x12EE */
@@ -39,7 +39,7 @@ struct ScriptState {
 /* Calendar scene state at 0x0201F7D0. */
 struct Calendar {
     u16 unk0;
-    u16 date;               /* +0x02 packed date, see sub_080047F4 */
+    u16 date;               /* +0x02 packed date, see DayCountToDate */
     u32 shownEvents;        /* +0x04 event mask currently drawn */
     u16 blink:2;            /* +0x08 bits 0-1: setup/animation state (3 = steady) */
     u16 secondHalf:1;       /* +0x08 bit 2: showing weeks 3+ of the month */
@@ -48,7 +48,7 @@ struct Calendar {
     u16 week:3;             /* +0x08 bits 7-9: cursor row (week within the page) */
 };
 
-/* Unpacked date (sub_080047F4 output). */
+/* Unpacked date (DayCountToDate output). */
 struct Date {
     u32 year:12;
     u32 month:4;
@@ -67,23 +67,23 @@ struct CalendarEvent {
     u8 name[0x40];
 };
 
-#define gMain gUnk_03000040
-extern struct ScriptState gUnk_02013DE0;
-extern struct Calendar gUnk_0201F7D0;
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
-extern const u16 gUnk_081D0200[]; /* 10px Shift-JIS font, 10 rows of u16 per glyph */
-extern const u8 gUnk_08229500[];  /* 10px ASCII font, 10 rows of u8 per glyph */
-extern const struct CalendarEvent gUnk_081980D4[];
-extern const u8 gUnk_087F5DF8[]; /* 4 x 0x800 seasonal OBJ tiles */
-#define gCalendar gUnk_0201F7D0
+#define gMain gMain
+extern struct ScriptState gBustup;
+extern struct Calendar gCalendar;
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
+extern const u16 gFontKanji10x10[]; /* 10px Shift-JIS font, 10 rows of u16 per glyph */
+extern const u8 gFontLatin8x10[];  /* 10px ASCII font, 10 rows of u8 per glyph */
+extern const struct CalendarEvent gCalendarEvents[];
+extern const u8 gCalendarMonthNameTiles[]; /* 4 x 0x800 seasonal OBJ tiles */
+#define gCalendar gCalendar
 
-extern struct DialogueEntry gUnk_0813ADF4[];
+extern struct DialogueEntry gDialogueTable[];
 typedef u16 (*StepFunc)(void);
-extern StepFunc gUnk_0813ADD4[];
-extern const u8 gUnk_087F1798[];
+extern StepFunc gBustupSteps[];
+extern const u8 gCalendarBgEventPanel[];
 
-extern const u8 gUnk_081976A0[];
+extern const u8 gSceneSets[];
 extern const u8 gUnk_081976B4[];
 extern const u8 gUnk_081976C8[];
 extern const u8 gUnk_081976DC[];
@@ -115,21 +115,21 @@ extern const u8 gUnk_081978D0[];
 extern const u8 gUnk_081978E4[];
 extern const u8 gUnk_081978F8[];
 
-void sub_080011F0(u32);
-void sub_08075294(void *dest, const void *src, u32 size);
-u16 sub_08072584(u16 sjis);
-void sub_08001E24(u8 *dest, u32 color);
-void sub_08001E4C(u8 *dest, u32 color, u16 glyph);
-void sub_08001F08(u32 x, u32 y, const u8 *str);
-void sub_08001FB0(u32 mask);
-void sub_08002008(void);
-void sub_08002048(void);
-void sub_080047F4(struct Date *out, u16 date);
-s32 sub_080042D8(u32 year, u32 month, s32 day);
-s32 sub_080042B4(u32 year, u32 month);
-u32 sub_080044E4(u32 year, u32 month, s32 day);
-void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
-void sub_080762D0(u32 yx, u16 shapeSize, u16 attr2);
+void Bustup_InitState(u32);
+void MemCopy16(void *dest, const void *src, u32 size);
+u16 SjisToGlyphIndex(u16 sjis);
+void PlotPixel8bpp(u8 *dest, u32 color);
+void DrawGlyph8bpp(u8 *dest, u32 color, u16 glyph);
+void Calendar_DrawStringShadow(u32 x, u32 y, const u8 *str);
+void Calendar_DrawEventNames(u32 mask);
+void Calendar_ClearEventPanel(void);
+void Calendar_FlipPage(void);
+void DayCountToDate(struct Date *out, u16 date);
+s32 GetDayOfWeek(u32 year, u32 month, s32 day);
+s32 GetDaysInMonth(u32 year, u32 month);
+u32 GetCalendarEvents(u32 year, u32 month, s32 day);
+void AddSprite(u32 yx, u16 shapeSize, u16 attr2);
+void AddSprite8bpp(u32 yx, u16 shapeSize, u16 attr2);
 
 /* Scene/script state at 0x020150CC (part of the 0x02013DE0 script area). */
 struct Unk020150CC {
@@ -142,32 +142,32 @@ struct Unk020150CC {
     u8 filler82[0x90 - 0x82];
     u8 unk90;               /* +0x90 flags (1 = started, 2 = advancing) */
 };
-extern struct Unk020150CC gUnk_020150CC;
+extern struct Unk020150CC gBustupFade;
 extern const u8 gUnk_0813ADF8[]; /* dialogue table text base (0x0813ADF4 + 4) */
 
-void sub_080787F4(s32, s32, s32, void *);
-void sub_08000A28(void);
-void sub_08000708(const void *set, const u8 *text, void *tb, void *objs, u8 box);
-const void *sub_08001C78(u32 charId);
-void sub_08000420(const void *set, const u8 *text, void *tb, void *objs, u8 box);
-void sub_08000570(const void *set, const u8 *text, void *tb, void *objs, u8 box);
-void sub_08000944(void *tb);
+void FadeStart(s32, s32, s32, void *);
+void Bustup_ResetBlink(void);
+void Bustup_ChangeSceneSet(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+const void *GetSceneSet(u32 charId);
+void Bustup_LoadSceneSet(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+void Bustup_LoadSceneSetWithHeader(const void *set, const u8 *text, void *tb, void *objs, u8 box);
+void Bustup_InitTextBox(void *tb);
 
 /* Packed per-card state at gSaveData+0x20D0 (one u32 per entry; the entry
- * index comes from gUnk_08080AE0). */
+ * index comes from gBustupOpponentIds). */
 struct CardState {
     u16 unk0;               /* +0x00: low 11 bits = first stat */
     u16 unk1;               /* +0x02: bits 6-15 = third stat */
 };
-extern const u16 gUnk_08080AB6[];
-extern const u8 gUnk_08080AE0[];
+extern const u16 gBustupBannerTiles[];
+extern const u8 gBustupOpponentIds[];
 struct Unk08080AD4 {
     u16 unk0, unk2, unk4, unk6, unk8, unkA;
 };
-extern const struct Unk08080AD4 gUnk_08080AD4;
-void sub_080002C0(u16 x, u16 y, u16 attr, u16 n);
-void sub_08000324(u16 value, u16 x, u16 y, u16 digits, u8 pal);
-void sub_08001374(s32 arg0);
+extern const struct Unk08080AD4 gBustupRecordPos;
+void Bustup_DrawLabel(u16 x, u16 y, u16 attr, u16 n);
+void Bustup_DrawNumber(u16 value, u16 x, u16 y, u16 digits, u8 pal);
+void Bustup_DrawOpponentRecord(s32 arg0);
 
 /* Animation object (stride 0x14) used by the two script object arrays. */
 struct AnimObj {
@@ -180,12 +180,12 @@ struct Unk02014888 {
     u8 filler0[0x842];
     s8 unk842;                          /* +0x842 */
     u8 filler843;
-    u8 unk844[0x84A - 0x844];           /* +0x844 (== gUnk_020150CC) */
+    u8 unk844[0x84A - 0x844];           /* +0x844 (== gBustupFade) */
     u8 unk84A;                          /* +0x84A */
     u8 filler84B[0x851 - 0x84B];
     u8 unk851;                          /* +0x851 */
 };
-extern struct Unk02014888 gUnk_02014888;
+extern struct Unk02014888 gBustupSprites;
 
 /* Dialogue-box sparkle sub-state at 0x020147B4. */
 struct Unk020147B4 {
@@ -196,32 +196,32 @@ struct Unk020147B4 {
     u8 filler91F[0x99B - 0x91F];
     s8 unk99B;                          /* +0x99B */
 };
-extern struct Unk020147B4 gUnk_020147B4;
+extern struct Unk020147B4 gBustupCursor;
 
-extern const u8 gUnk_08080A64[];
-extern const u8 gUnk_08080A84[];
+extern const u8 gStrDebugDM5Script[];
+extern const u8 gStrDebugMoveToScript[];
 
-void sub_080786D0(void *obj);
-void sub_08078534(void *obj, s32, s32, s32, s32, s32, s32, s32, s32, void *);
-void sub_0807A420(void *);
-void sub_0807A298(void *);
-void sub_0807A2EC(void *);
-void sub_08000AC8(u16, s32);
-void sub_0807883C(void *);
-void sub_08077AEC(s32);
-void sub_0801A7DC(const u8 *, u32, u32, u32);
-void sub_0801A7E8(void);
-u16 sub_08001BC8(u32);
-u16 sub_08001BEC(u32);
-void sub_08000838(void *);
-void sub_08000854(void *);
-void sub_08000C54(void *);
-void sub_08000994(void *);
+void AnimStateTick(void *obj);
+void AnimBlockDraw(void *obj, s32, s32, s32, s32, s32, s32, s32, s32, void *);
+void LineStep(void *);
+void OamListFlush(void *);
+void OamListClear(void *);
+void Bustup_DrawCursorTrail(u16, s32);
+void FadeTick(void *);
+void PlaySE(s32);
+void DebugPrintf(const u8 *, u32, u32, u32);
+void DebugPrintFlush(void);
+u16 GetDialogueEventId(u32);
+u16 GetDialogueSpeaker(u32);
+void Bustup_ShowPage(void *);
+void Bustup_ClearHiddenBox(void *);
+void Bustup_UpdateTextBox(void *);
+void Bustup_TickBlink(void *);
 
 /* Step 0 of the Bustup runner. */
-u16 sub_08001364(void)
+u16 Bustup_Init(void)
 {
-    sub_080011F0(0);
+    Bustup_InitState(0);
     return 1;
 }
 
@@ -236,18 +236,18 @@ struct Save08001374 {
     u8 filler0[0x20D0];
     struct DuelRec08001374 records[32];
 };
-#define gSave08001374 (*(struct Save08001374 *)&gUnk_02011C20)
+#define gSave08001374 (*(struct Save08001374 *)&gSaveData)
 
-void sub_08001374(s32 arg0)
+void Bustup_DrawOpponentRecord(s32 arg0)
 {
     if ((u16)arg0 != 0)
-        sub_080002C0(gUnk_08080AB6[gUnk_02013DE0.unk12E9], 0x43, 4, 1);
-    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].wins,
-                 gUnk_08080AD4.unk0, gUnk_08080AD4.unk2, 3, 2);
-    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].losses,
-                 gUnk_08080AD4.unk4, gUnk_08080AD4.unk6, 3, 2);
-    sub_08000324(gSave08001374.records[gUnk_08080AE0[gUnk_02013DE0.unk12E9 + gUnk_02013DE0.unk12EA * 5]].draws,
-                 gUnk_08080AD4.unk8, gUnk_08080AD4.unkA, 3, 2);
+        Bustup_DrawLabel(gBustupBannerTiles[gBustup.unk12E9], 0x43, 4, 1);
+    Bustup_DrawNumber(gSave08001374.records[gBustupOpponentIds[gBustup.unk12E9 + gBustup.unk12EA * 5]].wins,
+                 gBustupRecordPos.unk0, gBustupRecordPos.unk2, 3, 2);
+    Bustup_DrawNumber(gSave08001374.records[gBustupOpponentIds[gBustup.unk12E9 + gBustup.unk12EA * 5]].losses,
+                 gBustupRecordPos.unk4, gBustupRecordPos.unk6, 3, 2);
+    Bustup_DrawNumber(gSave08001374.records[gBustupOpponentIds[gBustup.unk12E9 + gBustup.unk12EA * 5]].draws,
+                 gBustupRecordPos.unk8, gBustupRecordPos.unkA, 3, 2);
 }
 /* Bustup step: re-initialises both script object arrays and the sparkle trail,
  * programs the horizontal-scroll registers from the dialogue state, and
@@ -270,37 +270,37 @@ struct Scr464 {
     u8 filler12F0[0x136F - 0x12F0];
     u8 unk136F;
 };
-#define gScr464 (*(struct Scr464 *)&gUnk_02013DE0)
+#define gScr464 (*(struct Scr464 *)&gBustup)
 struct Main464 {
     u8 filler0[0x40C];
     vu16 intrCheck;
     u8 filler40E[0x4859 - 0x40E];
     u8 seqIndex1;
 };
-#define gMain464 (*(struct Main464 *)&gUnk_03000040)
+#define gMain464 (*(struct Main464 *)&gMain)
 
-s32 sub_08001464(void)
+s32 Bustup_UnusedOpponentPreview(void)
 {
     u8 i;
     u16 v;
 
     for (i = 0; i < gScr464.objCount; i++) {
-        sub_080786D0(&gScr464.objs[i]);
+        AnimStateTick(&gScr464.objs[i]);
         gScr464.objs[i].unkE = 0xFF;
     }
     gScr464.objs[gScr464.unk12E9].unkE = 0;
     for (i = 0; i < gScr464.objCount; i++) {
         if (gScr464.objs[i].unkE != -1)
-            sub_08078534(&gScr464.objs[i], 0, 0, 0, 1, 0, 0, 0, 0, gScr464.unkAA8);
+            AnimBlockDraw(&gScr464.objs[i], 0, 0, 0, 1, 0, 0, 0, 0, gScr464.unkAA8);
     }
-    sub_0807A420(&gUnk_020147B4);
-    sub_0807A420(&gUnk_020147B4);
-    sub_0807A420(&gUnk_020147B4);
-    sub_08000AC8(gUnk_020147B4.unk91A, 1);
-    if (gUnk_020147B4.unk91E == 0)
-        sub_08001374(1);
-    v = gUnk_020147B4.unk91A;
-    switch (gUnk_020147B4.unk99B) {
+    LineStep(&gBustupCursor);
+    LineStep(&gBustupCursor);
+    LineStep(&gBustupCursor);
+    Bustup_DrawCursorTrail(gBustupCursor.unk91A, 1);
+    if (gBustupCursor.unk91E == 0)
+        Bustup_DrawOpponentRecord(1);
+    v = gBustupCursor.unk91A;
+    switch (gBustupCursor.unk99B) {
     default:
         *(vu16 *)0x0400002C = v * 2;
         *(vu16 *)0x0400002E = ((v * 2) >> 16) & 0xFFF;
@@ -322,15 +322,15 @@ s32 sub_08001464(void)
         *(vu16 *)0x04000028 = -v * 2;
         *(vu16 *)0x0400002A = ((-v * 2) >> 16) & 0xFFF;
     }
-    sub_0807A298(&gUnk_02014888);
-    sub_0807A2EC(&gUnk_02014888);
+    OamListFlush(&gBustupSprites);
+    OamListClear(&gBustupSprites);
     gMain464.intrCheck &= 0xFFFE;
-    sub_0807883C(gUnk_02014888.unk844);
-    if (gUnk_02014888.unk84A == 2) {
-        if (gUnk_02014888.unk842 == 4)
-            gUnk_02014888.unk851 = 1;
+    FadeTick(gBustupSprites.unk844);
+    if (gBustupSprites.unk84A == 2) {
+        if (gBustupSprites.unk842 == 4)
+            gBustupSprites.unk851 = 1;
         else
-            gUnk_02014888.unk851 = 0;
+            gBustupSprites.unk851 = 0;
         gMain464.seqIndex1 = 1;
         *(vu16 *)0x04000028 = 0;
         *(vu16 *)0x0400002A = 0;
@@ -342,13 +342,13 @@ s32 sub_08001464(void)
 /* Bustup step: loads the current dialogue's scene (large box for a speaker at
  * 0x20-0x23, small box otherwise) and resets the dialogue state, then enables
  * forced-blank and Mode 4. */
-s32 sub_080016A8(void)
+s32 Bustup_LoadScene(void)
 {
     u8 box = 1;
     s32 speaker;
 
-    sub_080787F4(0, 0xFFFFFE80, 0, &gUnk_020150CC);
-    speaker = *((u8 *)&gUnk_020150CC - 1);
+    FadeStart(0, 0xFFFFFE80, 0, &gBustupFade);
+    speaker = *((u8 *)&gBustupFade - 1);
     /* Adjacent cases preserve the ROM's signed lower/upper bound tests. */
     switch (speaker) {
     case 0x20: case 0x21: case 0x22: case 0x23:
@@ -356,44 +356,44 @@ s32 sub_080016A8(void)
     default:
         goto small;
     }
-    sub_08000570(sub_08001C78(speaker),
-                 gUnk_0813ADF8 + gUnk_020150CC.dialogueIndex * 0x304,
-                 (u8 *)&gUnk_020150CC - 0x940,
-                 (u8 *)&gUnk_020150CC - 0x22C, box);
+    Bustup_LoadSceneSetWithHeader(GetSceneSet(speaker),
+                 gUnk_0813ADF8 + gBustupFade.dialogueIndex * 0x304,
+                 (u8 *)&gBustupFade - 0x940,
+                 (u8 *)&gBustupFade - 0x22C, box);
     goto done;
 small:
-    sub_08000420(sub_08001C78(gUnk_02013DE0.speaker),
-                 gUnk_0813ADF8 + gUnk_02013DE0.dialogueIndex * 0x304,
-                 gUnk_02013DE0.textBox, gUnk_02013DE0.objs, box);
+    Bustup_LoadSceneSet(GetSceneSet(gBustup.speaker),
+                 gUnk_0813ADF8 + gBustup.dialogueIndex * 0x304,
+                 gBustup.textBox, gBustup.objs, box);
 done:
-    sub_08000A28();
-    sub_08000944(gUnk_02013DE0.textBox);
+    Bustup_ResetBlink();
+    Bustup_InitTextBox(gBustup.textBox);
     *(vu16 *)0x04000000 = 0x1F04;
     return 1;
 }
 /* Bustup step: loads the selected dialogue as a 240x80 scene, then rewinds the
  * step runner by 4 (to re-run the setup). */
-s32 sub_08001770(void)
+s32 Bustup_ChangeSpeaker(void)
 {
     u8 box = 1;
 
-    sub_080787F4(0, 0xFFFFFE80, 0, &gUnk_020150CC);
-    sub_08000708(sub_08001C78(*((u8 *)&gUnk_020150CC - 1)),
-                 gUnk_0813ADF8 + gUnk_020150CC.dialogueIndex * 0x304,
-                 (u8 *)&gUnk_020150CC - 0x940,
-                 (u8 *)&gUnk_020150CC - 0x22C, box);
-    sub_08000A28();
+    FadeStart(0, 0xFFFFFE80, 0, &gBustupFade);
+    Bustup_ChangeSceneSet(GetSceneSet(*((u8 *)&gBustupFade - 1)),
+                 gUnk_0813ADF8 + gBustupFade.dialogueIndex * 0x304,
+                 (u8 *)&gBustupFade - 0x940,
+                 (u8 *)&gBustupFade - 0x22C, box);
+    Bustup_ResetBlink();
     gMain.seqIndex1 -= 4;
     return 0;
 }
 /* Bustup step: advances the dialogue (A button), handles the page/settle
  * states and text-box dirty flags, and rebuilds the object arrays. Returns 1
  * once the scene is finished (B / box fully read). */
-/* TextBox (gUnk_02013DE0 + 0x9AC) state byte (+0x19) and page byte (+0x20). */
-#define TB_STATE_17E8 (*((s8 *)&gUnk_02013DE0 + 0x9C5))
-#define TB_PAGE_17E8 (*((u8 *)&gUnk_02013DE0 + 0x9CC))
-#define SPEAKER_17E8 (gUnk_02013DE0.speaker)
-/* Scene/box state at gUnk_02013DE0 + 0x12EC (== gUnk_020150CC); +0x90 holds the
+/* TextBox (gBustup + 0x9AC) state byte (+0x19) and page byte (+0x20). */
+#define TB_STATE_17E8 (*((s8 *)&gBustup + 0x9C5))
+#define TB_PAGE_17E8 (*((u8 *)&gBustup + 0x9CC))
+#define SPEAKER_17E8 (gBustup.speaker)
+/* Scene/box state at gBustup + 0x12EC (== gBustupFade); +0x90 holds the
  * same bits as ScriptState unk137C_0 / autoAdvance. */
 struct Anim17E8 {
     u8 filler0[4];
@@ -406,19 +406,19 @@ struct Anim17E8 {
     u8 started:1;
     u8 autoAdvance:1;
 };
-#define gAnim17E8 (*(struct Anim17E8 *)((u8 *)&gUnk_02013DE0 + 0x12EC))
-/* FAKEMATCH: the ROM uses sub_08001BC8's result without re-extending it, so it
+#define gAnim17E8 (*(struct Anim17E8 *)((u8 *)&gBustup + 0x12EC))
+/* FAKEMATCH: the ROM uses GetDialogueEventId's result without re-extending it, so it
  * is called through an int-returning type (the unit's prototype says u16). */
 typedef u32 (*EventOfFunc17E8)(u32);
-#define EventOf17E8 ((EventOfFunc17E8)sub_08001BC8)
-s32 sub_080017E8(void)
+#define EventOf17E8 ((EventOfFunc17E8)GetDialogueEventId)
+s32 Bustup_Update(void)
 {
     u8 i;
     u8 *tb;
     u16 *boxDirty;
     u32 idx;
 
-    sub_0807883C(&gAnim17E8);
+    FadeTick(&gAnim17E8);
     if (gAnim17E8.unk6 == 2)
         gMain.seqIndex1 += gAnim17E8.unk7;
     if (!(gAnim17E8.started)) {
@@ -431,13 +431,13 @@ s32 sub_080017E8(void)
                 TB_STATE_17E8 = 0;
                 if (gAnim17E8.autoAdvance)
                     TB_STATE_17E8 = 1;
-                sub_08077AEC(1);
+                PlaySE(1);
                 break;
             case -2:
                 if (!(gAnim17E8.autoAdvance)) {
                     if (gAnim17E8.unk4 == 0) {
-                        sub_080787F4(0, 0x180, 1, &gAnim17E8);
-                        sub_08077AEC(1);
+                        FadeStart(0, 0x180, 1, &gAnim17E8);
+                        PlaySE(1);
                         gAnim17E8.started = 1;
                     }
                 } else {
@@ -449,63 +449,63 @@ s32 sub_080017E8(void)
                      * just-incremented index instead of reusing it. */
                     idx = gAnim17E8.dialogueIndex;
                     gMain.dialogueIndex = idx;
-                    sub_0801A7DC(gUnk_08080A64, gMain.dialogueIndex,
+                    DebugPrintf(gStrDebugDM5Script, gMain.dialogueIndex,
                                  EventOf17E8(gMain.dialogueIndex), gMain.speaker);
-                    sub_0801A7E8();
+                    DebugPrintFlush();
                 }
                 break;
             case -3:
                 TB_STATE_17E8 = 3;
-                sub_08077AEC(1);
+                PlaySE(1);
                 break;
             }
         }
         if (gMain.newKeys & 2) {
-            sub_08077AEC(2);
+            PlaySE(2);
             return 1;
         }
     } else if (gAnim17E8.autoAdvance) {
         gAnim17E8.started = 0;
         gMain.seqIndex1--;
         gAnim17E8.dialogueIndex++;
-        SPEAKER_17E8 = sub_08001BEC(gAnim17E8.dialogueIndex);
+        SPEAKER_17E8 = GetDialogueSpeaker(gAnim17E8.dialogueIndex);
         TB_PAGE_17E8 = 0;
         gMain.speaker = SPEAKER_17E8;
         gMain.dialogueIndex = gAnim17E8.dialogueIndex;
-        sub_0801A7DC(gUnk_08080A84, gMain.dialogueIndex,
+        DebugPrintf(gStrDebugMoveToScript, gMain.dialogueIndex,
                      EventOf17E8(gMain.dialogueIndex), gMain.speaker);
-        sub_0801A7E8();
+        DebugPrintFlush();
         if (EventOf17E8(gMain.dialogueIndex) == 0) {
             gMain.speaker = 0;
             gMain.dialogueIndex = 0;
-            sub_08077AEC(2);
+            PlaySE(2);
             return 1;
         }
     }
-    sub_08000994(gUnk_02013DE0.objs);
-    for (i = 0; i < gUnk_02013DE0.objCount; i++)
-        sub_080786D0(gUnk_02013DE0.objs + i * 0x14);
-    for (i = 0; i < gUnk_02013DE0.objCount; i++)
-        sub_08078534(gUnk_02013DE0.objs + i * 0x14, 0, 0, 0, 1, 0, 0, 0, 0,
-                     gUnk_02013DE0.unkAA8);
-    sub_0807A298(&gUnk_02014888);
-    sub_0807A2EC(&gUnk_02014888);
-    tb = (u8 *)&gUnk_02014888 - 0xFC;
-    sub_08000854(tb);
+    Bustup_TickBlink(gBustup.objs);
+    for (i = 0; i < gBustup.objCount; i++)
+        AnimStateTick(gBustup.objs + i * 0x14);
+    for (i = 0; i < gBustup.objCount; i++)
+        AnimBlockDraw(gBustup.objs + i * 0x14, 0, 0, 0, 1, 0, 0, 0, 0,
+                     gBustup.unkAA8);
+    OamListFlush(&gBustupSprites);
+    OamListClear(&gBustupSprites);
+    tb = (u8 *)&gBustupSprites - 0xFC;
+    Bustup_ClearHiddenBox(tb);
     gMain464.intrCheck &= 0xFFFE;
-    boxDirty = (u16 *)((u8 *)&gUnk_02014888 - 0xDA);
+    boxDirty = (u16 *)((u8 *)&gBustupSprites - 0xDA);
     if (*boxDirty == 1) {
-        sub_08000838(tb);
+        Bustup_ShowPage(tb);
         *boxDirty = 0;
     }
-    sub_08000C54(tb);
+    Bustup_UpdateTextBox(tb);
     return 0;
 }
 
 /* "Bustup" scene callback: runs the step table at 0x0813ADD4. */
-u16 sub_08001AE4(void)
+u16 CB_Bustup(void)
 {
-    StepFunc step = gUnk_0813ADD4[gMain.seqIndex1];
+    StepFunc step = gBustupSteps[gMain.seqIndex1];
 
     if (step != NULL) {
         if (step())
@@ -517,12 +517,12 @@ u16 sub_08001AE4(void)
 }
 
 /* "Auto Bustup" scene callback: same, but forces auto-advance each frame. */
-u16 sub_08001B34(void)
+u16 CB_AutoBustup(void)
 {
-    if (gUnk_0813ADD4[gMain.seqIndex1] != NULL) {
-        if (gUnk_0813ADD4[gMain.seqIndex1]())
+    if (gBustupSteps[gMain.seqIndex1] != NULL) {
+        if (gBustupSteps[gMain.seqIndex1]())
             gMain.seqIndex1++;
-        gUnk_02013DE0.autoAdvance = TRUE;
+        gBustup.autoAdvance = TRUE;
         return 0;
     }
     REG_DISPCNT &= 0xE0FF;
@@ -530,12 +530,12 @@ u16 sub_08001B34(void)
 }
 
 /* Maps a dialogue event ID to its table index (DIALOGUE_COUNT if not found). */
-u32 sub_08001B98(u16 eventId)
+u32 GetDialogueIndex(u16 eventId)
 {
     u32 i;
 
     for (i = 0; i <= DIALOGUE_COUNT; i++) {
-        if (gUnk_0813ADF4[i].eventId == eventId)
+        if (gDialogueTable[i].eventId == eventId)
             goto found;
     }
     i = DIALOGUE_COUNT;
@@ -544,29 +544,29 @@ found:
 }
 
 /* Maps a dialogue table index to its event ID. */
-u16 sub_08001BC8(u32 index)
+u16 GetDialogueEventId(u32 index)
 {
     if (index <= DIALOGUE_COUNT)
-        return gUnk_0813ADF4[index].eventId;
+        return gDialogueTable[index].eventId;
     return 0;
 }
 
 /* Maps a dialogue table index to the speaker (portrait) character ID. */
-u16 sub_08001BEC(u32 index)
+u16 GetDialogueSpeaker(u32 index)
 {
     if (index <= DIALOGUE_COUNT)
-        return gUnk_0813ADF4[index].speakerId;
+        return gDialogueTable[index].speakerId;
     return 0;
 }
 
-void sub_08001C10(u16 eventId)
+void StartDialogue(u16 eventId)
 {
     u32 i;
 
     for (i = 0; i <= DIALOGUE_COUNT; i++) {
-        if (gUnk_0813ADF4[i].eventId == eventId) {
+        if (gDialogueTable[i].eventId == eventId) {
             gMain.dialogueIndex = i;
-            gMain.speaker = gUnk_0813ADF4[i].speakerId;
+            gMain.speaker = gDialogueTable[i].speakerId;
             gMain.seqIndex1 = 0;
             return;
         }
@@ -574,7 +574,7 @@ void sub_08001C10(u16 eventId)
 }
 
 /* Maps a character ID to its portrait ("bustup") descriptor. */
-const void *sub_08001C78(u32 charId)
+const void *GetSceneSet(u32 charId)
 {
     switch (charId) {
     case 2:
@@ -636,7 +636,7 @@ const void *sub_08001C78(u32 charId)
     case 33:
         return gUnk_081976F0;
     case 34:
-        return gUnk_081976A0;
+        return gSceneSets;
     case 1:
     default:
         return gUnk_08197718;
@@ -644,7 +644,7 @@ const void *sub_08001C78(u32 charId)
 }
 
 /* Write one 8bpp pixel into VRAM (which only takes 16-bit writes). */
-void sub_08001E24(u8 *dest, u32 color)
+void PlotPixel8bpp(u8 *dest, u32 color)
 {
     if ((u32)dest & 1) {
         dest--;
@@ -657,7 +657,7 @@ void sub_08001E24(u8 *dest, u32 color)
 /* Draw one glyph (10 rows of 1bpp pixels) into the text canvas `dest`, using
  * either the 8x10 ASCII font (1 byte per row) or the 8x10 Shift-JIS font (u16
  * per row, MSB first). */
-void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
+void DrawGlyph8bpp(u8 *dest, u32 color, u16 glyph)
 {
     s32 glyphOffset;
     register int fontOffset asm("r0");
@@ -677,10 +677,10 @@ void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
     scanline = 0;
     glyphOffset = glyph * 0xA;
     do {
-        if (0x80 & gUnk_02011C20.flags4) {
+        if (0x80 & gSaveData.flags4) {
             fontOffset = (glyphOffset + scanline) * 2;
             asm volatile ("" : : "r"(fontOffset));
-            widePixels = *(const u16 *)((const u8 *)gUnk_081D0200 + fontOffset);
+            widePixels = *(const u16 *)((const u8 *)gFontKanji10x10 + fontOffset);
             wideMask = 0x8000;
             widePixels = (widePixels >> 8) | ((u8)widePixels << 8);
             x = 0;
@@ -688,7 +688,7 @@ void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
             nextScanline = scanline + 1;
             do {
                 if (widePixels & wideMask) {
-                    sub_08001E24(&destLine[x], color);
+                    PlotPixel8bpp(&destLine[x], color);
                 }
                 wideMask = wideMask >> 1;
                 x += 1;
@@ -696,14 +696,14 @@ void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
         } else {
             fontOffset = glyphOffset + scanline;
             asm volatile ("" : : "r"(fontOffset));
-            asciiPixels = gUnk_08229500[fontOffset];
+            asciiPixels = gFontLatin8x10[fontOffset];
             asciiMask = 0x80;
             x = 0;
             nextDestLine = destLine + 0xF0;
             nextScanline = scanline + 1;
             do {
                 if (asciiPixels & asciiMask) {
-                    sub_08001E24(&destLine[x], color);
+                    PlotPixel8bpp(&destLine[x], color);
                 }
                 asciiMask = asciiMask >> 1;
                 x += 1;
@@ -713,7 +713,7 @@ void sub_08001E4C(u8 *dest, u32 color, u16 glyph)
         scanline = nextScanline;
     } while (scanline <= 9);
 }
-void sub_08001F08(u32 x, u32 y, const u8 *str)
+void Calendar_DrawStringShadow(u32 x, u32 y, const u8 *str)
 {
     u8 *dest;
 
@@ -725,19 +725,19 @@ void sub_08001F08(u32 x, u32 y, const u8 *str)
     dest += y * 240;
     while (*str != 0) {
         if (gSaveData.flags4 & 0x80) {
-            sub_08001E4C(dest + 241, 0xFF, sub_08072584((str[0] << 8) | str[1]));
-            sub_08001E4C(dest, 0xF7, sub_08072584((str[0] << 8) | str[1]));
+            DrawGlyph8bpp(dest + 241, 0xFF, SjisToGlyphIndex((str[0] << 8) | str[1]));
+            DrawGlyph8bpp(dest, 0xF7, SjisToGlyphIndex((str[0] << 8) | str[1]));
             dest += 10;
             str += 2;
         } else {
-            sub_08001E4C(dest + 241, 0xFF, *str);
-            sub_08001E4C(dest, 0xF7, *str);
+            DrawGlyph8bpp(dest + 241, 0xFF, *str);
+            DrawGlyph8bpp(dest, 0xF7, *str);
             dest += 5;
             str++;
         }
     }
 }
-void sub_08001FB0(u32 mask)
+void Calendar_DrawEventNames(u32 mask)
 {
     u32 x = 0x20;
     u32 y = 0x80;
@@ -745,8 +745,8 @@ void sub_08001FB0(u32 mask)
     u32 i;
 
     for (i = 0; i <= 8; i++) {
-        if (gUnk_081980D4[i].flags & mask) {
-            sub_08001F08(x, y, gUnk_081980D4[i].name);
+        if (gCalendarEvents[i].flags & mask) {
+            Calendar_DrawStringShadow(x, y, gCalendarEvents[i].name);
             y += 12;
             if (++count == 2)
                 return;
@@ -754,15 +754,15 @@ void sub_08001FB0(u32 mask)
     }
 }
 
-void sub_08002008(void)
+void Calendar_ClearEventPanel(void)
 {
     if (gCalendar.page)
-        sub_08075294((void *)0x06007080, gUnk_087F1798, 0x2580);
+        MemCopy16((void *)0x06007080, gCalendarBgEventPanel, 0x2580);
     else
-        sub_08075294((void *)0x06011080, gUnk_087F1798, 0x2580);
+        MemCopy16((void *)0x06011080, gCalendarBgEventPanel, 0x2580);
 }
 
-void sub_08002048(void)
+void Calendar_FlipPage(void)
 {
     gCalendar.page = 1 - gCalendar.page;
     if (gCalendar.page)
@@ -771,17 +771,17 @@ void sub_08002048(void)
         REG_DISPCNT &= ~0x10;
 }
 
-void sub_08002094(void)
+void Calendar_UpdateEventNames(void)
 {
     struct Date d;
     s32 cell, col, row, day, daysInMonth;
     u32 events;
 
-    sub_080047F4(&d, gCalendar.date);
+    DayCountToDate(&d, gCalendar.date);
     day = 1;
-    cell = sub_080042D8(d.year, d.month, 1);
+    cell = GetDayOfWeek(d.year, d.month, 1);
     col = cell;
-    daysInMonth = sub_080042B4(d.year, d.month);
+    daysInMonth = GetDaysInMonth(d.year, d.month);
     row = 0;
     if (gCalendar.secondHalf) {
         while (cell <= 20) {
@@ -794,12 +794,12 @@ void sub_08002094(void)
     }
     while (day <= daysInMonth && cell <= 20) {
         if (col == gCalendar.weekday && row == gCalendar.week) {
-            events = sub_080044E4(d.year, d.month, day) & 0x3F700000;
+            events = GetCalendarEvents(d.year, d.month, day) & 0x3F700000;
             if (gCalendar.shownEvents != events) {
-                sub_08002008();
-                sub_08001FB0(events);
-                sub_08002048();
-                sub_08001FB0(events);
+                Calendar_ClearEventPanel();
+                Calendar_DrawEventNames(events);
+                Calendar_FlipPage();
+                Calendar_DrawEventNames(events);
                 gCalendar.shownEvents = events;
             }
             return;
@@ -815,14 +815,14 @@ void sub_08002094(void)
 }
 /* Sets the calendar cursor (weekday + week) to the day `arg0`, clamping to the
  * second half of the month. */
-void sub_0800217C(u16 arg0)
+void Calendar_SetCursorDate(u16 arg0)
 {
     struct Date d;
     s32 first;
 
-    sub_080047F4(&d, arg0);
-    gCalendar.weekday = sub_080042D8(d.year, d.month, d.day);
-    first = sub_080042D8(d.year, d.month, 1);
+    DayCountToDate(&d, arg0);
+    gCalendar.weekday = GetDayOfWeek(d.year, d.month, d.day);
+    first = GetDayOfWeek(d.year, d.month, 1);
     gCalendar.week = (u32)(d.day - 1 + first) / 7U;
     if (gCalendar.week > 2) {
         gCalendar.week -= 2;
@@ -831,7 +831,7 @@ void sub_0800217C(u16 arg0)
         gCalendar.secondHalf = 0;
     }
 }
-void sub_08002220(void)
+void Calendar_DrawCursorAndHeader(void)
 {
     struct Date d;
     s32 i;
@@ -839,29 +839,29 @@ void sub_08002220(void)
     u32 tileOffset;
     s32 season;
 
-    sub_080762D0((gCalendar.weekday * 32 + 13) | ((gCalendar.week * 24 + 37) << 16), 0x80, 0x178);
+    AddSprite8bpp((gCalendar.weekday * 32 + 13) | ((gCalendar.week * 24 + 37) << 16), 0x80, 0x178);
     if (gCalendar.secondHalf)
-        sub_080762D0(0x00080068, 0x4080, 0x190);
+        AddSprite8bpp(0x00080068, 0x4080, 0x190);
     else
-        sub_080762D0(0x00700068, 0x4080, 0x194);
+        AddSprite8bpp(0x00700068, 0x4080, 0x194);
     for (i = 0; i <= 6; i++)
-        sub_080761F0((25 << 16) | (i * 32 + 16), 0x4080, 0x82A0 + i * 4);
+        AddSprite((25 << 16) | (i * 32 + 16), 0x4080, 0x82A0 + i * 4);
 
-    sub_080047F4(&d, gCalendar.date);
+    DayCountToDate(&d, gCalendar.date);
     tileOffset = ((d.month - 1) % 3) * 10;
     switch (gCalendar.blink) {
     case 1:
-        sub_080047F4(&d, gCalendar.date);
+        DayCountToDate(&d, gCalendar.date);
         season = (d.month - 1) / 3;
-        sub_08075294((void *)0x06014C00, gUnk_087F5DF8 + season * 0x800, 0x800);
+        MemCopy16((void *)0x06014C00, gCalendarMonthNameTiles + season * 0x800, 0x800);
     case 0:
     case 2:
         gCalendar.blink++;
         break;
     default:
-        sub_080761F0(0x00080010, 0x4080, tileOffset + 0x7260);
-        sub_080761F0(0x00080030, 0x4080, tileOffset + 0x7264);
-        sub_080761F0(0x00080050, 0x40, tileOffset + 0x7268);
+        AddSprite(0x00080010, 0x4080, tileOffset + 0x7260);
+        AddSprite(0x00080030, 0x4080, tileOffset + 0x7264);
+        AddSprite(0x00080050, 0x40, tileOffset + 0x7268);
         break;
     }
 }

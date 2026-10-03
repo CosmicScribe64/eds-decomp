@@ -3,11 +3,11 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_08048FE0/sub_08048FE0.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049048.s"
-	.include "asm/nonmatching/code_08048FE0/sub_080493D0.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049450.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049514.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049880.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049B74.s"
-	.include "asm/nonmatching/code_08048FE0/sub_08049DF0.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_FlipSummon.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_PlaySpellTrapFromHand.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_ChangePosition.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_FusionSummon.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_GetHandCardCommands.s"
+	.include "asm/nonmatching/code_08048FE0/CanActivateMonsterEffect.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_GetMonsterCommands.s"
+	.include "asm/nonmatching/code_08048FE0/CardMenu_GetSpellTrapCommands.s"

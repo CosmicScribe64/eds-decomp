@@ -83,7 +83,7 @@ One example of each:
 tools/emu.py run   --state title --frames 120 --shot 0,60,120 --sheet
 tools/emu.py trace --state duel_main1 --input tools/emu/states/duel_turn2.txt --calls     # one full duel turn
 tools/emu.py watch 0x020192E4:2 --state duel_main1 --input tools/emu/states/duel_turn2.txt --changes
-tools/emu.py break sub_08007418 --state duel_main1 --input tools/emu/states/duel_turn2.txt --deref r0:4
+tools/emu.py break SubtractLifePoints --state duel_main1 --input tools/emu/states/duel_turn2.txt --deref r0:4
 tools/emu.py peek  --state duel_turn2 0x020192E4:8 --fmt u16 --decimal
 tools/emu.py lua   tools/emu/examples/lp_monitor.lua --state duel_main1 --input tools/emu/states/duel_turn2.txt
 tools/emu.py gdb   --state duel_start --ex "break *0x0804E420" --ex continue --ex "info registers" --ex bt
@@ -108,7 +108,7 @@ How the commands work:
   - Instruction fetches are not watched. `--changes` keeps only writes that change the value.
 - **Backtraces** come from a shadow call stack. After a state load the stack starts empty, so `AgbMain`
   appears only in runs from boot. `lr_function` is meaningful only in leaf functions.
-- **`break`** at a function start shows the arguments in r0–r3. For example, `sub_08007418` gets
+- **`break`** at a function start shows the arguments in r0–r3. For example, `SubtractLifePoints` gets
   r0 = `&players[0]`, r1 = player and r2 = damage.
 - **`lua`** provides `emu`, `callbacks` (`frame`, `keysRead`), `console:log` and `util`. Setting `EMU_STOP = 1`
   ends the run after the current frame. To inject keys from Lua, use the `keysRead` callback with
@@ -164,10 +164,10 @@ The author's runs are kept in `build/emu/verify-*`.
 These are verified by the runs above, except where marked as a hypothesis.
 - **LP damage.** `players[0].lifePoints` (`0x020192E4`) goes from 8000 to 7900 at frame 1723 of the turn
   workload.
-  - The write is `sub_08007418+0x1E` (`LP -= amount`, clamped at 0), reached through `sub_08013888 <
-    sub_0801ECA8 < sub_0801F454 < DuelMainStep < CB_Campaign`. A `break` shows r1 = 0 (player) and
+  - The write is `SubtractLifePoints+0x1E` (`LP -= amount`, clamped at 0), reached through `DuelCmd_ChangeLifePoints <
+    DuelCmd_Dispatch < DuelCmdQueue_Run < DuelMainStep < CB_Campaign`. A `break` shows r1 = 0 (player) and
     r2 = 100 (damage).
-  - The same addresses also get DMA3 copies of the same value, started by `sub_08057E3C` from the CPU AI.
+  - The same addresses also get DMA3 copies of the same value, started by `AiRestoreDuelState` from the CPU AI.
     > [!question] Hypothesis: the AI snapshots and restores the duel state while it simulates moves.
 - **Duel phase byte** `0x02015EE8` ([[ram-map]], [[program-flow]]). On the player's turns it goes 1
   (setup/deal), 2, 3 (Draw, which waits for A on the deck), 4 (Standby), then 5 (Main 1). The GDB run stops in
@@ -177,9 +177,9 @@ These are verified by the runs above, except where marked as a hypothesis.
   - > [!question] The meanings of phases 6, 7 and 8 are hypotheses. 8 may be "opponent's turn".
 - **Scene timeline from boot:** the license sequence runs during frames 3–567, then installs Title directly
   ([[license-sequence]]). The title accepts input by about frame 850.
-- **Interrupts** ([[interrupt-handlers]]). Each frame has 1 VBlank, about 21 sound DMA1 IRQs (`sub_0807E324`)
-  and about 0.09 Timer2 IRQs. HBlank handlers appear only during effects: `sub_08004ABC` while the title
-  appears, and `sub_0805DC38` for 19 frames of the duel turn.
+- **Interrupts** ([[interrupt-handlers]]). Each frame has 1 VBlank, about 21 sound DMA1 IRQs (`SoundDma1Intr`)
+  and about 0.09 Timer2 IRQs. HBlank handlers appear only during effects: `Title_HBlank` while the title
+  appears, and `BattleScene_HBlank` for 19 frames of the duel turn.
 
 ## Limitations
 - mGBA's HLE BIOS is used (no BIOS file). There is no boot logo, and SWI timing differs from hardware. Game

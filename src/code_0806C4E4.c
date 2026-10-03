@@ -16,10 +16,10 @@ struct DeckState {
     s8 b51;
     u8 b52, b53;
 };
-extern struct DeckState gUnk_0201DB20;
+extern struct DeckState gDeckEdit;
 struct Main { u8 pad[6]; u16 keys; u8 pad8[0x485A - 8]; u8 step; };
-extern struct Main gUnk_03000040;
-extern u16 (*const gUnk_081A724C[])(void);
+extern struct Main gMain;
+extern u16 (*const gDeckStatsSteps[])(void);
 struct TrunkEntry {
     u8 pad[8];
     u16 owned : 10;
@@ -27,25 +27,25 @@ struct TrunkEntry {
     u16 side : 2;
     u16 extra : 2;
 };
-extern u8 gUnk_02011C20[];
-extern u32 gUnk_02011C20_words[] asm("gUnk_02011C20");
+extern u8 gSaveData[];
+extern u32 gUnk_02011C20_words[] asm("gSaveData");
 
-u16 sub_0806C4E4(void)
+u16 DeckStats_ClearState(void)
 {
-    gUnk_0201DB20.h4E = 0;
-    gUnk_0201DB20.h4C = 0;
-    gUnk_0201DB20.b49 = 0;
-    gUnk_0201DB20.b4A = 0;
-    gUnk_0201DB20.b52 = 0;
-    gUnk_0201DB20.b53 = 0;
-    gUnk_0201DB20.b4B = 0;
+    gDeckEdit.h4E = 0;
+    gDeckEdit.h4C = 0;
+    gDeckEdit.b49 = 0;
+    gDeckEdit.b4A = 0;
+    gDeckEdit.b52 = 0;
+    gDeckEdit.b53 = 0;
+    gDeckEdit.b4B = 0;
     return 1;
 }
 
 /* Word arguments are explicitly narrowed, including the default selector
  * return preserved by the ROM. FAKEMATCH: the initialized selector binding
  * retains its original scratch register; no instructions are supplied. */
-u32 sub_0806C534(int listWord, int cardWord)
+u32 GetCardCopiesInList(int listWord, int cardWord)
 {
     int list = (u16)listWord;
     register int selector asm("r3") = list;
@@ -62,7 +62,7 @@ above_one:
     return list;
 owned_count:
     {
-        u32 base = (u32)gUnk_02011C20;
+        u32 base = (u32)gSaveData;
         struct TrunkEntry *entry;
 
         entry = (struct TrunkEntry *)(id * 4 + base);
@@ -70,7 +70,7 @@ owned_count:
     }
 main_count:
     {
-        u32 base = (u32)gUnk_02011C20;
+        u32 base = (u32)gSaveData;
         u8 *entry;
         u32 packed;
         u32 main;
@@ -83,7 +83,7 @@ main_count:
     }
 side_count:
     {
-        u32 base = (u32)gUnk_02011C20;
+        u32 base = (u32)gSaveData;
         struct TrunkEntry *entry;
 
         entry = (struct TrunkEntry *)(id * 4 + base);
@@ -102,8 +102,8 @@ struct CountState {
     u16 count[2][3];
     u8 row[3];
 };
-#define CS_STATE (*(struct CountState *)&gUnk_0201DB20)
-u32 sub_0806C534(int, int);
+#define CS_STATE (*(struct CountState *)&gDeckEdit)
+u32 GetCardCopiesInList(int, int);
 #define CS_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define CS_NUM(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CS_KIND(id) ((int)((CS_STATS(id) & 0x1F00000) >> 20))
@@ -133,18 +133,18 @@ static inline u8 CS_FrameKind(u16 id)
             break; \
         default: \
             if (CS_FrameKind(cards[i]) == (kindValue)) \
-                total += sub_0806C534(list, cards[i]); \
+                total += GetCardCopiesInList(list, cards[i]); \
             break; \
         } \
     }
 #define COUNT_TYPE(typeValue) \
     for (i = 0; i < CS_STATE.count[row][list]; i++) { \
         u16 card = cards[i]; \
-        if (CS_KIND(card) == (typeValue)) total += sub_0806C534(list, card); \
+        if (CS_KIND(card) == (typeValue)) total += GetCardCopiesInList(list, card); \
     }
-/* Sums sub_0806C534 copy counts over list `list`'s current row for category 1-6
+/* Sums GetCardCopiesInList copy counts over list `list`'s current row for category 1-6
  * (frame kind 0/1/2, Magic, Trap, frame kind 3). */
-u32 sub_0806C590(u8 list, u8 category)
+u32 DeckStats_CountCategory(u8 list, u8 category)
 {
     u16 total = 0;
     u8 row = CS_STATE.row[list];
@@ -166,28 +166,28 @@ u32 sub_0806C590(u8 list, u8 category)
     return total;
 }
 struct Save { u8 pad[0x20C6]; u16 total, main, side, extra; };
-extern struct Save gUnk_02011C20_s asm("gUnk_02011C20");
+extern struct Save gUnk_02011C20_s asm("gSaveData");
 struct CountRow { u16 count, percent; };
-extern struct CountRow gUnk_02030000[];
-void sub_080686E8(void);
-u32 sub_0806C590(u8, u8);
-int sub_0807B504(int, int);
+extern struct CountRow gScratchBuffer[];
+void DeckEdit_BuildCardLists(void);
+u32 DeckStats_CountCategory(u8, u8);
+int DivFix8(int, int);
 
 /* FAKEMATCH: initialized bindings and empty allocation hints preserve the
  * original count-load and sum order. Case 0/2 share a halfword load; case 1
  * derives the extra-copy address from the main-copy offset. No instructions
  * are supplied by the hints. Caller-saved bindings are dead before calls. */
-void sub_0806CB68(void)
+void DeckStats_Compute(void)
 {
-    struct CountRow *rows = gUnk_02030000;
+    struct CountRow *rows = gScratchBuffer;
     int value, percent;
     u16 quotient;
     u32 last;
     u8 *cursor;
-    sub_080686E8();
+    DeckEdit_BuildCardLists();
     {
         u16 *count;
-        switch (gUnk_0201DB20.cursor) {
+        switch (gDeckEdit.cursor) {
         case 0: {
             register u32 base asm("r0") = (u32)&gUnk_02011C20_s;
             register u32 off asm("r2") = 0x20C6;
@@ -218,18 +218,18 @@ void sub_0806CB68(void)
     }
     rows[6].percent = 100;
     {
-        register u32 base asm("r4") = (u32)&gUnk_0201DB20;
+        register u32 base asm("r4") = (u32)&gDeckEdit;
         register u32 off asm("r2") = 0x1C1C;
         asm("" : : "r"(off));
         base += off;
         cursor = (u8 *)base;
     }
-    rows[0].count = sub_0806C590(*cursor, 1);
-    rows[1].count = sub_0806C590(*cursor, 2);
-    rows[2].count = sub_0806C590(*cursor, 3);
-    rows[3].count = sub_0806C590(*cursor, 4);
-    rows[4].count = sub_0806C590(*cursor, 5);
-    last = sub_0806C590(*cursor, 6);
+    rows[0].count = DeckStats_CountCategory(*cursor, 1);
+    rows[1].count = DeckStats_CountCategory(*cursor, 2);
+    rows[2].count = DeckStats_CountCategory(*cursor, 3);
+    rows[3].count = DeckStats_CountCategory(*cursor, 4);
+    rows[4].count = DeckStats_CountCategory(*cursor, 5);
+    last = DeckStats_CountCategory(*cursor, 6);
     rows[5].count = last;
     {
         register int a asm("r1") = rows[1].count;
@@ -251,7 +251,7 @@ void sub_0806CB68(void)
     }
     {
         int input = rows[0].count;
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -260,7 +260,7 @@ void sub_0806CB68(void)
     {
         int input = rows[1].count;
         asm("" : : "r"(input));
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -269,7 +269,7 @@ void sub_0806CB68(void)
     {
         int input = rows[2].count;
         asm("" : : "r"(input));
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -278,7 +278,7 @@ void sub_0806CB68(void)
     {
         int input = rows[3].count;
         asm("" : : "r"(input));
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -287,7 +287,7 @@ void sub_0806CB68(void)
     {
         int input = rows[4].count;
         asm("" : : "r"(input));
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -296,7 +296,7 @@ void sub_0806CB68(void)
     {
         int input = rows[5].count;
         asm("" : : "r"(input));
-        quotient = sub_0807B504(input * 4, rows[6].count);
+        quotient = DivFix8(input * 4, rows[6].count);
         value = quotient * 25;
         percent = value >> 8;
         if ((value & 0xFF) > 0x7F) percent++;
@@ -304,42 +304,42 @@ void sub_0806CB68(void)
     }
 }
 
-extern const u8 gUnk_081A6EB4[];
-void sub_0807B864();
+extern const u8 gDeckEditDigitSprites[];
+void DrawNumberSprites();
 /* FAKEMATCH: the do-while(0) wrapper changes agbcc's loop-invariant hoisting
    so the loop constants land in the same registers as the ROM. */
-void sub_0806CD14(void)
+void DeckStats_DrawNumbers(void)
 {
     u8 i;
     do {
         for (i = 0; i <= 5; i++) {
-            struct CountRow *row = &gUnk_02030000[i];
-            sub_0807B864(row->count, 4, 1, 0xA8, i * 16 + 0x24, gUnk_081A6EB4, 1, 8, 0, 0, 0, &gUnk_0201DB20);
-            sub_0807B864(row->percent, 3, 1, 0xC8, i * 16 + 0x24, gUnk_081A6EB4, 1, 8, 0, 0, 0, &gUnk_0201DB20);
+            struct CountRow *row = &gScratchBuffer[i];
+            DrawNumberSprites(row->count, 4, 1, 0xA8, i * 16 + 0x24, gDeckEditDigitSprites, 1, 8, 0, 0, 0, &gDeckEdit);
+            DrawNumberSprites(row->percent, 3, 1, 0xC8, i * 16 + 0x24, gDeckEditDigitSprites, 1, 8, 0, 0, 0, &gDeckEdit);
         }
     } while (0);
-    sub_0807B864(gUnk_02030000[6].count, 4, 1, 0x98, 0x8C, gUnk_081A6EB4, 1, 8, 0, 0, 0, &gUnk_0201DB20);
+    DrawNumberSprites(gScratchBuffer[6].count, 4, 1, 0x98, 0x8C, gDeckEditDigitSprites, 1, 8, 0, 0, 0, &gDeckEdit);
 }
 void CpuFastSet(const void *, void *, u32);
 void CpuSet(const void *, void *, u32);
-void sub_0807A9C0(u16 *, u16 *, u8, u8, u8, u8, u8);
-void sub_0807A908(void *, void *, u8, u8);
+void CopyMapRectAddOffset(u16 *, u16 *, u8, u8, u8, u8, u8);
+void CopyMapRect(void *, void *, u8, u8);
 /* ASM crop helper decodes its word-valued scalar arguments on entry. */
-void sub_0807ADE8(u16 *, int, int, int, void *, int, int, int, int, int);
-void sub_08077CEC(u8 *, u8 *, u16);
+void CropMapBlock(u16 *, int, int, int, void *, int, int, int, int, int);
+void CopyTileSheetTo2D(u8 *, u8 *, u16);
 struct Fade;
-void sub_080787F4(u8, s16, u8, struct Fade *);
-extern const u8 gUnk_08701B24[], gUnk_08701BA4[], gUnk_08702054[], gUnk_086FCA40[], gUnk_08702504[];
-extern const u8 gUnk_086FDB24[], gUnk_086FFB24[], gUnk_086E5030[], gUnk_086FD924[], gUnk_086ED1B0[];
+void FadeStart(u8, s16, u8, struct Fade *);
+extern const u8 gDeckStatsPatternMap[], gDeckStatsPanelMap[], gDeckStatsBg1Map[], gListFilterSortPageMap[], gDeckStatsListIconMap[];
+extern const u8 gDeckStatsBgTiles[], gDeckStatsLabelTiles[], gDeckEditObjTiles[], gDeckStatsBgPal[], gDeckEditObjPal[];
 extern const u16 gUnk_08623326;
-extern const u32 gUnk_08621DE0[];
+extern const u32 gCardStats[];
 extern u8 gUnk_0201F770;
 #define REG16(off) (*(volatile u16 *)(0x04000000 + (off)))
-void sub_0806CB68(void);
+void DeckStats_Compute(void);
 /* FAKEMATCH: two initialized bindings retain the shared tile source and
  * fade-speed store allocation. Three empty constraints preserve the original
  * discarded card-type computation and its range tests without instructions. */
-int sub_0806CDD4(void)
+int DeckStats_Init(void)
 {
     u32 zero0 = 0, zero1;
     u16 x, y;
@@ -349,29 +349,29 @@ int sub_0806CDD4(void)
     CpuFastSet(&zero1, (void *)0x06010000, 0x01002000);
     for (y = 0; y <= 3; y++) {
         for (x = 0; x <= 3; x++)
-            sub_0807A9C0((u16 *)gUnk_08701B24, (void *)(0x0600F000 + (x * 8 + y * 256) * 2), 8, 8, 8, 0, 0);
+            CopyMapRectAddOffset((u16 *)gDeckStatsPatternMap, (void *)(0x0600F000 + (x * 8 + y * 256) * 2), 8, 8, 8, 0, 0);
     }
-    sub_0807A908((void *)gUnk_08701BA4, (void *)0x0600E000, 30, 20);
-    sub_0807A908((void *)gUnk_08702054, (void *)0x0600D000, 30, 20);
-    sub_0807A908((void *)gUnk_086FCA40, (void *)0x0600C000, 30, 20);
-    tiles = gUnk_08702504;
-    sub_0807ADE8((u16 *)tiles, 0, gUnk_0201DB20.cursor * 5, 7, (void *)0x0600D000, 20, 0, 7, 5, 0);
-    sub_0807ADE8((u16 *)tiles, 0, gUnk_0201DB20.cursor * 5, 7, (void *)0x0600C000, 20, 0, 7, 5, 0);
-    CpuFastSet(gUnk_086FDB24, (void *)0x06000000, 0x800);
-    CpuFastSet(gUnk_086FFB24, (void *)0x06002000, 0x800);
-    sub_08077CEC((u8 *)gUnk_086E5030, (void *)0x06010000, 16);
-    CpuFastSet(gUnk_086FD924, (void *)0x05000000, 0x80);
-    CpuSet(gUnk_086ED1B0, (void *)0x05000200, 0x100);
+    CopyMapRect((void *)gDeckStatsPanelMap, (void *)0x0600E000, 30, 20);
+    CopyMapRect((void *)gDeckStatsBg1Map, (void *)0x0600D000, 30, 20);
+    CopyMapRect((void *)gListFilterSortPageMap, (void *)0x0600C000, 30, 20);
+    tiles = gDeckStatsListIconMap;
+    CropMapBlock((u16 *)tiles, 0, gDeckEdit.cursor * 5, 7, (void *)0x0600D000, 20, 0, 7, 5, 0);
+    CropMapBlock((u16 *)tiles, 0, gDeckEdit.cursor * 5, 7, (void *)0x0600C000, 20, 0, 7, 5, 0);
+    CpuFastSet(gDeckStatsBgTiles, (void *)0x06000000, 0x800);
+    CpuFastSet(gDeckStatsLabelTiles, (void *)0x06002000, 0x800);
+    CopyTileSheetTo2D((u8 *)gDeckEditObjTiles, (void *)0x06010000, 16);
+    CpuFastSet(gDeckStatsBgPal, (void *)0x05000000, 0x80);
+    CpuSet(gDeckEditObjPal, (void *)0x05000200, 0x100);
     REG16(8) = 0x1800;
     REG16(10) = 0x1A01;
     REG16(12) = 0x1C02;
     REG16(14) = 0x1E02;
     {
         int step = -0x180;
-        u32 base = (u32)&gUnk_0201DB20;
+        u32 base = (u32)&gDeckEdit;
         u32 off = 0x618;
 
-        sub_080787F4(0, step, 0, (void *)(base + off));
+        FadeStart(0, step, 0, (void *)(base + off));
     }
     REG16(0x10) = 0; REG16(0x12) = 0;
     REG16(0x14) = 0; REG16(0x16) = 0;
@@ -382,7 +382,7 @@ int sub_0806CDD4(void)
         gUnk_0201F770 = speed;
     }
     REG16(0) = 0x1A00;
-    sub_0806CB68();
+    DeckStats_Compute();
     {
         u32 card = 0x439;
         int number;
@@ -396,7 +396,7 @@ int sub_0806CDD4(void)
     compute_type:
         {
             u32 off = card * 4;
-            u32 value = (*(const u32 *)((u32)gUnk_08621DE0 + off) & 0x1F00000) >> 20;
+            u32 value = (*(const u32 *)((u32)gCardStats + off) & 0x1F00000) >> 20;
             asm("" : : "r"(value));
         }
     done_type: ;
@@ -404,7 +404,7 @@ int sub_0806CDD4(void)
     return 1;
 }
 
-void sub_0806CD14(void);
+void DeckStats_DrawNumbers(void);
 struct Animation {
     u8 pad[6]; u8 state;
     u8 pad7[0x1634 - 7];
@@ -413,19 +413,19 @@ struct Animation {
 };
 extern struct Animation gUnk_0201E138;
 extern u8 gUnk_0201F770;
-void sub_0807883C(void *);
-void sub_08077AEC(u16);
-void sub_0807B4A8(u16);
+void FadeTick(void *);
+void PlaySE(u16);
+void SetBldAlpha(u16);
 struct Fade;
-void sub_080787F4(u8, s16, u8, struct Fade *);
-void sub_0807A298(void *);
-void sub_0807A2EC(void *);
+void FadeStart(u8, s16, u8, struct Fade *);
+void OamListFlush(void *);
+void OamListClear(void *);
 
-u16 sub_0806D010(void)
+u16 DeckStats_Update(void)
 {
-    u32 keys = gUnk_03000040.keys & 0x3FF;
-    sub_0807883C(&gUnk_0201E138);
-    sub_0806CD14();
+    u32 keys = gMain.keys & 0x3FF;
+    FadeTick(&gUnk_0201E138);
+    DeckStats_DrawNumbers();
     gUnk_0201E138.scrollX += 0x80;
     gUnk_0201E138.scrollY += 0x80;
     REG16(0x1C) = gUnk_0201E138.scrollX >> 8;
@@ -435,44 +435,44 @@ u16 sub_0806D010(void)
         case 1:
         case 2:
             gUnk_0201E138.close = 1;
-            sub_08077AEC(2);
+            PlaySE(2);
             break;
         }
     }
-    if (gUnk_0201DB20.animState == 2) {
-        gUnk_0201DB20.mode = 4;
-        gUnk_0201DB20.phase = 3;
+    if (gDeckEdit.animState == 2) {
+        gDeckEdit.mode = 4;
+        gDeckEdit.phase = 3;
         return 1;
     }
-    if (gUnk_0201DB20.animState == 3) {
+    if (gDeckEdit.animState == 3) {
         REG16(0x50) = 0x3F44;
-        sub_0807B4A8(16);
+        SetBldAlpha(16);
         REG16(0) |= 0x400;
-        gUnk_0201DB20.animState = 0;
-        gUnk_0201DB20.b51 = -1;
-        gUnk_0201DB20.b52 = 1;
+        gDeckEdit.animState = 0;
+        gDeckEdit.b51 = -1;
+        gDeckEdit.b52 = 1;
     }
-    if (gUnk_0201DB20.b51 != 0) {
-        gUnk_0201DB20.b50 += gUnk_0201DB20.b51;
-        if (gUnk_0201DB20.b50 == 8)
-            gUnk_0201DB20.b51 = 0;
-        if (gUnk_0201DB20.b50 == 16) {
+    if (gDeckEdit.b51 != 0) {
+        gDeckEdit.b50 += gDeckEdit.b51;
+        if (gDeckEdit.b50 == 8)
+            gDeckEdit.b51 = 0;
+        if (gDeckEdit.b50 == 16) {
             REG16(0) &= 0xFBFF;
-            sub_080787F4(0, 0x180, 0, (struct Fade *)((u8 *)&gUnk_0201DB20 + 0x618));
-            gUnk_0201DB20.b51 = 0;
-            gUnk_0201DB20.b52 = 0;
+            FadeStart(0, 0x180, 0, (struct Fade *)((u8 *)&gDeckEdit + 0x618));
+            gDeckEdit.b51 = 0;
+            gDeckEdit.b52 = 0;
         }
-        sub_0807B4A8(gUnk_0201DB20.b50);
+        SetBldAlpha(gDeckEdit.b50);
     }
-    sub_0807A298(&gUnk_0201DB20);
-    sub_0807A2EC(&gUnk_0201DB20);
+    OamListFlush(&gDeckEdit);
+    OamListClear(&gDeckEdit);
     return 0;
 }
-u16 sub_0806D198(void)
+u16 DeckEdit_RunStatistics(void)
 {
-    if (gUnk_081A724C[gUnk_03000040.step]) {
-        if (gUnk_081A724C[gUnk_03000040.step]())
-            gUnk_03000040.step++;
+    if (gDeckStatsSteps[gMain.step]) {
+        if (gDeckStatsSteps[gMain.step]())
+            gMain.step++;
         return 0;
     }
     return 1;
@@ -495,27 +495,27 @@ struct InitState {
 struct InitMain { u8 pad[0x40E]; u16 flags; };
 extern u8 gUnk_0201F6D8[];
 struct PanelFlags { u8 active:1; u8 mode:4; u8 rest:3; u8 pad[7]; };
-void sub_08075278(void *, u32);
-void sub_0807B0EC(int, int, int, void *);
-void sub_080788A0(void *);
-void sub_0807B534(void *);
-void sub_08068DA4(u16, u8, u8, u16);
-void sub_0806710C(void);
-void sub_08065F34(u16, u16, u16 *);
-void sub_08066244(void *);
-void sub_080666AC(void *);
-#define INIT (*(struct InitState *)&gUnk_0201DB20)
+void MemClear16(void *, u32);
+void Ease_Init(int, int, int, void *);
+void ClearKatakanaFlag(void *);
+void ObjAffineInit(void *);
+void DeckEdit_SetListCard(u16, u8, u8, u16);
+void DeckEdit_CountSideDeckMonsters(void);
+void DeckEdit_CalcScrollBar(u16, u16, u16 *);
+void DeckEdit_ResetFrameSlots(void *);
+void DeckEdit_ResetCardMove(void *);
+#define INIT (*(struct InitState *)&gDeckEdit)
 struct TrunkEntryInit { u16 owned : 10; u8 f1 : 2; u8 f2 : 2; u8 f3 : 2; };
 struct TrunkInit { u8 pad0[8]; struct TrunkEntryInit e[1]; };
-#define TRUNK_INIT ((struct TrunkInit *)gUnk_02011C20)
-/* Integer-address indexing, as in the twin sub_08070A1C (code_0807093C). */
+#define TRUNK_INIT ((struct TrunkInit *)gSaveData)
+/* Integer-address indexing, as in the twin TradeCardSelect_Init (code_0807093C). */
 #define CARD_NUMBER_INIT(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
-int sub_0806D1D8(void)
+int DeckEdit_Init(void)
 {
     u16 i, j;
     struct PanelFlags *panel;
-    sub_08075278(&INIT, 0x1C5C);
-    ((struct InitMain *)&gUnk_03000040)->flags = 1;
+    MemClear16(&INIT, 0x1C5C);
+    ((struct InitMain *)&gMain)->flags = 1;
     REG16(0x12) = 0; REG16(0x10) = 0;
     REG16(0x16) = 0; REG16(0x14) = 0;
     REG16(0x1A) = 0; REG16(0x18) = 0;
@@ -523,7 +523,7 @@ int sub_0806D1D8(void)
     REG16(0x28) = 0; REG16(0x2A) = 0;
     REG16(0x3C) = 0; REG16(0x3E) = 0;
     REG16(0) &= 0xE0FF;
-    sub_0807A2EC(&INIT);
+    OamListClear(&INIT);
     INIT.h632 = 0; INIT.h630 = 0;
     INIT.h63A = 0; INIT.h638 = 0;
     INIT.h63E = 0; INIT.h63C = 0;
@@ -534,27 +534,27 @@ int sub_0806D1D8(void)
     INIT.previous = 0; INIT.cursor = 0;
     INIT.b634 = 0; INIT.b635 = 0;
     INIT.active = 0; INIT.h18AC = 0xFC00;
-    sub_0807B0EC(0, 0, 0, (u8 *)&INIT + 0x628);
-    sub_080788A0((u8 *)&INIT + 0x640);
-    sub_0807B534((u8 *)&INIT + 0x18B0);
+    Ease_Init(0, 0, 0, (u8 *)&INIT + 0x628);
+    ClearKatakanaFlag((u8 *)&INIT + 0x640);
+    ObjAffineInit((u8 *)&INIT + 0x18B0);
     for (i = 1; i <= 0x334 && CARD_NUMBER_INIT(i) != 0xFFFF; i++) {
         if ((u16)(CARD_NUMBER_INIT(i) - 0x780) > 0x4F) {
             if (TRUNK_INIT->e[i].owned)
-                sub_08068DA4(i, 0, INIT.row[0], INIT.count[INIT.row[0]][0]++);
+                DeckEdit_SetListCard(i, 0, INIT.row[0], INIT.count[INIT.row[0]][0]++);
             if (TRUNK_INIT->e[i].f1 || TRUNK_INIT->e[i].f3)
-                sub_08068DA4(i, 1, INIT.row[1], INIT.count[INIT.row[1]][1]++);
+                DeckEdit_SetListCard(i, 1, INIT.row[1], INIT.count[INIT.row[1]][1]++);
             if (TRUNK_INIT->e[i].f2)
-                sub_08068DA4(i, 2, INIT.row[2], INIT.count[INIT.row[2]][2]++);
+                DeckEdit_SetListCard(i, 2, INIT.row[2], INIT.count[INIT.row[2]][2]++);
         }
     }
-    sub_0806710C();
-    sub_08065F34(INIT.count[INIT.row[INIT.cursor]][INIT.cursor], INIT.col[INIT.cursor], INIT.slide);
+    DeckEdit_CountSideDeckMonsters();
+    DeckEdit_CalcScrollBar(INIT.count[INIT.row[INIT.cursor]][INIT.cursor], INIT.col[INIT.cursor], INIT.slide);
     INIT.dirty4 = 1; INIT.dirty6 = 1;
     if (INIT.count[INIT.row[INIT.cursor]][INIT.cursor] > 5)
         INIT.b1BB7 = INIT.b1BB5 = 1;
     else INIT.b1BB7 = INIT.b1BB5 = 0;
-    sub_08066244(gUnk_0201F6D8);
-    sub_080666AC(gUnk_0201F6D8 + 0x68);
+    DeckEdit_ResetFrameSlots(gUnk_0201F6D8);
+    DeckEdit_ResetCardMove(gUnk_0201F6D8 + 0x68);
     panel = (struct PanelFlags *)(gUnk_0201F6D8 + 0x7C);
     panel->active = 0; panel->mode = 0;
     return 1;

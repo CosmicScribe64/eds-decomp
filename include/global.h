@@ -18,7 +18,7 @@ typedef u32 bool32;
 #define NULL ((void *)0)
 
 /* Pull a not-yet-decompiled function's assembly into a C translation unit, in place.
- * Usage (file scope):  INCLUDE_ASM("asm/nonmatching/code_08000228", sub_08000228);  */
+ * Usage (file scope):  INCLUDE_ASM("asm/nonmatching/code_08000228", GetDuelistName);  */
 #ifdef OBJDIFF_BASE
 /* objdiff "base" build (make objdiff-report): leave not-yet-decompiled functions out entirely,
  * so they count as unmatched instead of trivially matching their own assembly. */

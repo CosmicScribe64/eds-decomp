@@ -2,9 +2,9 @@
 #include "duel.h"
 
 /*
- * Duel script-command handlers (commands 0x79-0x84, dispatched by sub_0801ECA8).
- * Each one runs as a small multi-frame state machine on gUnk_020185C0.step and
- * clears gUnk_020185C0.running when finished. See wiki/functions/code-0800d8a4.md.
+ * Duel script-command handlers (commands 0x79-0x84, dispatched by DuelCmd_Dispatch).
+ * Each one runs as a small multi-frame state machine on gDuelCmd.step and
+ * clears gDuelCmd.running when finished. See wiki/functions/code-0800d8a4.md.
  */
 
 /* Command block at 0x020185C0 (hypothesis: current duel command). */
@@ -25,7 +25,7 @@ struct DuelCmd {
     struct DuelCard saved814;   /* 0x814: card word saved from a zone */
 };
 
-/* Card location passed to the card-move animations (sub_08024380 / sub_080242C4). */
+/* Card location passed to the card-move animations (DuelAnim_PlayZoneEffect / DuelAnim_MoveCard). */
 struct CardLoc {
     u16 player:1;
     u16 area:4;
@@ -35,46 +35,46 @@ struct CardLoc {
     u16 unk2;
 };
 
-extern struct DuelCmd gUnk_020185C0;
-#define gCmd gUnk_020185C0
+extern struct DuelCmd gDuelCmd;
+#define gCmd gDuelCmd
 #define CMD_PLAYER() (gCmd.hdr >> 15)
 /* Card ID of a zone, read as a whole word (agbcc: pointer deref, not a member access). */
 #define ZONE_CARD_ID(zone) (((struct DuelCard *)(zone))->id)
 /* Zone pointer with the zone term first (the ROM's address order in the later handlers). */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
-#define ZONE(p, s) ((struct DuelZone *)((u8 *)gUnk_0201930C + (p) * 0xD64 + (s) * 0x94))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
+#define ZONE(p, s) ((struct DuelZone *)((u8 *)gDuelZones + (p) * 0xD64 + (s) * 0x94))
 
-u32 sub_08062354(u32 slot);
-void sub_080240A8(u32 player, u32 a);
-void sub_08024288(u32 a, u32 b);
-void sub_08024134(u32 player, u32 a, u32 slot);
-void sub_080611AC(void);
-void sub_08077AEC(u16 se);                          /* PlaySE */
-void sub_08024380(struct CardLoc *loc, const void *anim, u32 a, u32 b);
-void sub_080242C4(u32 id, struct CardLoc *from, struct CardLoc *to);
-void sub_08060FD0(u32 player, u32 slot);
-void sub_08007558(struct DuelCard *dst, struct DuelCard *src);
-void sub_08008E44(u32 player, u32 slot);
-void sub_0800747C(u32 player, u32 slot);
-void sub_08008F14(u32 player, u32 slot);
-u32 sub_08007994(u16 id);
-void sub_08008E80(u32 player, u32 slot);
-void sub_08008EB4(u32 player, u32 slot);
-void sub_0802408C(u32 bg);
-void sub_0802432C(struct CardLoc *from, struct CardLoc *to);
-void sub_08075278(void *dst, u32 size);
-void sub_08075294(void *dst, const void *src, u32 size);
-extern const u8 gUnk_0868CAC0[];
-extern const u16 gUnk_08622AB4[];
+u32 GetZoneArea(u32 slot);
+void DuelScreen_ScrollToZone(u32 player, u32 a);
+void DuelAnim_Request(u32 a, u32 b);
+void DuelCursor_Select(u32 player, u32 a, u32 slot);
+void DrawAllAreaTiles(void);
+void PlaySE(u16 se);                          /* PlaySE */
+void DuelAnim_PlayZoneEffect(struct CardLoc *loc, const void *anim, u32 a, u32 b);
+void DuelAnim_MoveCard(u32 id, struct CardLoc *from, struct CardLoc *to);
+void ClearZoneTiles(u32 player, u32 slot);
+void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
+void SendZoneCardToGraveyard(u32 player, u32 slot);
+void ClearZoneCardStatusFlags(u32 player, u32 slot);
+void ReturnZoneCardToDeck(u32 player, u32 slot);
+u32 IsFusionMonster(u16 id);
+void BanishZoneCard(u32 player, u32 slot);
+void ReturnZoneCardToHand(u32 player, u32 slot);
+void DuelScreen_StartScroll(u32 bg);
+void DuelAnim_SwapCards(struct CardLoc *from, struct CardLoc *to);
+void MemClear16(void *dst, u32 size);
+void MemCopy16(void *dst, const void *src, u32 size);
+extern const u8 gExplosionAnim[];
+extern const u16 gCardIdToNumber[];
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 
 /* Command 0x7E: flip the face-down flag of zone arg1 (with animation). */
-void sub_0800D8A4(void)
+void DuelCmd_ChangePosition(void)
 {
     u32 player = CMD_PLAYER();
     register u32 slot asm("r5") = gCmd.arg1;
     u32 arg = gCmd.arg2;
-    struct DuelZonesPlayer *zones = &gUnk_0201930C[player];
+    struct DuelZonesPlayer *zones = &gDuelZones[player];
     struct DuelZone *zone = &zones->zones[slot];
 
     if (ZONE_CARD_ID(zone) == 0) {
@@ -83,14 +83,14 @@ void sub_0800D8A4(void)
     }
     switch (gCmd.step) {
     case 0:
-        sub_080240A8(player, sub_08062354(slot));
+        DuelScreen_ScrollToZone(player, GetZoneArea(slot));
         gCmd.step++;
         break;
     case 1: {
         u32 a = (u8)slot << 8 | player;
         u32 fd = zone->flag6_0;
         u32 b = arg << 24;
-        sub_08024288(1, a | (fd << 16 | b));
+        DuelAnim_Request(1, a | (fd << 16 | b));
         gCmd.step++;
         break;
     }
@@ -98,41 +98,41 @@ void sub_0800D8A4(void)
         zone->flag6_0 = !zone->flag6_0;
         if (arg && !zone->flag6_1)
             zone->flag6_1 = 1;
-        sub_080611AC();
-        sub_08024134(player, 0, slot);
+        DrawAllAreaTiles();
+        DuelCursor_Select(player, 0, slot);
         gCmd.running = 0;
         break;
     }
 }
 /* Command 0x7F: toggle the flag6_1 flag of zone arg1 (stamping a serial when set). */
-void sub_0800D990(void)
+void DuelCmd_FlipCard(void)
 {
     u32 player = CMD_PLAYER();
     register u32 slot asm("r6") = gCmd.arg1;
-    register struct DuelZonesPlayer *zones asm("r1") = &gUnk_0201930C[player];
+    register struct DuelZonesPlayer *zones asm("r1") = &gDuelZones[player];
     u32 off = 0x94 * slot;
     struct DuelZone *zone = (struct DuelZone *)((u8 *)zones + off);
 
     off += player * 0xD64;
-    if (ZONE_CARD_ID((struct DuelZone *)((u8 *)gUnk_0201930C + off)) == 0) {
+    if (ZONE_CARD_ID((struct DuelZone *)((u8 *)gDuelZones + off)) == 0) {
         gCmd.running = 0;
         return;
     }
     switch (gCmd.step) {
     case 0:
-        sub_080240A8(player, sub_08062354(slot));
+        DuelScreen_ScrollToZone(player, GetZoneArea(slot));
         gCmd.step++;
         break;
     case 1:
-        sub_08024288(2, ((u8)slot << 8 | player) | ((zone->flag6_0 | zone->flag6_1 << 8) << 16));
+        DuelAnim_Request(2, ((u8)slot << 8 | player) | ((zone->flag6_0 | zone->flag6_1 << 8) << 16));
         gCmd.step++;
         break;
     default:
         zone->flag6_1 = !zone->flag6_1;
         if (zone->flag6_1)
-            zone->serial = (*(u16 *)((u8 *)gUnk_0201930C - 0x2C))++;
-        sub_08024134(player, 0, slot);
-        sub_080611AC();
+            zone->serial = (*(u16 *)((u8 *)gDuelZones - 0x2C))++;
+        DuelCursor_Select(player, 0, slot);
+        DrawAllAreaTiles();
         gCmd.running = 0;
         break;
     }
@@ -145,7 +145,7 @@ struct ZoneFlags18 {
     u8 hi:5;
 };
 
-void sub_0800DA84(void)
+void DuelCmd_SendToGraveyard(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -154,11 +154,11 @@ void sub_0800DA84(void)
 
     switch (cmd->step) {
     case 0:
-        if (((struct DuelCard *)(player * 0xD64 + slot * 0x94 + (u32)gUnk_0201930C))->id == 0) {
-            sub_080611AC();
+        if (((struct DuelCard *)(player * 0xD64 + slot * 0x94 + (u32)gDuelZones))->id == 0) {
+            DrawAllAreaTiles();
             cmd->running = 0;
         }
-        sub_080240A8(player, sub_08062354(slot));
+        DuelScreen_ScrollToZone(player, GetZoneArea(slot));
         cmd->step++;
         break;
     case 1:
@@ -166,32 +166,32 @@ void sub_0800DA84(void)
             struct DuelZone *zone;
             u32 pp;
 
-            sub_08077AEC(8);
+            PlaySE(8);
             from.player = player;
             from.area = 0;
             from.slot = slot;
             pp = player & 1;
-            zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gUnk_0201930C);
+            zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gDuelZones);
             from.flag14 = zone->flag6_0;
             from.flag15 = zone->flag6_1;
-            sub_08024380(&from, gUnk_0868CAC0, 0, 0);
+            DuelAnim_PlayZoneEffect(&from, gExplosionAnim, 0, 0);
         }
-        sub_08060FD0(player, slot);
+        ClearZoneTiles(player, slot);
         cmd->step++;
         break;
     case 2: {
         struct DuelCard *saved = &cmd->saved814;
         u32 poff = (player & 1) * 0xD64;
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         u8 *zonebase = base + poff;
         u32 zoff = slot * 0x94;
         struct DuelZone *zone;
         u32 word, id;
 
-        sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
+        CopyDuelCard(saved, (struct DuelCard *)(zonebase + zoff));
         zone = (struct DuelZone *)(zoff + poff + (u32)base);
         ((struct ZoneFlags18 *)zone)->flag18 = 0;
-        sub_08008E44(player, slot);
+        SendZoneCardToGraveyard(player, slot);
         word = *(u32 *)saved;
         id = (word << 20) >> 20;
         if ((u16)(CARD_NUMBER(id) - 0x780) > 0x4F) {
@@ -205,21 +205,21 @@ void sub_0800DA84(void)
             to.slot = 0;
             to.flag14 = 0;
             to.flag15 = 1;
-            sub_080242C4(id, &from, &to);
+            DuelAnim_MoveCard(id, &from, &to);
         }
         cmd->step++;
         break;
     }
     default:
-        sub_080611AC();
-        sub_08024134(player, 0, slot);
+        DrawAllAreaTiles();
+        DuelCursor_Select(player, 0, slot);
         gCmd.running = 0;
         break;
     }
 }
 
 /* Reusing `from` across the steps keeps the byte stores after its address escapes. */
-void sub_0800DD04(void)
+void DuelCmd_Banish(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -228,10 +228,10 @@ void sub_0800DD04(void)
 
     switch (cmd->step) {
     case 0:
-        if (((struct DuelCard *)(player * 0xD64 + slot * 0x94 + (u32)gUnk_0201930C))->id == 0)
+        if (((struct DuelCard *)(player * 0xD64 + slot * 0x94 + (u32)gDuelZones))->id == 0)
             cmd->running = 0;
         else {
-            sub_080240A8(player, sub_08062354(slot));
+            DuelScreen_ScrollToZone(player, GetZoneArea(slot));
             cmd->step++;
         }
         break;
@@ -239,28 +239,28 @@ void sub_0800DD04(void)
         struct DuelZone *zone;
         u32 pp;
 
-        sub_08077AEC(0x11);
+        PlaySE(0x11);
         from.player = player;
         from.area = 0;
         from.slot = slot;
         pp = player & 1;
-        zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gUnk_0201930C);
+        zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gDuelZones);
         from.flag14 = zone->flag6_0;
         from.flag15 = zone->flag6_1;
-        sub_08024380(&from, gUnk_0868CAC0, 0, 0);
-        sub_08060FD0(player, slot);
+        DuelAnim_PlayZoneEffect(&from, gExplosionAnim, 0, 0);
+        ClearZoneTiles(player, slot);
         cmd->step++;
         break;
     }
     case 2: {
         struct DuelCard *saved = &cmd->saved814;
         u32 poff = (player & 1) * 0xD64;
-        u8 *zonebase = (u8 *)gUnk_0201930C + poff;
+        u8 *zonebase = (u8 *)gDuelZones + poff;
         u32 zoff = slot * 0x94;
         u32 word, id;
 
-        sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
-        sub_08008E80(player, slot);
+        CopyDuelCard(saved, (struct DuelCard *)(zonebase + zoff));
+        BanishZoneCard(player, slot);
         word = *(u32 *)saved;
         id = (word << 20) >> 20;
         if ((u16)(CARD_NUMBER(id) - 0x780) > 0x4F) {
@@ -269,7 +269,7 @@ void sub_0800DD04(void)
             from.player = player;
             from.area = 0;
             from.slot = slot;
-            zone = (struct DuelZone *)(zoff + poff + (u32)gUnk_0201930C);
+            zone = (struct DuelZone *)(zoff + poff + (u32)gDuelZones);
             from.flag14 = zone->flag6_0;
             from.flag15 = zone->flag6_1;
             to.player = (word << 19) >> 31;
@@ -277,20 +277,20 @@ void sub_0800DD04(void)
             to.slot = 0;
             to.flag14 = 0;
             to.flag15 = 1;
-            sub_080242C4(id, &from, &to);
+            DuelAnim_MoveCard(id, &from, &to);
         }
         cmd->step++;
         break;
     }
     default:
-        sub_08024134(player, 0, slot);
-        sub_080611AC();
+        DuelCursor_Select(player, 0, slot);
+        DrawAllAreaTiles();
         gCmd.running = 0;
         break;
     }
 }
 
-void sub_0800DF94(void)
+void DuelCmd_BanishFlagged(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -301,11 +301,11 @@ void sub_0800DF94(void)
     case 0: {
         u32 zoff = slot * 0x94;
         u32 poff = player * 0xD64;
-        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gUnk_0201930C);
+        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gDuelZones);
         if (card->id == 0)
             cmd->running = 0;
         else {
-            sub_080240A8(player, sub_08062354(slot));
+            DuelScreen_ScrollToZone(player, GetZoneArea(slot));
             cmd->step++;
         }
         break;
@@ -314,16 +314,16 @@ void sub_0800DF94(void)
         struct DuelZone *zone;
         u32 pp;
 
-        sub_08077AEC(0x11);
+        PlaySE(0x11);
         from.player = player;
         from.area = 0;
         from.slot = slot;
         pp = player & 1;
-        zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gUnk_0201930C);
+        zone = (struct DuelZone *)(slot * 0x94 + pp * 0xD64 + (u32)gDuelZones);
         from.flag14 = zone->flag6_0;
         from.flag15 = zone->flag6_1;
-        sub_08024380(&from, gUnk_0868CAC0, 0, 0);
-        sub_08060FD0(player, slot);
+        DuelAnim_PlayZoneEffect(&from, gExplosionAnim, 0, 0);
+        ClearZoneTiles(player, slot);
         cmd->step++;
         break;
     }
@@ -333,14 +333,14 @@ void sub_0800DF94(void)
         u32 zoff = slot * 0x94;
         u32 poff = pp * 0xD64;
         u32 zoneoff = zoff + poff;
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         struct DuelZone *zone = (struct DuelZone *)(zoneoff + (u32)base);
         struct DuelCard *saved;
 
         ((u8 *)zone)[2] |= 0x10;
         saved = &cmd->saved814;
-        sub_08007558(saved, (struct DuelCard *)(poff + (u32)base + zoff));
-        sub_08008E80(player, slot);
+        CopyDuelCard(saved, (struct DuelCard *)(poff + (u32)base + zoff));
+        BanishZoneCard(player, slot);
         from.player = player;
         from.area = 0;
         from.slot = slot;
@@ -351,20 +351,20 @@ void sub_0800DF94(void)
         to.slot = 0;
         to.flag14 = 0;
         to.flag15 = 1;
-        sub_080242C4((*(u32 *)saved << 20) >> 20, &from, &to);
+        DuelAnim_MoveCard((*(u32 *)saved << 20) >> 20, &from, &to);
         cmd->step++;
         break;
     }
     default:
-        sub_08024134(player, 0, slot);
-        sub_080611AC();
+        DuelCursor_Select(player, 0, slot);
+        DrawAllAreaTiles();
         gCmd.running = 0;
         break;
     }
 }
 
 
-void sub_0800E1E0(void)
+void DuelCmd_ReturnToHand(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -376,27 +376,27 @@ void sub_0800E1E0(void)
     case 0: {
         u32 zoff = slot * 0x94;
         u32 poff = player * 0xD64;
-        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gUnk_0201930C);
+        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gDuelZones);
         if (card->id == 0) {
             cmd->running = 0;
             break;
         }
-        sub_080240A8(player, sub_08062354(slot));
+        DuelScreen_ScrollToZone(player, GetZoneArea(slot));
         cmd->step++;
         break;
     }
     case 1: {
             struct DuelCard *saved = &cmd->saved814;
             u32 poff = (player & 1) * 0xD64;
-            u8 *base = (u8 *)gUnk_0201930C;
+            u8 *base = (u8 *)gDuelZones;
             u8 *zonebase = base + poff;
             u32 zoff = slot * 0x94;
             struct DuelZone *zone;
             u32 word, area, destSlot;
 
-            sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
-            sub_0800747C(player, slot);
-            sub_08060FD0(player, slot);
+            CopyDuelCard(saved, (struct DuelCard *)(zonebase + zoff));
+            ClearZoneCardStatusFlags(player, slot);
+            ClearZoneTiles(player, slot);
             word = *(u32 *)saved;
             if ((u16)((*(const u16 *)(0x08622AB4 + ((word << 21) >> 20))) - 0x780) > 0x4F) {
                 from.player = player;
@@ -406,9 +406,9 @@ void sub_0800E1E0(void)
                 from.flag14 = zone->flag6_0;
                 from.flag15 = zone->flag6_1;
                 to.player = (word << 19) >> 31;
-                area = sub_08007994(((u32)*(u16 *)saved << 20) >> 20) ? 12 : 11;
+                area = IsFusionMonster(((u32)*(u16 *)saved << 20) >> 20) ? 12 : 11;
                 to.area = area;
-                if (sub_08007994(((u32)*(u16 *)saved << 20) >> 20) == 0) {
+                if (IsFusionMonster(((u32)*(u16 *)saved << 20) >> 20) == 0) {
                     /* Keep the initialized player base in r1 while the saved owner is read into r0. */
                     register u8 *players asm("r1") = base - 0x28;
                     u32 owner = (*(u32 *)saved << 19) >> 31;
@@ -417,16 +417,16 @@ void sub_0800E1E0(void)
                     destSlot = 0;
                 to.slot = destSlot;
                 to.flag14 = 0;
-                to.flag15 = ((struct DuelZone *)((player & 1) * 0xD64 + slot * 0x94 + (u32)gUnk_0201930C))->flag6_1;
-                sub_080242C4((*(u32 *)&gCmd.saved814 << 20) >> 20, &from, &to);
+                to.flag15 = ((struct DuelZone *)((player & 1) * 0xD64 + slot * 0x94 + (u32)gDuelZones))->flag6_1;
+                DuelAnim_MoveCard((*(u32 *)&gCmd.saved814 << 20) >> 20, &from, &to);
             }
         }
         gCmd.step++;
         break;
     default:
-        sub_08008EB4(player, slot);
-        sub_080611AC();
-        sub_08024134(player, 0, slot);
+        ReturnZoneCardToHand(player, slot);
+        DrawAllAreaTiles();
+        DuelCursor_Select(player, 0, slot);
         cmd->running = 0;
         break;
     }
@@ -434,7 +434,7 @@ void sub_0800E1E0(void)
 
 
 
-void sub_0800E438(void)
+void DuelCmd_ReturnToDeck(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -445,11 +445,11 @@ void sub_0800E438(void)
     case 0: {
         u32 zoff = slot * 0x94;
         u32 poff = player * 0xD64;
-        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gUnk_0201930C);
+        struct DuelCard *card = (struct DuelCard *)(zoff + poff + (u32)gDuelZones);
         if (card->id == 0)
             cmd->running = 0;
         else {
-            sub_080240A8(player, sub_08062354(slot));
+            DuelScreen_ScrollToZone(player, GetZoneArea(slot));
             cmd->step++;
         }
         break;
@@ -457,16 +457,16 @@ void sub_0800E438(void)
     case 1: {
         struct DuelCard *saved = &cmd->saved814;
         u32 poff = (player & 1) * 0xD64;
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         u8 *zonebase = base + poff;
         u32 zoff = slot * 0x94;
         struct DuelZone *zone;
         u32 word;
 
-        sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
+        CopyDuelCard(saved, (struct DuelCard *)(zonebase + zoff));
         zone = (struct DuelZone *)(zoff + poff + (u32)base);
         ((struct ZoneFlags18 *)zone)->flag18 = 0;
-        sub_08060FD0(player, slot);
+        ClearZoneTiles(player, slot);
         word = *(u32 *)saved;
         if ((u16)((*(const u16 *)(0x08622AB4 + ((word << 21) >> 20))) - 0x780) > 0x4F) {
             from.player = player;
@@ -475,20 +475,20 @@ void sub_0800E438(void)
             from.flag14 = zone->flag6_0;
             from.flag15 = zone->flag6_1;
             to.player = (word << 19) >> 31;
-            to.area = sub_08007994((((u32)*(u16 *)saved << 20) >> 20)) ? 12 : 13;
+            to.area = IsFusionMonster((((u32)*(u16 *)saved << 20) >> 20)) ? 12 : 13;
             to.slot = 0;
             to.flag14 = 0;
             to.flag15 = 1;
-            sub_080242C4((*(u32 *)saved << 20) >> 20, &from, &to);
+            DuelAnim_MoveCard((*(u32 *)saved << 20) >> 20, &from, &to);
         }
         gCmd.step++;
         break;
     }
     default:
-        sub_0800747C(player, slot);
-        sub_08008F14(player, slot);
-        sub_08024134(player, 0, slot);
-        sub_080611AC();
+        ClearZoneCardStatusFlags(player, slot);
+        ReturnZoneCardToDeck(player, slot);
+        DuelCursor_Select(player, 0, slot);
+        DrawAllAreaTiles();
         cmd->running = 0;
         break;
     }
@@ -505,7 +505,7 @@ struct ZoneFlags7 {
 
 /* Command 0x84 (hypothesis): place the card saved in gCmd+0x814 into zone
  * (arg2) and clear zone (arg1). */
-void sub_0800E630(void)
+void DuelCmd_MoveToZone(void)
 {
     struct CardLoc from, to;
     struct DuelCmd *cmd = &gCmd;
@@ -516,23 +516,23 @@ void sub_0800E630(void)
 
     switch (gCmd.step) {
     case 0:
-        if (((struct DuelCard *)((a & 1) * 0xD64 + b * 0x94 + (u32)gUnk_0201930C))->id == 0) {
+        if (((struct DuelCard *)((a & 1) * 0xD64 + b * 0x94 + (u32)gDuelZones))->id == 0) {
             cmd->running = 0;
         } else {
-            sub_080240A8(a, sub_08062354(b));
+            DuelScreen_ScrollToZone(a, GetZoneArea(b));
             gCmd.step++;
         }
         break;
     case 1: {
         struct DuelCard *saved = &cmd->saved814;
         u32 poff = (a & 1) * 0xD64;
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         u8 *zonebase = base + poff;
         u32 zoff = b * 0x94;
         struct DuelZone *zone;
 
-        sub_08007558(saved, (struct DuelCard *)(zonebase + zoff));
-        sub_08060FD0(a, b);
+        CopyDuelCard(saved, (struct DuelCard *)(zonebase + zoff));
+        ClearZoneTiles(a, b);
         from.player = a;
         from.area = 0;
         from.slot = b;
@@ -546,12 +546,12 @@ void sub_0800E630(void)
         to.flag15 = from.flag15;
         if (d > 4)
             from.flag14 = 0;
-        sub_080242C4(saved->id, &from, &to);
+        DuelAnim_MoveCard(saved->id, &from, &to);
         gCmd.step++;
         break;
     }
     default: {
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         u32 poffC = (c & 1) * 0xD64;
         u8 *zbaseC = base + poffC;
         u32 zoffD = d * 0x94;
@@ -560,12 +560,12 @@ void sub_0800E630(void)
         u8 *zbaseA = base + poffA;
         struct DuelZone *zoneA = (struct DuelZone *)(zbaseA + b * 0x94);
 
-        sub_08075294(zoneC, zoneA, 0x94);
-        sub_08007558(&zoneC->card, &cmd->saved814);
-        sub_08075278(zoneA, 0x94);
+        MemCopy16(zoneC, zoneA, 0x94);
+        CopyDuelCard(&zoneC->card, &cmd->saved814);
+        MemClear16(zoneA, 0x94);
         ((struct ZoneFlags7 *)(poffC + zoffD + (u32)base))->flag = 0;
-        sub_08024134(c, 0, d);
-        sub_080611AC();
+        DuelCursor_Select(c, 0, d);
+        DrawAllAreaTiles();
         cmd->running = 0;
         break;
     }
@@ -573,13 +573,13 @@ void sub_0800E630(void)
 }
 /* Command 0x84 (hypothesis): swap the contents of two zones. arg1/arg2 each
  * encode (player | slot << 8); step 0 checks both zones hold cards, step 1
- * animates the held card (sub_0802432C), step 2 performs the swap. */
+ * animates the held card (DuelAnim_SwapCards), step 2 performs the swap. */
 /* Zone address forms used by this handler. The add order picks the ROM's
  * evaluation order: a local `base` keeps `(base + p*0xD64) + s*0x94` from being
  * reassociated, and in a memory address the second product is emitted first. */
 #define ZONE_874(p, s) ((struct DuelZone *)(base + (p) * 0xD64 + (s) * 0x94))
-#define ZONE_874C(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
-void sub_0800E874(void)
+#define ZONE_874C(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
+void DuelCmd_SwapZones(void)
 {
     struct CardLoc from;
     struct CardLoc to;
@@ -603,18 +603,18 @@ void sub_0800E874(void)
             cmd->running = 0;
             break;
         }
-        sub_0802408C(0x50);
+        DuelScreen_StartScroll(0x50);
         gCmd.step++;
         break;
     case 1: {
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
         u32 poff;
 
         /* Naming only the player offset, assigned inside the argument, gives it
          * r5 and the slot product r4 (as in the ROM). */
-        sub_08007558(&cmd->saved814, (struct DuelCard *)(base + (poff = (a & 1) * 0xD64) + b * 0x94));
-        sub_08060FD0(a, b);
-        sub_08060FD0(c, d);
+        CopyDuelCard(&cmd->saved814, (struct DuelCard *)(base + (poff = (a & 1) * 0xD64) + b * 0x94));
+        ClearZoneTiles(a, b);
+        ClearZoneTiles(c, d);
         from.player = a;
         from.area = 0;
         from.slot = b;
@@ -627,17 +627,17 @@ void sub_0800E874(void)
         to.flag15 = from.flag15;
         if (d > 4)
             from.flag14 = 0;
-        sub_0802432C(&from, &to);
+        DuelAnim_SwapCards(&from, &to);
         gCmd.step++;
         break;
     }
     default: {
-        u8 *base = (u8 *)gUnk_0201930C;
+        u8 *base = (u8 *)gDuelZones;
 
-        sub_08075294(&tmp, ZONE_874(c & 1, d), 0x94);
-        sub_08075294(ZONE_874(c & 1, d), ZONE_874(a & 1, b), 0x94);
-        sub_08075294(ZONE_874(a & 1, b), &tmp, 0x94);
-        sub_080611AC();
+        MemCopy16(&tmp, ZONE_874(c & 1, d), 0x94);
+        MemCopy16(ZONE_874(c & 1, d), ZONE_874(a & 1, b), 0x94);
+        MemCopy16(ZONE_874(a & 1, b), &tmp, 0x94);
+        DrawAllAreaTiles();
         cmd->running = 0;
         break;
     }

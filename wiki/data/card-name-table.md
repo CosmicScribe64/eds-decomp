@@ -46,8 +46,8 @@ The US ROM contains no German, French, Italian, or Spanish card names; searches 
 
 ## Method
 - Walked the slots from `0x0822C760` in 0x40 steps while each slot was printable ASCII. That gives 820 names, and the slot after "Insect Monster Token" is all zero.
-- Literal pools hold `0x0822C720` in code, for example `sub_08005A70`: `lsls r0, r7, #6; ldr r1, =0x0822C720; adds r1, r1, r0`.
-- The code at `0x08000FC0` (inside `sub_08000C54`) converts a card number to an ID with the table at `0x08623DF4`, then forms `0x0822C720 + id*0x40`.
+- Literal pools hold `0x0822C720` in code, for example `CardDetail_DrawInfo`: `lsls r0, r7, #6; ldr r1, =0x0822C720; adds r1, r1, r0`.
+- The code at `0x08000FC0` (inside `Bustup_UpdateTextBox`) converts a card number to an ID with the table at `0x08623DF4`, then forms `0x0822C720 + id*0x40`.
 - No slot has non-NUL bytes after its terminator.
 - Reproduce with `python3 tools/extract_cards.py cards`.
 

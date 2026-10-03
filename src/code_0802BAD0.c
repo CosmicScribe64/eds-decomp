@@ -13,7 +13,7 @@
 #define ZFLAGS(z) (((u8 *)(z))[6])
 
 /* Zone pointer by byte arithmetic, zone term first (the ROM's address order); p is player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 /* Card reference (0x14 bytes, see code_08009A68 / code_0800C894). */
 struct CardRef {
@@ -34,14 +34,14 @@ struct CardRef {
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[0x7FF & (id)])
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 
-int sub_0800C8BC(int player, int zone);
-u16 sub_0802B1B8(u16 id, int player, int zone);
-int sub_08008524(int player, u16 number);
-int sub_08044224(int player, int a, int b);
-int sub_0800CC18(int player, int zone);
-int sub_0800CD24(int player, int zone);
-int sub_0800A668(int player, int zone, int a, int b);
-u16 sub_0802B28C(int player, int zone);
+int GetZoneCardType(int player, int zone);
+u16 CanCardTargetZone(u16 id, int player, int zone);
+int CountActiveCardsOnField(int player, u16 number);
+int CollectEffectTargets(int player, int a, int b);
+int IsCardLinkedToMonster(int player, int zone);
+int CountValidEquipTargets(int player, int zone);
+int CountZoneEquips(int player, int zone, int a, int b);
+u16 IsZoneTargetable(int player, int zone);
 
 /* Level-like value (hypothesis) into v: 0 for types 21-23, 10 for type 24, else stat bits 25-28. */
 #define CARD_LEVEL(v, id)                                  \
@@ -59,15 +59,15 @@ u16 sub_0802B28C(int player, int zone);
         break;                                             \
     }
 
-void sub_08017FF4(int player, int zone);
-void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
-int sub_080754A4(u16 v);
-void sub_080602A4(u16 a, u16 b, int c, const char *text);
-int sub_08052F38(u32 mask);
-void sub_08077AEC(u16 id);
-void sub_08022758(int player, int a, int b, int c);
+void TributeMonster(int player, int zone);
+void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
+int HalveRoundDown(u16 v);
+void TextBoxOpen(u16 a, u16 b, int c, const char *text);
+int DuelCursor_PickTarget(u32 mask);
+void PlaySE(u16 id);
+void DuelPrompt_PostDiscardCost(int player, int a, int b, int c);
 
-/* Output of sub_0800ABC8 (0xC bytes): card id, type | attribute << 5, and a value at +4. */
+/* Output of GetZoneCardStats (0xC bytes): card id, type | attribute << 5, and a value at +4. */
 struct CardInfo {
     u16 id;
     u8 typeAttr;        /* +0x02: bits 5-7 = attribute */
@@ -75,19 +75,19 @@ struct CardInfo {
     int value;          /* +0x04 */
     int unk8;
 };
-void sub_0800ABC8(int player, int index, struct CardInfo *out);
+void GetZoneCardStats(int player, int index, struct CardInfo *out);
 
 /* gMain (0x03000040) comes from main.h. */
-extern u8 gUnk_02017A40[];
-extern u8 gUnk_0201CFB0[];
-extern const char gUnk_0808277C[];
-extern const char gUnk_080827C4[];
+extern u8 gChain[];
+extern u8 gDuelScreen[];
+extern const char gStrCrushCardTributePrompt[];
+extern const char gStrSelectTributeMonster[];
 
-int sub_0802BAD0(struct CardRef *ref, u16 pos)
+int EffectDragonSeekerCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
-    u16 a = sub_0800C8BC(player, zone);
+    u16 a = GetZoneCardType(player, zone);
     int p;
     struct DuelZone *z;
 
@@ -95,12 +95,12 @@ int sub_0802BAD0(struct CardRef *ref, u16 pos)
         return 0;
     p = player & 1;
     z = ZB(p, zone);
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || !sub_0802B1B8(ref->id, player, zone))
+    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || !CanCardTargetZone(ref->id, player, zone))
         return 0;
     return a == 1;
 }
 
-int sub_0802BB40(struct CardRef *ref, u16 pos)
+int EffectTargetableMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -108,7 +108,7 @@ int sub_0802BB40(struct CardRef *ref, u16 pos)
     int p;
     struct DuelZone *z;
 
-    if (zone > 4 || !sub_0802B1B8(ref->id, player, zone))
+    if (zone > 4 || !CanCardTargetZone(ref->id, player, zone))
         return 0;
     ret = 0;
     p = player & 1;
@@ -118,7 +118,7 @@ int sub_0802BB40(struct CardRef *ref, u16 pos)
     return ret;
 }
 
-int sub_0802BB94(struct CardRef *ref, u16 pos)
+int EffectPatrolRoboCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -133,23 +133,23 @@ int sub_0802BB94(struct CardRef *ref, u16 pos)
     return 0;
 }
 
-int sub_0802BBDC(struct CardRef *ref, u16 pos)
+int EffectDestroyByTypeCheck(struct CardRef *ref, u16 pos)
 {
     u16 refId = ref->id;
     int player = (u8)pos;
     int zone = pos >> 8;
-    struct DuelZonesPlayer *pz = &gUnk_0201930C[player & 1];
+    struct DuelZonesPlayer *pz = &gDuelZones[player & 1];
     struct DuelZone *z = &pz->zones[zone];
     u16 id = CARD_ID(CARD_WORD(z->card));
-    u16 a = sub_0800C8BC(player, zone);
+    u16 a = GetZoneCardType(player, zone);
     int p;
 
     p = player & 1;
     if (zone > 4)
         return 0;
     /* The zone address is recomputed with the player term first (the ROM's add order). */
-    if (CARD_ID(CARD_WORD(((struct DuelZone *)(p * 0xD64 + zone * 0x94 + (u32)gUnk_0201930C))->card))
-        && sub_0802B1B8(ref->id, player, zone) && sub_0802B28C(player, zone) && (ZFLAGS(z) & 2) && id
+    if (CARD_ID(CARD_WORD(((struct DuelZone *)(p * 0xD64 + zone * 0x94 + (u32)gDuelZones))->card))
+        && CanCardTargetZone(ref->id, player, zone) && IsZoneTargetable(player, zone) && (ZFLAGS(z) & 2) && id
         && refId) {
         switch (CARD_NUMBER(refId)) {
         case 0x28C:
@@ -157,7 +157,7 @@ int sub_0802BBDC(struct CardRef *ref, u16 pos)
                 return 1;
             break;
         case 0x28F:
-            if (sub_0800A668(player, zone, 0, 0) > 0)
+            if (CountZoneEquips(player, zone, 0, 0) > 0)
                 return 1;
             break;
         case 0x293:
@@ -188,12 +188,12 @@ int sub_0802BBDC(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802BD28(struct CardRef *ref, u16 pos)
+int EffectAcidTrapHoleCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
 
-    if (sub_08008524(0, 0x58A) <= 0 && sub_08008524(1, 0x58A) <= 0 && zone <= 4) {
+    if (CountActiveCardsOnField(0, 0x58A) <= 0 && CountActiveCardsOnField(1, 0x58A) <= 0 && zone <= 4) {
         int p = player & 1;
         struct DuelZone *z = ZB(p, zone);
 
@@ -203,7 +203,7 @@ int sub_0802BD28(struct CardRef *ref, u16 pos)
     return 0;
 }
 
-int sub_0802BD98(struct CardRef *ref, u16 pos)
+int EffectTargetableFaceUpMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -213,13 +213,13 @@ int sub_0802BD98(struct CardRef *ref, u16 pos)
         int p = player & one;
         struct DuelZone *z = ZB(p, zone);
 
-        if (CARD_ID(CARD_WORD(z->card)) && sub_0802B1B8(ref->id, player, zone))
+        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone))
             return (ZFLAGS(z) >> 1) & one;
     }
     return 0;
 }
 
-int sub_0802BDF0(struct CardRef *ref, u16 pos)
+int EffectDarknessApproachesCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -230,12 +230,12 @@ int sub_0802BDF0(struct CardRef *ref, u16 pos)
     u16 copy; /* FAKEMATCH (found by decomp-permuter): the extra copy keeps the id live in r1 so `0x7FF & id` masks into r1 */
 
     copy = id;
-    if (zone <= 4 && id != 0 && (u16)(CARD_NUMBER(copy) - 0x780) > 0x4F && sub_0802B1B8(ref->id, player, zone))
+    if (zone <= 4 && id != 0 && (u16)(CARD_NUMBER(copy) - 0x780) > 0x4F && CanCardTargetZone(ref->id, player, zone))
         return (ZFLAGS(z) >> 1) & one;
     return 0;
 }
 
-int sub_0802BE70(struct CardRef *ref, u16 pos)
+int EffectMagicArmShieldCheck(struct CardRef *ref, u16 pos)
 {
     register u16 normalized __asm__("r0") = pos;
     int player;
@@ -254,12 +254,12 @@ int sub_0802BE70(struct CardRef *ref, u16 pos)
         int p = player & one;
         struct DuelZone *z = ZB(p, zone);
 
-        if (CARD_ID(CARD_WORD(z->card)) && sub_0802B1B8(ref->id, player, zone) && copy != ref->unk6)
+        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone) && copy != ref->unk6)
             return (ZFLAGS(z) >> 1) & one;
     }
     return 0;
 }
-int sub_0802BEE8(struct CardRef *ref, u16 pos)
+int EffectOpponentFaceUpMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -274,7 +274,7 @@ int sub_0802BEE8(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802BF38(struct CardRef *ref, u16 pos)
+int EffectRemoveTrapCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -291,7 +291,7 @@ int sub_0802BF38(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802BFA4(struct CardRef *ref, u16 pos)
+int EffectBlockAttackCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -301,12 +301,12 @@ int sub_0802BFA4(struct CardRef *ref, u16 pos)
         int p = player & one;
         struct DuelZone *z = ZB(p, zone);
 
-        if (CARD_ID(CARD_WORD(z->card)) && sub_0802B1B8(ref->id, player, zone))
+        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone))
             return one & ~ZFLAGS(z);
     }
     return 0;
 }
-int sub_0802C004(struct CardRef *ref, u16 pos)
+int EffectSnatchStealCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -316,13 +316,13 @@ int sub_0802C004(struct CardRef *ref, u16 pos)
         int p = player & one;
         struct DuelZone *z = ZB(p, zone);
 
-        if (CARD_ID(CARD_WORD(z->card)) && sub_0802B1B8(ref->id, player, zone)
+        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone)
             && CARD_NUMBER(CARD_ID(CARD_WORD(z->card))) != 0x547)
             return (ZFLAGS(z) >> 1) & one;
     }
     return 0;
 }
-int sub_0802C080(struct CardRef *ref, u16 pos)
+int EffectTailorOfTheFickleCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -379,7 +379,7 @@ int sub_0802C080(struct CardRef *ref, u16 pos)
                         v = 0;
                         break;
                     }
-                    if (v == 3 && sub_0800CC18(player, zone) && sub_0800CD24(player, zone) > 1)
+                    if (v == 3 && IsCardLinkedToMonster(player, zone) && CountValidEquipTargets(player, zone) > 1)
                         return 1;
                     break;
                 }
@@ -391,7 +391,7 @@ int sub_0802C080(struct CardRef *ref, u16 pos)
 }
 
 
-int sub_0802C230(struct CardRef *ref, u16 pos)
+int EffectDustTornadoCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -405,7 +405,7 @@ int sub_0802C230(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C274(struct CardRef *ref, u16 pos)
+int EffectAnySpellTrapCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -419,7 +419,7 @@ int sub_0802C274(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C2AC(struct CardRef *ref, u16 pos)
+int EffectNoblemanOfCrossoutCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -434,7 +434,7 @@ int sub_0802C2AC(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C2EC(struct CardRef *ref, u16 pos)
+int EffectNoblemanOfExterminationCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -449,7 +449,7 @@ int sub_0802C2EC(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C334(struct CardRef *ref, u16 pos)
+int EffectOwnSkullOrThunderCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -460,12 +460,12 @@ int sub_0802C334(struct CardRef *ref, u16 pos)
 
     copy = id;
     if (player == ref->player && zone <= 4 && (ZFLAGS(z) & 2) && id
-        && sub_0802B1B8(ref->id, player, zone)
-        && (CARD_NUMBER(copy) == 0x15 || sub_0800C8BC(player, zone) == 0x13))
+        && CanCardTargetZone(ref->id, player, zone)
+        && (CARD_NUMBER(copy) == 0x15 || GetZoneCardType(player, zone) == 0x13))
         return 1;
     return 0;
 }
-int sub_0802C3C0(struct CardRef *ref, u16 pos)
+int EffectTributeForInsectCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -474,7 +474,7 @@ int sub_0802C3C0(struct CardRef *ref, u16 pos)
     int id = CARD_ID(CARD_WORD(z->card));
 
     if (player == ref->player && zone <= 4 && id
-        && sub_08008524(0, 0x58A) <= 0 && sub_08008524(1, 0x58A) <= 0) {
+        && CountActiveCardsOnField(0, 0x58A) <= 0 && CountActiveCardsOnField(1, 0x58A) <= 0) {
         int level;
 
         CARD_LEVEL(level, id);
@@ -491,7 +491,7 @@ int sub_0802C3C0(struct CardRef *ref, u16 pos)
                 /* FAKEMATCH: the initialized r0 copy keeps argument 0
                  * before the constant argument 1 in the original call. */
                 register int arg0 __asm__("r0") = pl;
-                if (sub_08044224(arg0, 0x526, count) > 0)
+                if (CollectEffectTargets(arg0, 0x526, count) > 0)
                     return 1;
             }
         }
@@ -501,7 +501,7 @@ int sub_0802C3C0(struct CardRef *ref, u16 pos)
 
 
 
-int sub_0802C4DC(struct CardRef *ref, u16 pos)
+int EffectTargetableOwnMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -509,11 +509,11 @@ int sub_0802C4DC(struct CardRef *ref, u16 pos)
     struct DuelZone *z = ZB(p, zone);
     int id = CARD_ID(CARD_WORD(z->card));
 
-    if (sub_0802B1B8(ref->id, player, zone) && player == ref->player && zone <= 4 && id)
+    if (CanCardTargetZone(ref->id, player, zone) && player == ref->player && zone <= 4 && id)
         return 1;
     return 0;
 }
-int sub_0802C538(struct CardRef *ref, u16 pos)
+int EffectFaceUpMagicCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -528,7 +528,7 @@ int sub_0802C538(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C59C(struct CardRef *ref, u16 pos)
+int EffectOpponentSpellTrapCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -542,7 +542,7 @@ int sub_0802C59C(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C5E4(struct CardRef *ref, u16 pos)
+int EffectSpecialSummonedMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -555,7 +555,7 @@ int sub_0802C5E4(struct CardRef *ref, u16 pos)
         return (w & 0x10000) >> 16;
     return 0;
 }
-int sub_0802C630(struct CardRef *ref, u16 pos)
+int EffectFaceDownSpellTrapCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -569,7 +569,7 @@ int sub_0802C630(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C674(struct CardRef *ref, u16 pos)
+int EffectFaceUpFusionMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -578,7 +578,7 @@ int sub_0802C674(struct CardRef *ref, u16 pos)
     int id = CARD_ID(CARD_WORD(z->card));
     int v;
 
-    if (zone <= 4 && id && (ZFLAGS(z) & 2) && sub_0802B1B8(ref->id, player, zone)) {
+    if (zone <= 4 && id && (ZFLAGS(z) & 2) && CanCardTargetZone(ref->id, player, zone)) {
         int number;
 
         if (CARD_TYPE(id) > 20)
@@ -614,7 +614,7 @@ int sub_0802C674(struct CardRef *ref, u16 pos)
     }
     return 0;
 }
-int sub_0802C77C(struct CardRef *ref)
+int EffectPayLifePointsChainA(struct CardRef *ref)
 {
     int v = 0;
 
@@ -640,62 +640,62 @@ int sub_0802C77C(struct CardRef *ref)
         v = 5000;
         break;
     case 0x404:
-        v = sub_080754A4(gUnk_020192E4[ref->player].lifePoints);
+        v = HalveRoundDown(gDuelPlayers[ref->player].lifePoints);
         break;
     }
     if (v > 0)
-        sub_0801EC58(ref->player ? 0x8043 : 0x43, v, 1, 0);
+        DuelCmd_Push(ref->player ? 0x8043 : 0x43, v, 1, 0);
     return 1;
 }
-int sub_0802C874(struct CardRef *ref, u16 pos)
+int EffectTributeSelfChainA(struct CardRef *ref, u16 pos)
 {
-    sub_08017FF4(ref->player, ref->zone);
+    TributeMonster(ref->player, ref->zone);
     return 1;
 }
-int sub_0802C890(struct CardRef *ref, u16 pos)
+int EffectJigenBakudanChainA(struct CardRef *ref, u16 pos)
 {
     if (ref->unk2_10 == 2)
-        sub_08017FF4(ref->player, ref->zone);
+        TributeMonster(ref->player, ref->zone);
     return 1;
 }
-int sub_0802C8B4(struct CardRef *ref)
+int EffectCrushCardChainA(struct CardRef *ref)
 {
     struct CardInfo info;
-    u8 *base = gUnk_02017A40;
+    u8 *base = gChain;
     u8 *step = base + 0x3E4;
 
     switch (*step) {
     case 0:
-        sub_080602A4(0x206, 0x712, 0xB, gUnk_0808277C);
+        TextBoxOpen(0x206, 0x712, 0xB, gStrCrushCardTributePrompt);
         (*step)++;
         return 0;
     case 1:
-        if (sub_08052F38(0xF0)) {
+        if (DuelCursor_PickTarget(0xF0)) {
             int pl = ref->player;
-            u8 *cbase = gUnk_0201CFB0;
+            u8 *cbase = gDuelScreen;
             int *cursor = (int *)(cbase + 0x82C);
 
-            sub_0800ABC8(pl, *cursor, &info);
+            GetZoneCardStats(pl, *cursor, &info);
             if (info.value > 1000 || (info.typeAttr & 0xE0) != 0x40) {
-                sub_08077AEC(3);
+                PlaySE(3);
             } else {
-                sub_08017FF4(ref->player, *cursor);
+                TributeMonster(ref->player, *cursor);
                 return 1;
             }
         }
-        if (gUnk_03000040.newKeys & 2)
-            gUnk_02017A40[0x3E4]--;
+        if (gMain.newKeys & 2)
+            gChain[0x3E4]--;
         return 0;
     }
     return 0;
 }
-int sub_0802C974(struct CardRef *ref, u16 pos)
+int EffectToonWorldChainA(struct CardRef *ref, u16 pos)
 {
-    sub_0801EC58(ref->player ? 0x8043 : 0x43, 1000, 1, 0);
-    sub_0801EC58(ref->player ? 0x80B3 : 0xB3, ref->zone, 0, 0);
+    DuelCmd_Push(ref->player ? 0x8043 : 0x43, 1000, 1, 0);
+    DuelCmd_Push(ref->player ? 0x80B3 : 0xB3, ref->zone, 0, 0);
     return 1;
 }
-int sub_0802C9C4(struct CardRef *ref)
+int EffectDiscardCostChainA(struct CardRef *ref)
 {
     int v = 0;
 
@@ -712,32 +712,32 @@ int sub_0802C9C4(struct CardRef *ref)
         break;
     }
     if (v > 0)
-        sub_08022758(ref->player, v, 0, 0);
+        DuelPrompt_PostDiscardCost(ref->player, v, 0, 0);
     return 1;
 }
-int sub_0802CA30(struct CardRef *ref)
+int EffectTributeChosenMonsterChainA(struct CardRef *ref)
 {
-    u8 *base = gUnk_02017A40;
+    u8 *base = gChain;
     u8 *step = base + 0x3E4;
 
     switch (*step) {
     case 0:
-        sub_080602A4(0x206, 0x712, 0xB, gUnk_080827C4);
+        TextBoxOpen(0x206, 0x712, 0xB, gStrSelectTributeMonster);
         (*step)++;
         return 0;
     case 1:
-        if (sub_08052F38(0xF0)) {
-            u8 *cbase = gUnk_0201CFB0;
+        if (DuelCursor_PickTarget(0xF0)) {
+            u8 *cbase = gDuelScreen;
 
-            sub_08017FF4(*(int *)(cbase + 0x824), *(int *)(cbase + 0x82C));
+            TributeMonster(*(int *)(cbase + 0x824), *(int *)(cbase + 0x82C));
             return 1;
         }
         return 0;
     }
     return 0;
 }
-int sub_0802CA9C(struct CardRef *ref)
+int EffectPayHalfLifePointsChainA(struct CardRef *ref)
 {
-    sub_0801EC58(ref->player ? 0x8043 : 0x43, sub_080754A4(gUnk_020192E4[ref->player & 1].lifePoints), 1, 0);
+    DuelCmd_Push(ref->player ? 0x8043 : 0x43, HalveRoundDown(gDuelPlayers[ref->player & 1].lifePoints), 1, 0);
     return 1;
 }

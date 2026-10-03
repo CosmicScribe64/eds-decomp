@@ -3,7 +3,7 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0807093C/sub_0807093C.s"
-	.include "asm/nonmatching/code_0807093C/sub_08070A1C.s"
-	.include "asm/nonmatching/code_0807093C/sub_08070F14.s"
-	.include "asm/nonmatching/code_0807093C/sub_08070F18.s"
+	.include "asm/nonmatching/code_0807093C/ProhibitCardSelect_SwitchScreen.s"
+	.include "asm/nonmatching/code_0807093C/TradeCardSelect_Init.s"
+	.include "asm/nonmatching/code_0807093C/CardSelect_HandleListSwitch.s"
+	.include "asm/nonmatching/code_0807093C/TradeCardSelect_Update.s"

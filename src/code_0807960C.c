@@ -1,27 +1,27 @@
 #include "global.h"
 #include "gba.h"
 
-extern u8 gUnk_02011C20[];
+extern u8 gSaveData[];
 
 struct TextFlags {
     u8 newline : 1; /* set at the start of a line (after \n or at entry) */
     u8 rest : 7;
 };
 
-void sub_08078E80(void *dst, u8 ch, u8 x, u16 y, u8 a, u16 b, struct TextFlags *flags);
-void sub_080798B8(u8 bits, u16 x, u16 y, u8 color, u16 *dst, u16 w, u8 mode);
-void sub_080799BC(u16 bits, u16 x, u16 y, u8 color, u16 *dst, u16 w, u8 mode);
-extern int sub_08074A90(int);
-extern int sub_08072584(int);
-extern u8 gUnk_081C0000[];
-extern u8 gUnk_08228D00[];
-extern u8 gUnk_0822BB00[];
-extern u8 gUnk_08229500[];
-extern u8 gUnk_08229F00[];
-extern u8 gUnk_081D0200[];
-extern u8 gUnk_081F8700[];
-void sub_08079A48(u16 ch, u16 x, u16 y, u16 *dst, u8 a, u8 c, u16 d, u8 e);
-void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 a, u8 c, u16 d, u8 e);
+void PutMapChar(void *dst, u8 ch, u8 x, u16 y, u8 a, u16 b, struct TextFlags *flags);
+void BitmapPlotRow8(u8 bits, u16 x, u16 y, u8 color, u16 *dst, u16 w, u8 mode);
+void BitmapPlotRow16(u16 bits, u16 x, u16 y, u8 color, u16 *dst, u16 w, u8 mode);
+extern int AsciiToFullwidthSjis(int);
+extern int SjisToGlyphIndex(int);
+extern u8 gFontKanji8x8[];
+extern u8 gFontLatin8x8[];
+extern u8 gFontLatin8x8Bold[];
+extern u8 gFontLatin8x10[];
+extern u8 gFontLatin8x12[];
+extern u8 gFontKanji10x10[];
+extern u8 gFontKanji12x12[];
+void BitmapDrawSjisGlyph(u16 ch, u16 x, u16 y, u16 *dst, u8 a, u8 c, u16 d, u8 e);
+void BitmapDrawLatinGlyph(u8 ch, u16 x, u16 y, u16 *dst, u8 a, u8 c, u16 d, u8 e);
 
 /* Sprite list: 20 layer heads (-1 = empty) + 128 linked entries of 12 bytes. */
 struct OamEntry {
@@ -45,7 +45,7 @@ struct OamShadow {
     u16 pad;
 };
 
-extern struct OamShadow gUnk_03004470[];
+extern struct OamShadow gMain_oamBuffer[];
 
 /* Bresenham-style stepper. */
 struct Line {
@@ -57,13 +57,13 @@ struct Line {
     u8 major;
 };
 
-/* sub_08078E80's real x parameter is u16: with it, all four `& 0x1F` constants are one movable, so loop.c hoists
+/* PutMapChar's real x parameter is u16: with it, all four `& 0x1F` constants are one movable, so loop.c hoists
    `y & 0x1F` (not `y - 1`), as in the ROM. The switch keeps cse_around_loop from reusing the loop test's *str load. */
 typedef void (*DrawGlyphCellFunc960C)(void *dst, u8 ch, u16 x, u16 y, u8 a, u16 b, void *flags);
-#define sub_08078E80_960C ((DrawGlyphCellFunc960C)sub_08078E80)
+#define sub_08078E80_960C ((DrawGlyphCellFunc960C)PutMapChar)
 
 /* Draws a string of 1-byte glyphs into a tilemap; \n / \r toggle flag bit 0, 0xDE/0xDF (dakuten marks) are drawn one cell up-left and do not advance. */
-void sub_0807960C(u8 *str, void *dst, u16 x, u16 y, u8 a, u16 b, u8 max, struct TextFlags *flags)
+void PutMapString(u8 *str, void *dst, u16 x, u16 y, u8 a, u16 b, u8 max, struct TextFlags *flags)
 {
     u8 count = 0;
 
@@ -87,13 +87,13 @@ void sub_0807960C(u8 *str, void *dst, u16 x, u16 y, u8 a, u16 b, u8 max, struct 
         }
     }
 }
-/* sub_08078E80's real x parameter is u16 (see its definition in code_080784E4.c); the u8 prototype above
+/* PutMapChar's real x parameter is u16 (see its definition in code_080784E4.c); the u8 prototype above
    narrows `x & 0x1F` in QImode, so its 0x1F constant is not shared with `y & 0x1F`. */
 typedef void (*DrawGlyphCellFunc)(void *dst, u8 ch, u16 x, u16 y, u8 a, u16 b, void *flags);
-#define sub_08078E80_x16 ((DrawGlyphCellFunc)sub_08078E80)
+#define sub_08078E80_x16 ((DrawGlyphCellFunc)PutMapChar)
 
 /* Draws num as decimal digits right to left from x; mode 0 = always count digits, mode 1 = no leading zeros. */
-void sub_08079700(u16 num, u8 count, u8 mode, void *dst, u16 x, u16 y, u8 a, u16 b, void *flags)
+void PutMapNumber(u16 num, u8 count, u8 mode, void *dst, u16 x, u16 y, u8 a, u16 b, void *flags)
 {
     u8 i;
     u16 d;
@@ -122,7 +122,7 @@ void sub_08079700(u16 num, u8 count, u8 mode, void *dst, u16 x, u16 y, u8 a, u16
     }
 }
 /* Fills a w x h rectangle of a 32x32 tilemap (wrapping at 32) with one tile. */
-void sub_08079834(u16 tile, u16 *dst, u16 x, u16 y, u16 w, u16 h)
+void FillMapRectWrap(u16 tile, u16 *dst, u16 x, u16 y, u16 w, u16 h)
 {
     u16 i;
     u16 j;
@@ -133,7 +133,7 @@ void sub_08079834(u16 tile, u16 *dst, u16 x, u16 y, u16 w, u16 h)
     }
 }
 /* Draws one 8-pixel row of a 1bpp glyph into a 4bpp (mode 4) or 8bpp (mode 8) tile buffer. */
-void sub_080798B8(u8 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
+void BitmapPlotRow8(u8 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
 {
     u8 buf[0xC];
     u8 i;
@@ -174,7 +174,7 @@ void sub_080798B8(u8 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode
     }
 }
 /* Draws one 16-pixel row of a 1bpp glyph into an 8bpp tile buffer (x may be odd). */
-void sub_080799BC(u16 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
+void BitmapPlotRow16(u16 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mode)
 {
     u8 buf[0x14];
     int addr;
@@ -199,7 +199,7 @@ void sub_080799BC(u16 bits, u16 x, u16 stride, u8 color, u16 *dst, u16 w, u8 mod
     }
 }
 /* Draws one 2-byte (JIS) glyph. mode = glyph size (8/10/12), e = bit depth. */
-void sub_08079A48(u16 code, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
+void BitmapDrawSjisGlyph(u16 code, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
 {
     u16 *p;
     u32 t;
@@ -208,25 +208,25 @@ void sub_08079A48(u16 code, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8
     u32 hi;
 
     if (code <= 0x813F) {
-        code = sub_08074A90(code);
+        code = AsciiToFullwidthSjis(code);
         if (code == 0)
             return;
     }
     if (mode == 8) {
-        p = (u16 *)(gUnk_081C0000 + sub_08072584(code) * 8);
+        p = (u16 *)(gFontKanji8x8 + SjisToGlyphIndex(code) * 8);
         for (i = 3; i >= 0; i--) {
             t = *p++;
             t <<= 17;
-            sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
-            sub_080798B8(t >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8((t << 8) >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8(t >> 24, x, y++, color, dst, w, e);
         }
     } else {
         switch (mode) {
         case 10:
-            p = (u16 *)(gUnk_081D0200 + sub_08072584(code) * 20);
+            p = (u16 *)(gFontKanji10x10 + SjisToGlyphIndex(code) * 20);
             break;
         case 12:
-            p = (u16 *)(gUnk_081F8700 + sub_08072584(code) * 24);
+            p = (u16 *)(gFontKanji12x12 + SjisToGlyphIndex(code) * 24);
             break;
         default:
             return;
@@ -237,13 +237,13 @@ void sub_08079A48(u16 code, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8
                 g = *p++;
                 /* FAKEMATCH: hi = g >> 8 keeps the swap in the target's registers */
                 hi = g >> 8;
-                sub_080799BC((g << 24 >> 16 | hi) << 17 >> 16, x, y++, color, dst, w, e);
+                BitmapPlotRow16((g << 24 >> 16 | hi) << 17 >> 16, x, y++, color, dst, w, e);
             } while (--i != 0);
         }
     }
 }
 /* Draws one 1-byte glyph (8x8, 10-row or 12-row font). */
-void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
+void BitmapDrawLatinGlyph(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
 {
     u16 *p;
     int i;
@@ -259,8 +259,8 @@ void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
         for (i = 0; i < 4; i++) {
             u32 t = *p++;
             t <<= 17;
-            sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
-            sub_080798B8(t >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8((t << 8) >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8(t >> 24, x, y++, color, dst, w, e);
         }
     } else {
         switch (mode) {
@@ -277,50 +277,50 @@ void sub_08079B88(u8 ch, u16 x, u16 y, u16 *dst, u8 color, u8 mode, u16 w, u8 e)
         for (i = 0; i < mode; i++) {
             u32 t = *p++;
             t <<= 17;
-            sub_080798B8((t << 8) >> 24, x, y++, color, dst, w, e);
-            sub_080798B8(t >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8((t << 8) >> 24, x, y++, color, dst, w, e);
+            BitmapPlotRow8(t >> 24, x, y++, color, dst, w, e);
         }
     }
 }
-void sub_08079CC8(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e);
+void BitmapDrawLatinStringShadow(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e);
 /* Draws a string of 1-byte glyphs with a drop shadow (colour b at +1,+1, colour a on top). */
-void sub_08079CC8(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
+void BitmapDrawLatinStringShadow(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
 {
     u16 n = 0;
     u32 t;
     u32 t1;
 
     while (*str != 0) {
-        sub_08079B88(*str, (t1 = (t = n * (c >> 1)) + 1) + x, y + 1, dst, b, c, d, e);
-        sub_08079B88(*str++, t + x, y, dst, a, c, d, e);
+        BitmapDrawLatinGlyph(*str, (t1 = (t = n * (c >> 1)) + 1) + x, y + 1, dst, b, c, d, e);
+        BitmapDrawLatinGlyph(*str++, t + x, y, dst, a, c, d, e);
         n++;
     }
 }
-void sub_08079D88(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e);
+void BitmapDrawSjisStringShadow(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e);
 /* Same for 2-byte glyphs (big-endian character code). */
-void sub_08079D88(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
+void BitmapDrawSjisStringShadow(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
 {
     u16 n = 0;
     u32 t;
     u32 t1;
 
     while (*str != 0) {
-        sub_08079A48(*str << 8 | str[1], (t1 = (t = n * (c >> 1)) + 1) + x, y + 1, dst, b, c, d, e);
-        sub_08079A48(*str << 8 | str[1], t + x, y, dst, a, c, d, e);
+        BitmapDrawSjisGlyph(*str << 8 | str[1], (t1 = (t = n * (c >> 1)) + 1) + x, y + 1, dst, b, c, d, e);
+        BitmapDrawSjisGlyph(*str << 8 | str[1], t + x, y, dst, a, c, d, e);
         str += 2;
         n += 2;
     }
 }
 /* Draws a string with the 1-byte (ASCII) or 2-byte (Shift-JIS style) glyph routine,
  * depending on flag bit 7 of the save mirror byte at 0x02011C24. */
-void sub_08079E50(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
+void BitmapDrawStringShadow(u8 *str, u16 x, u16 y, void *dst, u8 a, u8 b, u8 c, u16 d, u8 e)
 {
-    if (gUnk_02011C20[4] & 0x80)
-        sub_08079D88(str, x, y, dst, a, b, c, d, e);
+    if (gSaveData[4] & 0x80)
+        BitmapDrawSjisStringShadow(str, x, y, dst, a, b, c, d, e);
     else
-        sub_08079CC8(str, x, y, dst, a, b, c, d, e);
+        BitmapDrawLatinStringShadow(str, x, y, dst, a, b, c, d, e);
 }
-u8 sub_08079ED4(const u8 *s)
+u8 ParseTwoDigits(const u8 *s)
 {
     u32 v;
     int t;
@@ -333,7 +333,7 @@ u8 sub_08079ED4(const u8 *s)
     /* FAKEMATCH: dead assignments r/t force the target's "subtract first, then reload s[1]" order */
     return (u8)(s[1] - '0') <= 9 ? (u8)(r = (t = v - '0') + s[1]) : (u8)v;
 }
-u32 sub_08079F10(const u8 *s, u32 n)
+u32 ParseDigits(const u8 *s, u32 n)
 {
     u32 v = 0;
     int c;
@@ -353,12 +353,12 @@ u32 sub_08079F10(const u8 *s, u32 n)
 }
 /* Returns 1 if the next word/segment of the string (width w) still fits: a + w <= limit.
  * FAKEMATCH: the two `*(volatile u8 *)s` reads stop agbcc CSEing the '$' test load with the loop-condition load, as the ROM does. */
-u8 sub_08079F40(u8 *s, u8 a, u8 limit)
+u8 NextWordFits(u8 *s, u8 a, u8 limit)
 {
     u8 w = 0;
     u8 cont;
 
-    if (gUnk_02011C20[4] & 0x80) {
+    if (gSaveData[4] & 0x80) {
         cont = 1;
         while (*s != 0 && cont) {
             if (*s <= 0x7E) {
@@ -396,7 +396,7 @@ u8 sub_08079F40(u8 *s, u8 a, u8 limit)
 }
 /* Expands an 8x8 1bpp glyph (index *idx into the table at 0x0822BB00) into a 4bpp (depth 4)
  * or 8bpp (otherwise) tile at dst by painting `color` into the set bits. */
-void sub_08079FDC(u32 *dst, u8 *idx, u8 color, u8 depth)
+void OverlayBoldGlyphTile(u32 *dst, u8 *idx, u8 color, u8 depth)
 {
     u8 *src;
     u16 i;
@@ -459,13 +459,13 @@ void sub_08079FDC(u32 *dst, u8 *idx, u8 color, u8 depth)
         } while (i < n);
     }
 }
-u16 sub_0807A17C(u16 a, u16 b, u16 c)
+u16 SelectU16(u16 a, u16 b, u16 c)
 {
     if (a != 0)
         c = b;
     return c;
 }
-u8 sub_0807A190(const u8 *s)
+u8 StrLenU8(const u8 *s)
 {
     u8 n = 0;
     while (*s++ != 0)
@@ -473,7 +473,7 @@ u8 sub_0807A190(const u8 *s)
     return n;
 }
 /* LZSS decoder: 4 KiB ring at 0x02030000, initial write position 0xFEE. */
-void sub_0807A1A8(u8 *src, u8 *dst, s32 size)
+void LZSSDecompress(u8 *src, u8 *dst, s32 size)
 {
     u32 flags = 0;
     u8 mask = 0;
@@ -515,7 +515,7 @@ void sub_0807A1A8(u8 *src, u8 *dst, s32 size)
     } while (size != 0);
 }
 
-u8 sub_0807A298(struct OamList *l)
+u8 OamListFlush(struct OamList *l)
 {
     u8 n = 0;
     u8 i;
@@ -526,7 +526,7 @@ u8 sub_0807A298(struct OamList *l)
     for (i = 0; i < 0x14; i++) {
         idx = l->head[i];
         while (idx >= 0) {
-            d = (u32 *)&gUnk_03004470[n];
+            d = (u32 *)&gMain_oamBuffer[n];
             s = (u32 *)&l->e[idx];
             *d++ = *s++;
             *(u16 *)d = *(u16 *)s;
@@ -536,7 +536,7 @@ u8 sub_0807A298(struct OamList *l)
     }
     return n;
 }
-void sub_0807A2EC(u8 *list)
+void OamListClear(u8 *list)
 {
     u8 i = 0;
     u8 f = 0xFF;
@@ -550,7 +550,7 @@ void sub_0807A2EC(u8 *list)
     }
     ((struct OamList *)list)->count = 0;
 }
-struct OamEntry *sub_0807A320(u8 layer, struct OamList *l)
+struct OamEntry *OamListAlloc(u8 layer, struct OamList *l)
 {
     u32 n, m = l->count;
 
@@ -562,12 +562,12 @@ struct OamEntry *sub_0807A320(u8 layer, struct OamList *l)
     l->count++;
     return &l->e[l->count - 1];
 }
-void sub_0807A37C(u8 idx, u8 layer, struct OamList *l)
+void OamListLinkEntry(u8 idx, u8 layer, struct OamList *l)
 {
     l->e[idx].next = l->head[layer];
     l->head[layer] = idx;
 }
-void sub_0807A398(s16 x0, s16 y0, s16 x1, s16 y1, struct Line *l)
+void LineInit(s16 x0, s16 y0, s16 x1, s16 y1, struct Line *l)
 {
     s16 dx, dy;
 
@@ -606,7 +606,7 @@ void sub_0807A398(s16 x0, s16 y0, s16 x1, s16 y1, struct Line *l)
     l->y1 = y1;
     l->acc = 0;
 }
-void sub_0807A420(struct Line *l)
+void LineStep(struct Line *l)
 {
     if (l->major == 0)
         return;
@@ -630,7 +630,7 @@ void sub_0807A420(struct Line *l)
         }
     }
 }
-u16 sub_0807A490(u16 x, u16 y, u8 shift)
+u16 GetTilemapOffset(u16 x, u16 y, u8 shift)
 {
     u16 off = 0;
 
@@ -647,7 +647,7 @@ u16 sub_0807A490(u16 x, u16 y, u8 shift)
     off += (x + y * 32) * 2;
     return off;
 }
-void sub_0807A4E8(u8 tile, u8 bg, u8 x, u8 y, u16 w)
+void FillScreenblockRow32(u8 tile, u8 bg, u8 x, u8 y, u16 w)
 {
     u32 *p = (u32 *)(0x06000000 + bg * 0x800 + x * 2 + y * 64);
     u8 i;
@@ -655,7 +655,7 @@ void sub_0807A4E8(u8 tile, u8 bg, u8 x, u8 y, u16 w)
     for (i = 0; i < w / 2; i++)
         *p++ = tile | tile << 16;
 }
-void sub_0807A528(u16 *p, u8 w, u8 h)
+void ClearMapRect(u16 *p, u8 w, u8 h)
 {
     u8 i;
     u8 j;
@@ -666,7 +666,7 @@ void sub_0807A528(u16 *p, u8 w, u8 h)
         p += 0x20 - w;
     }
 }
-void sub_0807A568(u8 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
+void FillScreenblockRectNoWrap(u8 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u16 *p = (u16 *)(0x06000000 + bg * 0x800 + x * 2 + y * 64);
     u8 i;
@@ -683,7 +683,7 @@ void sub_0807A568(u8 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
         p += 0x20 - w;
     }
 }
-void sub_0807A5D4(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
+void FillScreenblockRectAscending32(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u32 *p = (u32 *)(0x06000000 + bg * 0x800 + x * 2 + y * 64);
     u8 i;

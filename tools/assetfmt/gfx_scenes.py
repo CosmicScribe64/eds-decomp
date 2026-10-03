@@ -9,7 +9,7 @@ Types (see build/assetwf/gfx_scenes/NOTES.md and wiki/data/graphics-formats.md):
   gfx_scenes_table  the 31 scene-set descriptors {bitmap, bgPal, objPal, objTiles, anim}  -> JSON
   gfx_scenes_ptrs   a plain u32 pointer list (kind=func annotates Thumb function pointers) -> JSON
 
-LZSS is the game's Okumura-style format (sub_0807A1A8). lz_encode() reproduces the original compressor
+LZSS is the game's Okumura-style format (LZSSDecompress). lz_encode() reproduces the original compressor
 exactly (all 59 streams): Okumura's binary-tree match finder (one tree per first byte, bytes 1-17
 compared, first longest match wins, a full 18-byte match replaces the old node), no pre-inserted
 "space" strings, 0xFF read past the end of the input, and a window node that leaves the window is
@@ -27,7 +27,7 @@ WIN = 4078      # farthest match distance (N - F)
 TH = 2          # matches of THRESHOLD bytes or fewer are sent as literals
 BASE = 0x08000000
 
-# Character ID -> scene set, from sub_08001C78 (the portrait lookup). Inverted for annotations.
+# Character ID -> scene set, from GetSceneSet (the portrait lookup). Inverted for annotations.
 SET_CHARACTER = {0: 34, 1: 35, 2: 37, 3: 32, 4: 33, 5: 2, 6: 1, 7: 3, 8: 5, 9: 4, 10: 20, 11: 16, 12: 19,
                  13: 24, 14: 8, 15: 10, 16: 6, 17: 7, 18: 9, 19: 11, 20: 12, 21: 17, 22: 13, 23: 18, 24: 15,
                  25: 21, 26: 22, 27: 23, 28: 14, 29: 39, 30: 38}
@@ -37,7 +37,7 @@ SCENE_TABLE = 0x081976A0
 
 # ------------------------------------------------------------------------------------------------ LZSS
 def lz_decode(blob):
-    """{u32 packedSize; stream} -> decoded bytes (as sub_0807A1A8: 4 KiB ring, first write at 0xFEE)."""
+    """{u32 packedSize; stream} -> decoded bytes (as LZSSDecompress: 4 KiB ring, first write at 0xFEE)."""
     n = struct.unpack_from('<I', blob)[0]
     src, end = 4, 4 + n
     if end > len(blob):

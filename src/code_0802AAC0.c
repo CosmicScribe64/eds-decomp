@@ -13,7 +13,7 @@
 #define ZFLAGS(z) (((u8 *)(z))[6])
 
 /* Zone pointer by byte arithmetic, zone term first (the ROM's address order); p is player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 /* Card reference (0x14 bytes, see code_08009A68 / code_0800C894). */
 struct CardRef {
@@ -41,7 +41,7 @@ struct ListView {
     u8 unk0_3 : 1;
     u8 drawList : 1;    /* +0x000 bit 4 */
     u8 mode : 3;        /* +0x000 bits 5-7 */
-    u8 step;            /* +0x001: index into gUnk_0819A7B8 */
+    u8 step;            /* +0x001: index into gCardListViewSteps */
     u8 state;           /* +0x002 */
     u8 unk3;
     u8 unk4;
@@ -57,84 +57,84 @@ struct ListView {
     u32 cards[0xC0];    /* +0x00C: card words */
     u16 count;          /* +0x30C */
 };
-extern struct ListView gUnk_0201D810;
-#define gListView gUnk_0201D810
+extern struct ListView gCardListView;
+#define gListView gCardListView
 
-/* gUnk_03000040 (struct Main) comes from include/main.h; +0x4422 is bgVofs[1]. */
-#define gMain gUnk_03000040
+/* gMain (struct Main) comes from include/main.h; +0x4422 is bgVofs[1]. */
+#define gMain gMain
 
 struct ScrollStep { u16 y; u16 unk2; };
-extern const struct ScrollStep gUnk_0819A788[][4];   /* scroll offsets [dir][timer] */
-void sub_08075114(void *dest, u16 value);
-void sub_0802A45C(void);
-void sub_0802A4A4(void);
-void sub_0802A47C(void);
-void sub_0802A658(int button, int mask);
-void sub_0802A4CC(u32 *card);
+extern const struct ScrollStep gCardListViewCursorSlide[][4];   /* scroll offsets [dir][timer] */
+void TextCanvasToTiles(void *dest, u16 value);
+void CardListView_DrawSelectedInfo(void);
+void CardListView_DrawSelectedCursorFrame(void);
+void CardListView_DrawPage(void);
+void CardListView_DrawButtons(int button, int mask);
+void CardListView_DrawCardStatus(u32 *card);
 
-void sub_08077AEC(u16 se);  /* PlaySE */
-void sub_0800688C(u16 cardId, u16 timer, u16 c);  /* Card Detail view (hypothesis) */
-u16 sub_08006D08(void);
-u16 sub_0802A6DC(void);
+void PlaySE(u16 se);  /* PlaySE */
+void CardDetail_Init(u16 cardId, u16 timer, u16 c);  /* Card Detail view (hypothesis) */
+u16 CardDetail_Run(void);
+u16 CardListView_InitScreen(void);
 
-/* struct DuelPlayer and gUnk_020192E4 come from include/duel.h (+0x904 = graveyard). */
+/* struct DuelPlayer and gDuelPlayers come from include/duel.h (+0x904 = graveyard). */
 
-void sub_08075278(void *dst, u32 size); /* MemClear16 */
-void sub_08007558(struct DuelCard *dst, struct DuelCard *src);
-void sub_08044224(int player, int a, int b);
+void MemClear16(void *dst, u32 size); /* MemClear16 */
+void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
+void CollectEffectTargets(int player, int a, int b);
 
 typedef u16 (*StepFunc)(void);
-extern const StepFunc gUnk_0819A7B8[];
+extern const StepFunc gCardListViewSteps[];
 
-u16 sub_08075A6C(u32 a);
-void sub_080609C4(void);
-void sub_0805F96C(void);
-u16 sub_08060B2C(void);
-void sub_0802AB0C(void);
+u16 FadeToBlack(u32 a);
+void DuelScreen_Init(void);
+void DuelScreen_DrawCursorInfo(void);
+u16 DuelScreen_FadeInStep(void);
+void CardListView_Update(void);
 
-int sub_0800C8BC(int player, int zone);
-int sub_080086CC(int player, u16 cardNo);
-int sub_080094E4(void);
-int sub_0800C894(int player, int zone);
-int sub_08008524(int player, u16 number);
-int sub_0800CAF0(int player, int zone);
-int sub_0800A78C(int player, int zone, u16 number);
+int GetZoneCardType(int player, int zone);
+int CountFaceUpMonstersByNumber(int player, u16 cardNo);
+int GetFaceUpFieldMagicNumber(void);
+int GetZoneCardAtk(int player, int zone);
+int CountActiveCardsOnField(int player, u16 number);
+int GetZoneCardAttribute(int player, int zone);
+int CountZoneLinksFromCard(int player, int zone, u16 number);
 
-u16 sub_0802AAC0(void)
+u16 CardListView_Exit(void)
 {
     struct ListView *v = &gListView;
 
     switch (v->state) {
     case 0:
-        if (sub_08075A6C(4)) {
+        if (FadeToBlack(4)) {
             v->drawList = 0;
             v->state++;
         }
         break;
     case 1:
-        sub_080609C4();
-        sub_0805F96C();
+        DuelScreen_Init();
+        DuelScreen_DrawCursorInfo();
         v->state++;
         break;
     default:
-        return sub_08060B2C();
+        return DuelScreen_FadeInStep();
     }
     return 0;
 }
 /* Per-frame list viewer update: VRAM clear, scroll animation, redraw. */
-void sub_0802AB0C(void)
+void CardListView_Update(void)
 {
     int idle = 1;
     struct ListView *v = &gListView;
 
     if (v->clearVram) {
         v->clearVram = 0;
-        sub_08075114((void *)0x06004200, 0);
+        TextCanvasToTiles((void *)0x06004200, 0);
     }
     if (v->scrollDir) {
         if (v->scrollTimer) {
             v->scrollTimer--;
-            gMain.bgVofs[1] = gUnk_0819A788[v->scrollDir][v->scrollTimer].y - (v->row << 4);
+            gMain.bgVofs[1] = gCardListViewCursorSlide[v->scrollDir][v->scrollTimer].y - (v->row << 4);
             idle = 0;
         } else {
             switch (v->scrollDir) {
@@ -147,41 +147,41 @@ void sub_0802AB0C(void)
             }
             gListView.scrollDir = 0;
             gMain.bgVofs[1] = -(gListView.row << 4);
-            sub_0802A45C();
-            sub_0802A4A4();
+            CardListView_DrawSelectedInfo();
+            CardListView_DrawSelectedCursorFrame();
         }
     }
     if (gListView.drawList) {
-        sub_0802A658(gListView.button, gListView.buttonMask);
+        CardListView_DrawButtons(gListView.button, gListView.buttonMask);
         if (idle && gListView.count)
-            sub_0802A4CC(&gListView.cards[gListView.top + gListView.row]);
+            CardListView_DrawCardStatus(&gListView.cards[gListView.top + gListView.row]);
     }
 }
 /* List viewer input step: Up/Down scroll, Right cycles the buttons, A activates, B closes. */
-u16 sub_0802AC2C(void)
+u16 CardListView_HandleInput(void)
 {
     int idx = gListView.top + gListView.row;
     u32 id = CARD_ID(gListView.cards[idx]);
 
     switch (gListView.state) {
     case 1:
-        if (sub_08075A6C(4)) {
+        if (FadeToBlack(4)) {
             gListView.drawList = 0;
             gListView.state++;
         }
         break;
     case 2:
-        sub_0800688C(id, 0, 0);
+        CardDetail_Init(id, 0, 0);
         gListView.state++;
         break;
     case 3:
-        if (sub_08006D08()) {
+        if (CardDetail_Run()) {
             gListView.unk3 = 0;
             gListView.state++;
         }
         break;
     case 4:
-        if (sub_0802A6DC()) {
+        if (CardListView_InitScreen()) {
             gListView.unk3 = 0;
             gListView.state++;
         }
@@ -196,13 +196,13 @@ u16 sub_0802AC2C(void)
                     gListView.scrollTimer = 4;
                 } else {
                     gListView.top--;
-                    sub_0802A47C();
-                    sub_0802A45C();
-                    sub_0802A4A4();
+                    CardListView_DrawPage();
+                    CardListView_DrawSelectedInfo();
+                    CardListView_DrawSelectedCursorFrame();
                 }
-                sub_08077AEC(0);
+                PlaySE(0);
             } else {
-                sub_08077AEC(3);
+                PlaySE(3);
             }
         }
         if (gMain.newKeys & 0x80) {
@@ -212,29 +212,29 @@ u16 sub_0802AC2C(void)
                     gListView.scrollTimer = 4;
                 } else {
                     gListView.top++;
-                    sub_0802A47C();
-                    sub_0802A45C();
-                    sub_0802A4A4();
+                    CardListView_DrawPage();
+                    CardListView_DrawSelectedInfo();
+                    CardListView_DrawSelectedCursorFrame();
                 }
-                sub_08077AEC(0);
+                PlaySE(0);
             } else {
-                sub_08077AEC(3);
+                PlaySE(3);
             }
         }
         if (gMain.newKeys & 0x10) {
-            sub_08077AEC(0);
+            PlaySE(0);
             do {
                 gListView.button++;
             } while (!((gListView.buttonMask >> gListView.button) & 1));
         }
         if (gMain.newKeys & 0x20) {
-            sub_08077AEC(0);
+            PlaySE(0);
             do {
                 gListView.button--;
             } while (!((gListView.buttonMask >> gListView.button) & 1));
         }
         if ((gMain.newKeys & 2) && (gListView.buttonMask & 2)) {
-            sub_08077AEC(2);
+            PlaySE(2);
             return 1;
         }
         if (gMain.newKeys & 1) {
@@ -243,22 +243,22 @@ u16 sub_0802AC2C(void)
                 if (gListView.mode == 3) {
                     int player = gListView.player;
                     int i = gListView.top + gListView.row;
-                    if ((u8)gUnk_020192E4[player & 1].arrCC4[i] == 2 && player) {
-                        sub_08077AEC(3);
+                    if ((u8)gDuelPlayers[player & 1].arrCC4[i] == 2 && player) {
+                        PlaySE(3);
                         break;
                     }
                 }
-                sub_08077AEC(1);
+                PlaySE(1);
                 gListView.state = 1;
                 break;
             case 1:
-                sub_08077AEC(2);
+                PlaySE(2);
                 return 1;
             case 2:
-                sub_08077AEC(1);
+                PlaySE(1);
                 break;
             case 3:
-                sub_08077AEC(1);
+                PlaySE(1);
                 return 1;
             }
         }
@@ -267,14 +267,14 @@ u16 sub_0802AC2C(void)
     return 0;
 }
 /* Run the current step of the list viewer; returns 1 while active. */
-u16 sub_0802AED8(void)
+u16 CardListView_Run(void)
 {
     struct ListView *v = &gListView;
 
     if (v->active) {
-        if (gUnk_0819A7B8[v->step] != NULL) {
-            sub_0802AB0C();
-            if (gUnk_0819A7B8[v->step]()) {
+        if (gCardListViewSteps[v->step] != NULL) {
+            CardListView_Update();
+            if (gCardListViewSteps[v->step]()) {
                 v->state = 0;
                 v->unk3 = 0;
                 v->unk4 = 0;
@@ -286,14 +286,14 @@ u16 sub_0802AED8(void)
     }
     return 0;
 }
-/* Open the list viewer on one of player's card lists (area 12-15, 13 = deck) or, for area -1, sub_08044224. */
-void sub_0802AF34(int player, int area, int a2, int a3)
+/* Open the list viewer on one of player's card lists (area 12-15, 13 = deck) or, for area -1, CollectEffectTargets. */
+void CardListView_Open(int player, int area, int a2, int a3)
 {
     struct DuelCard *src;
     int copy = 0;
     int i;
 
-    sub_08075278(gListView.cards, 0x200);
+    MemClear16(gListView.cards, 0x200);
     gListView.player = player & 1;
     gListView.count = 0;
     gListView.buttonMask = 0;
@@ -302,35 +302,35 @@ void sub_0802AF34(int player, int area, int a2, int a3)
     case 14:
         gListView.mode = player;
         gListView.buttonMask = 2;
-        gListView.count = gUnk_020192E4[player & 1].graveCount;
-        src = gUnk_020192E4[player & 1].graveyard;
+        gListView.count = gDuelPlayers[player & 1].graveCount;
+        src = gDuelPlayers[player & 1].graveyard;
         copy = 1;
         break;
     case 12:
         gListView.mode = 2;
         gListView.buttonMask = 2;
-        gListView.count = gUnk_020192E4[player & 1].fusionCount;
-        src = gUnk_020192E4[player & 1].fusionDeck;
+        gListView.count = gDuelPlayers[player & 1].fusionCount;
+        src = gDuelPlayers[player & 1].fusionDeck;
         copy = 1;
         break;
     case 15:
         gListView.mode = 3;
         gListView.buttonMask = 2;
-        gListView.count = gUnk_020192E4[player & 1].countB84;
-        src = gUnk_020192E4[player & 1].listB84;
+        gListView.count = gDuelPlayers[player & 1].countB84;
+        src = gDuelPlayers[player & 1].listB84;
         copy = 1;
         break;
     case 13:
         gListView.mode = 5;
         gListView.buttonMask = 2;
-        gListView.count = gUnk_020192E4[player & 1].deckCount;
-        src = gUnk_020192E4[player & 1].deck;
+        gListView.count = gDuelPlayers[player & 1].deckCount;
+        src = gDuelPlayers[player & 1].deck;
         copy = 1;
         break;
     case -1:
         gListView.mode = 4;
         gListView.buttonMask = 8;
-        sub_08044224(player, a2, a3);
+        CollectEffectTargets(player, a2, a3);
         break;
     default:
         gListView.active = 0;
@@ -339,7 +339,7 @@ void sub_0802AF34(int player, int area, int a2, int a3)
     if (copy) {
         struct DuelCard *dst = (struct DuelCard *)gListView.cards;
         for (i = 0; i < gListView.count; i++)
-            sub_08007558(dst++, src++);
+            CopyDuelCard(dst++, src++);
     }
     gListView.row = 0;
     gListView.scrollTimer = 0;
@@ -350,7 +350,7 @@ void sub_0802AF34(int player, int area, int a2, int a3)
 }
 
 /* Can the card `id` target the card in (player, zone)?  0 if the zone is empty. */
-u16 sub_0802B1B8(u16 id, int player, int zone)
+u16 CanCardTargetZone(u16 id, int player, int zone)
 {
     u16 ok = 1;
     int p = player & 1;
@@ -361,19 +361,19 @@ u16 sub_0802B1B8(u16 id, int player, int zone)
         return 0;
     if (!(ZFLAGS(z) & 2))
         return 1;
-    if (sub_0800C8BC(player, zone) == 1) {
-        if (sub_080086CC(0, 0x2E4) > 0)
+    if (GetZoneCardType(player, zone) == 1) {
+        if (CountFaceUpMonstersByNumber(0, 0x2E4) > 0)
             ok = 0;
-        if (sub_080086CC(1, 0x2E4) > 0)
+        if (CountFaceUpMonstersByNumber(1, 0x2E4) > 0)
             ok = 0;
     }
-    if ((CARD_NUMBER(zid) == 0x52E || CARD_NUMBER(zid) == 0x531) && sub_080094E4() == 0x14D
+    if ((CARD_NUMBER(zid) == 0x52E || CARD_NUMBER(zid) == 0x531) && GetFaceUpFieldMagicNumber() == 0x14D
         && CARD_TYPE(id) == 0x16 && CARD_SUBTYPE(id) != 3)
         ok = 0;
     return ok;
 }
 
-int sub_0802B28C(int player, int zone)
+int IsZoneTargetable(int player, int zone)
 {
     int p = player & 1;
     struct DuelZone *z = ZB(p, zone);
@@ -381,7 +381,7 @@ int sub_0802B28C(int player, int zone)
 
     if (id == 0)
         return 0;
-    if ((CARD_NUMBER(id) == 0x52E || CARD_NUMBER(id) == 0x531) && sub_080094E4() == 0x14D
+    if ((CARD_NUMBER(id) == 0x52E || CARD_NUMBER(id) == 0x531) && GetFaceUpFieldMagicNumber() == 0x14D
         && (ZFLAGS(z) & 2))
         return 0;
     return 1;
@@ -389,11 +389,11 @@ int sub_0802B28C(int player, int zone)
 /* Card-specific target check: ref (card 0x37/0x38/0x42/0x170) on its own monster (player, zone) that has
  * card number `needNo`; true when a kind-1 link of that zone holds card `wantNo` with counter > limit. */
 /* Zone pointer with the player term written first: agbcc then emits the zone multiply first (the ROM's order). */
-#define ZR(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+#define ZR(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
 
 /* The u16 cid temporary adds pre-combine insns after the last use of the 0xD64 constant, which lengthens
  * the zone*0x94 invariant's life so the constant gets r7 and zone*0x94 gets ip, as in the ROM. */
-int sub_0802B2FC(struct CardRef *ref, u16 pos)
+int EffectEquippedTributeCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -425,7 +425,7 @@ int sub_0802B2FC(struct CardRef *ref, u16 pos)
     }
     if (CARD_NUMBER(id) != needNo)
         return 0;
-    if (sub_08008524(0, 0x58A) > 0 || sub_08008524(1, 0x58A) > 0)
+    if (CountActiveCardsOnField(0, 0x58A) > 0 || CountActiveCardsOnField(1, 0x58A) > 0)
         return 0;
     for (i = 0; i < ZR(player & 1, zone)->numLinks; i++) {
         u16 link = ZR(player & 1, zone)->links[i];
@@ -444,7 +444,7 @@ int sub_0802B2FC(struct CardRef *ref, u16 pos)
     return 0;
 }
 
-int sub_0802B48C(struct CardRef *ref, u16 pos)
+int EffectTrapTargetCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -464,7 +464,7 @@ int sub_0802B48C(struct CardRef *ref, u16 pos)
     return 1;
 }
 
-int sub_0802B500(struct CardRef *ref, u16 pos)
+int EffectOpponentMonsterCheck(struct CardRef *ref, u16 pos)
 {
     int zone;
     int player;
@@ -472,7 +472,7 @@ int sub_0802B500(struct CardRef *ref, u16 pos)
     player = (u8)pos;
     zone = pos >> 8;
 
-    if (ref->player != player && zone <= 4 && sub_0802B1B8(ref->id, player, zone)) {
+    if (ref->player != player && zone <= 4 && CanCardTargetZone(ref->id, player, zone)) {
         int p = player & 1;
         struct DuelZone *z = ZB(p, zone);
         if (CARD_ID(CARD_WORD(z->card)))
@@ -482,13 +482,13 @@ int sub_0802B500(struct CardRef *ref, u16 pos)
 }
 
 /* Main target check for a face-up monster in (player, zone): per card number of ref, compares
- * sub_0800C8BC (a) or sub_0800CAF0 (b) of the target with a constant, or tests the target's card. */
-int sub_0802B558(struct CardRef *ref, u16 pos)
+ * GetZoneCardType (a) or GetZoneCardAttribute (b) of the target with a constant, or tests the target's card. */
+int EffectEquipTargetCheck(struct CardRef *ref, u16 pos)
 {
     u16 refId = ref->id;
     int player = (u8)pos;
     int zone = pos >> 8;
-    struct DuelZonesPlayer *pz = &gUnk_0201930C[player & 1];
+    struct DuelZonesPlayer *pz = &gDuelZones[player & 1];
     struct DuelZone *first = (struct DuelZone *)pz;
     u32 zid;
     u16 a;
@@ -497,13 +497,13 @@ int sub_0802B558(struct CardRef *ref, u16 pos)
 
     first = (struct DuelZone *)((u32)first + zone * 0x94);
     zid = CARD_ID(CARD_WORD(first->card));
-    a = sub_0800C8BC(player, zone);
-    b = sub_0800CAF0(player, zone);
+    a = GetZoneCardType(player, zone);
+    b = GetZoneCardAttribute(player, zone);
 
     if (zone > 4)
         return 0;
     z = ZB(player & 1, zone);
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || !sub_0802B1B8(ref->id, player, zone))
+    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || !CanCardTargetZone(ref->id, player, zone))
         return 0;
     switch (CARD_NUMBER(refId)) {
     case 0x416:
@@ -519,7 +519,7 @@ int sub_0802B558(struct CardRef *ref, u16 pos)
             return 0;
         if (ref->player != player)
             return 0;
-        result = sub_0800A78C(player, zone, 0x47);
+        result = CountZoneLinksFromCard(player, zone, 0x47);
         if (result != 0)
             return 0;
         result = 1;
@@ -600,7 +600,7 @@ int sub_0802B558(struct CardRef *ref, u16 pos)
     return 0;
 }
 
-int sub_0802B98C(struct CardRef *ref, u16 pos)
+int EffectStopDefenseCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
@@ -609,27 +609,27 @@ int sub_0802B98C(struct CardRef *ref, u16 pos)
     if (zone <= 4 && player != ref->player) {
         int p = player & 1;
         z = ZB(p, zone);
-        if (CARD_ID(CARD_WORD(z->card)) && sub_0802B1B8(ref->id, player, zone))
+        if (CARD_ID(CARD_WORD(z->card)) && CanCardTargetZone(ref->id, player, zone))
             return ZFLAGS(z) & 1;
     }
     return 0;
 }
 
-int sub_0802B9EC(struct CardRef *ref, u16 pos)
+int EffectBlastJugglerCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;
     int p = player & 1;
     struct DuelZone *z = ZB(p, zone);
 
-    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || sub_0800C894(player, zone) > 1000
-        || !sub_0802B1B8(ref->id, player, zone)
+    if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2) || GetZoneCardAtk(player, zone) > 1000
+        || !CanCardTargetZone(ref->id, player, zone)
         || (player == ref->player && zone == ref->zone))
         return 0;
     return 1;
 }
 
-int sub_0802BA68(struct CardRef *ref, u16 pos)
+int EffectMagicTargetCheck(struct CardRef *ref, u16 pos)
 {
     int player = (u8)pos;
     int zone = pos >> 8;

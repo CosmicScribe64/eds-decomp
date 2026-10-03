@@ -31,10 +31,10 @@ This is Nintendo's SRAM access library, the plain (non-"fast") `SRAM_V112` build
 The GBA can only read SRAM correctly while it runs code from outside the ROM, because the game pak bus is shared. So `ReadSram` and `VerifySram` copy their `_Core` loop into a stack buffer on every call and run it from there, in Thumb, through `bx` to `buf+1`. The copy size is computed as the distance between adjacent functions, for example `((u32)ReadSram - (u32)ReadSram_Core) >> 1` halfwords, so **the link order inside this object matters**. v1.12 has no `SetSramFastFunc`, `ReadSramFast`, or `VerifySramFast`. Those belong to the separate `SRAM_F_V1xx` "fast" library, which fireemblem8u uses, for example.
 
 ## Callers / Callees
-- `ReadSram` is called once, from `0x08075E28`, inside the boot init routine `sub_08075DF4`, which AgbMain calls at `0x08075F66`. That call is `ReadSram(0x0E000000, 0x02011C20, 0x2170)`.
+- `ReadSram` is called once, from `0x08075E28`, inside the boot init routine `GameInit`, which AgbMain calls at `0x08075F66`. That call is `ReadSram(0x0E000000, 0x02011C20, 0x2170)`.
 - `WriteSram` is called from `0x080754D2`, and from `WriteSramEx`.
 - `VerifySram` is called from `0x080754DC`, and from `WriteSramEx`.
-- The game's save routine is `sub_080754BC` (9 callers). It does `WriteSram(0x02011C20, 0x0E000000, 0x2170)` and then `VerifySram`, and repeats while verify fails, **up to 32 tries**. It uses its own retry loop instead of the library's `WriteSramEx`, which only tries 3 times.
+- The game's save routine is `SaveGame` (9 callers). It does `WriteSram(0x02011C20, 0x0E000000, 0x2170)` and then `VerifySram`, and repeats while verify fails, **up to 32 tries**. It uses its own retry loop instead of the library's `WriteSramEx`, which only tries 3 times.
 - Calls: `_call_via_r3` (libgcc `_call_via_rX.o`, `0x0807EEA4`).
 - So the save data is **0x2170 bytes** at SRAM `0x0E000000`, mirrored in EWRAM at `0x02011C20` (verified from the literal pools at the call sites).
 

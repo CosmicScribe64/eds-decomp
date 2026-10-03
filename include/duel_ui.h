@@ -2,7 +2,7 @@
 #define GUARD_DUEL_UI_H
 
 /*
- * Duel command runner (gUnk_020185C0) and duel screen state (gUnk_0201CFB0), merged from all units
+ * Duel command runner (gDuelCmd) and duel screen state (gDuelScreen), merged from all units
  * (tools/structmap.py, 2026-09-30). Separate from duel.h so units can adopt them independently.
  */
 
@@ -17,7 +17,7 @@ struct DuelCmdEntry {
     u16 arg6;
 };
 
-/* gUnk_020185C0: the duel command runner (current command, queue, step machine). */
+/* gDuelCmd: the duel command runner (current command, queue, step machine). */
 struct DuelCmd {
     u16 cmd;                            /* +0x000 (bit 15 = player) */
     u16 arg2;                           /* +0x002 */
@@ -50,7 +50,7 @@ struct DuelLoc {
     u16 flag15:1;
 };
 
-/* gUnk_0201CFB0: duel screen / field view state (cursor, scrolling, move animation). */
+/* gDuelScreen: duel screen / field view state (cursor, scrolling, move animation). */
 struct DuelScreen {
     u8 fast:1;                  /* +0x000 bit 0 */
     u8 flag0_1:1;               /* bit 1 (cursorOn? hypothesis) */
@@ -99,8 +99,8 @@ struct DuelScreen {
     void (*cb85C)(void);        /* +0x85C */
 };
 
-extern struct DuelCmd gUnk_020185C0;
-extern struct DuelScreen gUnk_0201CFB0;
+extern struct DuelCmd gDuelCmd;
+extern struct DuelScreen gDuelScreen;
 
 typedef char duel_h_check_cmd_count[(u32)&((struct DuelCmd *)0)->queueCount == 0x808 ? 1 : -1];
 typedef char duel_h_check_cmd_hofs[(u32)&((struct DuelCmd *)0)->hofsTable == 0x810 ? 1 : -1];

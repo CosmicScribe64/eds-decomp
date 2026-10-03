@@ -1,27 +1,27 @@
 #include "global.h"
 
-/* CPU turn step handlers (see code_0805B3F4): gUnk_02015EF0 is the AiState record,
- * +1 is the step index into the table gUnk_0819DD6C, +2..+5 sub-step counters,
- * +6 a loop counter over the card-number table gUnk_08086448, +0xA a phase byte. */
+/* CPU turn step handlers (see code_0805B3F4): gAiState is the AiState record,
+ * +1 is the step index into the table gAiSteps, +2..+5 sub-step counters,
+ * +6 a loop counter over the card-number table gAiSimpleSpells, +0xA a phase byte. */
 struct AiState {
     u8 f0;
-    u8 step;    /* +1: index into gUnk_0819DD6C */
+    u8 step;    /* +1: index into gAiSteps */
     u8 f2;      /* +2: step sub-state */
     u8 f3;      /* +3: hand index */
     u8 f4;
     u8 f5;      /* +5: zone index */
-    u8 f6;      /* +6: index into gUnk_08086448 */
+    u8 f6;      /* +6: index into gAiSimpleSpells */
     u8 f7;
     u8 f8;
     u8 f9;
     u8 phase;   /* +0xA */
     u8 fB;
 };
-extern struct AiState gUnk_02015EF0;
-extern u8 gUnk_02015F00[];  /* AI work area, 0x1B28 bytes */
-extern void sub_08075278(void *dst, u32 size);
-extern void sub_0801EC58(u16 msg, u16 a, int b, int c);
-extern int sub_0805BC24(void);
+extern struct AiState gAiState;
+extern u8 gAiWork[];  /* AI work area, 0x1B28 bytes */
+extern void MemClear16(void *dst, u32 size);
+extern void DuelCmd_Push(u16 msg, u16 a, int b, int c);
+extern int AiChooseStrategy(void);
 
 /* One zone of a player (0x94 bytes). */
 struct DuelZone {
@@ -43,48 +43,48 @@ struct DuelPlayer {
     u32 hand[80];   /* +0x684: u32 card words, card id = (w << 20) >> 20 */
     u8 pad7C4[0xD64 - 0x7C4];
 };
-extern struct DuelPlayer gUnk_020192E4[2];
+extern struct DuelPlayer gDuelPlayers[2];
 
-extern u8 gUnk_0201A070[];          /* player 1 zones */
-extern u8 gUnk_0201930C[];          /* player 0 zones (== 0x020192E4 + 0x28) */
-extern u32 gUnk_0201A6CC[];         /* player 1 hand (== 0x0201A048 + 0x684) */
+extern u8 gDuelZonesP1[];          /* player 1 zones */
+extern u8 gDuelZones[];          /* player 0 zones (== 0x020192E4 + 0x28) */
+extern u32 gDuelHandP1[];         /* player 1 hand (== 0x0201A048 + 0x684) */
 extern u8 gUnk_0201A04A;            /* player 1 hand count (== 0x0201A048 + 2) */
-extern const u16 gUnk_08622AB4[];   /* maps card ID to card number */
-extern const u32 gUnk_08621DE0[];   /* card stats: type = bits 20-24, spell subtype = bits 17-19 */
+extern const u16 gCardIdToNumber[];   /* maps card ID to card number */
+extern const u32 gCardStats[];   /* card stats: type = bits 20-24, spell subtype = bits 17-19 */
 #define CARD_ID(w) (((w) << 20) >> 20)
-#define CARD_NUMBER(id) (*((const u16 *)(((id) & 0x7FF) + gUnk_08622AB4)))
-#define ZONE(z) ((struct DuelZone *)(gUnk_0201A070 + (z) * 0x94))
-extern u32 sub_08007590(u16 cardNo, u16 flag);
-extern u16 sub_08008860(int player);
-extern int sub_080090C8(int player, u16 number);
-extern int sub_080091B4(int player);
-extern int sub_08009280(int player, int number);
-extern int sub_08009150(int player, u16 type);
-extern void sub_08055EB0(int player, int zone);
-extern int sub_08008C6C(int player);
-extern int sub_0800A2A8(int player, u16 number);
-extern void sub_08046A74(int player);
+#define CARD_NUMBER(id) (*((const u16 *)(((id) & 0x7FF) + gCardIdToNumber)))
+#define ZONE(z) ((struct DuelZone *)(gDuelZonesP1 + (z) * 0x94))
+extern u32 HasFlipEffect(u16 cardNo, u16 flag);
+extern u16 CountMonsters(int player);
+extern int CountActiveCardsOnField2(int player, u16 number);
+extern int CountSpellTraps(int player);
+extern int CountActivatableSetCards(int player, int number);
+extern int CountGraveyardCardsOfType(int player, u16 type);
+extern void QueueFlipSummon(int player, int zone);
+extern int FindFreeSpellTrapZone(int player);
+extern int CountHandCardsByNumber(int player, u16 number);
+extern void PayChainEnergyCost(int player);
 
-extern int sub_08008A1C(int player);
-extern int sub_080578AC(void);
-extern int sub_080577FC(void);
-extern int sub_0800A304(int player, u16 number);
-extern int sub_08008794(int player, u16 number);
-extern int sub_0800C894(int player, int zone);
-extern int sub_08054398(int player, u16 id);
-extern int sub_08056300(int a, u16 number);
-extern int sub_08007834(u16 id);
-extern int sub_080564A8(u16 id);
-extern u32 gUnk_02015EE8[];
+extern int CountFreeMonsterZones(int player);
+extern int AiCountExodiaOnField(void);
+extern int AiCountExodiaInDeck(void);
+extern int FindHandCardByNumber(int player, u16 number);
+extern int CountMonstersByNumber(int player, u16 number);
+extern int GetZoneCardAtk(int player, int zone);
+extern int CanSummonFromHand(int player, u16 id);
+extern int AiIsKeyCard(int a, u16 number);
+extern int IsSpecialSummonOnly(u16 id);
+extern int AiHasTributesFor(u16 id);
+extern u32 gDuelCtrl[];
 /* Player 1's hand word i. The integer sum computes i << 2 before the symbol load, so the hand
  * address is a short-lived pseudo (not a reload) and loop.c leaves it in the loop. */
-#define A30C_HAND(i) (*(u32 *)(((i) << 2) + (u32)gUnk_0201A6CC))
+#define A30C_HAND(i) (*(u32 *)(((i) << 2) + (u32)gDuelHandP1))
 /* Player 0's deck word i (0x020192E4 + 0x7C4): a constant address, reloaded inside the loop. */
 #define A30C_DECK(i) (((u32 *)0x02019AA8)[i])
-/* sub_08008860 returns int (the unit header says u16, which adds narrowing). */
-#define A30C_COUNT(p) (((int (*)(int))sub_08008860)(p))
-/* FAKEMATCH: the ROM calls sub_08009280 without setting r1 (one-argument call through a cast). */
-#define A30C_9280(p) (((int (*)(int))sub_08009280)(p))
+/* CountMonsters returns int (the unit header says u16, which adds narrowing). */
+#define A30C_COUNT(p) (((int (*)(int))CountMonsters)(p))
+/* FAKEMATCH: the ROM calls CountActivatableSetCards without setting r1 (one-argument call through a cast). */
+#define A30C_9280(p) (((int (*)(int))CountActivatableSetCards)(p))
 #define A30C_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define A30C_TYPE(id) ((A30C_STATS(id) & 0x1F00000) >> 20)
 #define A30C_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
@@ -128,83 +128,83 @@ static inline u8 A30C_Level(u16 id)
 }
 
 /* Phase-10 hand choice for the CPU (player 1): scripted checks pick a hand index for specific card
- * numbers via sub_0800A304(1, number); otherwise the best DEF-like value >= the opponent's strongest
- * zone value (sub_0800C894) passing the playability filters, then the first level <= 4 monster that
+ * numbers via FindHandCardByNumber(1, number); otherwise the best DEF-like value >= the opponent's strongest
+ * zone value (GetZoneCardAtk) passing the playability filters, then the first level <= 4 monster that
  * passes them. Returns the hand index, or -1. Some checks use idx > -1 and others idx >= 0, as in the ROM. */
-int sub_0805A30C(void)
+int AiPickMonsterToSet(void)
 {
     int idx;
     int i;
     int max, best, w;
     u16 id;
 
-    if (sub_08008A1C(1) == 0)
+    if (CountFreeMonsterZones(1) == 0)
         return -1;
-    if (gUnk_02015EE8[1] & 0x200) {
-        if (sub_080578AC() != 0) {
-            idx = sub_0800A304(1, 0x259);
+    if (gDuelCtrl[1] & 0x200) {
+        if (AiCountExodiaOnField() != 0) {
+            idx = FindHandCardByNumber(1, 0x259);
             if (idx >= 0)
                 return idx;
         }
-        if (sub_080577FC() != 0) {
-            idx = sub_0800A304(1, 0x2F);
+        if (AiCountExodiaInDeck() != 0) {
+            idx = FindHandCardByNumber(1, 0x2F);
             if (idx > -1)
                 return idx;
-            idx = sub_0800A304(1, 0x23D);
+            idx = FindHandCardByNumber(1, 0x23D);
             if (idx > -1)
                 return idx;
-            if (sub_08008794(1, 0x2F) > 0 || sub_08008794(1, 0x23D) > 0) {
-                idx = sub_0800A304(1, 0x23D);
+            if (CountMonstersByNumber(1, 0x2F) > 0 || CountMonstersByNumber(1, 0x23D) > 0) {
+                idx = FindHandCardByNumber(1, 0x23D);
                 if (idx > -1)
                     return idx;
             }
-            idx = sub_0800A304(1, 0x463);
+            idx = FindHandCardByNumber(1, 0x463);
             if (idx >= 0)
                 return idx;
         }
     }
     if (A30C_COUNT(0) > 1) {
-        idx = sub_0800A304(1, 0x259);
+        idx = FindHandCardByNumber(1, 0x259);
         if (idx >= 0)
             return idx;
     }
     if (A30C_COUNT(0) > 0) {
-        idx = sub_0800A304(1, 0x1F4);
+        idx = FindHandCardByNumber(1, 0x1F4);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x21C);
+        idx = FindHandCardByNumber(1, 0x21C);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x259);
+        idx = FindHandCardByNumber(1, 0x259);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0xFF);
+        idx = FindHandCardByNumber(1, 0xFF);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x419);
+        idx = FindHandCardByNumber(1, 0x419);
         if (idx > -1)
             return idx;
     }
-    if (sub_08009150(1, 0x16) > 0) {
-        idx = sub_0800A304(1, 0x1AB);
+    if (CountGraveyardCardsOfType(1, 0x16) > 0) {
+        idx = FindHandCardByNumber(1, 0x1AB);
         if (idx >= 0)
             return idx;
     }
-    if (sub_08009150(1, 0x15) > 0) {
-        idx = sub_0800A304(1, 0x65);
+    if (CountGraveyardCardsOfType(1, 0x15) > 0) {
+        idx = FindHandCardByNumber(1, 0x65);
         if (idx >= 0)
             return idx;
     }
-    if (gUnk_020192E4[1].handCount <= 2 || gUnk_020192E4[0].handCount > gUnk_020192E4[1].handCount + 2) {
-        idx = sub_0800A304(1, 0x21B);
+    if (gDuelPlayers[1].handCount <= 2 || gDuelPlayers[0].handCount > gDuelPlayers[1].handCount + 2) {
+        idx = FindHandCardByNumber(1, 0x21B);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x24E);
+        idx = FindHandCardByNumber(1, 0x24E);
         if (idx > -1)
             return idx;
     }
-    if (gUnk_020192E4[0].deckCount <= 4) {
-        idx = sub_0800A304(1, 0x231);
+    if (gDuelPlayers[0].deckCount <= 4) {
+        idx = FindHandCardByNumber(1, 0x231);
         if (idx >= 0)
             return idx;
     }
@@ -228,68 +228,68 @@ int sub_0805A30C(void)
         case 0x403:
         case 0x420:
         case 0x42C:
-            idx = sub_0800A304(1, 0x231);
+            idx = FindHandCardByNumber(1, 0x231);
             if (idx >= 0)
                 goto ret;
             break;
         }
     }
-    if (sub_080090C8(0, 0x15B) > 0) {
-        idx = sub_0800A304(1, 0x246);
+    if (CountActiveCardsOnField2(0, 0x15B) > 0) {
+        idx = FindHandCardByNumber(1, 0x246);
         if (idx >= 0)
             return idx;
     }
-    if (sub_080090C8(0, 0x148) > 0) {
-        idx = sub_0800A304(1, 0x27);
+    if (CountActiveCardsOnField2(0, 0x148) > 0) {
+        idx = FindHandCardByNumber(1, 0x27);
         if (idx >= 0)
             return idx;
     }
-    if (sub_080091B4(0) > 1) {
-        idx = sub_0800A304(1, 0x109);
+    if (CountSpellTraps(0) > 1) {
+        idx = FindHandCardByNumber(1, 0x109);
         if (idx >= 0)
             return idx;
     }
     if (A30C_9280(0) > 1) {
-        idx = sub_0800A304(1, 0x249);
+        idx = FindHandCardByNumber(1, 0x249);
         if (idx >= 0)
             return idx;
     }
     if (A30C_9280(0) > 0) {
-        idx = sub_0800A304(1, 0xDF);
+        idx = FindHandCardByNumber(1, 0xDF);
         if (idx >= 0)
             return idx;
     }
     if (A30C_COUNT(0) > 0 && A30C_COUNT(1) == 0) {
-        idx = sub_0800A304(1, 0x48B);
+        idx = FindHandCardByNumber(1, 0x48B);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x452);
+        idx = FindHandCardByNumber(1, 0x452);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x45A);
+        idx = FindHandCardByNumber(1, 0x45A);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x45B);
+        idx = FindHandCardByNumber(1, 0x45B);
         if (idx > -1)
             return idx;
-        idx = sub_0800A304(1, 0x51B);
+        idx = FindHandCardByNumber(1, 0x51B);
         if (idx > -1)
             return idx;
     }
     max = 0;
     for (i = 0; i <= 4; i++) {
-        int v = sub_0800C894(0, i);
+        int v = GetZoneCardAtk(0, i);
         if (max < v)
             max = v;
     }
     best = 0;
     idx = -1;
-    for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[1].handCount; i++) {
         id = CARD_ID(A30C_HAND(i));
         w = A30C_Def(id);
-        if (best < w && max <= w && sub_08054398(1, id) != 0
-            && sub_08056300(2, A30C_NUMBER(id)) == 0 && sub_08007834(id) == 0
-            && sub_080564A8(id) != 0) {
+        if (best < w && max <= w && CanSummonFromHand(1, id) != 0
+            && AiIsKeyCard(2, A30C_NUMBER(id)) == 0 && IsSpecialSummonOnly(id) == 0
+            && AiHasTributesFor(id) != 0) {
             idx = i;
             best = w;
         }
@@ -298,28 +298,28 @@ int sub_0805A30C(void)
     ret:
         return idx;
     }
-    for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[1].handCount; i++) {
         u16 id2 = CARD_ID(A30C_HAND(i));
         if (A30C_Level(id2) <= 4 && A30C_TYPE(id2) <= 0x14
-            && sub_08056300(2, A30C_NUMBER(id2)) == 0 && sub_08007834(id2) == 0
-            && sub_080564A8(id2) != 0)
+            && AiIsKeyCard(2, A30C_NUMBER(id2)) == 0 && IsSpecialSummonOnly(id2) == 0
+            && AiHasTributesFor(id2) != 0)
             return i;
     }
     return -1;
 }
 /* Step 0: reset the AI work area, announce the turn and ask the scripted-strategy
- * picker (sub_0805BC24). When one applies, jump to step 8, else let the runner
+ * picker (AiChooseStrategy). When one applies, jump to step 8, else let the runner
  * advance to step 1. */
-int sub_0805A89C(void)
+int AiStepStartMainPhase(void)
 {
-    sub_08075278(gUnk_02015F00, 0x1B28);
-    sub_0801EC58(0x8052, 0, 0, 0);
-    if (sub_0805BC24() != 0) {
-        gUnk_02015EF0.step = 8;
-        gUnk_02015EF0.f2 = 0;
-        gUnk_02015EF0.f3 = 0;
-        gUnk_02015EF0.f4 = 0;
-        gUnk_02015EF0.f5 = 0;
+    MemClear16(gAiWork, 0x1B28);
+    DuelCmd_Push(0x8052, 0, 0, 0);
+    if (AiChooseStrategy() != 0) {
+        gAiState.step = 8;
+        gAiState.f2 = 0;
+        gAiState.f3 = 0;
+        gAiState.f4 = 0;
+        gAiState.f5 = 0;
         return 0;
     }
     return 1;
@@ -331,9 +331,9 @@ int sub_0805A89C(void)
  * lifetime/scheduling hints. Field and hand loop masks are distinct from the
  * outer mask; bound caller-saved values are dead before external calls.
  * Type bits are 20..24 (mask 0x01F00000). */
-int sub_0805A8E8(void)
+int AiStepSetSpellTraps(void)
 {
-    struct AiState *initial = &gUnk_02015EF0;
+    struct AiState *initial = &gAiState;
     u32 phase = initial->f2;
     register struct AiState *p asm("r9");
     p = initial;
@@ -358,7 +358,7 @@ int sub_0805A8E8(void)
         u32 count;
         struct AiState *q;
         {
-            register u32 base asm("r0") = (u32)&gUnk_020192E4;
+            register u32 base asm("r0") = (u32)&gDuelPlayers;
             register u32 off asm("r2") = 0xD66;
             asm("" : : "r"(base), "r"(off));
             count = *(u8 *)(base + off);
@@ -383,12 +383,12 @@ int sub_0805A8E8(void)
                 {
                     u32 index = q->f3;
                     u32 off = index << 2;
-                    u32 table = (u32)gUnk_0201A6CC;
+                    u32 table = (u32)gDuelHandP1;
                     u32 raw;
                     raw = *(u32 *)(off + table);
                     w = CARD_ID(raw);
                 }
-                c = sub_08008C6C(1);
+                c = FindFreeSpellTrapZone(1);
                 ok = 0;
                 if (c < 0) return 1;
                 switch (({
@@ -403,27 +403,27 @@ int sub_0805A8E8(void)
                 case 0x3FB:
                     {
                         register int player asm("r0") = 0;
-                        ok = sub_0800A2A8(player, 0x14F) > 0;
+                        ok = CountHandCardsByNumber(player, 0x14F) > 0;
                     }
                     break;
                 case 0x3FE:
                     {
                         register int player asm("r0") = 0;
-                        ok = sub_0800A2A8(player, 0x150) > 0;
+                        ok = CountHandCardsByNumber(player, 0x150) > 0;
                     }
                     break;
                 case 0x402:
                     {
                         int player = 0;
                         asm("" : : "r"(player));
-                        ok = sub_0800A2A8(player, 0x3F0) > 0;
+                        ok = CountHandCardsByNumber(player, 0x3F0) > 0;
                     }
                     break;
                 case 0x405:
                 case 0x482:
                     {
                         int z = 5;
-                        register struct DuelPlayer *base asm("r5") = &gUnk_020192E4[0];
+                        register struct DuelPlayer *base asm("r5") = &gDuelPlayers[0];
                         register u32 off asm("r2") = 0x28;
                         register u8 *zb asm("r12");
                         u32 mask;
@@ -446,7 +446,7 @@ int sub_0805A8E8(void)
                         if (++z <= 9) goto field22;
                         if (base->handCount != 0) {
                             u32 mask = 0x7FF;
-                            register struct DuelPlayer *cur asm("r0") = &gUnk_020192E4[0];
+                            register struct DuelPlayer *cur asm("r0") = &gDuelPlayers[0];
                             register u32 off asm("r2") = 0x684;
                             register u32 *hp asm("r1");
                             register u32 typeMask asm("r2");
@@ -474,7 +474,7 @@ int sub_0805A8E8(void)
                 case 0x409:
                     {
                         int z = 5;
-                        u8 *zb = gUnk_0201930C;
+                        u8 *zb = gDuelZones;
                         u32 mask = 0x7FF;
                     field21:
                         {
@@ -526,20 +526,20 @@ int sub_0805A8E8(void)
             doAction:
                 {
                     register u32 packed asm("r2");
-                    sub_08046A74(1);
+                    PayChainEnergyCost(1);
                     {
-                        struct AiState *state = &gUnk_02015EF0;
+                        struct AiState *state = &gAiState;
                         register u32 nibble asm("r2");
                         nibble = state->f3 & 15;
                         nibble <<= 4;
                         c &= 15;
                         packed = nibble | c;
                     }
-                    sub_0801EC58(0x80C5, w, packed, 0);
+                    DuelCmd_Push(0x80C5, w, packed, 0);
                     return 0;
                 }
             skip:
-                q = &gUnk_02015EF0;
+                q = &gAiState;
                 {
                     u32 next = q->f3 + 1;
                     register u8 *cp asm("r3");
@@ -567,15 +567,15 @@ struct AiCardRef {
     u8 kind : 6;
     u32 data[4];
 };
-extern const s16 gUnk_08086448[];
-extern const u16 gUnk_08623DF4[];
-int sub_080090E0(int player, u16 type);
-int sub_08056E04(int player, int number);
-int sub_08008524(int player, u16 number);
-int sub_08008C94(int player, u16 id);
-int sub_08041DC4(struct AiCardRef *, int player, int zone);
-int sub_0802CE38(struct AiCardRef *, struct AiCardRef *, u16);
-void sub_0801FBCC(u32 action, u32 flags);
+extern const s16 gAiSimpleSpells[];
+extern const u16 gCardNumberToId[];
+int CountFaceUpSpellTrapsOfType(int player, u16 type);
+int AiFindHandCardByNumber(int player, int number);
+int CountActiveCardsOnField(int player, u16 number);
+int CanPlaceSpellTrapCard(int player, u16 id);
+int CanActivateFieldCard(struct AiCardRef *, int player, int zone);
+int CanActivateEffect(struct AiCardRef *, struct AiCardRef *, u16);
+void Chain_AddPending(u32 action, u32 flags);
 static inline u16 AiScanCardId(u16 number)
 {
     if (number == 0xFFFF) return 0;
@@ -583,46 +583,46 @@ static inline u16 AiScanCardId(u16 number)
     return ((const u16 *)0x08623DF4)[(number - 0x7D0) & 0x7FF] + 1;
 }
 /* Scan field/hand spell candidates, apply LP gates, then queue the selected action. */
-int sub_0805AB90(void)
+int AiStepPlaySimpleSpells(void)
 {
     struct AiCardRef ref;
-    switch (gUnk_02015EF0.phase) {
+    switch (gAiState.phase) {
     case 0:
-        gUnk_02015EF0.f6 = 0;
+        gAiState.f6 = 0;
         do {
-            if (sub_08009280(1, gUnk_08086448[gUnk_02015EF0.f6])) {
+            if (CountActivatableSetCards(1, gAiSimpleSpells[gAiState.f6])) {
                 int ok = 0;
-                switch (gUnk_08086448[gUnk_02015EF0.f6]) {
+                switch (gAiSimpleSpells[gAiState.f6]) {
                 case 0x151: case 0x152: case 0x153: case 0x154: case 0x155:
                 case 0x156: case 0x157: case 0x158: case 0x159:
                 case 0x3EE: case 0x3EF:
                     ok = 1; break;
                 case 0x15A:
-                    if (gUnk_020192E4[0].lp <= 1000 && gUnk_020192E4[1].lp > 500)
+                    if (gDuelPlayers[0].lp <= 1000 && gDuelPlayers[1].lp > 500)
                         ok = 1;
-                    if (gUnk_020192E4[0].lp < gUnk_020192E4[1].lp + 500)
+                    if (gDuelPlayers[0].lp < gDuelPlayers[1].lp + 500)
                         ok = 1;
-                    if (gUnk_020192E4[1].lp > 500) { ok = 1; break; }
+                    if (gDuelPlayers[1].lp > 500) { ok = 1; break; }
                     break;
                 case 0x40F:
-                    if (200 * gUnk_020192E4[0].handCount > gUnk_020192E4[0].lp)
+                    if (200 * gDuelPlayers[0].handCount > gDuelPlayers[0].lp)
                         ok = 1;
-                    if (gUnk_020192E4[0].handCount > 2) { ok = 1; break; }
+                    if (gDuelPlayers[0].handCount > 2) { ok = 1; break; }
                     break;
                 case 0x3F1:
-                    if (sub_080090E0(0, 0x16) > 0) { ok = 1; break; }
+                    if (CountFaceUpSpellTrapsOfType(0, 0x16) > 0) { ok = 1; break; }
                     break;
                 case 0x3EC:
-                    if (sub_080090E0(0, 0x15) > 0) { ok = 1; break; }
+                    if (CountFaceUpSpellTrapsOfType(0, 0x15) > 0) { ok = 1; break; }
                     break;
                 case 0x29F: case 0x437: case 0x438:
-                    if (sub_080091B4(0) > 0) { ok = 1; break; }
+                    if (CountSpellTraps(0) > 0) { ok = 1; break; }
                     break;
                 case 0x425:
-                    if (sub_080091B4(0) > 0 && sub_080091B4(1) == 0) { ok = 1; break; }
+                    if (CountSpellTraps(0) > 0 && CountSpellTraps(1) == 0) { ok = 1; break; }
                     break;
                 case 0x42F:
-                    if (gUnk_020192E4[1].lp > 1000 && gUnk_020192E4[0].handCount)
+                    if (gDuelPlayers[1].lp > 1000 && gDuelPlayers[0].handCount)
                         ok = 1;
                     break;
                 }
@@ -646,25 +646,25 @@ int sub_0805AB90(void)
                             asm("" : "+r"(mask));
                             index = id;
                             ((const u16 *)0x08622AB4)[index & mask];
-                        }) == (u16)gUnk_08086448[gUnk_02015EF0.f6]
-                            && (ZONE(gUnk_02015EF0.f6)->f91 & 4)
-                            && sub_08041DC4(&ref, 1, z)) {
-                            sub_0801EC58(0x807F, z, 0, 0);
+                        }) == (u16)gAiSimpleSpells[gAiState.f6]
+                            && (ZONE(gAiState.f6)->f91 & 4)
+                            && CanActivateFieldCard(&ref, 1, z)) {
+                            DuelCmd_Push(0x807F, z, 0, 0);
                             {
                                 u32 bits = (u32)(z & 31) << 16;
                                 id |= 0x80200000;
-                                sub_0801FBCC(bits | id, 0);
+                                Chain_AddPending(bits | id, 0);
                             }
                             return 0;
                         }
                     }
                 }
             }
-            gUnk_02015EF0.f6++;
-        } while (gUnk_02015EF0.f6 <= 0x13);
+            gAiState.f6++;
+        } while (gAiState.f6 <= 0x13);
         {
             /* FAKEMATCH: keep the initialized phase pointer separate from the next loop. */
-            register struct AiState *state asm("r2") = &gUnk_02015EF0;
+            register struct AiState *state asm("r2") = &gAiState;
             state->phase++;
         }
         /* fall through */
@@ -676,16 +676,16 @@ int sub_0805AB90(void)
         struct AiCardRef *record;
         int zero = 0;
 
-        initial = &gUnk_02015EF0;
+        initial = &gAiState;
 
         initial->f6 = zero;
-        numbers = gUnk_08086448;
+        numbers = gAiSimpleSpells;
 
         state = initial;
         record = &ref;
 
         do {
-            if (sub_08056E04(1, numbers[state->f6]) >= 0) {
+            if (AiFindHandCardByNumber(1, numbers[state->f6]) >= 0) {
                 int ok = 0;
                 switch (numbers[state->f6]) {
                 case 0x151: case 0x152: case 0x153: case 0x154: case 0x155:
@@ -693,23 +693,23 @@ int sub_0805AB90(void)
                 case 0x3EE: case 0x3EF:
                     ok = 1; break;
                 case 0x15A:
-                    if (gUnk_020192E4[0].lp <= 1999 && gUnk_020192E4[1].lp > 1500)
+                    if (gDuelPlayers[0].lp <= 1999 && gDuelPlayers[1].lp > 1500)
                         { ok = 1; break; }
                     break;
                 case 0x3F1:
-                    if (sub_080090E0(0, 0x16) > 0) { ok = 1; break; }
+                    if (CountFaceUpSpellTrapsOfType(0, 0x16) > 0) { ok = 1; break; }
                     break;
                 case 0x3EC:
-                    if (sub_080090E0(0, 0x15) > 0) { ok = 1; break; }
+                    if (CountFaceUpSpellTrapsOfType(0, 0x15) > 0) { ok = 1; break; }
                     break;
                 case 0x29F: case 0x437:
-                    if (sub_080091B4(0) > 0) { ok = 1; break; }
+                    if (CountSpellTraps(0) > 0) { ok = 1; break; }
                     break;
                 case 0x425: case 0x438:
-                    if (sub_080091B4(0) > 0 && sub_080091B4(1) == 0) { ok = 1; break; }
+                    if (CountSpellTraps(0) > 0 && CountSpellTraps(1) == 0) { ok = 1; break; }
                     break;
                 case 0x42F:
-                    if (gUnk_020192E4[1].lp > 1000 && gUnk_020192E4[0].handCount)
+                    if (gDuelPlayers[1].lp > 1000 && gDuelPlayers[0].handCount)
                         ok = 1;
                     break;
                 }
@@ -717,8 +717,8 @@ int sub_0805AB90(void)
                     record->player = 1;
                     record->kind = 0;
                     record->id = AiScanCardId(numbers[state->f6]);
-                    if (sub_0802CE38(&ref, 0, 1) && sub_08008C94(1, record->id)) {
-                        gUnk_02015EF0.phase++;
+                    if (CanActivateEffect(&ref, 0, 1) && CanPlaceSpellTrapCard(1, record->id)) {
+                        gAiState.phase++;
                         return 0;
                     }
                 }
@@ -728,20 +728,20 @@ int sub_0805AB90(void)
         break;
     }
     case 2:
-        if (sub_08008524(0, 0x49C) || sub_08008524(1, 0x49C)) {
-            u16 id = AiScanCardId(gUnk_08086448[gUnk_02015EF0.f6]);
-            int hand = sub_08056E04(1, gUnk_08086448[gUnk_02015EF0.f6]);
-            int freeZone = sub_08008C6C(1);
+        if (CountActiveCardsOnField(0, 0x49C) || CountActiveCardsOnField(1, 0x49C)) {
+            u16 id = AiScanCardId(gAiSimpleSpells[gAiState.f6]);
+            int hand = AiFindHandCardByNumber(1, gAiSimpleSpells[gAiState.f6]);
+            int freeZone = FindFreeSpellTrapZone(1);
             {
                 int packed = ((hand & 15) << 4) | (freeZone & 15);
                 /* FAKEMATCH: finish packing before loading the message constant. */
                 asm("" : : "r"(packed));
-                sub_0801EC58(0x80C5, id, packed, 0);
+                DuelCmd_Push(0x80C5, id, packed, 0);
             }
         } else {
-            u16 id = AiScanCardId(gUnk_08086448[gUnk_02015EF0.f6]);
-            int hand = sub_08056E04(1, gUnk_08086448[gUnk_02015EF0.f6]);
-            int freeZone = sub_08008C6C(1);
+            u16 id = AiScanCardId(gAiSimpleSpells[gAiState.f6]);
+            int hand = AiFindHandCardByNumber(1, gAiSimpleSpells[gAiState.f6]);
+            int freeZone = FindFreeSpellTrapZone(1);
             int zone;
             {
                 int packed = ((hand & 15) << 4) | (freeZone & 15);
@@ -757,14 +757,14 @@ int sub_0805AB90(void)
                     }
                 }
                 asm("" : : "r"(packed));
-                sub_0801EC58(0x80C5, id, packed, 0);
+                DuelCmd_Push(0x80C5, id, packed, 0);
             }
-            zone = sub_08008C6C(1);
+            zone = FindFreeSpellTrapZone(1);
             {
                 /* FAKEMATCH: initialize the card word in the final packing register. */
                 register u32 card asm("r1");
                 u32 bits;
-                u16 number = gUnk_08086448[gUnk_02015EF0.f6];
+                u16 number = gAiSimpleSpells[gAiState.f6];
                 if (number == 0xFFFF)
                     card = 0;
                 else if (number <= 0x7CF) {
@@ -779,10 +779,10 @@ int sub_0805AB90(void)
                 bits = (u32)(zone & 31) << 16;
                 card = (u16)card;
                 card |= 0x80200000;
-                sub_0801FBCC(bits | card, 0);
+                Chain_AddPending(bits | card, 0);
             }
         }
-        gUnk_02015EF0.phase = 0;
+        gAiState.phase = 0;
         return 0;
     }
     return 1;
@@ -794,21 +794,21 @@ int sub_0805AB90(void)
  * on a miss try the next zone.
  * NONMATCHING: structure/control flow decoded. The ROM uses dispatch ptr r4 (dead after the
  * dispatch, reused for 0x7FF), body ptr r5, zones base r6 and 0x94 in r7; the build keeps the
- * gUnk_08622AB4 table address and 0x7FF in r6/r7 across the sub_08007590 call, so zones/0x94
+ * gCardIdToNumber table address and 0x7FF in r6/r7 across the HasFlipEffect call, so zones/0x94
  * spill to r8. Case 0x231 must use the body pointer (r5), not p. */
-/* sub_08008860 returns int (see code_08007994.c); the unit header declares u16, which
+/* CountMonsters returns int (see code_08007994.c); the unit header declares u16, which
  * would add narrowing after each call, so call it through an int-returning cast. */
-#define B184_Count(pl) (((int (*)(int))sub_08008860)(pl))
+#define B184_Count(pl) (((int (*)(int))CountMonsters)(pl))
 /* Step 6: scan player 1's monster zones 0-4 (counter f5) for card numbers that let the
  * CPU attack / activate from that zone; on a hit advance the sub-state (f6), on a miss
- * try the next zone. Sub-state 2 queues the action (sub_08055EB0) and returns to 1.
+ * try the next zone. Sub-state 2 queues the action (QueueFlipSummon) and returns to 1.
  * The dispatch pointer (r4) and the body pointer (r1 -> r5) are separate locals, and the
  * success increments mix pointer and global forms, as the ROM's unmerged tails show. */
-int sub_0805B184(void)
+int AiStepFlipSummon(void)
 {
-    struct AiState *p = &gUnk_02015EF0;
+    struct AiState *p = &gAiState;
     int phase = p->f6;
-    struct AiState *dispatch = &gUnk_02015EF0;
+    struct AiState *dispatch = &gAiState;
 
     switch (phase) {
     case 0:
@@ -834,7 +834,7 @@ int sub_0805B184(void)
             q->f5 = z + 1;
             return 0;
         }
-        if (sub_08007590(((const u16 *)0x08622AB4)[id & 0x7FF], 0) == 0) {
+        if (HasFlipEffect(((const u16 *)0x08622AB4)[id & 0x7FF], 0) == 0) {
             q->f5++;
             return 0;
         }
@@ -847,8 +847,8 @@ int sub_0805B184(void)
             return 0;
         case 0x21B:
         case 0x24E:
-            if (gUnk_020192E4[1].handCount <= 2 || gUnk_020192E4[0].handCount > gUnk_020192E4[1].handCount + 2) {
-                gUnk_02015EF0.f6++;
+            if (gDuelPlayers[1].handCount <= 2 || gDuelPlayers[0].handCount > gDuelPlayers[1].handCount + 2) {
+                gAiState.f6++;
                 return 0;
             }
             break;
@@ -856,14 +856,14 @@ int sub_0805B184(void)
         case 0x21C:
         case 0x259:
             if (B184_Count(0) > 0) {
-                gUnk_02015EF0.f6++;
+                gAiState.f6++;
                 return 0;
             }
             break;
         case 0x452:
         case 0x48B:
             if (B184_Count(1) == 1 && B184_Count(0) > 1) {
-                gUnk_02015EF0.f6++;
+                gAiState.f6++;
                 return 0;
             }
             break;
@@ -874,58 +874,58 @@ int sub_0805B184(void)
             }
             break;
         case 0x27:
-            if (sub_080090C8(0, 0x148) > 0) {
+            if (CountActiveCardsOnField2(0, 0x148) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
         case 0x246:
-            if (sub_080090C8(0, 0x15B) > 0) {
+            if (CountActiveCardsOnField2(0, 0x15B) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
         case 0x109:
-            if (sub_080091B4(0) > 1) {
+            if (CountSpellTraps(0) > 1) {
                 q->f6++;
                 return 0;
             }
             break;
         case 0x53:
         case 0xDF:
-            if (sub_08009280(0, number) > 0) {
-                gUnk_02015EF0.f6++;
+            if (CountActivatableSetCards(0, number) > 0) {
+                gAiState.f6++;
                 return 0;
             }
             break;
         case 0x262:
         case 0x2FA:
-            gUnk_02015EF0.f6++;
+            gAiState.f6++;
             return 0;
         case 0x249:
-            if (sub_08009280(0, number) > 1) {
+            if (CountActivatableSetCards(0, number) > 1) {
                 q->f6++;
                 return 0;
             }
             break;
         case 0x1AB:
-            if (sub_08009150(1, 0x16) > 0) {
+            if (CountGraveyardCardsOfType(1, 0x16) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
         case 0x65:
-            if (sub_08009150(1, 0x15) > 0) {
+            if (CountGraveyardCardsOfType(1, 0x15) > 0) {
                 q->f6++;
                 return 0;
             }
             break;
         }
-        gUnk_02015EF0.f5++;
+        gAiState.f5++;
         return 0;
         }
     case 2:
-        sub_08055EB0(1, p->f5);
+        QueueFlipSummon(1, p->f5);
         p->f5++;
         p->f6 = 1;
         return 0;

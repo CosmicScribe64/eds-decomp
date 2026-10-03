@@ -19,14 +19,14 @@ This page lists the known EWRAM (`0x02xxxxxx`) and IWRAM (`0x03xxxxxx`) globals.
 | `0x03000000` | 0x40 | `IntrTable` | verified | 16 IRQ handler pointers in the dispatcher's priority order (Serial, HBlank, VBlank, VCount, Timer0–3, DMA0–3, Keypad, 13 = Gamepak stub). Filled by `GameInit`. See [[interrupt-handlers]]. |
 | `0x03000040` | ≈0x488C | `gMain` | verified (it is one struct) | The big system struct. `ReadKeys`, `MainLoop` and the VBlank handler all use base `0x03000040` plus offsets, so it's one object rather than separate globals. Fields are below. |
 | `0x0300004C` | 0x400 | `gMain.intrMainBuf` | verified | IWRAM copy of `IntrMain`. `INTR_VECTOR` points here after `GameInit`. |
-| `0x030049D0` | ? | `gUnk_030049D0` | hypothesis | Base of a struct used by the link/VBlank code (`0x08071FA0`–`0x080723B4`, `0x08023228`). `+0x82C` (`0x030051FC`, u16) is incremented by `Timer2Intr`. |
+| `0x030049D0` | ? | `gLinkBuf` | hypothesis | Base of a struct used by the link/VBlank code (`0x08071FA0`–`0x080723B4`, `0x08023228`). `+0x82C` (`0x030051FC`, u16) is incremented by `Timer2Intr`. |
 | `0x03005210` | 0x198 | `gSoundDriver` | verified (layout partly) | Konami sound-driver state: 10 BGM track slots at +0x08, 6 SE track slots at +0xF8 (0x18 bytes each), flags at +0x188, requests at +0x18A/+0x18C. See [[sound-engine]]. |
 | `0x030053AC` | 0x60 | `gSoundPcmChannels` | verified | 6 PCM voices × 0x10 bytes. Voices 0–2 mix into FIFO A and 3–5 into FIFO B. |
 | `0x0300540C` | 8 | `gSoundDmaPos` | verified | u16 FIFO-A position/prev and FIFO-B position/prev. The DMA1 IRQ advances it by 16 each time. |
 | `0x03005414` | 0x640 | `gSoundPcmBuffer` | verified | 2 × 0x320-byte signed-8-bit ring buffers (A at `0x03005414`, B at `0x03005734`). 0x2C0 bytes of each are used. |
 | `0x03005A54` | 0xE0 | `gSoundMixCodeRam` | verified | IWRAM copy of the ARM inner mixing loop (`0x0807EC1C`, 0x38 words). |
 | `0x03005B38`, `0x03005B50` | ? | (unnamed) | unknown | Only referenced by libc-area code (`0x0807F404`, `0x080800B4`). |
-| `0x03005B60` | ≈0xB18 | `gLinkSio` (hypothesis) | verified used by link code | Link-cable state for `sub_080735D4`/`0x08075F74` and friends. `+0xA2C` holds a counter/state (−3…10), and there are send/receive buffers. |
+| `0x03005B60` | ≈0xB18 | `gLinkSio` (hypothesis) | verified used by link code | Link-cable state for `LinkSioInit`/`0x08075F74` and friends. `+0xA2C` holds a counter/state (−3…10), and there are send/receive buffers. |
 | `0x03006644` | 8 | `gSioMultiRecv` (hypothesis) | verified | Snapshot of `SIOMULTI0`–`3` taken at the top of the serial IRQ. |
 | `0x03007B00` | n/a | (SYS stack top) | verified | crt0 `sp_sys`. The user stack grows down from here. |
 | `0x03007FA0` | n/a | (IRQ stack top) | verified | crt0 `sp_irq`. |
@@ -46,9 +46,9 @@ This page lists the known EWRAM (`0x02xxxxxx`) and IWRAM (`0x03xxxxxx`) globals.
 | `0x0300044E` | +0x40E | u16 | `vblankFlags` | verified | bit0: copy the OAM buffer; bit1: copy the BG map buffer; bits 4–7: write BG0–3 HOFS; bits 8–11: write BG0–3 VOFS. Set by 31 functions. |
 | `0x03000450` | +0x410 | fnptr | `callback` | verified | the current scene (main callback). Returns u16 "done". |
 | `0x03000454` | +0x414 | fnptr | `vblankCallback` | verified | called at the end of `VBlankIntr`. Set by about 19 scene functions. |
-| `0x03000458` | +0x418 | fnptr | `vblankCallbackEarly` | verified | called before the sound mixer in `VBlankIntr`. Set to `0x08072055` by the link code (`sub_08072510`). |
+| `0x03000458` | +0x418 | fnptr | `vblankCallbackEarly` | verified | called before the sound mixer in `VBlankIntr`. Set to `0x08072055` by the link code (`LinkInit`). |
 | `0x0300045C` | +0x41C | u16[8][0x400] | `bgMapBuffer` | verified | 8 screenblocks (16 KiB) copied to VRAM `0x06000000` when `vblankFlags & 2`. Cleared by `ClearBgMapBuffers`. |
-| `0x0300445C` | +0x441C | u16, u16 | ? | verified written | set by `sub_0807289C(a,b)`, which `ResetVideo` calls with (0, 0x27E) |
+| `0x0300445C` | +0x441C | u16, u16 | ? | verified written | set by `SetTextArea(a,b)`, which `ResetVideo` calls with (0, 0x27E) |
 | `0x03004460` | +0x4420 | u16[4] | `bgVofs` | verified | shadow BG0–3 VOFS |
 | `0x03004468` | +0x4428 | u16[4] | `bgHofs` | verified | shadow BG0–3 HOFS |
 | `0x03004470` | +0x4430 | u8[0x400] | `oamBuffer` | verified | 128 OAM entries, copied to OAM when `vblankFlags & 1`, then reset. `AddSprite` appends here. |
@@ -84,10 +84,10 @@ The whole of EWRAM is zeroed at boot. The addresses below are **base literals** 
 
 | Address | Name (proposed) | Status | Users | Meaning / evidence |
 |---|---|---|---|---|
-| `0x02000000` | `gTextWork` (hypothesis) | verified (writes) | `0x08074B08`–`0x08075114` (text renderer) | 64 KiB text/glyph work area. `sub_08074B08(a, b)` stores `a`/`b` at `0x02010000`/`0x02010001`, zeroes `0x02010004`, and clears `0x02000000`–`0x0200FFFF`. The License screen calls it with (0x20, 3). The parameters' meaning is unknown. |
+| `0x02000000` | `gTextWork` (hypothesis) | verified (writes) | `0x08074B08`–`0x08075114` (text renderer) | 64 KiB text/glyph work area. `TextCanvasInit(a, b)` stores `a`/`b` at `0x02010000`/`0x02010001`, zeroes `0x02010004`, and clears `0x02000000`–`0x0200FFFF`. The License screen calls it with (0x20, 3). The parameters' meaning is unknown. |
 | `0x02010014` | (unnamed) | verified | `ClearBgMapBuffers` | 0x1C00 bytes, cleared along with the BG map buffers. The u16 at `0x02010010` is cleared too. |
 | `0x02011C20` | `gSaveData` | verified | 82 functions | 0x2170-byte save image, mirrored to SRAM `0x0E000000`. See [[save-game]]. `+0x8` = card trunk, `u32` per card ID with the owned count in bits 0–9 (per [[special-card-lists]]). |
-| `0x02011C24` | `gSaveData+4` | verified | text renderer | u8. Bit 7 selects between two text-render paths (`0x08074E60` / `0x08074F50`). Set to 1 at boot by `sub_080770BC(1)`. |
+| `0x02011C24` | `gSaveData+4` | verified | text renderer | u8. Bit 7 selects between two text-render paths (`0x08074E60` / `0x08074F50`). Set to 1 at boot by `SetTextMode(1)`. |
 | `0x02013D72` | `gSaveData+0x2152` | verified | sound API | u16 option flags: bit0 = SE on, bit1 = BGM on |
 | `0x02013D86` | `gSaveData+0x2166` | verified | save code | 8-byte signature `"DMEX1INT"` (from `0x081A78A8`) |
 | `0x02013D8E` | `gSaveData+0x216E` | verified | save code | u16 checksum = −Σ(u16 words 0…0x10B5) |

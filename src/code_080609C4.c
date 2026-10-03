@@ -17,8 +17,8 @@ struct Main {
     u8 filler4833[0x485E - 0x4833];
     u16 frameCounter;               /* +0x485E */
 };
-extern struct Main gUnk_03000040;
-#define gMain gUnk_03000040
+extern struct Main gMain;
+#define gMain gMain
 
 /* Duel screen flags at 0x0201CFB0 (byte 0). */
 struct DuelFlags {
@@ -33,7 +33,7 @@ struct DuelFlags {
     u8 pad830[0x85C - 0x830];
     void (*cb85C)(void);        /* +0x85C optional per-frame callback */
 };
-extern struct DuelFlags gUnk_0201CFB0;
+extern struct DuelFlags gDuelScreen;
 struct DuelGlobals {
     u8 pad0[4];
     u16 w4;                     /* +4 */
@@ -51,9 +51,9 @@ struct DuelGlobals {
     u8 f1B2C_0 : 1;             /* +0x1B2C */
     u8 f1B2C_rest : 7;
 };
-extern struct DuelGlobals gUnk_020192E0;
+extern struct DuelGlobals gDuel;
 extern u16 gUnk_03001C5C[];       /* BG tilemap buffer in IWRAM, 32 columns */
-extern u8 gUnk_0867BB7C[];
+extern u8 gDuelFieldImage[];
 struct DuelCard { u32 id : 12; u32 unk12 : 20; };
 struct DuelZone {
     struct DuelCard card;   /* +0 */
@@ -71,24 +71,24 @@ struct DuelZonesPlayer {
     struct DuelZone zones[11];
     u8 filler[0xD64 - 11 * 0x94];
 };
-extern struct DuelZonesPlayer gUnk_0201930C[2];
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
-#define ZB3(p, z) ((struct DuelZone *)((p) * 0xD64 + (u32)gUnk_0201930C + (z) * 0x94))
+extern struct DuelZonesPlayer gDuelZones[2];
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
+#define ZB3(p, z) ((struct DuelZone *)((p) * 0xD64 + (u32)gDuelZones + (z) * 0x94))
 struct ZonePos { s32 x; s32 y; };         /* pixel position of a zone, per player (0x10 entries each) */
-extern struct ZonePos gUnk_081A42A4[2][16];
-extern int sub_08008940(int player, int zone);
-extern int sub_0806226C(u32 id);
-extern u32 sub_080623AC(u32 player, u32 a, u32 b);
-extern u32 sub_080623EC(u32 player, u32 a, u32 b);
-extern void sub_08060DD8_i(s32 x, s32 y) asm("sub_08060DD8");
-extern void sub_08060E2C_i(s32 x, s32 y, u32 t) asm("sub_08060E2C");
-extern const u32 gUnk_081A427C[];
-extern u32 sub_0800A368(u32 player);
-extern u32 sub_0806236C(u32 a, u32 b, u32 c);
-extern int sub_08062140(u32 id);
-extern int sub_0804A528(u32 a, u32 b, u32 c);
-extern void sub_080612F4(u32 player, u32 zone, u32 kind);
-extern void sub_08060ECC(u32 player, u32 zone);
+extern struct ZonePos gDuelZonePositions[2][16];
+extern int IsMonsterZoneFree(int player, int zone);
+extern int GetCardIconBgTile(u32 id);
+extern u32 GetAreaX(u32 player, u32 a, u32 b);
+extern u32 GetAreaY(u32 player, u32 a, u32 b);
+extern void sub_08060DD8_i(s32 x, s32 y) asm("ClearTileBlock4x4");
+extern void sub_08060E2C_i(s32 x, s32 y, u32 t) asm("FillTileBlock4x4");
+extern const u32 gZoneMarkerAnimTiles[];
+extern u32 IsHandRevealed(u32 player);
+extern u32 GetHandCardX(u32 a, u32 b, u32 c);
+extern int GetCardIconObjTile(u32 id);
+extern int CanMonsterAttack(u32 a, u32 b, u32 c);
+extern void DrawZoneLinkMarkers(u32 player, u32 zone, u32 kind);
+extern void DrawZoneTiles(u32 player, u32 zone);
 struct PlayerState {            /* 0xD64 bytes, at 0x020192E4 + player * 0xD64 */
     u8 pad0[2];
     u8 b2;                      /* +2 */
@@ -106,37 +106,37 @@ struct PlayerState {            /* 0xD64 bytes, at 0x020192E4 + player * 0xD64 *
     u32 aB84[0x140 / 4];        /* +0xB84 card words */
     u8 aCC4[0x100];             /* +0xCC4 2-byte entries */
 };
-extern struct PlayerState gUnk_020192E4[2];
+extern struct PlayerState gDuelPlayers[2];
 struct IntrVectors {
     u32 unk0;
     void (*hblankCallback)(void);
 };
-extern struct IntrVectors gUnk_03000000;
+extern struct IntrVectors IntrTable;
 
-extern void sub_08073574(void);
-extern void sub_0806041C(void);
-extern void sub_0806075C(void);
-extern void sub_08060578(void);
-extern void sub_080731D0(u32 a, u32 b, u32 c, const void *d);
-extern void sub_0806044C(u32 a);
-extern void sub_08060934(u32 a, u32 b);
-extern void sub_08060964(u32 a, u32 b);
-extern void sub_080611AC(void);
-extern void sub_0805ED9C(void);
-extern void sub_0805ED78(void);
-extern void sub_080759F4(void);
-extern void sub_080757AC(void);
-extern void sub_08060400(void);
-extern void sub_080757F4(void);
-extern u16 sub_08075A6C(u8 step);
-extern u16 sub_08075AE4(u8 step);
-extern void sub_080761F0(u32 yx, u16 shape, u16 attr2);
-extern void sub_08061004(u32 a, u32 b, u32 c);
-extern void sub_08061848(u32 x, u32 y, u32 color);
-extern void sub_080618C4(u32 yx, u32 palBase, const u16 *src, const void *pal);
-extern void sub_08075294(void *dst, const void *src, u32 size);
+extern void ResetVideo(void);
+extern void DuelScreen_InitBgCnt(void);
+extern void LoadDuelBgGfx(void);
+extern void LoadDuelUiGfx(void);
+extern void LoadBgImage4bppMap1(u32 a, u32 b, u32 c, const void *d);
+extern void DuelScreen_LoadFieldBackground(u32 a);
+extern void DrawLifePoints(u32 a, u32 b);
+extern void DrawPhaseIndicator(u32 a, u32 b);
+extern void DrawAllAreaTiles(void);
+extern void TextCellsClear(void);
+extern void TextCellsResetMap(void);
+extern void SetBrightnessBlack(void);
+extern void ResetBgScroll(void);
+extern void DuelScreen_VBlank(void);
+extern void ClearBlend(void);
+extern u16 FadeToBlack(u8 step);
+extern u16 FadeFromBlack(u8 step);
+extern void AddSprite(u32 yx, u16 shape, u16 attr2);
+extern void DrawAreaTiles(u32 a, u32 b, u32 c);
+extern void PlotCardImagePixel(u32 x, u32 y, u32 color);
+extern void DrawCardImageTile(u32 yx, u32 palBase, const u16 *src, const void *pal);
+extern void MemCopy16(void *dst, const void *src, u32 size);
 
-void sub_080609C4(void)
+void DuelScreen_Init(void)
 {
     s32 i;
     /* FAKEMATCH: keep the initialized base tile in r3 during the two stores. */
@@ -147,11 +147,11 @@ void sub_080609C4(void)
 
     REG_DISPCNT = 0;
     gMain.vblankFlags = 0x603;
-    sub_08073574();
-    sub_0806041C();
-    sub_0806075C();
-    sub_08060578();
-    sub_080731D0(0, 0x60, 0x10, gUnk_0867BB7C);
+    ResetVideo();
+    DuelScreen_InitBgCnt();
+    LoadDuelBgGfx();
+    LoadDuelUiGfx();
+    LoadBgImage4bppMap1(0, 0x60, 0x10, gDuelFieldImage);
     i = 0;
     a = gMain.unk20E6;
     tile = 0x4280;
@@ -162,21 +162,21 @@ void sub_080609C4(void)
         *a += tile;
         *b = tile + i;
     }
-    g = &gUnk_020192E0;
-    sub_0806044C(g->v1ACC);
-    sub_08060934(0, g->w4);
-    sub_08060934(1, g->wD68);
-    sub_08060964(g->f1B12_1, g->f1B12_2);
-    sub_080611AC();
-    sub_0805ED9C();
-    sub_0805ED78();
-    sub_080759F4();
-    sub_080757AC();
-    gMain.vblankCallback = sub_08060400;
-    gUnk_0201CFB0.bit2 = 1;
+    g = &gDuel;
+    DuelScreen_LoadFieldBackground(g->v1ACC);
+    DrawLifePoints(0, g->w4);
+    DrawLifePoints(1, g->wD68);
+    DrawPhaseIndicator(g->f1B12_1, g->f1B12_2);
+    DrawAllAreaTiles();
+    TextCellsClear();
+    TextCellsResetMap();
+    SetBrightnessBlack();
+    ResetBgScroll();
+    gMain.vblankCallback = DuelScreen_VBlank;
+    gDuelScreen.bit2 = 1;
 }
 
-void sub_08060AAC(u16 arg)
+void DuelScreen_Exit(u16 arg)
 {
     REG_DISPCNT &= 0xE0FF;
     REG_IME = 0;
@@ -184,29 +184,29 @@ void sub_08060AAC(u16 arg)
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
-    gUnk_03000000.hblankCallback = NULL;
+    IntrTable.hblankCallback = NULL;
     REG_IME = 1;
     gMain.vblankCallback = NULL;
     if (arg != 0) {
-        sub_080759F4();
-        gUnk_0201CFB0.bit2 = 0;
-        gUnk_0201CFB0.bit1 = 0;
+        SetBrightnessBlack();
+        gDuelScreen.bit2 = 0;
+        gDuelScreen.bit1 = 0;
     }
 }
-u16 sub_08060B2C(void)
+u16 DuelScreen_FadeInStep(void)
 {
     REG_DISPCNT |= 0x1F00;
-    return sub_08075AE4(4);
+    return FadeFromBlack(4);
 }
-u32 sub_08060B4C(void)
+u32 DuelScreen_FadeOutStep(void)
 {
-    if (sub_08075A6C(4) != 0) {
-        sub_08060AAC(0);
+    if (FadeToBlack(4) != 0) {
+        DuelScreen_Exit(0);
         return 1;
     }
     return 0;
 }
-u32 sub_08060B6C(s32 step)
+u32 DuelFieldFadeToBlack(s32 step)
 {
     REG_BLDCNT = 0x27E7;
     if (gMain.brightness <= 0x1E) {
@@ -220,7 +220,7 @@ u32 sub_08060B6C(s32 step)
     REG_DISPCNT &= 0xF8FF;
     return 1;
 }
-u32 sub_08060BF0(s32 step)
+u32 DuelFieldDim(s32 step)
 {
     REG_BLDCNT = 0x27E7;
     if (gMain.brightness <= 0x8) {
@@ -233,7 +233,7 @@ u32 sub_08060BF0(s32 step)
         return 0;
     return 1;
 }
-u32 sub_08060C68(s32 step)
+u32 DuelFieldFadeFromBlack(s32 step)
 {
     REG_DISPCNT |= 0x700;
     if (gMain.brightness > step)
@@ -245,10 +245,10 @@ u32 sub_08060C68(s32 step)
         REG_BLDCNT = 0x27E7;
         return 0;
     }
-    sub_080757F4();
+    ClearBlend();
     return 1;
 }
-u32 sub_08060CEC(s32 step)
+u32 DuelFieldFadeToWhite(s32 step)
 {
     REG_BLDCNT = 0x27A7;
     if (gMain.brightness <= 0x1E) {
@@ -261,7 +261,7 @@ u32 sub_08060CEC(s32 step)
         return 0;
     return 1;
 }
-u32 sub_08060D64(s32 step)
+u32 DuelFieldFadeFromWhite(s32 step)
 {
     if (gMain.brightness > step)
         gMain.brightness -= step;
@@ -272,11 +272,11 @@ u32 sub_08060D64(s32 step)
         REG_BLDCNT = 0x27A7;
         return 0;
     }
-    sub_080757F4();
+    ClearBlend();
     return 1;
 }
 /* Clear a 4x4 block of the IWRAM tilemap buffer at (x, y). */
-void sub_08060DD8(u16 x, u16 y)
+void ClearTileBlock4x4(u16 x, u16 y)
 {
     u16 *p = gUnk_03001C5C + (x + (y << 5));
 
@@ -298,7 +298,7 @@ void sub_08060DD8(u16 x, u16 y)
     p[0x63] = 0;
 }
 /* Fill a 4x4 block of the tilemap buffer at (x, y) with consecutive tiles starting at t. */
-void sub_08060E2C(u32 x, u32 y, u16 t)
+void FillTileBlock4x4(u32 x, u32 y, u16 t)
 {
     u16 *p = gUnk_03001C5C + ((u16)x + ((u16)y << 5));
 
@@ -320,13 +320,13 @@ void sub_08060E2C(u32 x, u32 y, u16 t)
     p[0x63] = t;
 }
 /* Redraw the board tile block of zone (player, zone): an empty zone clears it (and draws the 2x2 empty marker for monster zones), otherwise a card back/face tile block. */
-void sub_08060ECC(u32 player, u32 zone)
+void DrawZoneTiles(u32 player, u32 zone)
 {
-    struct DuelZonesPlayer *pp = &gUnk_0201930C[1 & player];
+    struct DuelZonesPlayer *pp = &gDuelZones[1 & player];
     struct DuelZone *z = &pp->zones[zone];
     u16 id = (*(u32 *)z << 20) >> 20;
-    s32 x = gUnk_081A42A4[player][zone].x / 8;
-    s32 y = gUnk_081A42A4[player][zone].y / 8;
+    s32 x = gDuelZonePositions[player][zone].x / 8;
+    s32 y = gDuelZonePositions[player][zone].y / 8;
     u16 t;
     u16 *p;
     u16 xx;
@@ -334,7 +334,7 @@ void sub_08060ECC(u32 player, u32 zone)
 
     if (id == 0) {
         sub_08060DD8_i(x, y);
-        if ((s32)zone <= 4 && sub_08008940(player, zone) == 0) {
+        if ((s32)zone <= 4 && IsMonsterZoneFree(player, zone) == 0) {
             xx = x + 1;
             yy = y + 1;
             p = gUnk_03001C5C + (xx + (yy << 5));
@@ -346,7 +346,7 @@ void sub_08060ECC(u32 player, u32 zone)
     } else {
         t = 0x1070;
         if (z->flags6 & 2)
-            t = sub_0806226C(id) + 0x2000;
+            t = GetCardIconBgTile(id) + 0x2000;
         if (z->flags6 & 1)
             t += 0x30;
         sub_08060E2C_i(x, y, t);
@@ -354,9 +354,9 @@ void sub_08060ECC(u32 player, u32 zone)
 }
 
 
-void sub_08060FD0(u32 player, u32 zone)
+void ClearZoneTiles(u32 player, u32 zone)
 {
-    sub_08060DD8_i(gUnk_081A42A4[player][zone].x / 8, gUnk_081A42A4[player][zone].y / 8);
+    sub_08060DD8_i(gDuelZonePositions[player][zone].x / 8, gDuelZonePositions[player][zone].y / 8);
 }
 /* Redraw the board tile block for one slot `kind` (0-4 / 5-9 / 10 zone rows, 12-15 special slots) of `player`. */
 /* Private 0xD64-byte view of the per-player block (the unit's struct PlayerState is 0xDC4 bytes). */
@@ -374,10 +374,10 @@ struct PlayerState_08061004 {   /* 0xD64 bytes, at 0x020192E4 + player * 0xD64 *
 extern struct PlayerState_08061004 gPS1004_020192E4[2];
 #define PS04 gPS1004_020192E4
 
-void sub_08061004(u32 player, u32 kind, u32 idx)
+void DrawAreaTiles(u32 player, u32 kind, u32 idx)
 {
-    s32 x = gUnk_081A42A4[player][kind].x / 8;
-    s32 y = gUnk_081A42A4[player][kind].y / 8;
+    s32 x = gDuelZonePositions[player][kind].x / 8;
+    s32 y = gDuelZonePositions[player][kind].y / 8;
     u16 t;
     u8 v;
 
@@ -385,7 +385,7 @@ void sub_08061004(u32 player, u32 kind, u32 idx)
     case 0:
     case 5:
     case 10:
-        sub_08060ECC(player, kind + idx);
+        DrawZoneTiles(player, kind + idx);
         break;
     case 12:
         v = PS04[1 & player].b5;
@@ -419,7 +419,7 @@ void sub_08061004(u32 player, u32 kind, u32 idx)
             list = PS04[1 & player].a904;
             o = PS04[1 & player].b4 * 4 - 4;
             list = (u32 *)((u8 *)list + o);
-            sub_08060E2C_i(x, y, (u16)(sub_0806226C((*list << 20) >> 20) + 0x2000));
+            sub_08060E2C_i(x, y, (u16)(GetCardIconBgTile((*list << 20) >> 20) + 0x2000));
         } else {
             sub_08060DD8_i(x, y);
         }
@@ -433,7 +433,7 @@ void sub_08061004(u32 player, u32 kind, u32 idx)
             list = PS04[1 & player].aB84;
             o = PS04[1 & player].b6 * 4 - 4;
             list = (u32 *)((u8 *)list + o);
-            t = sub_0806226C((*list << 20) >> 20) + 0x2000;
+            t = GetCardIconBgTile((*list << 20) >> 20) + 0x2000;
             if (PS04[1 & player].aCC4[(PS04[1 & player].b6 - 1) * 2] == 2)
                 sub_08060E2C_i(x, y, 0x1070);
             else
@@ -444,25 +444,25 @@ void sub_08061004(u32 player, u32 kind, u32 idx)
         break;
     }
 }
-void sub_080611AC(void)
+void DrawAllAreaTiles(void)
 {
     s32 i;
     s32 j;
 
     for (i = 0; i < 2; i++) {
         for (j = 0; j < 5; j++) {
-            sub_08061004(i, 0, j);
-            sub_08061004(i, 5, j);
+            DrawAreaTiles(i, 0, j);
+            DrawAreaTiles(i, 5, j);
         }
-        sub_08061004(i, 10, 0);
-        sub_08061004(i, 12, 0);
-        sub_08061004(i, 13, 0);
-        sub_08061004(i, 14, 0);
-        sub_08061004(i, 15, 0);
+        DrawAreaTiles(i, 10, 0);
+        DrawAreaTiles(i, 12, 0);
+        DrawAreaTiles(i, 13, 0);
+        DrawAreaTiles(i, 14, 0);
+        DrawAreaTiles(i, 15, 0);
     }
 }
 /* Draw two animated 8x8 cursor sprites at the screen positions of two zones (a, b = player | zone << 8); the tile cycles with frameCounter / 8. */
-void sub_0806120C(u16 a, u16 b, u16 c)
+void DrawLinkMarkerPair(u16 a, u16 b, u16 c)
 {
     u8 p1, z1, p2, z2;
     u32 x1, y1, x2, y2;
@@ -470,20 +470,20 @@ void sub_0806120C(u16 a, u16 b, u16 c)
 
     p1 = a;
     z1 = a >> 8;
-    x1 = sub_080623AC(p1, 0, z1) + 8;
-    y1 = sub_080623EC(p1, 0, z1) + 8;
+    x1 = GetAreaX(p1, 0, z1) + 8;
+    y1 = GetAreaY(p1, 0, z1) + 8;
     p2 = b;
     z2 = b >> 8;
-    x2 = sub_080623AC(p2, 0, z2) + 8;
-    y2 = sub_080623EC(p2, 0, z2) + 8;
+    x2 = GetAreaX(p2, 0, z2) + 8;
+    y2 = GetAreaY(p2, 0, z2) + 8;
     x1 |= y1 << 16;
-    t = gUnk_081A427C[(gMain.frameCounter >> 3) & 7] + c + 0x5400;
-    sub_080761F0(x1, 0x40, t);
+    t = gZoneMarkerAnimTiles[(gMain.frameCounter >> 3) & 7] + c + 0x5400;
+    AddSprite(x1, 0x40, t);
     x2 |= y2 << 16;
-    t = gUnk_081A427C[(gMain.frameCounter >> 3) & 7] + c + 0x5400;
-    sub_080761F0(x2, 0x40, t);
+    t = gZoneMarkerAnimTiles[(gMain.frameCounter >> 3) & 7] + c + 0x5400;
+    AddSprite(x2, 0x40, t);
 }
-/* Private views of one zone (0x94 bytes) and of the per-player block (0xD64 bytes) for sub_080612F4. */
+/* Private views of one zone (0x94 bytes) and of the per-player block (0xD64 bytes) for DrawZoneLinkMarkers. */
 struct Zone12F4 {
     u32 card;               /* +0 card word, id in the low 12 bits */
     u8 unk4;
@@ -512,7 +512,7 @@ extern u8 gZ8_12F4_0201930C[];
 /* Draw cursor pairs for the links of zone (player, zone): kind 5 first scans every face-up occupied zone for links
    pointing at (player, zone); kinds 0, 5 and 10 then draw the zone's own links (types 1/5/10 -> 0x20C, 2/7 -> 0x218)
    and, when bit `zone` of the player's mask is set, a 0x218 cursor from (player, 0xF). */
-void sub_080612F4(u32 player, u32 zone, u32 kind)
+void DrawZoneLinkMarkers(u32 player, u32 zone, u32 kind)
 {
     s32 p;
     s32 z;
@@ -532,12 +532,12 @@ void sub_080612F4(u32 player, u32 zone, u32 kind)
                         case 5:
                         case 10:
                             if (id == PACK12F4(player, zone))
-                                sub_0806120C(id, PACK12F4(p, z), 0x20C);
+                                DrawLinkMarkerPair(id, PACK12F4(p, z), 0x20C);
                             break;
                         case 2:
                         case 7:
                             if (id == PACK12F4(player, zone))
-                                sub_0806120C(id, PACK12F4(p, z), 0x218);
+                                DrawLinkMarkerPair(id, PACK12F4(p, z), 0x218);
                             break;
                         }
                     }
@@ -555,31 +555,31 @@ void sub_080612F4(u32 player, u32 zone, u32 kind)
                 case 1:
                 case 5:
                 case 10:
-                    sub_0806120C(id, PACK12F4(player, zone), 0x20C);
+                    DrawLinkMarkerPair(id, PACK12F4(player, zone), 0x20C);
                     break;
                 case 2:
                 case 7:
-                    sub_0806120C(id, PACK12F4(player, zone), 0x218);
+                    DrawLinkMarkerPair(id, PACK12F4(player, zone), 0x218);
                     break;
                 }
             }
         }
         if ((gPS12F4_020192E4[1 & player].mask >> zone) & 1)
-            sub_0806120C((u8)player | 0xF00, (u8)player | ((u8)zone << 8), 0x218);
+            DrawLinkMarkerPair((u8)player | 0xF00, (u8)player | ((u8)zone << 8), 0x218);
         break;
     }
 }
 /* Per-frame draw of the duel board markers: zone cursor effects, hand strip cursor sprites, then the optional callback. */
-/* Per-player state block (0xD64 bytes) at gUnk_020192E0 + 4; only the +0x26 bitmask is used here. */
+/* Per-player state block (0xD64 bytes) at gDuel + 4; only the +0x26 bitmask is used here. */
 struct PS580 {
     u8 pad0[0x26];
     u16 u26;
     u8 pad28[0xD64 - 0x28];
 };
-#define G580 ((struct DuelGlobals *)&gUnk_020192E0)
-/* Per-frame board overlay: act on the cursor zone (row 0 occupied / row 5) via sub_080612F4, draw an animated cursor
+#define G580 ((struct DuelGlobals *)&gDuel)
+/* Per-frame board overlay: act on the cursor zone (row 0 occupied / row 5) via DrawZoneLinkMarkers, draw an animated cursor
    sprite on each monster zone not flagged in the player's +0x26 mask, then run the optional callback at +0x85C. */
-void sub_08061580(void)
+void DrawFieldOverlay(void)
 {
     u32 p;
     u32 z0;
@@ -589,39 +589,39 @@ void sub_08061580(void)
     u32 y;
     u16 t;
 
-    if ((*(u8 *)&gUnk_0201CFB0 & 6) == 6) {
-        p = gUnk_0201CFB0.w824;
-        z0 = gUnk_0201CFB0.w828;
-        zn = z0 + gUnk_0201CFB0.w82C;
+    if ((*(u8 *)&gDuelScreen & 6) == 6) {
+        p = gDuelScreen.w824;
+        z0 = gDuelScreen.w828;
+        zn = z0 + gDuelScreen.w82C;
         switch (z0) {
         case 0:
             /* Explicit (p * 0xD64 + z * 0x94 + base): the ZB() operand order multiplies p first. */
-            if (*(u32 *)((1 & p) * 0xD64 + zn * 0x94 + (u32)gUnk_0201930C) << 20 != 0)
-                sub_080612F4(p, zn, 0);
+            if (*(u32 *)((1 & p) * 0xD64 + zn * 0x94 + (u32)gDuelZones) << 20 != 0)
+                DrawZoneLinkMarkers(p, zn, 0);
             break;
         case 5:
-            sub_080612F4(p, zn, 5);
+            DrawZoneLinkMarkers(p, zn, 5);
             break;
         }
         if (G580->f1B12_2 == 3) {
             for (i = 0; i <= 4; i++) {
-                if (sub_0804A528(G580->f1B12_1, i, 0) != 0) {
-                    /* Base through the gUnk_020192E0 cast so CSE derives it as (sym + 4) and loop hoists it. */
-                    if (((((struct PS580 *)((u8 *)&gUnk_020192E0 + 4))[1 & G580->f1B12_1].u26 >> i) & 1) == 0) {
-                        x = sub_080623AC(G580->f1B12_1, 0, i);
-                        y = sub_080623EC(G580->f1B12_1, 0, i);
+                if (CanMonsterAttack(G580->f1B12_1, i, 0) != 0) {
+                    /* Base through the gDuel cast so CSE derives it as (sym + 4) and loop hoists it. */
+                    if (((((struct PS580 *)((u8 *)&gDuel + 4))[1 & G580->f1B12_1].u26 >> i) & 1) == 0) {
+                        x = GetAreaX(G580->f1B12_1, 0, i);
+                        y = GetAreaY(G580->f1B12_1, 0, i);
                         x += 8;
                         y += 8;
                         y <<= 16; /* separate shift keeps the OR result in x's register */
                         x |= y;
-                        t = gUnk_081A427C[(gMain.frameCounter >> 3) & 7] + 0x5600;
-                        sub_080761F0(x, 0x40, t);
+                        t = gZoneMarkerAnimTiles[(gMain.frameCounter >> 3) & 7] + 0x5600;
+                        AddSprite(x, 0x40, t);
                     }
                 }
             }
         }
-        if (gUnk_0201CFB0.cb85C != NULL)
-            gUnk_0201CFB0.cb85C();
+        if (gDuelScreen.cb85C != NULL)
+            gDuelScreen.cb85C();
     }
 }
 /* Draw the small card sprites of each player's hand/deck strip (row 0xB), skipping the one under the cursor. */
@@ -629,14 +629,14 @@ struct HandRow616 {
     struct DuelCard c[80];
     u8 pad[0xD64 - 80 * 4];
 };
-extern struct HandRow616 gUnk_02019968[2];
+extern struct HandRow616 gDuelHands[2];
 struct PlayerHdr616 {           /* 0xD64 bytes at 0x020192E4 + player * 0xD64 */
     u8 pad0[2];
     u8 handCount;               /* +2 */
     u8 pad3[0xD64 - 3];
 };
 extern struct PlayerHdr616 gHandHdr616_020192E4[2];
-void sub_080616D0(void)
+void DrawHandCards(void)
 {
     s32 pl;
     u16 sel;
@@ -648,50 +648,50 @@ void sub_080616D0(void)
     s32 i;
     struct DuelCard *p;
 
-    if ((*(u8 *)&gUnk_0201CFB0 & 6) == 6) {
+    if ((*(u8 *)&gDuelScreen & 6) == 6) {
         for (pl = 0; pl <= 1; pl++) {
             /* Ternary (not if/else): sel then has 5 refs and loses r9 to the hoisted player offset. */
-            sel = pl != 0 ? sub_0800A368(pl) : 1;
-            y = sub_080623EC(pl, 0xB, 0);
+            sel = pl != 0 ? IsHandRevealed(pl) : 1;
+            y = GetAreaY(pl, 0xB, 0);
             if (y + 0x20 <= 0xBF) {
                 n = gHandHdr616_020192E4[1 & pl].handCount;
                 for (i = 0; i < n; i++) {
                     /* Two statements so fold keeps (base + player offset) + i * 4. */
-                    p = gUnk_02019968[1 & pl].c;
+                    p = gDuelHands[1 & pl].c;
                     p += i;
-                    x = sub_0806236C(pl, i, n);
+                    x = GetHandCardX(pl, i, n);
                     id = p->id;
-                    t = sel ? sub_08062140(id) + 0x1000 : 0x40;
+                    t = sel ? GetCardIconObjTile(id) + 0x1000 : 0x40;
                     if (id != 0) {
-                        /* Through a cast pointer the flag stays gUnk_020192E0 + 0x1B2C (two literals);
-                           a plain gUnk_020192E0.f1B2C_0 folds into one 0x0201AE0C literal. */
-                        if (!(((struct DuelGlobals *)&gUnk_020192E0)->f1B2C_0 && gUnk_0201CFB0.w824 == pl && gUnk_0201CFB0.w828 == 0xB
-                              && gUnk_0201CFB0.w82C == i))
-                            sub_080761F0((y << 16) | x, 0x80, t + 0x400);
+                        /* Through a cast pointer the flag stays gDuel + 0x1B2C (two literals);
+                           a plain gDuel.f1B2C_0 folds into one 0x0201AE0C literal. */
+                        if (!(((struct DuelGlobals *)&gDuel)->f1B2C_0 && gDuelScreen.w824 == pl && gDuelScreen.w828 == 0xB
+                              && gDuelScreen.w82C == i))
+                            AddSprite((y << 16) | x, 0x80, t + 0x400);
                     }
                 }
             }
         }
     }
 }
-void sub_080617F0(void)
+void LinkWaitStart_Nop(void)
 {
 }
-void sub_080617F4(void)
+void LinkWaitEnd_Nop(void)
 {
 }
-void sub_080617F8(void)
+void DrawLinkWaitIndicator(void)
 {
     u16 t = 0x324;
 
     if (gMain.frameCounter & 0x20)
         t += 0x20;
-    if ((*(u8 *)&gUnk_0201CFB0 & 6) == 6) {
-        sub_080761F0(0x00400058, 0x40C0, t |= 0x6000);
+    if ((*(u8 *)&gDuelScreen & 6) == 6) {
+        AddSprite(0x00400058, 0x40C0, t |= 0x6000);
     }
 }
 /* Plot one pixel of colour `color` at (x, y) into 8bpp OBJ tile data at 0x06010000 (tile rows of 64 bytes, 2 tiles per 8 pixels of x, starting two rows down). */
-void sub_08061848(u32 x, u32 y, u32 color)
+void PlotCardImagePixel(u32 x, u32 y, u32 color)
 {
     /* FAKEMATCH: retain the ROM's tile-column/address register. */
     register u32 tx __asm__("r4") = (x << 13) >> 16;
@@ -723,8 +723,8 @@ void sub_08061848(u32 x, u32 y, u32 color)
     buf[px] = color;
     *p = buf[0] | (buf[1] << 8) | ((buf[2] | (buf[3] << 8)) << 16);
 }
-/* Blit an 8x8 4bpp tile (`src`, 16 halfwords, 2 per row) as pixels through sub_08061848 at yx, colours offset by palBase; also loads the 16-colour palette `pal` at the matching OBJ palette slot. */
-void sub_080618C4(u32 yx, u32 palArg, const u16 *srcArg, const void *pal)
+/* Blit an 8x8 4bpp tile (`src`, 16 halfwords, 2 per row) as pixels through PlotCardImagePixel at yx, colours offset by palBase; also loads the 16-colour palette `pal` at the matching OBJ palette slot. */
+void DrawCardImageTile(u32 yx, u32 palArg, const u16 *srcArg, const void *pal)
 {
     /* FAKEMATCH: preserve the ROM's source-pointer register before narrowing palette base. */
     register const u16 *src __asm__("r5") = srcArg;
@@ -738,7 +738,7 @@ void sub_080618C4(u32 yx, u32 palArg, const u16 *srcArg, const void *pal)
 
     if (src == 0 || pal == 0)
         return;
-    sub_08075294((void *)(0x05000200 + ((palBase >> 4) << 5)), pal, 0x40);
+    MemCopy16((void *)(0x05000200 + ((palBase >> 4) << 5)), pal, 0x40);
     for (i = 0; i < 8; i++) {
         for (j = 0; j < 2; j++) {
             w = *src;
@@ -746,22 +746,22 @@ void sub_080618C4(u32 yx, u32 palArg, const u16 *srcArg, const void *pal)
                 u32 c = (w >> (k * 4)) & 0xF;
 
                 if (c != 0)
-                    sub_08061848(x0 + k + j * 4, y0 + i, (u8)(c + palBase));
+                    PlotCardImagePixel(x0 + k + j * 4, y0 + i, (u8)(c + palBase));
             }
         }
     }
 }
 /* Blit a 16x16 image made of four 8x8 tiles (0x20 bytes apart) at yx. */
-void sub_0806196C(u32 yx, u16 palBase, const u16 *src, const void *pal)
+void DrawCardImageIcon16(u32 yx, u16 palBase, const u16 *src, const void *pal)
 {
     u16 x = yx;
     u32 y = yx >> 16;
 
-    sub_080618C4(x | (y << 16), palBase, src, pal);
+    DrawCardImageTile(x | (y << 16), palBase, src, pal);
     src += 0x10;
-    sub_080618C4((x + 8) | (y << 16), palBase, src, pal);
+    DrawCardImageTile((x + 8) | (y << 16), palBase, src, pal);
     src += 0x10;
-    sub_080618C4(x | ((y + 8) << 16), palBase, src, pal);
+    DrawCardImageTile(x | ((y + 8) << 16), palBase, src, pal);
     src += 0x10;
-    sub_080618C4((x + 8) | ((y + 8) << 16), palBase, src, pal);
+    DrawCardImageTile((x + 8) | ((y + 8) << 16), palBase, src, pal);
 }

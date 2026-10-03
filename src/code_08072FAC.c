@@ -1,22 +1,22 @@
 #include "global.h"
 #include "gba.h"
 
-extern void sub_08075294(void *dst, const void *src, u32 n);
-extern void sub_08075278(void *p, u32 n);
-extern void sub_080752B0(void *dst, const void *src, u32 n);
-extern void sub_08075630(void);
-extern void sub_0807289C(int a, int b);
-extern u16 gUnk_081A7760[];
+extern void MemCopy16(void *dst, const void *src, u32 n);
+extern void MemClear16(void *p, u32 n);
+extern void CopyDoubleWords(void *dst, const void *src, u32 n);
+extern void LoadSystemGfx(void);
+extern void SetTextArea(int a, int b);
+extern u16 gMapFillTile[];
 extern u8 gUnk_03000C5C[];
 extern u8 gUnk_0300045C[];
 extern u16 gUnk_0300045C_h[] asm("gUnk_0300045C");
 extern u16 gUnk_03000C5C_h[] asm("gUnk_03000C5C");
-extern vu32 *gUnk_03005B60[];
+extern vu32 *gLinkSio[];
 extern u8 gBgMaps[8][0x800] asm("gUnk_0300045C");
 
 /* Link-cable SIO state block (0x03005B60, 0xB38 bytes); see wiki code-08072fac. */
 struct LinkSio {
-    u32 *irqSlotA;              /* +0x000 IRQ vector slot cleared by sub_0807373C */
+    u32 *irqSlotA;              /* +0x000 IRQ vector slot cleared by LinkSioStop */
     u32 *irqSlotB;              /* +0x004 */
     u16 txHdr;                  /* +0x008 send header: type bits | length */
     u8 txData[0xA18 - 0xA];     /* +0x00A send payload (up to 0x1FF bytes?) */
@@ -41,11 +41,11 @@ struct LinkSio {
     u8 padAFC[0xB0C - 0xAFC];
     u8 unkB0C;
 };
-extern struct LinkSio gUnk_03005B60_s asm("gUnk_03005B60");
-extern void sub_08075F74(void);
-extern u16 sub_080740BC(u8 *rx);
-extern u16 gUnk_03005B6A[];
-extern void sub_08074218(void *src);
+extern struct LinkSio gUnk_03005B60_s asm("gLinkSio");
+extern void LinkSerialIntr(void);
+extern u16 LinkSioMain(u8 *rx);
+extern u16 gLinkSioTxPayload[];
+extern void LinkSioSetSendData(void *src);
 extern u16 gUnk_03006658[];
 extern s32 gUnk_0300665C;
 extern u16 gUnk_03006670;
@@ -53,7 +53,7 @@ extern u16 gUnk_03006672;
 extern u16 gUnk_03006674;
 extern u8 gUnk_03006676[];
 
-u16 sub_08072FAC(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *h = img;
     u16 *hdrT = (u16 *)((u8 *)h + 8 + h[0] * 2);
@@ -76,7 +76,7 @@ u16 sub_08072FAC(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
         *dst++ = v;
         tiles++;
     }
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, h[0] * 2);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, h[0] * 2);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;
@@ -87,7 +87,7 @@ u16 sub_08072FAC(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     return hdrT[0];
 }
 
-u16 sub_080730A8(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bppMap4Rel(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
@@ -97,8 +97,8 @@ u16 sub_080730A8(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     u16 i;
     int col0 = 0;
     int row0 = 0;
-    sub_08075294(dst, tiles, hdrT[0] * 32);
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
+    MemCopy16(dst, tiles, hdrT[0] * 32);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;
@@ -121,17 +121,17 @@ u16 sub_080730A8(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 }
 /* Image pack: {u16 nColors, ...; u16 pal[n] @ +8; u16 nTiles @ +8+2n; tiles @ +0x10+2n ...}.
    Copies tiles to 0x06004000 + tileBase*32 and the palette to 0x05000000 + palIdx*2; returns the tile count. */
-u16 sub_08073184(u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bppGfx(u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
-    sub_08075294((void *)(0x06004000 + tileBase * 32), tiles, hdrT[0] * 32);
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
+    MemCopy16((void *)(0x06004000 + tileBase * 32), tiles, hdrT[0] * 32);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
     return hdrT[0];
 }
-/* Loads an image pack (tiles + palette via sub_08073184) and writes its cell list to the map buffer at 0x03000C5C.
+/* Loads an image pack (tiles + palette via LoadBgImage4bppGfx) and writes its cell list to the map buffer at 0x03000C5C.
    Each cell {pos, tile}: pos & 0x3F = column, pos >> 8 = row (x32), cell = (tile + tileBase) | bank << 12. */
-u16 sub_080731D0(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bppMap1(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u8 *map;
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
@@ -139,7 +139,7 @@ u16 sub_080731D0(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     u16 *hdrC = (u16 *)((u8 *)tiles + hdrT[0] * 32);
     u16 *cells = hdrC + 4;
     u16 i;
-    sub_08073184(palIdx, tileBase, img);
+    LoadBgImage4bppGfx(palIdx, tileBase, img);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;
@@ -152,7 +152,7 @@ u16 sub_080731D0(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     }
     return hdrT[0];
 }
-u16 sub_0807326C(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bpp(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
@@ -161,8 +161,8 @@ u16 sub_0807326C(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     u16 *cells = hdrC + 4;
     u8 *map;
     u16 i;
-    sub_08075294(dst, tiles, hdrT[0] * 32);
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
+    MemCopy16(dst, tiles, hdrT[0] * 32);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;
@@ -177,7 +177,7 @@ u16 sub_0807326C(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 }
 /* FAKEMATCH: the row binding is declared inside the guarded block (permuter); the register pins and the
    empty asm keep row in sl and the mask in ip like the ROM */
-u16 sub_0807332C(u32 rowArg, u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bppToMap(u32 rowArg, u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
     u16 *tiles = (u16 *)((u8 *)img + 0x10 + img[0] * 2);
@@ -188,8 +188,8 @@ u16 sub_0807332C(u32 rowArg, u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     register u32 mask __asm__("r12");
     u16 n;
 
-    sub_08075294(dst, tiles, hdrT[0] * 32);
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
+    MemCopy16(dst, tiles, hdrT[0] * 32);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, img[0] * 2);
 
     i = 0;
     n = hdrC[0];
@@ -210,7 +210,7 @@ u16 sub_0807332C(u32 rowArg, u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     return hdrT[0];
 }
 
-u16 sub_080733F4(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImage4bppMap1Rel(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u8 *map;
     u16 *hdrT = (u16 *)((u8 *)img + 8 + img[0] * 2);
@@ -219,11 +219,11 @@ u16 sub_080733F4(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     u16 *cells = hdrC + 4;
     u16 first = hdrC[4];
     u16 i;
-    sub_08073184(palIdx, tileBase, img);
+    LoadBgImage4bppGfx(palIdx, tileBase, img);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++ - first;
         u16 tile = *cells++;
-        /* FAKEMATCH: split shift + per-iteration map assignment (see sub_080731D0). */
+        /* FAKEMATCH: split shift + per-iteration map assignment (see LoadBgImage4bppMap1). */
         u16 idx = ((pos & 0x3F) | (((pos & 0xFF00) >> 1) >> 2)) + mapBase;
         map = gUnk_03000C5C;
         ((u16 *)map)[idx] = (tile + tileBase) | (palIdx >> 4) << 12;
@@ -231,48 +231,48 @@ u16 sub_080733F4(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
     return hdrT[0];
 }
 /* Clear the 8 BG map buffers (0x800 each) and the 0xE00-byte buffer at 0x02010014. */
-void sub_08073498(void)
+void ClearBgMapBuffers(void)
 {
     int i;
     for (i = 0; i < 8; i++)
-        sub_08075278(gBgMaps[i], 0x800);
+        MemClear16(gBgMaps[i], 0x800);
     {
         u16 *q = (u16 *)0x02010014;
-        sub_08075278(q, 0x1C00);
+        MemClear16(q, 0x1C00);
         q -= 2;
         *q = 0;
     }
 }
-void sub_080734D4(void)
+void ClearBgMapBuffer0(void)
 {
     u16 *q;
-    sub_08075278(gUnk_0300045C, 0x800);
+    MemClear16(gUnk_0300045C, 0x800);
     q = (u16 *)0x02010014;
-    sub_08075278(q, 0x1C00);
+    MemClear16(q, 0x1C00);
     q -= 2;
     *q = 0;
 }
-/* Fill a w x h block of the map buffer (row stride 0x40 bytes) with one tile (gUnk_081A7760[0]). */
-void sub_08073500(u16 row, u16 col, u16 w, u16 h)
+/* Fill a w x h block of the map buffer (row stride 0x40 bytes) with one tile (gMapFillTile[0]). */
+void FillMapRect(u16 row, u16 col, u16 w, u16 h)
 {
     u16 *dst = (u16 *)(gUnk_0300045C + row * 0x800);
     u16 x;
     dst += col;
     for (; h != 0; dst += 0x20, h--) {
         for (x = 0; x < w; x++)
-            dst[x] = *gUnk_081A7760;
+            dst[x] = *gMapFillTile;
     }
 }
-void sub_08073558(void)
+void CopyBgTileBufferToVram(void)
 {
-    sub_080752B0((void *)0x06004400, (void *)0x02010014, 0x1C00);
+    CopyDoubleWords((void *)0x06004400, (void *)0x02010014, 0x1C00);
 }
 /* Clear the map buffers, reset the text limits and the BG2/BG3 affine registers. */
-void sub_08073574(void)
+void ResetVideo(void)
 {
-    sub_08073498();
-    sub_08075630();
-    sub_0807289C(0, 0x27E);
+    ClearBgMapBuffers();
+    LoadSystemGfx();
+    SetTextArea(0, 0x27E);
     *(vu32 *)0x04000028 = 0;
     *(vu32 *)0x0400002C = 0;
     *(vu16 *)0x04000020 = 0x100;
@@ -287,9 +287,9 @@ void sub_08073574(void)
     *(vu16 *)0x04000036 = 0x100;
     *(vu16 *)0x04000008 = 4;
 }
-/* Link install: (re)initialise the SIO state block and hook the serial IRQ (sub_08075F74).
+/* Link install: (re)initialise the SIO state block and hook the serial IRQ (LinkSerialIntr).
    a / b are the two IRQ handler slots (0x03000000 / 0x0300001C). */
-void sub_080735D4(u32 *a, u32 *b)
+void LinkSioInit(u32 *a, u32 *b)
 {
     u8 i;
     u32 zero;
@@ -319,8 +319,8 @@ void sub_080735D4(u32 *a, u32 *b)
     gUnk_03005B60_s.irqSlotB = b;
     REG_IME = 0;
     REG_IE |= 0x80;
-    *a = (u32)sub_08075F74;
-    *b = (u32)sub_08075F74;
+    *a = (u32)LinkSerialIntr;
+    *b = (u32)LinkSerialIntr;
     REG_SIOCNT |= 0x4000;
     REG_IME = 1;
     if (!(gUnk_03005B60_s.unkB0C & 4)) {
@@ -329,19 +329,19 @@ void sub_080735D4(u32 *a, u32 *b)
         REG_IME = 1;
     }
 }
-void sub_0807373C(void)
+void LinkSioStop(void)
 {
     *(vu16 *)0x04000208 = 0;
     *(vu16 *)0x04000200 &= 0xFF3F;
-    *gUnk_03005B60[1] = 0;
-    *gUnk_03005B60[0] = 0;
+    *gLinkSio[1] = 0;
+    *gLinkSio[0] = 0;
     *(vu16 *)0x04000208 = 1;
     *(vu16 *)0x04000128 = 0x2000;
     *(vu16 *)0x04000202 = 0xC0;
 }
 /* Queue `n` bytes (1..0x100) from src for sending on the multi-player link; 0 if the slot is busy. */
 /* Queue `n` bytes (1..0x100) from src for sending on the multi-player link; 0 if the slot is busy. */
-u32 sub_08073784(void *src, int n)
+u32 LinkSioSend(void *src, int n)
 {
     u32 id = (REG_SIOCNT & 0x30) >> 4;
     int slot = (u32)(-id | id) >> 31;
@@ -356,12 +356,12 @@ u32 sub_08073784(void *src, int n)
             link->txHdr = n | 0x3000;
         else
             link->txHdr = n | 0x2000;
-        CpuSet(src, gUnk_03005B6A, (n / 2) & 0x1FFFFF);
-        sub_08074218(gUnk_03005B6A - 1);
+        CpuSet(src, gLinkSioTxPayload, (n / 2) & 0x1FFFFF);
+        LinkSioSetSendData(gLinkSioTxPayload - 1);
     }
     return 1;
 }
-/* LinkSio (0x03005B60) as seen by the multi-block receive in sub_0807382C. */
+/* LinkSio (0x03005B60) as seen by the multi-block receive in LinkSioRecvMultiBlock. */
 struct Link82C {
     u8 pad0[8];
     u16 txPkt[32][8];           /* +0x008 outgoing 16-byte packets (header + 7 halfwords) */
@@ -380,11 +380,11 @@ struct Pkt82C {
     u16 data[7];
 };
 
-/* Multi-block link receive: pump sub_080740BC, then for each player slot with data
+/* Multi-block link receive: pump LinkSioMain, then for each player slot with data
    reassemble 0x2000 (first) / 0x4000 (middle) / 0x3000 (last) blocks into rxBuf,
    acknowledging our own slot's blocks with the next tx packet (0x5000 = resend).
    When slot `id`'s message is complete, copy it to dst and return its length. */
-u32 sub_0807382C(u32 id, void *dst)
+u32 LinkSioRecvMultiBlock(u32 id, void *dst)
 {
     struct Pkt82C rx[2];
     struct Pkt82C tx;
@@ -396,10 +396,10 @@ u32 sub_0807382C(u32 id, void *dst)
     mask = 1;
     slot = 0;
     len = 0;
-    flags = sub_080740BC((u8 *)rx);
+    flags = LinkSioMain((u8 *)rx);
     if (flags & 0x30) {
         tx.hdr = 0x5000;
-        sub_08074218(&tx);
+        LinkSioSetSendData(&tx);
     } else if (flags & 0xF) {
         for (i = 0; i < 2; i++) {
             if (flags & 0xF & mask) {
@@ -425,7 +425,7 @@ u32 sub_0807382C(u32 id, void *dst)
                         else
                             tx.hdr = 0x4000;
                         CpuSet(gLink82C.txPkt[gLink82C.cur[slot]], tx.data, 7);
-                        sub_08074218(&tx);
+                        LinkSioSetSendData(&tx);
                     }
                     gLink82C.cur[slot]++;
                     break;
@@ -447,7 +447,7 @@ u32 sub_0807382C(u32 id, void *dst)
                         else
                             tx.hdr = 0x4000;
                         CpuSet(gLink82C.txPkt[gLink82C.cur[slot]], tx.data, 7);
-                        sub_08074218(&tx);
+                        LinkSioSetSendData(&tx);
                     }
                     break;
                 }
@@ -470,7 +470,7 @@ u32 sub_0807382C(u32 id, void *dst)
 }
 #undef gLink82C
 /* Link receive: run the link step, and if slot `id` holds a complete packet (type 0x3000) copy it to dst; returns its length. */
-u16 sub_08073B64(u32 id, void *dst)
+u16 LinkSioRecvSingle(u32 id, void *dst)
 {
     u8 buf[0x20];
     u16 ret;
@@ -478,7 +478,7 @@ u16 sub_08073B64(u32 id, void *dst)
     int f;
     (void)REG_SIOCNT;
     ret = 0;
-    v = sub_080740BC(buf) << 16;
+    v = LinkSioMain(buf) << 16;
     /* FAKEMATCH: mask via a local + volatile deref so old_agbcc loads the
        0x1FF literal before the halfword and keeps the loaded value in r0. */
     f = 0xF0000;
@@ -504,7 +504,7 @@ u16 sub_08073B64(u32 id, void *dst)
     }
     return 0;
 }
-/* LinkSio as seen by sub_08073C10 (0x03005B60). */
+/* LinkSio as seen by LinkSioRecvDebug (0x03005B60). */
 struct LinkSioC10 {
     u8 pad0[0x20C];
     u16 rxBuf[2][2][0x101];     /* +0x20C [half][slot] */
@@ -519,16 +519,16 @@ struct LinkSioC10 {
     u16 unkAF8[2];
 };
 #define gLinkC10 (*(struct LinkSioC10 *)&gUnk_03005B60_s)
-extern u8 gUnk_080876B4[];
-extern u8 gUnk_080876D4[];
-extern u8 gUnk_080876F8[];
-extern void sub_0801A7DC(const u8 *fmt, ...);
-extern void sub_0801A7E8(void);
+extern u8 gStrLinkDbgBufferStoredBoth[];
+extern u8 gStrLinkDbgBufferOutput[];
+extern u8 gStrLinkDbgBufferStored[];
+extern void DebugPrintf(const u8 *fmt, ...);
+extern void DebugPrintFlush(void);
 
-/* Debug link receive: pump sub_080740BC, then for each slot with a complete
-   type-0x3000 packet print it (sub_0801A7DC), store it in the slot's double
+/* Debug link receive: pump LinkSioMain, then for each slot with a complete
+   type-0x3000 packet print it (DebugPrintf), store it in the slot's double
    buffer, and copy the local player's finished packet to dst; returns its length. */
-u32 sub_08073C10(int slot, void *dst)
+u32 LinkSioRecvDebug(int slot, void *dst)
 {
     u16 rx[3][8];
     u8 k; /* declared before ret: k gets the lower spill slot (sp+0x38) */
@@ -542,8 +542,8 @@ u32 sub_08073C10(int slot, void *dst)
     u8 *d;
     u16 *s;
 
-    v = sub_080740BC((u8 *)rx) << 16;
-    /* same three-step split as sub_08073B64: in-place AND, lsrs, signed switch */
+    v = LinkSioMain((u8 *)rx) << 16;
+    /* same three-step split as LinkSioRecvSingle: in-place AND, lsrs, signed switch */
     f = 0xF0000;
     f = f & v;
     f = (u32)f >> 16;
@@ -559,7 +559,7 @@ u32 sub_08073C10(int slot, void *dst)
             case 0x3000:
                 if (i == (REG_SIOCNT & 0x30) >> 4)
                     gLinkC10.unkA40 = 0x1000;
-                sub_0801A7DC(gUnk_080876B4, i, gLinkC10.unkA1A[i]);
+                DebugPrintf(gStrLinkDbgBufferStoredBoth, i, gLinkC10.unkA1A[i]);
                 CpuSet(p + 1,
                        (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[i]++][i] + gLinkC10.unkAF4[i] * 14,
                        7);
@@ -568,7 +568,7 @@ u32 sub_08073C10(int slot, void *dst)
                 if (i == slot) {
                     if (--gLinkC10.unkA1C != 0xFFFF) {
                         ret = gLinkC10.unkA14[i + gLinkC10.unkA18[i] * 2];
-                        sub_0801A7DC(gUnk_080876D4, i, gLinkC10.unkA18[i], ret);
+                        DebugPrintf(gStrLinkDbgBufferOutput, i, gLinkC10.unkA18[i], ret);
                         CpuSet(gLinkC10.rxBuf[gLinkC10.unkA18[i]++][i], dst, ret >> 1);
                         gLinkC10.unkA18[i] &= 1;
                     }
@@ -580,14 +580,14 @@ u32 sub_08073C10(int slot, void *dst)
             gLinkC10.unkAF4[i] = 0;
             i++;
         }
-        sub_0801A7E8();
+        DebugPrintFlush();
         return ret;
     case 1:
         t = rx[0][0] & 0xF000;
         if (t == 0x1000) {
         } else if (t == 0x3000) {
-            sub_0801A7DC(gUnk_080876F8, 0, gLinkC10.unkA1A[0], rx[0][0] & 0x1FF);
-            sub_0801A7E8();
+            DebugPrintf(gStrLinkDbgBufferStored, 0, gLinkC10.unkA1A[0], rx[0][0] & 0x1FF);
+            DebugPrintFlush();
             gLinkC10.unkA14[gLinkC10.unkA1A[0] * 2] = rx[0][0];
             /* FAKEMATCH: temporaries keep the target's order (src arg first,
                then rxBuf base + AF4*14) so the tail cross-jumps with case 2 */
@@ -604,8 +604,8 @@ u32 sub_08073C10(int slot, void *dst)
         t = *q & 0xF000;
         if (t == 0x1000) {
         } else if (t == 0x3000) {
-            sub_0801A7DC(gUnk_080876F8, 1, gLinkC10.unkA1A[1], *q & 0x1FF);
-            sub_0801A7E8();
+            DebugPrintf(gStrLinkDbgBufferStored, 1, gLinkC10.unkA1A[1], *q & 0x1FF);
+            DebugPrintFlush();
             gLinkC10.unkA14[gLinkC10.unkA1A[1] * 2 + 1] = *q;
             CpuSet(q + 1,
                    (u8 *)gLinkC10.rxBuf[gLinkC10.unkA1A[1]++][1] + gLinkC10.unkAF4[1] * 14, 7);
@@ -618,7 +618,7 @@ u32 sub_08073C10(int slot, void *dst)
     return 0;
 }
 #undef gLinkC10
-/* LinkSio as seen by sub_08073F04 (0x03005B60). */
+/* LinkSio as seen by LinkSioRecv (0x03005B60). */
 struct LinkSioF04 {
     u8 pad0[0x20C];
     u16 rxBuf[2][2][0x101];     /* +0x20C [half][slot] */
@@ -639,11 +639,11 @@ struct LinkSioF04 {
 };
 #define gLinkF04 (*(struct LinkSioF04 *)&gUnk_03005B60_s)
 
-/* Public link receive: pump sub_080740BC, then scan the two player slots for a
+/* Public link receive: pump LinkSioMain, then scan the two player slots for a
    complete type-0x3000 packet and copy it to dst; returns the byte count. */
-u16 sub_08073F04(int slot, void *dst)
+u16 LinkSioRecv(int slot, void *dst)
 {
-    sub_080740BC((u8 *)gLinkF04.rx);
+    LinkSioMain((u8 *)gLinkF04.rx);
     gLinkF04.unkB10 = 0;
     gLinkF04.unkB12 = 0;
     if ((gLinkF04.unkB14 & 0xF) == 3) {

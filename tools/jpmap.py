@@ -4,7 +4,7 @@
     tools/dr python3 tools/jpmap.py                       # analyse, match, write build/jp/*
     tools/dr python3 tools/jpmap.py --compile-test        # + recompile matched USA C at JP addresses
     tools/dr python3 tools/jpmap.py --assets              # + where each config/assets.tsv range is in JP
-    tools/dr python3 tools/jpmap.py --diff sub_08044224   # + aligned USA/JP listing (and case map)
+    tools/dr python3 tools/jpmap.py --diff CollectEffectTargets   # + aligned USA/JP listing (and case map)
 
 Read-only research tool: it reads both ROMs and the repo and writes only under build/jp/ (about 30 s).
 

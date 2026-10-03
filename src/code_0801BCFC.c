@@ -2,7 +2,7 @@
 #include "main.h"
 #include "duel.h"
 
-#define gMain gUnk_03000040
+#define gMain gMain
 
 /*
  * Canonical main.h splits +0x4888 as unk4888_0:4 / counter4888:2 / unk4888_6:2.
@@ -16,7 +16,7 @@ struct MainFlags4888 {
     u8 unk4888_2:2;                 /* 0x4888 bits 2-3 */
     u8 rest4888_4:4;
 };
-#define gMainBits (*(struct MainFlags4888 *)&gUnk_03000040)
+#define gMainBits (*(struct MainFlags4888 *)&gMain)
 
 /* Save image (0x02011C20). */
 struct SaveOpponent {
@@ -33,19 +33,19 @@ struct SaveData {
     u16 unk2160;                    /* 0x2160 */
     u8 unk2162;                     /* 0x2162 */
     u8 unk2163;
-    u16 unk2164;                    /* 0x2164: bit 0/1 set after a duel (see sub_0801BE90) */
+    u16 unk2164;                    /* 0x2164: bit 0/1 set after a duel (see Campaign_RecordDuelResult) */
 };
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
 
 struct Unk02015EE8 {
     u8 phase;                       /* 0x0: duel phase index (see program-flow) */
     u8 unk1_0:1;
     u8 unk1_1:7;
 };
-extern struct Unk02015EE8 gUnk_02015EE8;
+extern struct Unk02015EE8 gDuelCtrl;
 
-extern const u16 gUnk_080819BE[];   /* 0x1C card IDs */
+extern const u16 gPackDisplayOrder[];   /* 0x1C card IDs */
 
 /* Per-opponent post-duel text IDs (0x10 bytes each). */
 struct OpponentText {
@@ -58,20 +58,20 @@ struct OpponentText {
     u16 winAlt9;    /* 0xC: if save state == 9 */
     u16 unkE;
 };
-extern const struct OpponentText gUnk_080817FC[];
-extern const u16 gUnk_08081AE4[];
-extern const u16 gUnk_0808198C[];
+extern const struct OpponentText gOpponentResultTexts[];
+extern const u16 gOpponentFirstMeetingText[];
+extern const u16 gOpponentNextMatchDuelText[];
 
-u32 sub_08002FD0(void);
-void sub_0801AE2C(void);
-u32 sub_08001AE4(void);
+u32 OpponentSelect_Run(void);
+void Campaign_StartPreDuelDialogue(void);
+u32 CB_Bustup(void);
 
-u16 sub_0801BCFC(void)
+u16 Campaign_SelectOpponent(void)
 {
     switch (gMain.step488A) {
     case 0:
         if (!gMainBits.skipScript) {
-            if (sub_08002FD0()) {
+            if (OpponentSelect_Run()) {
                 gMain.step488A++;
                 gMain.seqIndex1 = 0;
                 gMain.seqState1 = 0;
@@ -81,10 +81,10 @@ u16 sub_0801BCFC(void)
         }
         gMain.step488A++;
     case 1:
-        sub_0801AE2C();
+        Campaign_StartPreDuelDialogue();
         gMain.step488A++;
     case 2:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.step488A++;
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
@@ -95,89 +95,89 @@ u16 sub_0801BCFC(void)
     return 1;
 }
 
-u16 sub_08029D7C(void);
-u16 sub_08029EC4(void);
-u16 sub_08029E34(void);
+u16 TurnOrder_RunRps(void);
+u16 TurnOrder_RunCpuChoice(void);
+u16 TurnOrder_RunPlayerChoice(void);
 
-u16 sub_0801BE0C(void)
+u16 Campaign_DecideTurnOrder(void)
 {
     if (!gMain.counter4888)
-        return sub_08029D7C();
-    else if (gUnk_020192E0.result == 2)
-        return sub_08029E34();
+        return TurnOrder_RunRps();
+    else if (gDuel.result == 2)
+        return TurnOrder_RunPlayerChoice();
     else
-        return sub_08029EC4();
+        return TurnOrder_RunCpuChoice();
 }
 
-void sub_0801F744(void);
-void sub_0800817C(void);
-void sub_08007E68(u32, u32);
-void sub_08059258(u32);
+void Duel_Setup(void);
+void LoadPlayerDeckFromSave(void);
+void ShuffleDeck(u32, u32);
+void LoadOpponentDeck(u32);
 
-u16 sub_0801BE58(void)
+u16 Campaign_SetupDuel(void)
 {
-    sub_0801F744();
-    gUnk_02015EE8.unk1_0 = 0;
-    sub_0800817C();
-    sub_08007E68(0, 8);
-    sub_08059258(0);
-    sub_08007E68(1, 8);
+    Duel_Setup();
+    gDuelCtrl.unk1_0 = 0;
+    LoadPlayerDeckFromSave();
+    ShuffleDeck(0, 8);
+    LoadOpponentDeck(0);
+    ShuffleDeck(1, 8);
     return 1;
 }
 
-int sub_08063EA0(void);
-u32 sub_08063EDC(u16);
-void sub_08077948(u32);
-void sub_08077998(u32);
-void sub_080779E8(u32);
+int GetCampaignLevel(void);
+u32 IsPackUnlocked(u16);
+void RecordDuelWin(u32);
+void RecordDuelLoss(u32);
+void RecordDuelDraw(u32);
 
-void sub_0801BE90(void)
+void Campaign_RecordDuelResult(void)
 {
-    int before = sub_08063EA0();
+    int before = GetCampaignLevel();
     u32 i;
     int countBefore, countAfter;
 
     for (i = 0, countBefore = 0; i <= 0x1B; i++) {
-        if (sub_08063EDC(gUnk_080819BE[i]))
+        if (IsPackUnlocked(gPackDisplayOrder[i]))
             countBefore++;
     }
-    switch (gUnk_020192E0.result) {
+    switch (gDuel.result) {
     case 1:
-        sub_08077948(gMain.opponent);
+        RecordDuelWin(gMain.opponent);
         break;
     case 2:
-        sub_08077998(gMain.opponent);
+        RecordDuelLoss(gMain.opponent);
         break;
     case 3:
-        sub_080779E8(gMain.opponent);
+        RecordDuelDraw(gMain.opponent);
         break;
     }
-    if (sub_08063EA0() > before)
+    if (GetCampaignLevel() > before)
         gSaveData.unk2164 |= 1;
     for (i = 0, countAfter = 0; i <= 0x1B; i++) {
-        if (sub_08063EDC(gUnk_080819BE[i]))
+        if (IsPackUnlocked(gPackDisplayOrder[i]))
             countAfter++;
     }
     if (countAfter > countBefore)
         gSaveData.unk2164 |= 2;
 }
 
-void sub_08001C10(u16 textId);
-void sub_08077B24(u16 bgm);
-u32 sub_0806EF74(void);
+void StartDialogue(u16 textId);
+void PlayBGM(u16 bgm);
+u32 SideDeckSwap_Run(void);
 extern const u16 gUnk_08624CCE;
 extern const u16 gUnk_08624CD0;
 extern const u16 gUnk_08624CD2;
 
-u32 sub_08063AF8(void);
-u32 sub_08063B48(u16 pack);
-u16 sub_0801B6D4(void);
-void sub_0807761C(u16 card);
-void sub_080754BC(void);
-void sub_08077498(u16 card);
-void sub_08077A28(void);
-void sub_0800688C(u16 card, u16 b, u16 c);
-u16 sub_08006D08(void);
+u32 CB_GetPack(void);
+u32 GetRewardPack(u16 pack);
+u16 PickRandomOwnedRareCard(void);
+void RemoveCardFromTrunk(u16 card);
+void SaveGame(void);
+void AddCardToTrunk(u16 card);
+void IncrementChampionshipWins(void);
+void CardDetail_Init(u16 card, u16 b, u16 c);
+u16 CardDetail_Run(void);
 
 #define RESET_SEQ()             \
     do {                        \
@@ -187,38 +187,38 @@ u16 sub_08006D08(void);
     } while (0)
 
 /* Campaign step after the post-duel text: rewards (cards / booster packs). */
-u16 sub_0801BF80(void)
+u16 Campaign_GiveRewards(void)
 {
     switch (gMain.step488A) {
     case 0:
-        sub_0801BE90();
+        Campaign_RecordDuelResult();
         gMain.step488A = 1;
         return 0;
     case 1:
-        switch (gUnk_020192E0.result) {
+        switch (gDuel.result) {
         case 1:
             RESET_SEQ();
             switch (gMain.events) {
             case 0x1000000:
-                sub_08001C10(0xC8);
+                StartDialogue(0xC8);
                 gSaveData.unk215E++;
                 gMain.rewardCard = gUnk_08624CD0;
                 gMain.step488A = 0xA;
                 return 0;
             case 0x2000000:
-                sub_08001C10(0xCA);
+                StartDialogue(0xCA);
                 gSaveData.unk215E++;
                 gMain.rewardCard = gUnk_08624CCE;
                 gMain.step488A = 0xA;
                 return 0;
             case 0x4000000:
-                sub_08001C10(0xCC);
+                StartDialogue(0xCC);
                 gSaveData.unk215E++;
                 gMain.rewardCard = gUnk_08624CD2;
                 gMain.step488A = 0xA;
                 return 0;
             case 0x8000000:
-                sub_08001C10(0xCE);
+                StartDialogue(0xCE);
                 gSaveData.unk215E = 0;
                 gSaveData.unk2162++;
                 gMain.rewardCard = 0;
@@ -230,7 +230,7 @@ u16 sub_0801BF80(void)
                 gMain.step488A = 0xF;
                 return 0;
             case 0x20000000:
-                sub_08001C10(0x2BF);
+                StartDialogue(0x2BF);
                 gMain.rewardPack = 0x386;
                 gMain.step488A = 0xE;
                 return 0;
@@ -299,16 +299,16 @@ u16 sub_0801BF80(void)
             switch (gMain.events) {
             case 0x800000:
                 switch (gMain.opponent) {
-                case 11: sub_08001C10(0x2AF9); break;
-                case 12: sub_08001C10(0x2EE1); break;
-                case 13: sub_08001C10(0x32C9); break;
-                case 14: sub_08001C10(0x36B1); break;
-                case 15: sub_08001C10(0x3A99); break;
+                case 11: StartDialogue(0x2AF9); break;
+                case 12: StartDialogue(0x2EE1); break;
+                case 13: StartDialogue(0x32C9); break;
+                case 14: StartDialogue(0x36B1); break;
+                case 15: StartDialogue(0x3A99); break;
                 }
                 gMain.step488A = 0x16;
-                gMain.rewardCard = sub_0801B6D4();
-                sub_0807761C(gMain.rewardCard);
-                sub_080754BC();
+                gMain.rewardCard = PickRandomOwnedRareCard();
+                RemoveCardFromTrunk(gMain.rewardCard);
+                SaveGame();
                 return 0;
             case 0x1000000:
             case 0x2000000:
@@ -318,7 +318,7 @@ u16 sub_0801BF80(void)
             case 0x400000:
             case 0x10000000:
             case 0x20000000:
-                sub_08001C10(0x12C);
+                StartDialogue(0x12C);
                 gMain.step488A = 0x14;
                 return 0;
             }
@@ -330,7 +330,7 @@ u16 sub_0801BF80(void)
             u16 flag = gSaveData.unk2164 & 2;
             if (flag) {
                 gSaveData.unk2164 &= ~2;
-                sub_08001C10(0x15F);
+                StartDialogue(0x15F);
             } else {
                 gMain.rewardPack = flag;
                 RESET_SEQ();
@@ -340,64 +340,64 @@ u16 sub_0801BF80(void)
         gMain.step488A++;
         return 0;
     case 3:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.step488A++;
             RESET_SEQ();
         }
         return 0;
     case 4:
-        return sub_08063AF8();
+        return CB_GetPack();
     case 0xA:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             if (gMain.rewardCard) {
-                sub_08077498(gMain.rewardCard);
-                sub_080754BC();
+                AddCardToTrunk(gMain.rewardCard);
+                SaveGame();
                 gMain.step488A = 0xC;
                 return 0;
             } else {
-                sub_0807761C(gUnk_08624CCE);
-                sub_0807761C(gUnk_08624CD0);
-                sub_0807761C(gUnk_08624CD2);
-                sub_08077A28();
-                sub_080754BC();
+                RemoveCardFromTrunk(gUnk_08624CCE);
+                RemoveCardFromTrunk(gUnk_08624CD0);
+                RemoveCardFromTrunk(gUnk_08624CD2);
+                IncrementChampionshipWins();
+                SaveGame();
                 RESET_SEQ();
                 gMain.step488A++;
             }
         }
         return 0;
     case 0xB:
-        if (sub_08063B48(0x1FD)) {
+        if (GetRewardPack(0x1FD)) {
             RESET_SEQ();
             gMain.step488A = 0x19;
             return 0;
         }
         return 0;
     case 0xC:
-        sub_0800688C(gMain.rewardCard, 0, 0);
+        CardDetail_Init(gMain.rewardCard, 0, 0);
         gMain.step488A++;
     case 0xD:
-        return sub_08006D08();
+        return CardDetail_Run();
     case 0xE:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             RESET_SEQ();
             gMain.step488A++;
         }
         return 0;
     case 0xF:
-        return sub_08063B48(gMain.rewardPack);
+        return GetRewardPack(gMain.rewardPack);
     case 0x14:
-        return sub_08001AE4();
+        return CB_Bustup();
     case 0x16:
-        sub_0800688C(gMain.rewardCard, 0, 0);
+        CardDetail_Init(gMain.rewardCard, 0, 0);
         gMain.step488A++;
     case 0x17:
-        if (sub_08006D08()) {
+        if (CardDetail_Run()) {
             RESET_SEQ();
             gMain.step488A++;
         }
         return 0;
     case 0x18:
-        return sub_08001AE4();
+        return CB_Bustup();
     case 0x19:
         return 1;
     }
@@ -405,7 +405,7 @@ u16 sub_0801BF80(void)
 }
 
 
-u16 sub_0801C938(void)
+u16 Campaign_ShowDuelResult(void)
 {
     s32 opp = gMain.opponent;
     u16 text;
@@ -417,14 +417,14 @@ u16 sub_0801C938(void)
     case 0x1F:
         return 1;
     }
-    text = gUnk_08081AE4[opp];
+    text = gOpponentFirstMeetingText[opp];
     switch (gMain.step488A) {
     case 0:
         done = 0;
         if (gMainBits.unk4888_2 == 1) {
             done = 1;
         } else {
-            switch (gUnk_020192E0.result) {
+            switch (gDuel.result) {
             case 1:
                 gMain.score++;
                 break;
@@ -438,21 +438,21 @@ u16 sub_0801C938(void)
             switch (gMain.counter4888) {
             case 3:
                 if (gMain.score < 0)
-                    gUnk_020192E0.result = 2;
+                    gDuel.result = 2;
                 if (gMain.score > 0)
-                    gUnk_020192E0.result = 1;
+                    gDuel.result = 1;
                 if (gMain.score == 0)
-                    gUnk_020192E0.result = 3;
+                    gDuel.result = 3;
                 done = 1;
                 break;
             case 2:
                 switch (gMain.score) {
                 case -2:
-                    gUnk_020192E0.result = 2;
+                    gDuel.result = 2;
                     done = 1;
                     break;
                 case 2:
-                    gUnk_020192E0.result = 1;
+                    gDuel.result = 1;
                     done = 1;
                     break;
                 }
@@ -460,15 +460,15 @@ u16 sub_0801C938(void)
             }
         }
         if (!done) {
-            switch (gUnk_020192E0.result) {
+            switch (gDuel.result) {
             case 1:
-                sub_08001C10(gUnk_080817FC[opp].unk6);
+                StartDialogue(gOpponentResultTexts[opp].unk6);
                 break;
             case 2:
-                sub_08001C10(gUnk_080817FC[opp].unk8);
+                StartDialogue(gOpponentResultTexts[opp].unk8);
                 break;
             case 3:
-                sub_08001C10(gUnk_080817FC[opp].unk8);
+                StartDialogue(gOpponentResultTexts[opp].unk8);
                 break;
             }
             gMain.seqIndex1 = 0;
@@ -476,39 +476,39 @@ u16 sub_0801C938(void)
             gMain.seqState2 = 0;
             gMain.step488A++;
             gMain.step488A++;
-            sub_08077B24(0x15);
+            PlayBGM(0x15);
             return 0;
         }
     show:
-        switch (gUnk_020192E0.result) {
+        switch (gDuel.result) {
         case 1:
             switch (gSaveData.opponents[opp].unk0_0) {
             case 4:
-                text = gUnk_080817FC[opp].winAlt4;
+                text = gOpponentResultTexts[opp].winAlt4;
                 break;
             case 9:
-                text = gUnk_080817FC[opp].winAlt9;
+                text = gOpponentResultTexts[opp].winAlt9;
                 break;
             default:
-                text = gUnk_080817FC[opp].win;
+                text = gOpponentResultTexts[opp].win;
                 break;
             }
-            sub_08077B24(0x18);
+            PlayBGM(0x18);
             break;
         case 2:
-            text = gUnk_080817FC[opp].lose;
+            text = gOpponentResultTexts[opp].lose;
             if (gMain.events == 0x800000)
-                sub_08077B24(0x1C);
+                PlayBGM(0x1C);
             else
-                sub_08077B24(0x19);
+                PlayBGM(0x19);
             break;
         case 3:
-            text = gUnk_080817FC[opp].draw;
-            sub_08077B24(0x19);
+            text = gOpponentResultTexts[opp].draw;
+            PlayBGM(0x19);
             break;
         }
         if (gMain.events == 0x800000) {
-            switch (gUnk_020192E0.result) {
+            switch (gDuel.result) {
             case 1:
                 switch (opp) {
                 case 11: text = 0x2AFB; break;
@@ -529,17 +529,17 @@ u16 sub_0801C938(void)
                 break;
             }
         }
-        sub_08001C10(text);
+        StartDialogue(text);
         gMain.seqIndex1 = 0;
         gMain.seqState1 = 0;
         gMain.seqState2 = 0;
         gMain.step488A++;
     case 1:
-        if (sub_08001AE4())
+        if (CB_Bustup())
             return 1;
         break;
     case 2:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
             gMain.seqState2 = 0;
@@ -548,8 +548,8 @@ u16 sub_0801C938(void)
         }
         break;
     case 3:
-        if (sub_0806EF74()) {
-            sub_08001C10(gUnk_0808198C[opp]);
+        if (SideDeckSwap_Run()) {
+            StartDialogue(gOpponentNextMatchDuelText[opp]);
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
             gMain.seqState2 = 0;
@@ -557,7 +557,7 @@ u16 sub_0801C938(void)
         }
         break;
     case 4:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.seqIndexCampaign -= 3;
             gMain.step488A = 0;
             gMain.seqState0 = 0;

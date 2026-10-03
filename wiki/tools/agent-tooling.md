@@ -36,7 +36,7 @@ Score = differing normalized lines + 4 x |size delta| (the same metric as the sc
 `build/solo-s49/scout2.py`). `check.py --src FILE` and `permute.py --src FILE` are the underlying options.
 The size delta does not count the zero `.align 2, 0` pad that the function table includes after a function ending
 on a 2-byte boundary (agbcc's `.size` excludes it). Before 2026-10-01 that pad showed as `-2 bytes`, held such
-functions at score 8, and made `apply` refuse them ([[code-08019554]], `sub_0801A130`).
+functions at score 8, and made `apply` refuse them ([[code-08019554]], `DiscardHandCardByNumber`).
 Agents also write `build/wf/<func>/NOTES.md`; the lead folds those into the unit pages after each wave (waves 1-2 on 2026-10-01, waves 2-3 and the giants on 2026-10-02: see [[log]]).
 
 **Register differences.** Since 2026-10-02, [[regoracle]] reads the allocation from a traced compiler instead of
@@ -51,14 +51,14 @@ copies and moved the result into `src/` with `wf.py apply`. A size error in one 
 jump-table words of every later switch. Those diffs clear only after integration, so workers should not chase
 them.
 
-**Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `sub_080471E8` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[code-08046738]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
+**Score 0 is not yet a match.** Normalisation drops branch targets, so a function can score 0 while some of its branches still go to the wrong block. `apply` then refuses it, because the whole-unit byte check fails. `CardMenu_SummonMonster` reached score 0 with three wrong branch targets (a threaded switch arm and two cross-jumped tails, [[code-08046738]]). Before trusting a 0, read the raw diff: `tools/dr python3 tools/check.py <unit> --src build/wf/<func>/unit.c --diff <func>` without `--norm`.
 
-**Parking twice.** `park` merges three ways against the copy's `base.c` and does not refresh `base.c` afterwards, so a second park of the same function conflicts with the first. Agents on the giants worked around this by copying `src/<unit>.c` to `base.c` after each park, once a diff showed only their draft block had changed (`syncbase.py` for `sub_0804FC4C`, `park.sh` for `sub_08044224`, which also checks that nobody else touched the unit).
+**Parking twice.** `park` merges three ways against the copy's `base.c` and does not refresh `base.c` afterwards, so a second park of the same function conflicts with the first. Agents on the giants worked around this by copying `src/<unit>.c` to `base.c` after each park, once a diff showed only their draft block had changed (`syncbase.py` for `DuelPhase_Standby`, `park.sh` for `CollectEffectTargets`, which also checks that nobody else touched the unit).
 
 **Pitfalls reported by wave 2-3 agents (2026-10-01/02):**
-- While the Docker daemon was down, `wf.py check` printed the connection error and then `score: 0 (MATCH)` (`sub_0805FD28`, `sub_08036A68`). Checks made at that time were not re-confirmed, so treat a 0 printed next to an error as a failed build. `apply` still re-checks the whole unit. `wf.py score` has also printed `score: None` (`sub_080616D0`).
-- Helper scripts with common names in the shared scratchpad (`try.sh`, `put.py`) were overwritten by other agents. At least two runs wrote into another function's `build/wf/<func>/unit.c` (`sub_08017314`/`sub_08073784`, `sub_08052B78`/`sub_0800D398`, and stray `WF-END` lines in `build/wf/sub_0800D398/`). Keep per-function helpers in `build/wf/<func>/`.
-`apply` accepts empty `asm("" : ...)` constraints and `register ... asm("rN")` bindings but rejects any other asm string, including `asm("gUnk_...")` / `__asm__` symbol-alias declarations inside the markers; wave agents used a cast of an existing symbol or a function-pointer cast macro instead (`sub_0806704C`, `sub_0806710C`, `sub_08070F18`, `sub_0806F934`).
+- While the Docker daemon was down, `wf.py check` printed the connection error and then `score: 0 (MATCH)` (`TextBoxDrawText`, `EffectCyberJarResolve`). Checks made at that time were not re-confirmed, so treat a 0 printed next to an error as a failed build. `apply` still re-checks the whole unit. `wf.py score` has also printed `score: None` (`DrawHandCards`).
+- Helper scripts with common names in the shared scratchpad (`try.sh`, `put.py`) were overwritten by other agents. At least two runs wrote into another function's `build/wf/<func>/unit.c` (`UpdateMonsterControl`/`LinkSioSend`, `DuelCursor_FindTargetHorizontal`/`DuelCmd_PrepareBattlePhase`, and stray `WF-END` lines in `build/wf/DuelCmd_PrepareBattlePhase/`). Keep per-function helpers in `build/wf/<func>/`.
+`apply` accepts empty `asm("" : ...)` constraints and `register ... asm("rN")` bindings but rejects any other asm string, including `asm("gUnk_...")` / `__asm__` symbol-alias declarations inside the markers; wave agents used a cast of an existing symbol or a function-pointer cast macro instead (`DeckEdit_UpdatePanelHighlight`, `DeckEdit_CountSideDeckMonsters`, `TradeCardSelect_Update`, `ProhibitCardSelect_Update`).
 
 ## Running agents
 | Tool | What it does |
@@ -123,9 +123,9 @@ with none missing a starting reference. Logs: `build/lead-pass38/`.
 The lead also privately compiled 112 unassigned parked routines of at least
 0x180 bytes. `build/lead-scout/ranked.json` records current size and byte
 differences; the score is a prioritization aid, not semantic evidence or coverage.
-Assignments from that survey yielded exact `sub_08054398`, `sub_08027D34` and
-`sub_080334E4`, then `sub_08055728`, `sub_0806A9AC`, `sub_0807CDB4`,
-`sub_080358AC` and `sub_0802A4CC` (6,124 bytes across both checkpoints), with original ABI/source review and full-unit checks.
+Assignments from that survey yielded exact `CanSummonFromHand`, `TurnOrder_DrawHandCarousel` and
+`EffectMagicalHatsResolve`, then `SummonAction_Update`, `SideDeckSwap_Init`, `CardTrading_InitVideo`,
+`EffectAttackResponseResolve` and `CardListView_DrawCardStatus` (6,124 bytes across both checkpoints), with original ABI/source review and full-unit checks.
 A separate 89-variant local-width survey found no additional exact candidate;
 its unchanged forms need not be repeated (`build/lead-width-scout/results.json`).
 A further 31 initialized-input variants on close unassigned drafts also found
@@ -155,7 +155,7 @@ Results by approach. Every unit was verified MATCH after every run.
 | Approach | Result |
 |---|---|
 | Sibling sweep | 6/10 matched at ≥90% similarity; more at 80–90% were in progress |
-| m2c fresh drafts | Mixed: 0–3 per unit, e.g. `sub_0803CC18` (0x1D4 bytes) on the first try |
+| m2c fresh drafts | Mixed: 0–3 per unit, e.g. `CheckFusionRecipe3` (0x1D4 bytes) on the first try |
 | Permuter batch | 26/94 at 5 minutes each |
 | Header migrations | Every unit stayed MATCH; most needed 0 local views |
 | Claude advisor | 2 verified fixes and 5 partial from 10 answers, about 0.8% of the 5-hour window per answer |

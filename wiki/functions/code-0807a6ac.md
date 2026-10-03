@@ -10,7 +10,7 @@ updated: 2026-10-02
 
 The unit is `src/code_0807A6AC.c` (42 functions, 0x100C bytes), compiled with `old_agbcc -O2`. **42/42 functions in C** after workflow waves 2-3 (2026-10-01: `0x0807AEF0`, `0x0807AD40`, `0x0807ADE8` in wave 2; none in wave 3); none stay `INCLUDE_ASM`. Before wave 2: 39/42 (`0x0807A754`, `0x0807B628` added in wave 1). The unit still links to the exact target bytes. Names below are proposals, and the code keeps `sub_08XXXXXX`.
 
-This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]) and the sound driver. It is a small graphics-utility library used by menus and duel screens. It provides rectangle fills and copies on BG screenblocks (32-entry rows, with the 64-wide "second screenblock" wrap at column 0x20), palette fades toward a target colour, rotation/scale objects, fixed-point helpers and tiny state machines. Related: [[video-helpers]].
+This unit sits between the LZSS decoder (`LZSSDecompress`, see [[lzss-decompress]]) and the sound driver. It is a small graphics-utility library used by menus and duel screens. It provides rectangle fills and copies on BG screenblocks (32-entry rows, with the 64-wide "second screenblock" wrap at column 0x20), palette fades toward a target colour, rotation/scale objects, fixed-point helpers and tiny state machines. Related: [[video-helpers]].
 
 ## Functions
 
@@ -29,11 +29,11 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | `0x0807AC00` | 0x5C | matching | `SetRectPalette(dst, w, h, pal)` | replaces the top nibble of every entry |
 | `0x0807AC5C` | 0x2C | matching | `SetTileNumber(bg, x, y, tile)` | keeps the top 6 attribute bits, sets the tile |
 | `0x0807AC88` | 0xB8 | matching | `DrawNumber3(bg, base, x, y, num, pal, _, mode)` | 3 decimal digits right to left (mode 1 skips zero digits) |
-| `0x0807AD40` | 0xA8 | **matching** (wave 2, 2026-10-01) | `CopyBitmapBlock(...)` | h rows of w halfwords copied with `CpuSet` between two bitmaps (source stride `srcW`, destination stride 0x20 halfwords); both start at `base + sub_0807A490(x, y, shift) / 2` (the helper's byte offset as a halfword index) |
+| `0x0807AD40` | 0xA8 | **matching** (wave 2, 2026-10-01) | `CopyBitmapBlock(...)` | h rows of w halfwords copied with `CpuSet` between two bitmaps (source stride `srcW`, destination stride 0x20 halfwords); both start at `base + GetTilemapOffset(x, y, shift) / 2` (the helper's byte offset as a halfword index) |
 | `0x0807ADE8` | 0xA0 | **matching** (wave 2, 2026-10-01) | `CopyBitmapBlockFlat(...)` | same, but the source is a plain srcW-wide halfword array (`srcBase + sx + sy * srcW`) |
 | `0x0807AE88` | 0x68 | matching | `PackBytePairs(src, dst, w, h)` | `dst[i] = (src[2i] & 0xFF) \| (src[2i+1] & 0xFF) << 8` |
 | `0x0807AEF0` | 0x10C | **matching** (wave 2, 2026-10-01; FAKEMATCH) | `LoadPackedImage6bpp(idx, dst, bank)` | unpacks 6-bit pixels (record idx of 0x10E0 bytes at `0x082A6500`, 720 x 6 bytes -> 720 x 8 bytes) to 8 bpp; copies a 64-colour palette (`0x08608360 + idx*0x80`) to `PLTT + ((bank&0x3FF)*64 + 0x80)*2`; ORs the sub-palette bits into every pixel byte |
-| `0x0807AFFC` | 0x14 | matching | `LoadPackedImage6bppWrap` | wrapper narrowing args to u16 and calling `sub_0807AEF0` |
+| `0x0807AFFC` | 0x14 | matching | `LoadPackedImage6bppWrap` | wrapper narrowing args to u16 and calling `UnpackCardArt8bpp` |
 | `0x0807B010` | 0x18 | matching | `CallbackQueue_Init` | zero 4 slots |
 | `0x0807B028` | 0x30 | matching | `CallbackQueue_Add(fn, q)` | slot `[(head+1)&3] = fn`, returns old head, fails (0) if `slot[head]` is busy |
 | `0x0807B058` | 0x30 | matching | `CallbackQueue_Run(q)` | calls each non-null slot; a non-zero (u16) return clears it |
@@ -53,7 +53,7 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 | `0x0807B504` | 0x18 | matching | `DivFix8(a, b)` | `Div(a << 8, b)` |
 | `0x0807B51C` | 0x18 | matching | `Reciprocal8(a)` | `Div(0x10000, a)` |
 | `0x0807B534` | 0x6C | matching | `ObjAffineInit(a)` | 32 x `ObjAffine` (stride 0x18): scale 0x100/0x100, angle 0, four `s16 *` to the OAM affine slots `0x03004476 + (i*4+j)*8` (`oam[i*4+j].pad`) |
-| `0x0807B5A0` | 0x88 | matching | `ObjAffineApply(a)` | writes pa..pd from `1/scale` and the sine table `gUnk_08087BA4` (index `angle>>8`, +0x40 for cos) |
+| `0x0807B5A0` | 0x88 | matching | `ObjAffineApply(a)` | writes pa..pd from `1/scale` and the sine table `gSineTable` (index `angle>>8`, +0x40 for cos) |
 | `0x0807B628` | 0x90 | **matching** (wave 1, 2026-10-01) | `BgAffineSetRef(bg, x, y, cx, cy, a)` | writes BG2/BG3 reference point (`0x04000028/2C`, `0x04000038/3C`) = matrix * (p - c) + c |
 
 ## Structures (as declared in the unit)
@@ -73,9 +73,9 @@ This unit sits between the LZSS decoder (`sub_0807A1A8`, see [[lzss-decompress]]
 - **Compute-once `u16 d = num % ten;`** and a `u32 ten = 10;` local reproduce the constant kept in r7 and the reused remainder in `DrawNumber3`.
 - **Local `u32 size = w * 2;` *inside* the row loop** (loop-invariant motion hoists it) matched `CopyRowsStride`; declaring it before the loop merges it into `lsrs r7,r2,#23`.
 - **`long long p = (long long)a * b; return (s32)(p >> 8);`** (two statements) matched the 64-bit fixed multiply; the one-expression form differs in the final register moves.
-- **Calling s16-returning helpers**: the target's callers do not re-extend the s16 result of `sub_0807B51C` / `sub_0807B4D0`. Reproduced with `extern int Reciprocal(int) asm("sub_0807B51C");` style declarations (an asm-labelled int prototype) in the caller, since a C prototype `s16 f(s16)` makes the caller emit `lsl 16; asr 16`. The original probably saw these functions through an int-typed declaration from another translation unit.
+- **Calling s16-returning helpers**: the target's callers do not re-extend the s16 result of `ReciprocalFix8` / `MulFix8`. Reproduced with `extern int Reciprocal(int) asm("ReciprocalFix8");` style declarations (an asm-labelled int prototype) in the caller, since a C prototype `s16 f(s16)` makes the caller emit `lsl 16; asr 16`. The original probably saw these functions through an int-typed declaration from another translation unit.
 - **`*a->param[0] = ...; a->scaleX` as `s16`**, sign-extending loads for `s8 *d` use `ldrsb r0,[rN,rM]` with the offset in a register (`d[0x10]`); a `s8 delta[i][j]` array member compiles to `ldrb; lsl 24; asr 24` instead.
-- **Switch with two cases and a common tail** (`BgAffineSetRef`): `switch (bg) { case 2: reg = ...; break; case 3: reg = ...; break; default: return; }`. Embedded `x -= cx` inside the first call's argument list (`sub_0807B4E0(*a->param[0], x -= cx)`) reproduced the in-place `subs r6,r6,r3`.
+- **Switch with two cases and a common tail** (`BgAffineSetRef`): `switch (bg) { case 2: reg = ...; break; case 3: reg = ...; break; default: return; }`. Embedded `x -= cx` inside the first call's argument list (`MulFix8Wide(*a->param[0], x -= cx)`) reproduced the in-place `subs r6,r6,r3`.
 - **`(u32)(xx - 0x20) <= 0x1F`** gives the `sub #0x20; cmp #0x1F; bhi` unsigned range test seen in the wrap checks.
 
 - **Signed row-size temporary**: `s32 size = w * 2;` inside the row loop matches `CopyRows` (`0x0807A908`); `u32` gives the wrong register allocation.
@@ -99,7 +99,7 @@ pointed at. The remaining blockers concern compiler allocation and loop scheduli
     changing `half`'s type did not raise register pressure enough to force the spills.
 
 > [!warning] Contradiction
-> The next note and this section's introduction (2026-09-30 clean-up pass) put the `0x0807AD40` / `0x0807ADE8` blockers down to compiler allocation and loop scheduling, with source order, type and offset-local variants all leaving the same split. The wave 2 matches (2026-10-01, `build/wf/sub_0807AD40/NOTES.md`, `build/wf/sub_0807ADE8/NOTES.md`) came from the source: a `u32` return type with no value (`pop {r1}`), `/ 2` on the real u16 return of `sub_0807A490` instead of `& 0xFFFE`, and the CpuCopy16 size shape. Resolved in favour of the matched source.
+> The next note and this section's introduction (2026-09-30 clean-up pass) put the `0x0807AD40` / `0x0807ADE8` blockers down to compiler allocation and loop scheduling, with source order, type and offset-local variants all leaving the same split. The wave 2 matches (2026-10-01, `build/wf/CopyMapBlock/NOTES.md`, `build/wf/CropMapBlock/NOTES.md`) came from the source: a `u32` return type with no value (`pop {r1}`), `/ 2` on the real u16 return of `GetTilemapOffset` instead of `& 0xFFFE`, and the CpuCopy16 size shape. Resolved in favour of the matched source.
 
 - Historical (matched in wave 2, see below): `0x0807AD40` / `0x0807ADE8`: target spills `srcBase`/`srcW` to `[sp]`, keeps the `w & 0x1FFFFF` mask (0x1FFFFF
   rebuilt in the loop) and reloads the 0xFFFE mask from the literal pool per call; the build keeps the base in
@@ -115,44 +115,44 @@ pointed at. The remaining blockers concern compiler allocation and loop scheduli
 
 ## Open questions
 
-> [!question] `sub_0807A490(x, y, shift)` (in the previous unit) returns a byte offset into a tiled bitmap; its exact meaning (hypothesis: 8x8-tile offset for a bitmap of width `1 << shift` tiles) was not verified. Its return type is `u16` (matched definition in `src/code_0807960C.c`; the wave 2 crop-copy matches depend on it).
+> [!question] `GetTilemapOffset(x, y, shift)` (in the previous unit) returns a byte offset into a tiled bitmap; its exact meaning (hypothesis: 8x8-tile offset for a bitmap of width `1 << shift` tiles) was not verified. Its return type is `u16` (matched definition in `src/code_0807960C.c`; the wave 2 crop-copy matches depend on it).
 > [!question] The callers of the palette-fade and callback-queue helpers are in menu/duel code; the fields written by the callers (`step` in particular) were not traced.
 
 Related: [[decomp-workflow]], [[compiler-flags]].
 
 ## Signed fixed-point divide ABI audit
 
-`sub_0807B504` receives full words from its callers, explicitly decodes each to s16, computes `Div(a * 256, b)`, then sign-extends the s16 result. Its enabled C definition expresses that word ABI, matching declarations in [[code-08065e6c]] and [[code-0806c4e4]]. Multiplication also avoids the former negative signed left shift. All three complete units and the full ROM remain byte-exact. Zero-denominator BIOS behavior is unchanged and not established by the synthetic percentage fixtures.
+`DivFix8` receives full words from its callers, explicitly decodes each to s16, computes `Div(a * 256, b)`, then sign-extends the s16 result. Its enabled C definition expresses that word ABI, matching declarations in [[code-08065e6c]] and [[code-0806c4e4]]. Multiplication also avoids the former negative signed left shift. All three complete units and the full ROM remain byte-exact. Zero-denominator BIOS behavior is unchanged and not established by the synthetic percentage fixtures.
 
 ## Private crop-helper audit
 
-Historical (the function matched in wave 2 with the ordinary C below): `sub_0807ADE8` consumes its fifth argument, the destination base, from the adjusted stack after the coordinate helper call. Explicit word parameters preserve the caller interface, but `crop_rows_{resume,roles}.py` did not match. One fixed-register candidate overwrote dy with width before consuming dy; it is unsafe and rejected. No candidate from this grid is enabled or counted. Evidence under `build/bigguns-lead2/`.
+Historical (the function matched in wave 2 with the ordinary C below): `CropMapBlock` consumes its fifth argument, the destination base, from the adjusted stack after the coordinate helper call. Explicit word parameters preserve the caller interface, but `crop_rows_{resume,roles}.py` did not match. One fixed-register candidate overwrote dy with width before consuming dy; it is unsafe and rejected. No candidate from this grid is enabled or counted. Evidence under `build/bigguns-lead2/`.
 
 ## Workflow waves 1-2 matches (2026-10-01)
 
-Working notes: `build/wf/<func>/NOTES.md` (for the wave 2 crop copies added on 2026-10-02: `build/wf/sub_0807AD40/NOTES.md`, `build/wf/sub_0807ADE8/NOTES.md`).
+Working notes: `build/wf/<func>/NOTES.md` (for the wave 2 crop copies added on 2026-10-02: `build/wf/CopyMapBlock/NOTES.md`, `build/wf/CropMapBlock/NOTES.md`).
 
-### `sub_0807A754` (`FillTiles32`, 0xB4, start score 61; wave 1, ordinary C)
+### `FillVramMapRect32` (`FillTiles32`, 0xB4, start score 61; wave 1, ordinary C)
 
-Same fix as its sibling `sub_0807A5D4` in [[code-0807960c]]: no `half` local. Write `w / 2` inline in both the inner loop bound (`j < w / 2`) and the stride (`p += 0x10 - w / 2`), with `u8 i, j`. c-typeck shortens `u8 / 2` to an unsigned-char division (the redundant u8 narrowing), and the rotated loop's two condition copies are hoisted differently, which produces the `[sp]` spill and the per-row bound reload. Matched on the first try.
+Same fix as its sibling `FillScreenblockRectAscending32` in [[code-0807960c]]: no `half` local. Write `w / 2` inline in both the inner loop bound (`j < w / 2`) and the stride (`p += 0x10 - w / 2`), with `u8 i, j`. c-typeck shortens `u8 / 2` to an unsigned-char division (the redundant u8 narrowing), and the rotated loop's two condition copies are hoisted differently, which produces the `[sp]` spill and the per-row bound reload. Matched on the first try.
 
-### `sub_0807B628` (`BgAffineSetRef`, 0x90, start score 10; wave 1, ordinary C)
+### `SetBgAffineRefPoint` (`BgAffineSetRef`, 0x90, start score 10; wave 1, ordinary C)
 
 The parked draft selected a `vu32 *reg` in the switch and stored `*reg++ = sx; *reg = sy` (with a `u16 sx` hack). What matched: plain `s32 sx, sy` and writing both registers by literal address inside each case (`*(vu32 *)0x04000028 = sx; *(vu32 *)0x0400002C = sy; break;`, and the same for 0x38/0x3C). agbcc derives the second address as `adds r0,#4` from the first, and cross-jumping merges the two case tails into the shared `str r7,[r0]; adds r0,#4; str r4,[r0]`, which also gives the target's allocation (bg in sl, sx in a fresh r7). Matched on the first experiment.
 
-### `sub_0807AEF0` (`LoadPackedImage6bpp`, 0x10C, start score 68; wave 2, FAKEMATCH)
+### `UnpackCardArt8bpp` (`LoadPackedImage6bpp`, 0x10C, start score 68; wave 2, FAKEMATCH)
 
-Twin of `sub_0805DF34` ([[code-0805d58c]]); its matched body was ported (mask locals, u16/u32 types, `* 64`, integer ROM addresses). Extra for this twin:
+Twin of `BattleScene_LoadCardArt` ([[code-0805d58c]]); its matched body was ported (mask locals, u16/u32 types, `* 64`, integer ROM addresses). Extra for this twin:
 - Use the `u32 dst` parameter directly (cast at each use, `dst += 2`); a separate `u16 *dst = (u16 *)dstAddr` copy moves the `adds r7, r1, #0` later in the prologue.
 - The ROM keeps the second-loop counter in ip (0x3F3F in r2, 0xB3F in r3). No ordinary form reproduced that: a shared counter for both loops outranks dst (gets r7); u16/int/for/while/do/index forms keep it in r2. FAKEMATCH: `register u32 i asm("ip")`. With the pin, a `for` keeps its entry test (`cmp/bhi`), so the loop is a do-while, and the bound is a local `lim = 0xB3F` set before the loop so the literal loads first, as in the ROM.
-- Cleanup idea: find why global alloc gives the counter ip (it must be allocated after the 0x3F3F/0xB3F invariants and see r4-r6 as unavailable), perhaps via an inline helper shared with `sub_0805DF34`.
+- Cleanup idea: find why global alloc gives the counter ip (it must be allocated after the 0x3F3F/0xB3F invariants and see r4-r6 as unavailable), perhaps via an inline helper shared with `BattleScene_LoadCardArt`.
 
-### `sub_0807AD40` (`CopyBitmapBlock`, 0xA8, start score 81; wave 2, ordinary C)
+### `CopyMapBlock` (`CopyBitmapBlock`, 0xA8, start score 81; wave 2, ordinary C)
 
 - The ROM's `pop {r1}` epilogue: the function is declared `u32` but returns no value. A `void` function pops into r0.
-- The `0xFFFE` mask reloaded from the pool after each call: the source is not `& 0xFFFE` but `srcBase + sub_0807A490(...) / 2` on `u16 *` pointers, with `sub_0807A490` returning `u16` (its real type; the unit's prototype said `u32` and is now `u16 sub_0807A490(u16, u16, u8)`). Combine turns `(x >> 1) << 1` into `x & 0xFFFE` after CSE has run, so every use loads the constant again. This also removes a call-crossing pseudo and fixes the allocation (srcBase spilled to `[sp]`, srcW in r9).
+- The `0xFFFE` mask reloaded from the pool after each call: the source is not `& 0xFFFE` but `srcBase + GetTilemapOffset(...) / 2` on `u16 *` pointers, with `GetTilemapOffset` returning `u16` (its real type; the unit's prototype said `u32` and is now `u16 GetTilemapOffset(u16, u16, u8)`). Combine turns `(x >> 1) << 1` into `x & 0xFFFE` after CSE has run, so every use loads the constant again. This also removes a call-crossing pseudo and fixes the allocation (srcBase spilled to `[sp]`, srcW in r9).
 - The kept `w & 0x1FFFFF` mask with 0x1FFFFF hoisted to r8: the CpuCopy16 shape `s32 size = w * 2; CpuSet(src, dst, (size / 2) & 0x1FFFFF);` inside the row loop, as in `CopyRows` (`0x0807A908`). `u32 size` swaps the dst and i registers (16); a plain `w & 0x1FFFFF` folds the mask away.
 
-### `sub_0807ADE8` (`CopyBitmapBlockFlat`, 0xA0, start score 71; wave 2, ordinary C)
+### `CropMapBlock` (`CopyBitmapBlockFlat`, 0xA0, start score 71; wave 2, ordinary C)
 
-Ported unchanged from the matched `sub_0807AD40`: `u32` return type with no value, `u16 *` pointers with `dstBase + sub_0807A490(...) / 2`, and the CpuCopy16 size shape; the source pointer is `srcBase + sx + sy * srcW`. Matched on the first try.
+Ported unchanged from the matched `CopyMapBlock`: `u32` return type with no value, `u16 *` pointers with `dstBase + GetTilemapOffset(...) / 2`, and the CpuCopy16 size shape; the source pointer is `srcBase + sx + sy * srcW`. Matched on the first try.

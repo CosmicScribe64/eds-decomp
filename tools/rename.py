@@ -5,7 +5,7 @@
   python3 tools/rename.py --file names.txt      # lines: "<old-or-address> <new> [# comment]"
 
 A function's asm file asm/nonmatching/<unit>/<old>.s is renamed to <new>.s, and the
-.include / INCLUDE_ASM references follow. A RAM symbol (e.g. gUnk_03000040) that no asm/data
+.include / INCLUDE_ASM references follow. A RAM symbol (e.g. gMain) that no asm/data
 file defines gets an entry in symbols.ld. Only run this while nobody else is editing src/.
 In names files, an address (0x08XXXXXX / 0x02XXXXXX / 0x03XXXXXX) stands for the symbol that
 currently names it (sub_/gUnk_ form or the config/functions.tsv name).
@@ -76,9 +76,9 @@ def main():
     changed = 0
     for path in list(all_files()):
         text = open(path).read()
-        if path.startswith(('asm', 'data', 'src')) and path.endswith('.s'):
-            defined |= set(re.findall(r'^(\w+):', text, re.M))
         new = pat.sub(lambda m: mapping[m.group(1)], text)
+        if path.startswith(('asm', 'data', 'src')) and path.endswith('.s'):
+            defined |= set(re.findall(r'^(\w+):', new, re.M))  # labels after the rename
         if new != text:
             open(path, 'w').write(new)
             changed += 1
@@ -88,7 +88,10 @@ def main():
     add = []
     for old, new in pairs:
         m = re.search(r'_([0-9A-F]{8})$', old)
-        if m and new not in defined and not re.search(rf'^\s*{re.escape(new)}\s*=', syms, re.M):
+        # Only RAM/IO symbols need one: ROM functions and data are defined by their C, asm or data source
+        # (an absolute ROM entry would override that definition and lose a Thumb function's bit 0).
+        if m and int(m.group(1), 16) < 0x08000000 and new not in defined \
+                and not re.search(rf'^\s*{re.escape(new)}\s*=', syms, re.M):
             add.append(f'{new} = 0x{m.group(1)};')
     if add:
         with open('symbols.ld', 'a') as f:

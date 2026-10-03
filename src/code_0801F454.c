@@ -3,7 +3,7 @@
 #include "duel.h"
 #include "duel_ui.h"
 
-/* 20-byte action entry (lists in gUnk_02017A40; see code_08011BE0). */
+/* 20-byte action entry (lists in gChain; see code_08011BE0). */
 struct ActEntry {
     u16 card;           /* +0x00: card ID in bits 0-10 */
     u16 flag2_0:1;      /* +0x02 bit 0 */
@@ -30,7 +30,7 @@ struct ActLists {
     u16 unk3C2;
     u16 countA;                 /* +0x3C4 */
 };
-extern struct ActLists gUnk_02017A40;
+extern struct ActLists gChain;
 
 /* Duel control at 0x02015EE8 (gDuelCtrl, hypothesis). */
 struct DuelCtrl {
@@ -38,7 +38,7 @@ struct DuelCtrl {
     u8 link:1;          /* +1 bit 0: link duel (hypothesis) */
     u8 unk1_1:7;
 };
-extern struct DuelCtrl gUnk_02015EE8;
+extern struct DuelCtrl gDuelCtrl;
 
 /* Link state at 0x02017FB0 (fields used here; u32 containers, see code_08021CC8). */
 struct LinkState {
@@ -57,33 +57,33 @@ struct LinkState {
     u8 step48C;         /* +0x48C */
 };
 
-extern struct LinkState gUnk_02017FB0;
+extern struct LinkState gLinkState;
 
 /*
  * duel.h's struct DuelState is documented only up to +0x1B20, but this unit also reads/writes cmdStep
  * at +0x1B40. Unit-local view: the canonical struct from duel.h plus the extra tail byte. It must be a
- * single symbol, otherwise the extra reference adds a literal-pool entry and changes sub_0801F454.
+ * single symbol, otherwise the extra reference adds a literal-pool entry and changes DuelCmdQueue_Run.
  */
 struct DuelStateUnit {
     struct DuelState duel;                          /* canonical fields (duel.h) */
     u8 pad[0x1B40 - sizeof(struct DuelState)];
     u8 cmdStep;                                     /* +0x1B40 */
 };
-extern struct DuelStateUnit gUnk_020192E0u asm("gUnk_020192E0");
+extern struct DuelStateUnit gUnk_020192E0u asm("gDuel");
 
-extern u8 gUnk_02015EF0[2];
+extern u8 gAiState[2];
 
 struct Unk0201AE60 {
     u8 filler0[0x22];
     u8 step22;          /* +0x22 */
     u8 timer23;         /* +0x23 */
 };
-extern struct Unk0201AE60 gUnk_0201AE60;
+extern struct Unk0201AE60 gTextBox;
 
-extern const u32 gUnk_08621DE0[];   /* card stats, indexed by card ID */
-extern const u16 gUnk_08622AB4[];   /* card ID to card number */
-#define CARD_STATS(id) (gUnk_08621DE0[(id) & 0x7FF])
-#define CARD_NUMBER(id) (gUnk_08622AB4[(id) & 0x7FF])
+extern const u32 gCardStats[];   /* card stats, indexed by card ID */
+extern const u16 gCardIdToNumber[];   /* card ID to card number */
+#define CARD_STATS(id) (gCardStats[(id) & 0x7FF])
+#define CARD_NUMBER(id) (gCardIdToNumber[(id) & 0x7FF])
 /* Through a constant address: GCC then loads the mask before the table. */
 #define CARD_NUMBER_C(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
@@ -92,7 +92,7 @@ extern const u16 gUnk_08622AB4[];   /* card ID to card number */
 #define CARD_STATS_X(id) CARD_STATS_C(id)
 #define CARD_TYPE_X(id) ((CARD_STATS_X(id) & 0x1F00000) >> 20)
 
-void sub_08075294(void *dst, const void *src, u32 size);
+void MemCopy16(void *dst, const void *src, u32 size);
 
 /* Magic/Trap subtype (stats bits 17-19) of a Magic or Trap card, else 0 (as in code_08009A68). */
 static inline int GetMagicSubtype(u16 id)
@@ -108,17 +108,17 @@ static inline int GetMagicSubtype(u16 id)
     }
 }
 /* a: bits 0-15 card, 16-20 val, 21-24 kind, 25-30 val2, 31 flag (explicit masks in the ROM) */
-void sub_0801FA90(u16 toB, u32 a, u32 b);
-u16 sub_080229BC(u16 head, const void *src, int size);
-void sub_0801EC58(u16 msg, u16 arg1, u16 arg2, u16 arg3);
-void sub_0801F81C(void);
-void sub_08075278(void *dst, u32 size);    /* zero fill */
-void sub_08077BCC(void);
-void sub_0801ECA8(void);
-void sub_0801EBA8(void);
-u16 sub_0802297C(u16 a, u16 b, u16 c, u16 d);
-void sub_08058EDC(int player, u16 number);
-extern const u16 gUnk_08623DF4[];   /* card number to card id */
+void Chain_Add(u16 toB, u32 a, u32 b);
+u16 DuelLink_SendMessageData(u16 head, const void *src, int size);
+void DuelCmd_Push(u16 msg, u16 arg1, u16 arg2, u16 arg3);
+void SetupStartFieldCard(void);
+void MemClear16(void *dst, u32 size);    /* zero fill */
+void FadeOutBGM(void);
+void DuelCmd_Dispatch(void);
+void PlayDuelBGM(void);
+u16 DuelLink_SendMessage(u16 a, u16 b, u16 c, u16 d);
+void AddCardNumberToDeckTop(int player, u16 number);
+extern const u16 gCardNumberToId[];   /* card number to card id */
 #define CARD_ID_TABLE ((const u16 *)0x08623DF4)
 
 /* Card number to card id; 0xFFFF maps to 0 (this copy does not mask numbers below 2000). */
@@ -130,114 +130,114 @@ static inline u16 CardNumberToId(u16 n)
         return *(CARD_ID_TABLE + n);
     return *(CARD_ID_TABLE + ((n - 2000) & 0x7FF)) + 1;
 }
-u32 sub_0802D0E0(struct ActEntry *e, int player, int zone);
-u32 sub_0802D25C(struct ActEntry *e, int player, int zone);
-int sub_08008524(int player, u16 number);
+u32 CanChainFieldCard(struct ActEntry *e, int player, int zone);
+u32 CanChainHandCard(struct ActEntry *e, int player, int zone);
+int CountActiveCardsOnField(int player, u16 number);
 
-extern u8 gUnk_0201D810[];
-extern u8 gUnk_0201CF90[];
-extern u8 gUnk_02017A30[];
-extern u8 gUnk_02018450[];
+extern u8 gCardListView[];
+extern u8 gSummonAction[];
+extern u8 gDuelScene[];
+extern u8 gBattle[];
 
-#define gMain gUnk_03000040
+#define gMain gMain
 
 /* Run the duel command queue: pop the next command into the command block and run it. */
-u32 sub_0801F454(void)
+u32 DuelCmdQueue_Run(void)
 {
     int i;
 
     switch (gUnk_020192E0u.cmdStep) {
     case 0:
-        if (gUnk_020185C0.queueCount == 0)
+        if (gDuelCmd.queueCount == 0)
             return 0;
-        sub_08075294(&gUnk_020185C0, &gUnk_020185C0.queue[0], 8);
-        gUnk_020185C0.queueCount--;
-        for (i = 0; i < gUnk_020185C0.queueCount; i++)
-            sub_08075294(&gUnk_020185C0.queue[i], &gUnk_020185C0.queue[i + 1], 8);
-        gUnk_02017FB0.unk307_1 = 1;
-        gUnk_020185C0.running = 1;
-        if (gUnk_02015EE8.link) {
-            sub_080229BC(0xF041, &gUnk_020185C0, 8);
-            gUnk_02017FB0.unk307_1 = 0;
-            gUnk_02017FB0.unk200 = 0;
-            gUnk_02017FB0.waitTimer = 0;
+        MemCopy16(&gDuelCmd, &gDuelCmd.queue[0], 8);
+        gDuelCmd.queueCount--;
+        for (i = 0; i < gDuelCmd.queueCount; i++)
+            MemCopy16(&gDuelCmd.queue[i], &gDuelCmd.queue[i + 1], 8);
+        gLinkState.unk307_1 = 1;
+        gDuelCmd.running = 1;
+        if (gDuelCtrl.link) {
+            DuelLink_SendMessageData(0xF041, &gDuelCmd, 8);
+            gLinkState.unk307_1 = 0;
+            gLinkState.unk200 = 0;
+            gLinkState.waitTimer = 0;
         }
-        gUnk_020185C0.step = 0;
-        gUnk_020185C0.timer = 0;
+        gDuelCmd.step = 0;
+        gDuelCmd.timer = 0;
         gUnk_020192E0u.cmdStep++;
     case 1:
-        sub_0801ECA8();
-        if (gUnk_020185C0.running)
+        DuelCmd_Dispatch();
+        if (gDuelCmd.running)
             return 1;
         gUnk_020192E0u.cmdStep++;
     case 2:
-        if (!gUnk_02017FB0.unk307_1) {
-            if (++gUnk_02017FB0.waitTimer < 0x78)
+        if (!gLinkState.unk307_1) {
+            if (++gLinkState.waitTimer < 0x78)
                 return 1;
-            gUnk_02017FB0.waitTimer = 0;
-            sub_0802297C(0xEE00, 0, 0, 0);
-            sub_08077BCC();
+            gLinkState.waitTimer = 0;
+            DuelLink_SendMessage(0xEE00, 0, 0, 0);
+            FadeOutBGM();
             gUnk_020192E0u.duel.linkError = 1;
             return 0;
         }
-        gUnk_02017FB0.waitTimer = 0;
-        if ((gUnk_020185C0.cmd & 0xFFF) != 4)
-            sub_0801EBA8();
+        gLinkState.waitTimer = 0;
+        if ((gDuelCmd.cmd & 0xFFF) != 4)
+            PlayDuelBGM();
         gUnk_020192E0u.cmdStep = 0;
-        if (gUnk_020185C0.queueCount)
+        if (gDuelCmd.queueCount)
             return 1;
         break;
     }
     return 0;
 }
 /* Link duel: run a duel command received from the partner (0x02017FB0+0x484). */
-u32 sub_0801F628(void)
+u32 DuelCmd_RunRemote(void)
 {
-    switch (gUnk_02017FB0.step48C) {
+    switch (gLinkState.step48C) {
     case 0:
-        sub_08075294(&gUnk_020185C0, gUnk_02017FB0.cmd, 8);
-        gUnk_020185C0.running = 1;
-        gUnk_020185C0.step = 0;
-        gUnk_020185C0.timer = 0;
-        gUnk_02017FB0.step48C++;
+        MemCopy16(&gDuelCmd, gLinkState.cmd, 8);
+        gDuelCmd.running = 1;
+        gDuelCmd.step = 0;
+        gDuelCmd.timer = 0;
+        gLinkState.step48C++;
     case 1:
-        sub_0801ECA8();
-        if (!gUnk_020185C0.running)
-            gUnk_02017FB0.step48C++;
+        DuelCmd_Dispatch();
+        if (!gDuelCmd.running)
+            gLinkState.step48C++;
         else if ((gMain.frameCounter & 0xF) == 0)
-            sub_0802297C(0xF042, 0, 0, 0);
+            DuelLink_SendMessage(0xF042, 0, 0, 0);
         return 1;
     case 2:
-        if ((gUnk_020185C0.cmd & 0xFFF) != 4)
-            sub_0801EBA8();
-        sub_0802297C(0xF043, 0, 0, 0);
-        gUnk_02017FB0.step48C++;
+        if ((gDuelCmd.cmd & 0xFFF) != 4)
+            PlayDuelBGM();
+        DuelLink_SendMessage(0xF043, 0, 0, 0);
+        gLinkState.step48C++;
         return 1;
     }
-    gUnk_02017FB0.unk307_0 = 0;
+    gLinkState.unk307_0 = 0;
     return 0;
 }
 /* Duel setup: clear all duel work areas. */
-u32 sub_0801F744(void)
+u32 Duel_Setup(void)
 {
-    sub_08075278(&gUnk_02015EE8, 8);
-    sub_08075278(&gUnk_020192E0, 0x1B78);
-    sub_08075278(&gUnk_0201CFB0, 0x860);
-    sub_08075278(gUnk_0201D810, 0x310);
-    sub_08075278(&gUnk_0201AE60, 0x2124);
-    sub_08075278(&gUnk_020185C0, 0xD20);
-    sub_08075278(gUnk_0201CF90, 0x14);
-    sub_08075278(&gUnk_02017A40, 0x56C);
-    sub_08075278(gUnk_02017A30, 0x10);
-    sub_08075278(&gUnk_02017FB0, 0x494);
-    sub_08075278(gUnk_02018450, 0x160);
-    gUnk_020192E0.result = 3;
-    sub_08077BCC();
+    MemClear16(&gDuelCtrl, 8);
+    MemClear16(&gDuel, 0x1B78);
+    MemClear16(&gDuelScreen, 0x860);
+    MemClear16(gCardListView, 0x310);
+    MemClear16(&gTextBox, 0x2124);
+    MemClear16(&gDuelCmd, 0xD20);
+    MemClear16(gSummonAction, 0x14);
+    MemClear16(&gChain, 0x56C);
+    MemClear16(gDuelScene, 0x10);
+    MemClear16(&gLinkState, 0x494);
+    MemClear16(gBattle, 0x160);
+    gDuel.result = 3;
+    FadeOutBGM();
     if (gMain.heldKeys & 0x300)
-        gUnk_0201CFB0.fast = 1;
+        gDuelScreen.fast = 1;
     return 1;
 }
-void sub_0801F81C(void)
+void SetupStartFieldCard(void)
 {
     u16 number;
 
@@ -284,52 +284,52 @@ void sub_0801F81C(void)
     default:
         return;
     }
-    sub_08058EDC(1, number);
-    sub_0801EC58(0x8061, 0, 1, 0);
-    sub_0801EC58(0x80C5, CardNumberToId(number), 0x10A, 0);
-    sub_0801EC58(0x8011, gMain.unk488A_0, 1, 0);
+    AddCardNumberToDeckTop(1, number);
+    DuelCmd_Push(0x8061, 0, 1, 0);
+    DuelCmd_Push(0x80C5, CardNumberToId(number), 0x10A, 0);
+    DuelCmd_Push(0x8011, gMain.unk488A_0, 1, 0);
 }
 /* Duel phase 1 (entry 1 of the phase table 0x08198F80). */
-u32 sub_0801F97C(void)
+u32 DuelPhase_Opening(void)
 {
-    switch (gUnk_020192E0.phaseStep) {
+    switch (gDuel.phaseStep) {
     case 0:
-        sub_0801EC58(0x10, 0, 0, 0);
-        sub_0801EC58(0x12, 0, 0, 0);
-        sub_0801F81C();
-        gUnk_020192E0.phaseStep++;
+        DuelCmd_Push(0x10, 0, 0, 0);
+        DuelCmd_Push(0x12, 0, 0, 0);
+        SetupStartFieldCard();
+        gDuel.phaseStep++;
         return 0;
     case 1:
-        sub_0801EC58(gUnk_020192E0.linkSkip ? 0x8061 : 0x61, 0, 5, 0);
-        sub_0801EC58(!gUnk_020192E0.linkSkip ? 0x8061 : 0x61, 0, 5, 0);
-        sub_0801EC58(0x14, 0, 0, 0);
-        gUnk_020192E0.phaseStep++;
+        DuelCmd_Push(gDuel.linkSkip ? 0x8061 : 0x61, 0, 5, 0);
+        DuelCmd_Push(!gDuel.linkSkip ? 0x8061 : 0x61, 0, 5, 0);
+        DuelCmd_Push(0x14, 0, 0, 0);
+        gDuel.phaseStep++;
         return 0;
     default:
-        if (gUnk_020192E0.linkSkip) {
-            gUnk_02015EF0[0] = 0;
-            gUnk_02015EF0[1] = 0;
-            gUnk_02015EE8.phase = 8;
+        if (gDuel.linkSkip) {
+            gAiState[0] = 0;
+            gAiState[1] = 0;
+            gDuelCtrl.phase = 8;
             break;
         }
         return 1;
     }
     return 0;
 }
-u32 sub_0801FA48(struct ActEntry *e)
+u32 Chain_IsPartnerEntry(struct ActEntry *e)
 {
-    if (gUnk_02015EE8.link && e->flag2_0 && CARD_NUMBER_C(e->card) != 0x3B6)
+    if (gDuelCtrl.link && e->flag2_0 && CARD_NUMBER_C(e->card) != 0x3B6)
         return 1;
     return 0;
 }
-void sub_0801FA90(u16 toB, u32 a, u32 b)
+void Chain_Add(u16 toB, u32 a, u32 b)
 {
     struct ActEntry *e;
     u16 m[5];
 
     if (!(a & 0xFFFF))
         return;
-    if (gUnk_02015EE8.link && gUnk_020192E0.linkSkip) {
+    if (gDuelCtrl.link && gDuel.linkSkip) {
         /* forward to the link partner, from its point of view */
         if (a & 0x80000000)
             a &= ~0x80000000;
@@ -340,13 +340,13 @@ void sub_0801FA90(u16 toB, u32 a, u32 b)
         m[2] = a >> 16;
         m[3] = b;
         m[4] = b >> 16;
-        sub_080229BC(0xF072, m, 10);
+        DuelLink_SendMessageData(0xF072, m, 10);
         return;
     }
     if (toB)
-        e = &gUnk_02017A40.listB[gUnk_02017A40.countB];
+        e = &gChain.listB[gChain.countB];
     else
-        e = &gUnk_02017A40.listA[gUnk_02017A40.countA];
+        e = &gChain.listA[gChain.countA];
     e->card = a;
     e->flag2_0 = a >> 31;
     e->kind2 = (a & 0x1E00000) >> 21;
@@ -360,28 +360,28 @@ void sub_0801FA90(u16 toB, u32 a, u32 b)
     e->w6 = b;
     e->w8 = b >> 16;
     if (toB)
-        gUnk_02017A40.countB++;
+        gChain.countB++;
     else
-        gUnk_02017A40.countA++;
+        gChain.countA++;
 }
-void sub_0801FBCC(u32 b, u32 c)
+void Chain_AddPending(u32 b, u32 c)
 {
-    sub_0801FA90(0, b, c);
+    Chain_Add(0, b, c);
 }
-void sub_0801FBE0(u32 b, u32 c)
+void Chain_AddLink(u32 b, u32 c)
 {
-    sub_0801FA90(1, b, c);
+    Chain_Add(1, b, c);
 }
-void sub_0801FBF4(u16 toB, struct ActEntry *src)
+void Chain_AddPartnerEntry(u16 toB, struct ActEntry *src)
 {
     struct ActEntry *e;
     u16 v;
 
     if (toB)
-        e = &gUnk_02017A40.listB[gUnk_02017A40.countB];
+        e = &gChain.listB[gChain.countB];
     else
-        e = &gUnk_02017A40.listA[gUnk_02017A40.countA];
-    sub_08075294(e, src, 0x14);
+        e = &gChain.listA[gChain.countA];
+    MemCopy16(e, src, 0x14);
     e->flag2_0 = 1;
     e->flag4_0 = 1;
     e->flag4_1 = 1;
@@ -393,11 +393,11 @@ void sub_0801FBF4(u16 toB, struct ActEntry *src)
     v = src->w8;
     e->w8 = (u8)(1 - v) | ((v >> 8) << 8);
     if (toB)
-        gUnk_02017A40.countB++;
+        gChain.countB++;
     else
-        gUnk_02017A40.countA++;
+        gChain.countA++;
 }
-u32 sub_0801FCA8(struct ActEntry *e)
+u32 Chain_CardGoesToGrave(struct ActEntry *e)
 {
     u32 ret = 1;
     u32 stats, type;
@@ -440,7 +440,7 @@ u32 sub_0801FCA8(struct ActEntry *e)
     return ret;
 }
 /*
- * Unit-local zone view for sub_0801FD68. duel.h's struct DuelZone.card is a struct DuelCard.
+ * Unit-local zone view for Chain_GetResponseCommands. duel.h's struct DuelZone.card is a struct DuelCard.
  * Reading its 12-bit id makes agbcc emit a halfword load, but the ROM loads the whole u32 card
  * word and masks it (card << 20 >> 20). This view keeps a raw u32 card (ID in bits 0-11) so the
  * function matches. All other code in the unit uses the canonical struct DuelZone from duel.h.
@@ -453,7 +453,7 @@ struct DuelZoneUnit {
     u8 unk6_2:6;
     u8 filler7[0x94 - 7];
 };
-u32 sub_0801FD68(struct ActEntry *e, int player, int kind, int zone)
+u32 Chain_GetResponseCommands(struct ActEntry *e, int player, int kind, int zone)
 {
     u32 ret = 1;
     struct DuelZoneUnit *z;
@@ -461,18 +461,18 @@ u32 sub_0801FD68(struct ActEntry *e, int player, int kind, int zone)
 
     switch (kind) {
     case 11:
-        if (sub_0802D25C(e, player, zone))
+        if (CanChainHandCard(e, player, zone))
             ret = 0x41;
         break;
     case 5:
-        if (sub_0802D0E0(e, player, zone + 5))
+        if (CanChainFieldCard(e, player, zone + 5))
             ret = 0x41;
         break;
     case 0:
-        player &= 1; z = (struct DuelZoneUnit *)((u8 *)gUnk_0201930C + (zone * 0x94 + player * 0xD64));
+        player &= 1; z = (struct DuelZoneUnit *)((u8 *)gDuelZones + (zone * 0x94 + player * 0xD64));
         id = z->card << 20 >> 20;
         if (id != 0 && z->faceUp && CARD_NUMBER_C(id) == 0x5F5 && CARD_TYPE_C(e->card) == 22
-            && !sub_08008524(0, 0x58A) && !sub_08008524(1, 0x58A) && CARD_NUMBER_C(e->card) != 0x603)
+            && !CountActiveCardsOnField(0, 0x58A) && !CountActiveCardsOnField(1, 0x58A) && CARD_NUMBER_C(e->card) != 0x603)
             ret = 0x41;
         break;
     }
@@ -480,7 +480,7 @@ u32 sub_0801FD68(struct ActEntry *e, int player, int kind, int zone)
 }
 u32 sub_0801FE54(void)
 {
-    struct Unk0201AE60 *base = &gUnk_0201AE60;
+    struct Unk0201AE60 *base = &gTextBox;
     u8 *p;
     u32 step;
     u32 copy;
@@ -492,7 +492,7 @@ u32 sub_0801FE54(void)
     asm volatile ("" : "+r"(step));
     switch (copy) {
     case 0:
-        if (!gUnk_02017FB0.unk307_3)
+        if (!gLinkState.unk307_3)
             break;
         goto next;
     case 1:
@@ -558,29 +558,29 @@ extern struct ALFEA0 gAliasFEA0_02017A40;
 struct AE60FEA0 { u8 pad[0x14]; u16 unk14; };
 extern struct AE60FEA0 gAliasFEA0_0201AE60;
 #define gAE60FEA0 gAliasFEA0_0201AE60
-extern u8 gUnk_08081CB8[];
-extern u8 gUnk_08081CFC[];
+extern u8 gStrChainPromptEffect[];
+extern u8 gStrChainPromptCard[];
 /* Card names, 64 bytes each; through a constant address so the table base is reloaded per use. */
 #define NAME_FEA0(id) (((const u8 (*)[0x40])0x0822C720)[id])
-void sub_0801DC04(void);
-void sub_0802AF34(int player, int area, int a2, int a3);
-void sub_08049048(u16 a, u16 b, struct ActEntry *e);
-u32 sub_08052F38(u32 keys);
-u32 sub_080589C8(struct ActEntry *e);
-u16 sub_0805ECFC(void);
-void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
-void sub_08060308(u32 a, u32 b, u32 c);
-void sub_080753F4(void *dst, const void *a, const void *b);
-void sub_08077AEC(u16 id);
-void sub_0801FBE0(u32 b, u32 c);
+void CardMenu_Update(void);
+void CardListView_Open(int player, int area, int a2, int a3);
+void CardMenu_PlaySpellTrapFromHand(u16 a, u16 b, struct ActEntry *e);
+u32 DuelCursor_PickTarget(u32 keys);
+u32 AiTryChainResponse(struct ActEntry *e);
+u16 DuelCursor_GetCardId(void);
+void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
+void TextBoxSetMenu(u32 a, u32 b, u32 c);
+void FormatStr(void *dst, const void *a, const void *b);
+void PlaySE(u16 id);
+void Chain_AddLink(u32 b, u32 c);
 
 /*
- * Card-target request step machine on 0x02017A40+0x490 (same shape as sub_0804244C): show the card's
+ * Card-target request step machine on 0x02017A40+0x490 (same shape as EventResponse_Run): show the card's
  * prompt (1), wait (2), let the player pick with the selection widget at 0x020192E0+0x1B2C (10/11) and add
- * the chosen zone to list B; when player != 0 hand off to the link (100/101) or to sub_080589C8 (200).
+ * the chosen zone to list B; when player != 0 hand off to the link (100/101) or to AiTryChainResponse (200).
  * The switch on (u8)st keeps the loaded step in its own register so the step++ in case 10 stays unfolded.
  */
-s32 sub_0801FEA0(struct ActEntry *e, u32 player)
+s32 Chain_AskResponse(struct ActEntry *e, u32 player)
 {
     u8 buf[0x200];
     u16 card;
@@ -590,7 +590,7 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
     case 0:
         if (!gALFEA0.flag488_0) {
             gALFEA0.flag488_0 = 1;
-            sub_0801EC58(0x12, 0, 0, 0);
+            DuelCmd_Push(0x12, 0, 0, 0);
             gALFEA0.step++;
             return 0;
         }
@@ -598,7 +598,7 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
     case 1:
         if (player) {
             u8 s;
-            if (gUnk_02015EE8.link)
+            if (gDuelCtrl.link)
                 s = 100;
             else
                 s = 200;
@@ -607,11 +607,11 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
         }
         card = e->card;
         if (CARD_TYPE_C(card) <= 20)
-            sub_080753F4(buf, gUnk_08081CB8, NAME_FEA0(card));
+            FormatStr(buf, gStrChainPromptEffect, NAME_FEA0(card));
         else
-            sub_080753F4(buf, gUnk_08081CFC, NAME_FEA0(card));
-        sub_080602A4(0x206, 0x712, 11, buf);
-        sub_08060308(1, 0, 0);
+            FormatStr(buf, gStrChainPromptCard, NAME_FEA0(card));
+        TextBoxOpen(0x206, 0x712, 11, buf);
+        TextBoxSetMenu(1, 0, 0);
         gALFEA0.step++;
         return 0;
     case 2:
@@ -623,7 +623,7 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
         return 0;
     case 10:
         if (gDuelFEA0.sel.flag0) {
-            sub_0801DC04();
+            CardMenu_Update();
             return 0;
         }
         if (gDuelFEA0.sel.active) {
@@ -634,13 +634,13 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
             gALFEA0.step = 1;
             return 0;
         }
-        if (sub_08052F38(!gDuelFEA0.linkSkip ? 0xF : 0xEE) == 0)
+        if (DuelCursor_PickTarget(!gDuelFEA0.linkSkip ? 0xF : 0xEE) == 0)
             return 0;
         {
-            u32 p = gUnk_0201CFB0.player;
-            u32 kind = gUnk_0201CFB0.zone;
-            u32 cur = gUnk_0201CFB0.cursor;
-            u16 id = sub_0805ECFC();
+            u32 p = gDuelScreen.player;
+            u32 kind = gDuelScreen.zone;
+            u32 cur = gDuelScreen.cursor;
+            u16 id = DuelCursor_GetCardId();
             switch (kind) {
             case 0:
             case 5:
@@ -649,19 +649,19 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
                 if (id != 0) {
                     gDuelFEA0.sel.flag0 = 1;
                     gDuelFEA0.sel.state = 0;
-                    gDuelFEA0.sel.mask = (u16)sub_0801FD68(e, p, kind, cur);
+                    gDuelFEA0.sel.mask = (u16)Chain_GetResponseCommands(e, p, kind, cur);
                     return 0;
                 }
-                sub_08077AEC(3);
+                PlaySE(3);
                 return 0;
             case 13:
-                sub_08077AEC(3);
+                PlaySE(3);
                 return 0;
             case 12:
             case 14:
             case 15:
-                sub_0802AF34(p, kind, 0, 0);
-                sub_08077AEC(1);
+                CardListView_Open(p, kind, 0, 0);
+                PlaySE(1);
                 return 0;
             }
         }
@@ -669,7 +669,7 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
     case 11:
         switch (gDuelFEA0.sel.zone) {
         case 11:
-            sub_08049048(1, 1, e);
+            CardMenu_PlaySpellTrapFromHand(1, 1, e);
             if (gDuelFEA0.sel.active)
                 return 0;
             break;
@@ -684,13 +684,13 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
                         msg = 0x807F;
                     else
                         msg = 0x7F;
-                    sub_0801EC58(msg, gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone, 0, 0);
+                    DuelCmd_Push(msg, gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone, 0, 0);
                 }
             }
             {
                 u32 hi = ((1 & gDuelFEA0.sel.player) << 31) | (e->val2_10 << 25);
                 u32 z = (((gDuelFEA0.sel.unk65 + gDuelFEA0.sel.zone) & 0x1F) << 16) | 0x200000;
-                sub_0801FBE0(hi | z | gDuelFEA0.selCard, (e->w8 << 16) | e->w6);
+                Chain_AddLink(hi | z | gDuelFEA0.selCard, (e->w8 << 16) | e->w6);
             }
             break;
         }
@@ -698,22 +698,22 @@ s32 sub_0801FEA0(struct ActEntry *e, u32 player)
         gALFEA0.f491_7 = 1;
         return 1;
     case 100:
-        sub_080229BC(0xF054, e, 0x14);
+        DuelLink_SendMessageData(0xF054, e, 0x14);
         gALFEA0.f491_7 = 0;
-        gUnk_02017FB0.unk307_3 = 0;
+        gLinkState.unk307_3 = 0;
         gALFEA0.step++;
         return 0;
     case 101:
-        return gUnk_02017FB0.unk307_3;
+        return gLinkState.unk307_3;
     case 200:
-        if (sub_080589C8(e))
+        if (AiTryChainResponse(e))
             gALFEA0.f491_7 = 1;
         break;
     }
     return 1;
 }
 /*
- * Unit-local views for sub_08020330. The ROM tests the entry flags at +4 and the link flags at
+ * Unit-local views for Chain_Build. The ROM tests the entry flags at +4 and the link flags at
  * 0x02017FB0+0x308 as u32-container bitfields (lsl/sign tests, as in code_08020AF4), so these
  * views differ from struct ActEntry / struct LinkState above.
  */
@@ -734,7 +734,7 @@ struct St0330 {
     struct Ent0330 listB[16];   /* +0x280 */
     u16 countB;                 /* +0x3C0 */
     u8 pad3C2[0x3D0 - 0x3C2];
-    u8 active:1;                /* +0x3D0 bit 0: sub_080213C0 runs this function */
+    u8 active:1;                /* +0x3D0 bit 0: Chain_Update runs this function */
     u8 step:7;
     u8 idx;                     /* +0x3D1: list B entry being resolved */
     u8 b3D2;                    /* +0x3D2: code_08020AF4's resolveFlags */
@@ -753,35 +753,35 @@ struct St0330 {
     u8 b491_mid:3;
     u8 b491_hi:1;               /* +0x491 bit 7: restart from step 1 */
 };
-#define gSt0330 (*(struct St0330 *)&gUnk_02017A40)
+#define gSt0330 (*(struct St0330 *)&gChain)
 struct Lnk0330 {
     u8 filler0[0x308];
     u32 f0:1, f1:1, f2:1, f3:1, f4:1, f5:1, f6:1, f7:1;     /* +0x308 */
 };
-#define gLnk0330 (*(struct Lnk0330 *)&gUnk_02017FB0)
+#define gLnk0330 (*(struct Lnk0330 *)&gLinkState)
 /* Effect table, 24-byte entries: handlers A and B at +0x10 / +0x14. */
 struct EffDef0330 { u8 pad[0x10]; Fn0330 fnA; Fn0330 fnB; };
-extern const struct EffDef0330 gUnk_0819A9D4[];
+extern const struct EffDef0330 gCardEffects[];
 /* 0x02017CC0 is list B; its +0x150 is 0x02017A40+0x3D0, the step byte. */
 struct Step150 { u8 pad[0x150]; u8 flag : 1; u8 step : 7; };
 extern struct Step150 gUnk_02017CC0;
-s32 sub_08047058(u16 card);
+s32 FindCardEffect(u16 card);
 void sub_080197C0(int player, u16 card);
-void sub_0801A7B4(void *p, int a);
-s32 sub_0801A32C(void);
-s32 sub_0801FEA0(struct ActEntry *e, u32 player);
-s32 sub_0802D30C(struct ActEntry *e, u32 player);
+void ChainListScreen_Start(void *p, int a);
+s32 ChainListScreen_Run(void);
+s32 Chain_AskResponse(struct ActEntry *e, u32 player);
+s32 CanPlayerChain(struct ActEntry *e, u32 player);
 #define S gSt0330
 #define LAST (S.listB[S.countB - 1])
 /*
  * Resolves list B one step per call: for each entry look up its two effect handlers
- * (gUnk_0819A9D4 via sub_08047058), run A then B until each reports done (0x02017FB0+0x308
- * bits 3 and 1), then send the list over the link, hand it to sub_0801A7B4, and run the
- * per-player checks sub_0802D30C / sub_0801FEA0 for the last entry (hypothesis).
+ * (gCardEffects via FindCardEffect), run A then B until each reports done (0x02017FB0+0x308
+ * bits 3 and 1), then send the list over the link, hand it to ChainListScreen_Start, and run the
+ * per-player checks CanPlayerChain / Chain_AskResponse for the last entry (hypothesis).
  * Every case ends in its own `return 1`: the jump to the new return label is not cross-jumped,
  * so each case keeps its own copy of the step++ tail, as in the ROM.
  */
-int sub_08020330(void)
+int Chain_Build(void)
 {
     u32 r; /* one temporary for the effect index and the list count, as in the ROM (r4) */
 
@@ -790,13 +790,13 @@ int sub_08020330(void)
         S.idx = 0;
         S.step++;
     case 1:
-        r = sub_08047058(S.listB[S.idx].card);
+        r = FindCardEffect(S.listB[S.idx].card);
         if (r == -1) {
             S.fnA = NULL;
             S.fnB = NULL;
         } else {
-            S.fnA = gUnk_0819A9D4[r].fnA;
-            S.fnB = gUnk_0819A9D4[r].fnB;
+            S.fnA = gCardEffects[r].fnA;
+            S.fnB = gCardEffects[r].fnB;
         }
         if (S.listB[S.idx].flag4_0)
             S.fnA = NULL;
@@ -814,11 +814,11 @@ int sub_08020330(void)
             S.step += 2;
             return 1;
         }
-        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]))
-            sub_080229BC(0xF091, &S.listB[S.idx], 0x14);
+        if ((u16)Chain_IsPartnerEntry((struct ActEntry *)&S.listB[S.idx]))
+            DuelLink_SendMessageData(0xF091, &S.listB[S.idx], 0x14);
         S.step++;
     case 3:
-        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
+        if ((u16)Chain_IsPartnerEntry((struct ActEntry *)&S.listB[S.idx]) == 0) {
             {
                 u16 *cnt = &S.countB;
                 /* FAKEMATCH: keeps r0/r1 busy while the count address is live, so local-alloc
@@ -842,11 +842,11 @@ int sub_08020330(void)
             S.step += 2;
             return 1;
         }
-        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]))
-            sub_080229BC(0xF081, &S.listB[S.idx], 0x14);
+        if ((u16)Chain_IsPartnerEntry((struct ActEntry *)&S.listB[S.idx]))
+            DuelLink_SendMessageData(0xF081, &S.listB[S.idx], 0x14);
         S.step++;
     case 5:
-        if ((u16)sub_0801FA48((struct ActEntry *)&S.listB[S.idx]) == 0) {
+        if ((u16)Chain_IsPartnerEntry((struct ActEntry *)&S.listB[S.idx]) == 0) {
             {
                 u16 *cnt = &S.countB;
                 /* FAKEMATCH: as in case 3. */
@@ -872,35 +872,35 @@ int sub_08020330(void)
         }
         S.step++;
     case 7:
-        if (gUnk_02015EE8.link) {
+        if (gDuelCtrl.link) {
             int i;
             u16 buf[0x80];
-            sub_0802297C(0xF061, S.countB, 0, 0);
+            DuelLink_SendMessage(0xF061, S.countB, 0, 0);
             for (i = 0; i < S.countB; i++) {
                 buf[0] = i;
-                sub_08075294(buf + 1, &S.listB[i], 0x14);
-                sub_080229BC(0xF062, buf, 0x16);
+                MemCopy16(buf + 1, &S.listB[i], 0x14);
+                DuelLink_SendMessageData(0xF062, buf, 0x16);
             }
-            sub_0802297C(0xF063, S.countB, 0, 0);
+            DuelLink_SendMessage(0xF063, S.countB, 0, 0);
             gLnk0330.f7 = 0;
         }
         S.step++;
         return 1;
     case 8:
-        sub_0801A7B4(&gUnk_02017CC0, 0);
+        ChainListScreen_Start(&gUnk_02017CC0, 0);
         gUnk_02017CC0.step++;
         return 1;
     case 9:
-        if (sub_0801A32C())
+        if (ChainListScreen_Run())
             S.step++;
         return 1;
     case 10:
-        if (gUnk_02015EE8.link && !gLnk0330.f7)
+        if (gDuelCtrl.link && !gLnk0330.f7)
             return 1;
         S.b488_0 = 0;
         S.step++;
     case 11:
-        if (sub_0802D30C((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
+        if (CanPlayerChain((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
             S.b490 = 0;
             S.b491_lo = 0;
             S.b491_hi = 0;
@@ -910,7 +910,7 @@ int sub_08020330(void)
         S.step++;
         return 1;
     case 12:
-        if ((u16)sub_0801FEA0((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
+        if ((u16)Chain_AskResponse((struct ActEntry *)&LAST, 1 - LAST.flag2_0)) {
             if (S.b491_hi)
                 S.step = 1;
             else
@@ -918,7 +918,7 @@ int sub_08020330(void)
         }
         return 1;
     case 13:
-        if (sub_0802D30C((struct ActEntry *)&LAST, LAST.flag2_0)) {
+        if (CanPlayerChain((struct ActEntry *)&LAST, LAST.flag2_0)) {
             S.b490 = 0;
             S.b491_hi = 0;
         } else {
@@ -927,7 +927,7 @@ int sub_08020330(void)
         S.step++;
         return 1;
     case 14:
-        if ((u16)sub_0801FEA0((struct ActEntry *)&LAST, LAST.flag2_0)) {
+        if ((u16)Chain_AskResponse((struct ActEntry *)&LAST, LAST.flag2_0)) {
             if (S.b491_hi)
                 S.step = 1;
             else

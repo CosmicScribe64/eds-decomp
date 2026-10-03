@@ -2,14 +2,14 @@
 #include "gba.h"
 
 extern s32 __modsi3(s32 a, s32 b);
-extern u16 sub_08075A6C(u32 a);
-extern u16 sub_08075AE4(u32 a);
-extern void sub_08064AF0(u32 a);
-extern u16 sub_08068D1C(u32 a, u32 b, u32 c);
-extern void sub_080656B4(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile);
-extern void sub_080752D0(void *dst, const void *src);
-extern void sub_08079340(void *str, void *dst, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f);
-extern u16 sub_08065034_u16(void) asm("sub_08065034");
+extern u16 FadeToBlack(u32 a);
+extern u16 FadeFromBlack(u32 a);
+extern void PackList_DebugNop(u32 a);
+extern u16 DeckEdit_GetListCard(u32 a, u32 b, u32 c);
+extern void DeckEdit_DrawCardIcon(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile);
+extern void StrCopy(void *dst, const void *src);
+extern void DrawTextStrip(void *str, void *dst, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f);
+extern u16 sub_08065034_u16(void) asm("DeckEdit_GetCursorRowTile");
 
 /* Scene state at 0x0201DB20; only the byte at +0x1C34 is used here. */
 struct PageState {
@@ -26,7 +26,7 @@ struct PageState {
     u8 pad1C35[0x1C3B - 0x1C35];
     u8 frameKind;                   /* +0x1C3B card frame graphic index (0..9) */
 };
-extern struct PageState gUnk_0201DB20;
+extern struct PageState gDeckEdit;
 
 /* Pack-list slide state at 0x02020310 (see code_08063A28). */
 struct Slide {
@@ -48,15 +48,15 @@ struct Slide {
     u16 list[0x20];                 /* +0x2C */
     u16 count;                      /* +0x6C */
 };
-extern struct Slide gUnk_02020310;
+extern struct Slide gSceneWork;
 struct PackInfo {
     u16 id;
     u8 pad2[2];
     const u8 *image;
     u8 name[0x40];
 };
-extern struct PackInfo gUnk_080865DC[];
-extern const u16 gUnk_080865CC[];
+extern struct PackInfo gPackInfo[];
+extern const u16 gPackListSlideEase[];
 struct Main {
     u8 pad0[6];
     u16 keysNew;                    /* +0x06 */
@@ -65,24 +65,24 @@ struct Main {
     u8 pad441C[0x442A - 0x441C];
     u16 unk442A;                    /* +0x442A */
 };
-extern struct Main gUnk_03000040;
-extern void sub_08064698(void);
-extern void sub_08064290(void);
-extern void sub_080647A4(u32 a, u32 b, u32 c);
-extern void sub_080649D8(u32 a);
-extern void sub_08064908(u32 a);
-extern void sub_08064928(u32 a, u32 b);
-extern void sub_08064984(u32 a, u32 b, u32 c);
-extern void sub_08077AEC(u32 a);
+extern struct Main gMain;
+extern void PackList_FlushVram(void);
+extern void PackList_InitVideo(void);
+extern void PackList_DrawBackground(u32 a, u32 b, u32 c);
+extern void PackList_DrawCovers(u32 a);
+extern void PackList_SetCoverAlpha(u32 a);
+extern void PackList_LoadCoverGfx(u32 a, u32 b);
+extern void PackList_DrawCoverTiles(u32 a, u32 b, u32 c);
+extern void PlaySE(u32 a);
 
-void sub_08064AF0(u32 a) {}
-u16 sub_08064AF4(void)
+void PackList_DebugNop(u32 a) {}
+u16 PackList_Init(void)
 {
     /* Preserve the initialized scene base across the state-handler calls. */
-    register struct Slide *s asm("r4") = &gUnk_02020310;
+    register struct Slide *s asm("r4") = &gSceneWork;
     u32 f = 1 & s->flags;
     if (f != 0) {
-        sub_08064698();
+        PackList_FlushVram();
     done:
         return 0;
     }
@@ -90,18 +90,18 @@ u16 sub_08064AF4(void)
     case 0:
         s->current = 1;
         s->sel = s->count - 1;
-        sub_08064290();
+        PackList_InitVideo();
         goto next;
     case 1:
-        sub_080647A4(2, 0x11, 0x1FD);
-        sub_080649D8(s->sel);
+        PackList_DrawBackground(2, 0x11, 0x1FD);
+        PackList_DrawCovers(s->sel);
         goto next;
     case 2:
         REG_DISPCNT |= 0x1440;
-        sub_08064AF0(0);
-        if (sub_08075AE4(2) == 0)
+        PackList_DebugNop(0);
+        if (FadeFromBlack(2) == 0)
             goto done;
-        sub_08064908(0);
+        PackList_SetCoverAlpha(0);
         s->unk1A = f;
         s->unk1C = 8;
         REG_DISPCNT |= 0xB00;
@@ -109,120 +109,120 @@ u16 sub_08064AF4(void)
         s->state++;
         goto done;
     default:
-        sub_08064AF0(0);
+        PackList_DebugNop(0);
         return 1;
     }
 }
-/* Pack-list input: slide animation (frame counter, eased with gUnk_080865CC) or LEFT/RIGHT to move the list, A to confirm. */
-u16 sub_08064BA0(void)
+/* Pack-list input: slide animation (frame counter, eased with gPackListSlideEase) or LEFT/RIGHT to move the list, A to confirm. */
+u16 PackList_HandleInput(void)
 {
     vu16 zero;
-    sub_08064AF0(gUnk_02020310.frame);
-    if ((1 & gUnk_02020310.flags) != 0) {
+    PackList_DebugNop(gSceneWork.frame);
+    if ((1 & gSceneWork.flags) != 0) {
         REG_DISPCNT |= 0x900;
-        sub_08064698();
+        PackList_FlushVram();
         return 0;
     }
-    if (gUnk_02020310.unk1A != gUnk_02020310.unk1C) {
-        if (gUnk_02020310.unk1A > gUnk_02020310.unk1C)
-            gUnk_02020310.unk1A--;
+    if (gSceneWork.unk1A != gSceneWork.unk1C) {
+        if (gSceneWork.unk1A > gSceneWork.unk1C)
+            gSceneWork.unk1A--;
         else
-            gUnk_02020310.unk1A++;
-        sub_08064908(gUnk_02020310.unk1A);
+            gSceneWork.unk1A++;
+        PackList_SetCoverAlpha(gSceneWork.unk1A);
     }
-    if (gUnk_02020310.frame != 0) {
-        s32 t = gUnk_02020310.pos - gUnk_02020310.posBase;
-        t *= gUnk_080865CC[--gUnk_02020310.frame];
+    if (gSceneWork.frame != 0) {
+        s32 t = gSceneWork.pos - gSceneWork.posBase;
+        t *= gPackListSlideEase[--gSceneWork.frame];
         t /= 4096;
-        t += gUnk_02020310.posBase;
-        gUnk_03000040.unk442A = t;
+        t += gSceneWork.posBase;
+        gMain.unk442A = t;
         REG_DISPCNT &= 0xFEFF;
         REG_DISPCNT &= 0xF7FF;
-        if (gUnk_02020310.frame == 0) {
-            gUnk_02020310.sel = gUnk_02020310.sel2;
-            sub_080649D8(gUnk_02020310.sel);
-            gUnk_02020310.unk1C = 8;
-            gUnk_02020310.dir = 0;
-            gUnk_02020310.pos = 0;
-            gUnk_02020310.posBase = 0;
-            gUnk_03000040.unk442A = 0;
+        if (gSceneWork.frame == 0) {
+            gSceneWork.sel = gSceneWork.sel2;
+            PackList_DrawCovers(gSceneWork.sel);
+            gSceneWork.unk1C = 8;
+            gSceneWork.dir = 0;
+            gSceneWork.pos = 0;
+            gSceneWork.posBase = 0;
+            gMain.unk442A = 0;
         }
         return 0;
     }
-    if (gUnk_03000040.keysNew & 0x20) {
+    if (gMain.keysNew & 0x20) {
         vu32 *dma;
         s32 sel;
         s32 count;
-        sub_08077AEC(0);
-        count = gUnk_02020310.count;
-        sel = gUnk_02020310.sel;
-        gUnk_02020310.sel2 = (sel + count - 1) % count;
-        gUnk_02020310.unk1C = 0x10;
-        gUnk_02020310.frame = 8;
-        gUnk_02020310.dir = 1;
-        gUnk_02020310.pos = gUnk_02020310.posBase - 0x50;
-        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[(sel + gUnk_02020310.count - 1) % gUnk_02020310.count]].id);
+        PlaySE(0);
+        count = gSceneWork.count;
+        sel = gSceneWork.sel;
+        gSceneWork.sel2 = (sel + count - 1) % count;
+        gSceneWork.unk1C = 0x10;
+        gSceneWork.frame = 8;
+        gSceneWork.dir = 1;
+        gSceneWork.pos = gSceneWork.posBase - 0x50;
+        PackList_LoadCoverGfx(3, gPackInfo[gSceneWork.list[(sel + gSceneWork.count - 1) % gSceneWork.count]].id);
         zero = 0;
         dma = (vu32 *)0x040000D4;
         dma[0] = (u32)&zero;
-        dma[1] = (u32)gUnk_03000040.bgMap[2];
+        dma[1] = (u32)gMain.bgMap[2];
         dma[2] = 0x81000400;
         dma[2];
         while (dma[2] & 0x80000000)
             ;
-        sub_08064984(2, 0x78, 3);
+        PackList_DrawCoverTiles(2, 0x78, 3);
         {
-            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in sub_080649D8. */
-            u32 f = gUnk_02020310.flags;
+            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in PackList_DrawCovers. */
+            u32 f = gSceneWork.flags;
             f |= 1;
-            gUnk_02020310.flags = f;
+            gSceneWork.flags = f;
         }
     }
-    if (gUnk_03000040.keysNew & 0x10) {
+    if (gMain.keysNew & 0x10) {
         vu32 *dma;
         s32 sel;
-        sub_08077AEC(0);
-        sel = gUnk_02020310.sel;
-        gUnk_02020310.sel2 = (sel + 1) % gUnk_02020310.count;
-        gUnk_02020310.unk1C = 0x10;
-        gUnk_02020310.frame = 8;
-        gUnk_02020310.dir = 2;
-        gUnk_02020310.pos = gUnk_02020310.posBase + 0x50;
-        sub_08064928(3, gUnk_080865DC[gUnk_02020310.list[(sel + 3) % gUnk_02020310.count]].id);
+        PlaySE(0);
+        sel = gSceneWork.sel;
+        gSceneWork.sel2 = (sel + 1) % gSceneWork.count;
+        gSceneWork.unk1C = 0x10;
+        gSceneWork.frame = 8;
+        gSceneWork.dir = 2;
+        gSceneWork.pos = gSceneWork.posBase + 0x50;
+        PackList_LoadCoverGfx(3, gPackInfo[gSceneWork.list[(sel + 3) % gSceneWork.count]].id);
         zero = 0;
         dma = (vu32 *)0x040000D4;
         dma[0] = (u32)&zero;
-        dma[1] = (u32)gUnk_03000040.bgMap[2];
+        dma[1] = (u32)gMain.bgMap[2];
         dma[2] = 0x81000400;
         dma[2];
         while (dma[2] & 0x80000000)
             ;
-        sub_08064984(2, 0x60, 3);
+        PackList_DrawCoverTiles(2, 0x60, 3);
         {
-            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in sub_080649D8. */
-            u32 f = gUnk_02020310.flags;
+            /* A u32 temporary (not |= on the u8 field) gives the ROM's register choice, as in PackList_DrawCovers. */
+            u32 f = gSceneWork.flags;
             f |= 1;
-            gUnk_02020310.flags = f;
+            gSceneWork.flags = f;
         }
     }
-    if (gUnk_03000040.keysNew & 1) {
-        sub_08077AEC(1);
+    if (gMain.keysNew & 1) {
+        PlaySE(1);
         return 1;
     }
     return 0;
 }
-u16 sub_08064DF8(void)
+u16 PackList_FadeOut(void)
 {
-    if (sub_08075A6C(4) != 0) {
+    if (FadeToBlack(4) != 0) {
         REG_DISPCNT &= 0xEEFF;
         return 1;
     }
-    sub_08064AF0(0);
+    PackList_DebugNop(0);
     return 0;
 }
 /* Fill a 9 x 10 block of the BG map at 0x0600F000 with ascending tiles starting at c*90 + e.
    d == 0: rows wrap (& 0x1F), columns run on; d == 1: both wrap. */
-void sub_08064E28(u8 a, u8 b, u8 c, u8 d, u8 e)
+void DeckEdit_DrawPortraitTilemap(u8 a, u8 b, u8 c, u8 d, u8 e)
 {
     u16 tile = c * 0x5A + e;
     u8 i;
@@ -246,14 +246,14 @@ void sub_08064E28(u8 a, u8 b, u8 c, u8 d, u8 e)
         break;
     }
 }
-extern void sub_080788AC(u32 dst, u32 ch, u32 a, u32 b, void *flags);
+extern void RenderShadowedGlyph(u32 dst, u32 ch, u32 a, u32 b, void *flags);
 /* Clear 0x400 bytes at dst with DMA3, then render the 0xE0 glyphs 0x20..0xFF (0x20 bytes each) after it:
    codes 0x20-0x7F as-is, 0x80-0xBF from 0xA0 with flags bit 0 set, 0xC0-0xFF from 0xA0 with it cleared. */
 struct Flag0 {
     u8 bit0 : 1;
     u8 rest : 7;
 };
-void sub_08064F00(u32 dst, u8 a, u8 b, struct Flag0 *flags)
+void RenderOutlinedFontTiles(u32 dst, u8 a, u8 b, struct Flag0 *flags)
 {
     vu16 zero = 0;
     vu32 *dma = (vu32 *)0x040000D4;
@@ -278,106 +278,106 @@ void sub_08064F00(u32 dst, u8 a, u8 b, struct Flag0 *flags)
             flags->bit0 = 0;
             break;
         }
-        sub_080788AC(dst, ch++, a, b, flags);
+        RenderShadowedGlyph(dst, ch++, a, b, flags);
         dst += 0x20;
         i++;
     } while (i <= 0xFF);
 }
 /* Returns the VRAM address of the current slot: 0x06006180 + ((off + slot) % 7) * 0x2A0. */
-u32 sub_08064F90(u8 slot)
+u32 DeckEdit_GetListRowVram(u8 slot)
 {
-    s32 n = __modsi3(gUnk_0201DB20.off + slot, 7);
+    s32 n = __modsi3(gDeckEdit.off + slot, 7);
     return 0x06006180 + n * 0x2A0;
 }
-u32 sub_08064FCC(void)
+u32 DeckEdit_GetCursorRowVram(void)
 {
-    return 0x06000000 + (gUnk_0201DB20.page * 0x32 + 0x19B) * 32;
+    return 0x06000000 + (gDeckEdit.page * 0x32 + 0x19B) * 32;
 }
-u16 sub_08064FF8(u8 slot)
+u16 DeckEdit_GetListRowTile(u8 slot)
 {
-    s32 n = __modsi3(gUnk_0201DB20.off + slot, 7);
+    s32 n = __modsi3(gDeckEdit.off + slot, 7);
     return n * 21 + 0x30C;
 }
-u32 sub_08065034(void)
+u32 DeckEdit_GetCursorRowTile(void)
 {
-    return gUnk_0201DB20.page * 0x32 + 0x19B;
+    return gDeckEdit.page * 0x32 + 0x19B;
 }
-void sub_08065058(u8 dir)
+void DeckEdit_RotateListRowRing(u8 dir)
 {
     switch (dir) {
     case 1: {
-        u8 n = (gUnk_0201DB20.off - 1) & 0xF;
-        gUnk_0201DB20.off = n;
+        u8 n = (gDeckEdit.off - 1) & 0xF;
+        gDeckEdit.off = n;
         dir = n; /* FAKEMATCH: reuse the dead direction argument. */
         if (dir == 0xF)
-            gUnk_0201DB20.off = 6;
+            gDeckEdit.off = 6;
         break;
     }
     case 2: {
-        u8 n = (gUnk_0201DB20.off + 1) & 0xF;
-        gUnk_0201DB20.off = n;
+        u8 n = (gDeckEdit.off + 1) & 0xF;
+        gDeckEdit.off = n;
         if (n == 7)
-            gUnk_0201DB20.off = 0;
+            gDeckEdit.off = 0;
         break;
     }
     }
 } /* 0x08065058 size 0x7C */
 /* FAKEMATCH (decomp-permuter): the ROM stores the toggled bit twice; only a non-void return type with no
    return statement reproduces the extra mask. */
-int sub_080650D4(void)
+int DeckEdit_FlipCursorRowPage(void)
 {
-    int next = gUnk_0201DB20.page + 1;
-    int stored = (gUnk_0201DB20.page = next);
-    gUnk_0201DB20.page = stored;
+    int next = gDeckEdit.page + 1;
+    int stored = (gDeckEdit.page = next);
+    gDeckEdit.page = stored;
 }
 
-extern void sub_08079404(void *src, void *dst, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f);
-extern const u8 gUnk_0822C720[];
+extern void DrawStringTiles(void *src, void *dst, u32 a, u32 b, u32 c, u32 d, u32 e, u32 f);
+extern const u8 gCardNames[];
 /* Draw one 0x40-byte graphic from the table at 0x0822C720 into the map buffer `map` at (col + 4, row + 1). */
-void sub_08065108(u16 idx, u8 *map, u16 col, u16 row, u32 unused, u8 slot)
+void DeckEdit_DrawListRowName(u16 idx, u8 *map, u16 col, u16 row, u32 unused, u8 slot)
 {
-    u32 a = sub_08064F90(slot);
-    u16 b = sub_08064FF8(slot);
-    sub_08079404((void *)(gUnk_0822C720 + idx * 64), map + (((col + 4) & 0x1F) + ((row + 1) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
+    u32 a = DeckEdit_GetListRowVram(slot);
+    u16 b = DeckEdit_GetListRowTile(slot);
+    DrawStringTiles((void *)(gCardNames + idx * 64), map + (((col + 4) & 0x1F) + ((row + 1) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
 }
-extern int sub_080650D4(void);
+extern int DeckEdit_FlipCursorRowPage(void);
 #define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define CARD_KIND(id) ((int)((CARD_STATS(id) & 0x1F00000) >> 20))
 #define CARD_NUM(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 
 /* Draw a card-sized graphic (table 0x0822C720, 0x40 bytes per id) and pick the frame kind byte (+0x1C3B) for card `id`. */
-void sub_0806518C(u16 id, u8 *map, u16 col, u16 row)
+void DeckEdit_DrawCursorRowName(u16 id, u8 *map, u16 col, u16 row)
 {
     char buf[0x80];
-    const u8 *gfx = gUnk_0822C720 + id * 64;
+    const u8 *gfx = gCardNames + id * 64;
     u32 a;
     u16 b;
     int v;
-    sub_080752D0(buf, gfx);
-    a = sub_08064FCC();
+    StrCopy(buf, gfx);
+    a = DeckEdit_GetCursorRowVram();
     b = sub_08065034_u16();
-    sub_08079340((void *)gfx, map + (((col + 4) & 0x1F) + ((row + 1) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
-    sub_080650D4();
+    DrawTextStrip((void *)gfx, map + (((col + 4) & 0x1F) + ((row + 1) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
+    DeckEdit_FlipCursorRowPage();
     switch (CARD_NUM(id)) {
     case 0x776:
-        gUnk_0201DB20.frameKind = 3;
+        gDeckEdit.frameKind = 3;
         return;
     case 0x777:
     case 0x778:
-        gUnk_0201DB20.frameKind = 1;
+        gDeckEdit.frameKind = 1;
         return;
     case 0x76D:
     case 0x76E:
     case 0x76F:
-        gUnk_0201DB20.frameKind = 0;
+        gDeckEdit.frameKind = 0;
         return;
     default: {
         switch (CARD_KIND(id)) {
         case 0x15:
-            gUnk_0201DB20.frameKind = 5;
+            gDeckEdit.frameKind = 5;
             return;
         case 0x16:
-            gUnk_0201DB20.frameKind = 4;
+            gDeckEdit.frameKind = 4;
             return;
         }
         switch (CARD_NUM(id)) {
@@ -408,22 +408,22 @@ void sub_0806518C(u16 id, u8 *map, u16 col, u16 row)
         break;
     }
     }
-    gUnk_0201DB20.frameKind = v;
+    gDeckEdit.frameKind = v;
 }
-extern s32 sub_080753CC(const void *s);
-extern const u8 gUnk_08087554[];
-/* Draw the string gUnk_08087554 (clamped to 100 chars) into the map buffer `map` at (col + 8, row + 3). */
-void sub_08065384(u32 unused, u8 *map, u16 col, u16 row)
+extern s32 StrLen(const void *s);
+extern const u8 gStrDeckEditNoCards[];
+/* Draw the string gStrDeckEditNoCards (clamped to 100 chars) into the map buffer `map` at (col + 8, row + 3). */
+void DeckEdit_DrawNoCardsText(u32 unused, u8 *map, u16 col, u16 row)
 {
     char buf[0x40];
     u32 a;
     u16 b;
-    sub_080752D0(buf, gUnk_08087554);
-    if (sub_080753CC(buf) > 0x64)
+    StrCopy(buf, gStrDeckEditNoCards);
+    if (StrLen(buf) > 0x64)
         buf[0x64] = 0;
-    a = sub_08064FCC();
+    a = DeckEdit_GetCursorRowVram();
     b = sub_08065034_u16();
-    sub_08079340(buf, map + (((col + 8) & 0x1F) + ((row + 3) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
+    DrawTextStrip(buf, map + (((col + 8) & 0x1F) + ((row + 3) & 0x1F) * 32) * 2, a, b, 2, 1, 0, 0);
 }
 extern const u8 gUnk_08704D48[];
 extern const u8 gUnk_08704DE8[];
@@ -465,7 +465,7 @@ extern const u8 gUnk_08706B68[];
 extern const u8 gUnk_08706CA8[];
 extern const u8 gUnk_08706DE8[];
 /* Copy 40 palette/tile blocks (0x80 bytes each, the last 0x60) of the pack-list graphics (0x0870xxxx) to dst. */
-void sub_080653F0(u8 *dst)
+void DeckEdit_LoadCardIconTiles(u8 *dst)
 {
     CpuSet(gUnk_08706528, dst, 0x40);
     CpuSet(gUnk_08706DE8, dst + 0x80, 0x40);
@@ -507,12 +507,12 @@ void sub_080653F0(u8 *dst)
     CpuSet(gUnk_08704D48, dst + 0x1280, 0x40);
     CpuSet(gUnk_08704E88, dst + 0x1300, 0x30);
 }
-extern const u16 gUnk_0808733C[], gUnk_08087352[], gUnk_0808737C[], gUnk_0808738A[];
-extern const u32 *const gUnk_08087394[], *const gUnk_080873C0[], *const gUnk_08087424[], *const gUnk_08087440[];
+extern const u16 gAttributeIconTiles[], gTypeIconTiles[], gSpellSubtypeIconTiles[], gCardKindIconTiles[];
+extern const u32 *const gAttributeIconPals[], *const gTypeIconPals[], *const gSpellSubtypeIconPals[], *const gCardKindIconPals[];
 /* kind is 0..3 at every ROM call site, selecting one of the four table pairs.
    Draw one 2x2-cell metatile `idx` at (col, row) of the BG map `map` (tile ids from a per-`kind` table plus
    `tile`, palette bank `pal`) and load its 16-colour palette into bank `pal`. */
-void sub_080656B4(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile)
+void DeckEdit_DrawCardIcon(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile)
 {
     const u16 *tiles;
     const u32 *const *pals;
@@ -522,20 +522,20 @@ void sub_080656B4(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile)
         int x0, y0, x1, y1;
         switch (kind) {
         case 0:
-            tiles = gUnk_0808733C;
-            pals = gUnk_08087394;
+            tiles = gAttributeIconTiles;
+            pals = gAttributeIconPals;
             break;
         case 1:
-            tiles = gUnk_08087352;
-            pals = gUnk_080873C0;
+            tiles = gTypeIconTiles;
+            pals = gTypeIconPals;
             break;
         case 2:
-            tiles = gUnk_0808737C;
-            pals = gUnk_08087424;
+            tiles = gSpellSubtypeIconTiles;
+            pals = gSpellSubtypeIconPals;
             break;
         case 3:
-            tiles = gUnk_0808738A;
-            pals = gUnk_08087440;
+            tiles = gCardKindIconTiles;
+            pals = gCardKindIconPals;
             break;
         }
         x0 = col & 0x1F;
@@ -552,18 +552,18 @@ void sub_080656B4(u8 kind, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16 tile)
     }
 }
 
-#define ROW(pos) (((((pos) + 7) * 8 + gUnk_0201DB20.scroll) & 0xFF) >> 3)
+#define ROW(pos) (((((pos) + 7) * 8 + gDeckEdit.scroll) & 0xFF) >> 3)
 /* Row macro for the default case: masks with the local `mask` (0xFF) instead of a literal (see below). */
-#define ROW_M(pos) (((((pos) + 7) * 8 + gUnk_0201DB20.scroll) & mask) >> 3)
+#define ROW_M(pos) (((((pos) + 7) * 8 + gDeckEdit.scroll) & mask) >> 3)
 /* Draw the three-part card header (attribute/type/level icons) for the list entry `pos` of the card view. */
-void sub_080657F8(u16 pos)
+void DeckEdit_DrawCardIcons(u16 pos)
 {
     u16 id;
     int v;
-    id = sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]);
+    id = DeckEdit_GetListCard(gDeckEdit.cursor, gDeckEdit.arr14A0[gDeckEdit.cursor], gDeckEdit.arr620[gDeckEdit.cursor]);
     switch (CARD_KIND(id)) {
     case 0x15:
-        sub_080656B4(0, 9, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
+        DeckEdit_DrawCardIcon(0, 9, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
         switch (CARD_KIND(id)) {
         case 0x15:
         case 0x16:
@@ -573,10 +573,10 @@ void sub_080657F8(u16 pos)
             v = 0;
             break;
         }
-        sub_080656B4(2, v, (u16 *)0x0600C000, 6, ROW(pos), 7, 0x100);
+        DeckEdit_DrawCardIcon(2, v, (u16 *)0x0600C000, 6, ROW(pos), 7, 0x100);
         break;
     case 0x16:
-        sub_080656B4(0, 8, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
+        DeckEdit_DrawCardIcon(0, 8, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
         switch (CARD_KIND(id)) {
         case 0x15:
         case 0x16:
@@ -586,12 +586,12 @@ void sub_080657F8(u16 pos)
             v = 0;
             break;
         }
-        sub_080656B4(2, v, (u16 *)0x0600C000, 6, ROW(pos), 7, 0x100);
+        DeckEdit_DrawCardIcon(2, v, (u16 *)0x0600C000, 6, ROW(pos), 7, 0x100);
         break;
     case 0x17:
         break;
     case 0x18:
-        sub_080656B4(0, 10, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
+        DeckEdit_DrawCardIcon(0, 10, (u16 *)0x0600C000, 4, ROW(pos), 6, 0x100);
         break;
     default: {
         /* FAKEMATCH: with a literal 0xFF, CSE shares one 0xFF pseudo across the first two calls and local-alloc
@@ -599,8 +599,8 @@ void sub_080657F8(u16 pos)
            pos+7 and is rematerialised as `movs r3, #0xFF` at each use, as in the ROM. */
         int mask = 0xFF;
         int w;
-        sub_080656B4(0, CARD_STATS(id) >> 29, (u16 *)0x0600C000, 4, ROW_M(pos), 6, 0x100);
-        sub_080656B4(1, CARD_KIND(id), (u16 *)0x0600C000, 6, ROW_M(pos), 7, 0x100);
+        DeckEdit_DrawCardIcon(0, CARD_STATS(id) >> 29, (u16 *)0x0600C000, 4, ROW_M(pos), 6, 0x100);
+        DeckEdit_DrawCardIcon(1, CARD_KIND(id), (u16 *)0x0600C000, 6, ROW_M(pos), 7, 0x100);
         switch (CARD_NUM(id)) {
         case 0x776:
             w = 3;
@@ -629,16 +629,16 @@ void sub_080657F8(u16 pos)
         /* FAKEMATCH: the r1 clobber makes `w` conflict with r1, so global-alloc puts it in r0 (copied to r1 for
            the call) as in the ROM instead of taking the r1 copy preference. */
         asm volatile("" ::: "r1");
-        sub_080656B4(3, w, (u16 *)0x0600C000, 8, ROW(pos), 1, 0x100);
+        DeckEdit_DrawCardIcon(3, w, (u16 *)0x0600C000, 8, ROW(pos), 1, 0x100);
         break;
     }
     }
 }
-extern void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2);
-extern void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
+extern void DrawNumberTiles(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2);
+extern void PutMapTileRun(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
 extern void *memset(void *dst, int c, unsigned int n);
 extern void *memcpy(void *dst, const void *src, unsigned int n);
-extern const u8 gUnk_08087568[4];
+extern const u8 gRaStatDigits[4];
 static inline u16 CardAtk5AB4(u16 id)
 {
     switch ((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20) {
@@ -665,11 +665,11 @@ static inline u16 CardDef5AB4(u16 id)
         return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1FF) * 10;
     }
 }
-/* FAKEMATCH: int-parameter views of sub_080792A0 / sub_080794E0. The ROM passes the u16 row and the
+/* FAKEMATCH: int-parameter views of PutMapTileRun / DrawNumberTiles. The ROM passes the u16 row and the
  * `0x300 | digit` / ATK values without narrowing them to the callees' u8/u16 parameter types, and the
  * u16 prototype would also reorder the `orr` operands in the digit loops. */
-#define sub_080792A0_i ((void (*)(int start, u16 *dst, int pal, int mode, int count))sub_080792A0)
-#define sub_080794E0_i ((void (*)(int val, int n, int mode, u16 *dst, int col, int row, int pal, int base, int m2))sub_080794E0)
+#define sub_080792A0_i ((void (*)(int start, u16 *dst, int pal, int mode, int count))PutMapTileRun)
+#define sub_080794E0_i ((void (*)(int val, int n, int mode, u16 *dst, int col, int row, int pal, int base, int m2))DrawNumberTiles)
 
 /* ATK and DEF shown for card `id`: 0 for kinds 21-23, 4000 for the Divine kind 24, else the stat * 10. */
 static inline u16 CardAtk_08065AB4(u16 id)
@@ -702,7 +702,7 @@ static inline u16 CardDef_08065AB4(u16 id)
 
 /* Draw the selected card's ATK/DEF box into the tilemap at (col, row). Kinds 21-23 draw nothing; the
  * Divine kind 24 draws a frame and a fixed 4-digit pattern chosen by card number (0x776-0x778). */
-void sub_08065AB4(u16 *map, u16 col, u16 row)
+void DeckEdit_DrawAtkDef(u16 *map, u16 col, u16 row)
 {
     u8 d[4];
     u16 id;
@@ -713,7 +713,7 @@ void sub_08065AB4(u16 *map, u16 col, u16 row)
     asm("");
     asm("");
     asm("");
-    id = sub_08068D1C(gUnk_0201DB20.cursor, gUnk_0201DB20.arr14A0[gUnk_0201DB20.cursor], gUnk_0201DB20.arr620[gUnk_0201DB20.cursor]);
+    id = DeckEdit_GetListCard(gDeckEdit.cursor, gDeckEdit.arr14A0[gDeckEdit.cursor], gDeckEdit.arr620[gDeckEdit.cursor]);
     switch (CARD_KIND(id)) {
     case 21:
     case 22:
@@ -753,7 +753,7 @@ void sub_08065AB4(u16 *map, u16 col, u16 row)
             }
             break;
         case 0x778:
-            memcpy(d, gUnk_08087568, 4);
+            memcpy(d, gRaStatDigits, 4);
             for (i = 0; i <= 3; i++) {
                 sub_080792A0_i(0x300 | d[i], &map[col + 1 + (row << 5)], 2, 0, 1);
                 sub_080792A0_i(0x300 | d[i], &map[col++ + 1 + ((row + 1) << 5)], 2, 0, 1);

@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-09-29
 ---
-# Random `sub_08076F9C`
+# Random `Random`
 
 | Field | Value |
 |---|---|

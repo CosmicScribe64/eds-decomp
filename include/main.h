@@ -2,7 +2,7 @@
 #define GUARD_MAIN_H
 
 /*
- * gUnk_03000040 (gMain): the game's main state in IWRAM, merged from how all C units declare it
+ * gMain (gMain): the game's main state in IWRAM, merged from how all C units declare it
  * (tools/structmap.py + tools/mkheader.py, 2026-09-30). Field names are the most-used ones; unknown bytes are
  * named unk<offset>. Only offsets up to 0x488C are known.
  *
@@ -81,7 +81,7 @@ struct Main {
     u16 unk488A_12:4;
 };
 
-extern struct Main gUnk_03000040;
+extern struct Main gMain;
 
 typedef char main_h_check_oam[(u32)&((struct Main *)0)->oamBuffer == 0x4430 ? 1 : -1];
 typedef char main_h_check_seq[(u32)&((struct Main *)0)->seqIndex1 == 0x4859 ? 1 : -1];

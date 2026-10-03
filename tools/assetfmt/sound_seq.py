@@ -10,13 +10,13 @@ bytecode, and the driver's lookup tables, as text and JSON that build back to th
                          (table=ADDR count=N: the song table)
   sound_seq_lookup       driver lookup tables (volume scale, PCM pitch, PSG frequency) -> JSON
 
-The command sets are those of the matched decoders in src/sound_driver.c: sub_0807D6B4 decodes SE tracks and
-sub_0807DB58 decodes BGM tracks. Text files have one event per line, `<ticks> <command> [args]`, where <ticks>
+The command sets are those of the matched decoders in src/sound_driver.c: SoundSeTrackTick decodes SE tracks and
+SoundSequencerTick decodes BGM tracks. Text files have one event per line, `<ticks> <command> [args]`, where <ticks>
 is the number of frames (VBlanks) until the next event; `;` starts a comment. The ROM layout stays fixed:
 every song and SE track is assembled at the address its `.song`/`.org` line gives, and the gaps (the ROM has
 none apart from the trailing padding) are zero-filled.
 
-SE track commands (sub_0807D6B4). Every event is `<ticks> <command>`; in the ROM the tick byte comes first.
+SE track commands (SoundSeTrackTick). Every event is `<ticks> <command>`; in the ROM the tick byte comes first.
   freq F vol=V        0xB0: set the channel to raw frequency register value F (0x000-0xFFF), volume V
   note N vol=V        0xE0: PSG-table pitch N (1/32 semitones from C2, 0x000-0xFFF), volume V
   freq_rel delta=D vol_delta=W   0xA0: raw frequency base+D (-1024..1023), volume current+W (-16..15)
@@ -38,7 +38,7 @@ SE track commands (sub_0807D6B4). Every event is `<ticks> <command>`; in the ROM
   waitpcm (0xF9)  silence (0xFD, note off)  keyoff (0xFE, PCM key-off)  end (0xFF: return, or end the track)
   nop [x=N] (0xF0-0xF8)   raw 0xNN [bytes] (any other opcode, emitted as given: 0x00-0x2F hang the driver)
 
-BGM track commands (sub_0807DB58). Every event is `<ticks> <command>`; in the ROM the tick byte follows the
+BGM track commands (SoundSequencerTick). Every event is `<ticks> <command>`; in the ROM the tick byte follows the
 command. A track starts with `<ticks> wait` (just the tick byte) and ends with end, loop or stop (no ticks).
   note N vol=V        0xD0: pitch = note N (a name such as C#4 on PSG tone tracks, else 0-255); restarts the
                       note when V differs from the current volume
@@ -921,17 +921,17 @@ LOOKUP = [
     ('pcm_pitch', 0x1000, 2, 96, 32, _pitch_label, 'dec',
      'PCM pitch multipliers, 4.12 fixed point (4096 = the sample\'s own rate), one per 1/32 semitone from '
      '-48 to +47.97 semitones. Rows are labelled by semitone offset. The driver indexes it from its middle '
-     '(gUnk_081A960C = row "+0", value 4096) with the signed pitch of a PCM voice (note << 5 in BGM tracks): '
+     '(gSoundPitchTable = row "+0", value 4096) with the signed pitch of a PCM voice (note << 5 in BGM tracks): '
      'step = pitch[p] * sample.rate >> 12.',
-     'value[i] = round(4096 * 2 ** ((i - 1536) / 384)), i = 0..3071', 'sub_0807E918 (SoundPcmStart), '
-     'sub_0807DB58 (pitch changes)'),
+     'value[i] = round(4096 * 2 ** ((i - 1536) / 384)), i = 0..3071', 'SoundPcmStart (SoundPcmStart), '
+     'SoundSequencerTick (pitch changes)'),
     ('psg_frequency', 0x2800, 2, 84, 32, _psg_label, 'hex',
      'PSG square/wave frequency register values (SOUNDxCNT_X), one per 1/32 semitone from C2 (65.41 Hz on '
      'the square channels) to B8; bit 15 is the restart (trigger) bit. Rows are labelled by note; the BGM '
      '`note` command selects row n (C2 + n semitones). The wave channel sounds an octave lower for the same '
-     'value. Indexed by gUnk_081AA20C[pitch].',
+     'value. Indexed by gPsgFreqTable[pitch].',
      'value[i] = 0x8000 | int(2048 - 131072 / (440 * 2 ** ((i / 32 - 33) / 12))), i = 0..2687',
-     'sub_0807DB58 (PSG channels 1-3)'),
+     'SoundSequencerTick (PSG channels 1-3)'),
     ('psg_vibrato_steps', 0x3D00, 2, 84, 8, _psg_label, 'hex',
      'For each semitone of psg_frequency (rows by note): its value, the value lowered by 1, 2 and 3 steps, '
      'the value again, and raised by 1, 2 and 3 steps. A step is 1/32 semitone at low notes and one register '

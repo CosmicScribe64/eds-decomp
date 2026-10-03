@@ -19,15 +19,15 @@ All Thumb and nonmatching. The save image is `gSaveData` (`0x02011C20`, 0x2170 b
 | `0x08076FF8` | 0x20 | `IsSaveSignatureValid` | `code_08076144` | `!MemDiffers("DMEX1INT" @0x081A78A8, gSaveData+0x2166, 8)`. **No callers found.** |
 | `0x0807701C` | 0x10 | `WriteSaveSignature` | `code_08076144` | copies `"DMEX1INT"` to `gSaveData+0x2166` (through `0x080809CC`, a libc `strcpy`) |
 | `0x080770BC` | 0x1A |  | `code_08076144` | `gSaveData[4] = x & 0x7F`, and sets bit 7 if `x == 0`. Bit 7 switches the text renderer path. |
-| `0x080770DC` | 0xC |  | `code_08076144` | `sub_080770BC(1)`, called by `GameInit` |
-| `0x080770E8` | 0x22 | `InitSaveData` | `code_08076144` | `MemClear16(gSaveData, 0x2170)`, `SetSeEnabled(1)`, `SetBgmEnabled(1)`, `sub_080770DC()`, `WriteSaveSignature()`. Called from new-game setup `0x08064604` and from `0x08074260`. |
+| `0x080770DC` | 0xC |  | `code_08076144` | `SetTextMode(1)`, called by `GameInit` |
+| `0x080770E8` | 0x22 | `InitSaveData` | `code_08076144` | `MemClear16(gSaveData, 0x2170)`, `SetSeEnabled(1)`, `SetBgmEnabled(1)`, `SetTextModeLatin()`, `WriteSaveSignature()`. Called from new-game setup `0x08064604` and from `0x08074260`. |
 | `0x080755A0` | 0x6C | `SaveAndResetSceneState` | `code_080750E0` | `SaveGame()`, clears the VBlank callbacks and HBlank, zeroes `gMain+0x4858..0x485B`, returns 1. **No callers or pointer references found (dead code).** A word `0xFFFFF01F` at `0x080555A0` decodes as a `bl` to `0x080755A2`, but it's a literal-pool entry. |
 
 ## Save layout so far (verified offsets)
 | Offset | Meaning |
 |---|---|
 | +0x0004 | u8 text-mode byte (bit 7 → alternate text path) |
-| +0x0008 | card trunk: `u32` per card ID, bits 0–9 = owned count (from [[special-card-lists]], `sub_0801B640`) |
+| +0x0008 | card trunk: `u32` per card ID, bits 0–9 = owned count (from [[special-card-lists]], `HasEnoughRareCards`) |
 | +0x2152 | u16 options: bit0 SE on, bit1 BGM on ([[sound-api]]) |
 | +0x2166 | char[8] `"DMEX1INT"`. *DM EX1* matches the Japanese title *Duel Monsters 5 **Ex**pert **1*** (hypothesis about naming). |
 | +0x216E | u16 checksum (two's-complement of the u16 sum of the first 0x216C bytes) |

@@ -17,8 +17,8 @@ The ROM contains the Nintendo SDK library tag `SRAM_V112` at `ROM+0x87FB4` (`0x0
 ## Save layout (from the call sites)
 - **Size:** `0x2170` bytes (8560) at SRAM `0x0E000000`, well under the 32 KiB chip.
 - **RAM mirror:** EWRAM `0x02011C20`.
-- **Load:** once at boot, in `sub_08075DF4`, which AgbMain calls: `ReadSram(0x0E000000, 0x02011C20, 0x2170)`.
-- **Save:** `sub_080754BC` (9 callers) calls `WriteSram` and then `VerifySram`, up to 32 times until verify returns 0. It doesn't use the library's `WriteSramEx` (3 tries), which is linked but never called.
+- **Load:** once at boot, in `GameInit`, which AgbMain calls: `ReadSram(0x0E000000, 0x02011C20, 0x2170)`.
+- **Save:** `SaveGame` (9 callers) calls `WriteSram` and then `VerifySram`, up to 32 times until verify returns 0. It doesn't use the library's `WriteSramEx` (3 tries), which is linked but never called.
 - Checksums and the internal layout of the 0x2170-byte block haven't been mapped yet.
 
 Related: [[gba-memory-map]] (SRAM at `0x0E000000`), [[nintendo-sdk-libraries]].

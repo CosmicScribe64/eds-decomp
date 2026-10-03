@@ -3,15 +3,15 @@
 #include "duel.h"
 #include "duel_ui.h"
 
-#define gMain gUnk_03000040
+#define gMain gMain
 
 /* Save image (0x02011C20). */
 struct SaveData {
     u8 filler0[0x2150];
     u16 unk2150;                    /* 0x2150: incremented at the end of every Campaign match */
 };
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
 
 /* Selection widget at 0x020192E0+0x1B2C = 0x0201AE0C (hypothesis: row of up to 13 choices). */
 struct SelMask {
@@ -20,31 +20,31 @@ struct SelMask {
     u16 cursor:4;                   /* bits 2-5: selected entry */
     u16 rows:4;                     /* bits 6-9: slide-in / animation counter (0-8) */
     u32 mask:16;                    /* bits 10-25: entry i present if bit i set */
-    u32 state:8;                    /* bits 26-33 (straddles 0x1B2F/0x1B30): sub_0801DC04 state */
+    u32 state:8;                    /* bits 26-33 (straddles 0x1B2F/0x1B30): CardMenu_Update state */
     u32 unk34:8;                    /* bits 34-41 */
     u32 unk42:8;                    /* bits 42-49 */
-    u16 timer:7;                    /* bits 50-56: animation counter (u16 container matters in sub_0801D840) */
+    u16 timer:7;                    /* bits 50-56: animation counter (u16 container matters in CardMenu_DrawIcons) */
     u16 player:1;                   /* bit 57: copy of 0x0201CFB0+0x824 bit 0 */
     u32 zone:7;                     /* bits 58-64 (straddles 0x1B33/0x1B34): copy of 0x0201CFB0+0x828 */
     u32 unk65:8;                    /* bits 65-72: copy of 0x0201CFB0+0x82C */
     u32 unk73:23;
 };
 extern struct SelMask gUnk_0201AE0C;
-/* sub_0801D960 addresses the widget directly as 0x0201AE0C; the other functions go through gUnk_020192E0. */
+/* CardMenu_DrawLabel addresses the widget directly as 0x0201AE0C; the other functions go through gDuel. */
 #define gSelMask gUnk_0201AE0C
 
-/* DuelZone/DuelPlayer/DuelState and gUnk_020192E0/020192E4/0201930C come from duel.h. */
-#define ZONE_AT(p, s) (&gUnk_020192E4[p].zones[s])
+/* DuelZone/DuelPlayer/DuelState and gDuel/020192E4/0201930C come from duel.h. */
+#define ZONE_AT(p, s) (&gDuelPlayers[p].zones[s])
 
 /* duel.h covers DuelState only up to +0x1B20; selCard (+0x1B28, u16) and sel (+0x1B2C) follow. The sel
-   accesses must stay relative to gUnk_020192E0 (base + 0x1B2C), not a direct 0x0201AE0C literal, to match. */
+   accesses must stay relative to gDuel (base + 0x1B2C), not a direct 0x0201AE0C literal, to match. */
 struct DuelStateTail {
     u8 filler0[0x1B28];
-    u16 selCard;                    /* +0x1B28: card ID from sub_0805ECFC, shown with sub_0800688C */
+    u16 selCard;                    /* +0x1B28: card ID from DuelCursor_GetCardId, shown with CardDetail_Init */
     u16 unk1B2A;                    /* +0x1B2A */
     struct SelMask sel;             /* +0x1B2C */
 };
-#define gDuelState ((struct DuelStateTail *)&gUnk_020192E0)
+#define gDuelState ((struct DuelStateTail *)&gDuel)
 
 /* One side of a battle (0xC bytes). Halfword bitfield containers preserve the flag-copy narrowing. */
 struct BattleSide {
@@ -79,43 +79,43 @@ struct Battle {
     struct DuelZone zones[2];       /* +0x20: copies of both zones */
 };
 typedef char battle_side_size_check[sizeof(struct BattleSide) == 0xC ? 1 : -1];
-extern struct Battle gUnk_02018450;
-#define gBattle gUnk_02018450
+extern struct Battle gBattle;
+#define gBattle gBattle
 #define ATK_SIDE (gBattle.side[attacker])
 #define DEF_SIDE (gBattle.side[1 - attacker])
 
-extern const u16 gUnk_08622AB4[];   /* card ID to card number */
+extern const u16 gCardIdToNumber[];   /* card ID to card number */
 /* Integer-address indexing keeps the table load after the masked card ID. */
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 
-void sub_08075294(void *dst, const void *src, u32 size);    /* MemCopy16 */
-u32 sub_0800C894(u32 player, u32 slot);     /* ATK of the card in a zone */
-u32 sub_0800C8A8(u32 player, u32 slot);     /* DEF of the card in a zone */
-int sub_0800849C(int player, u16 cardNo, int skipZone);
-int sub_0800C8BC(int player, int zone);
-int sub_0800CAF0(int player, int zone);
-int sub_0800A8CC(int player, int zone, u16 number);
-int sub_0807548C(int);
-void sub_08017AB4(int player, u16 cardId, u16 pos, u16 a);
+void MemCopy16(void *dst, const void *src, u32 size);    /* MemCopy16 */
+u32 GetZoneCardAtk(u32 player, u32 slot);     /* ATK of the card in a zone */
+u32 GetZoneCardDef(u32 player, u32 slot);     /* DEF of the card in a zone */
+int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone);
+int GetZoneCardType(int player, int zone);
+int GetZoneCardAttribute(int player, int zone);
+int CountActiveZoneLinksFromCard(int player, int zone, u16 number);
+int HalveRoundUp(int);
+void QueueAddZoneLink(int player, u16 cardId, u16 pos, u16 a);
 
 /* Zone s of player p. The ROM computes s*0x94 + p*0xD64 on top of the zones base (0x0201930C). */
-#define ZONE(p, s) ((struct DuelZone *)((u8 *)gUnk_020192E4[0].zones + (s) * 0x94 + (p) * 0xD64))
+#define ZONE(p, s) ((struct DuelZone *)((u8 *)gDuelPlayers[0].zones + (s) * 0x94 + (p) * 0xD64))
 
-extern const u16 gUnk_081A4424[];
-extern const u16 gUnk_081A4444[];   /* affine per sel.rows */
-u16 sub_0805ECFC(void);
-int sub_08062140(u16);
-void sub_08060FD0(s32, s32);
-int sub_080623AC(s32, s32, s32);
-int sub_080623EC(s32, s32, s32);   /* 16-frame affine table for the selected entry */
-void sub_08076714(u32 yx, u16 shapeSize, u16 attr2, u32 affine);
+extern const u16 gPulseScaleCurve[];
+extern const u16 gShrinkScaleSteps[];   /* affine per sel.rows */
+u16 DuelCursor_GetCardId(void);
+int GetCardIconObjTile(u16);
+void ClearZoneTiles(s32, s32);
+int GetAreaX(s32, s32, s32);
+int GetAreaY(s32, s32, s32);   /* 16-frame affine table for the selected entry */
+void AddAffineSprite(u32 yx, u16 shapeSize, u16 attr2, u32 affine);
 
-/* gUnk_0201CFB0 (struct DuelScreen) comes from duel_ui.h. */
+/* gDuelScreen (struct DuelScreen) comes from duel_ui.h. */
 
-void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);    /* AddSprite */
+void AddSprite(u32 yx, u16 shapeSize, u16 attr2);    /* AddSprite */
 
 typedef u16 (*StepFunc)(void);
-extern StepFunc gUnk_08198EAC[];    /* Campaign steps */
+extern StepFunc gCampaignSteps[];    /* Campaign steps */
 
 /* Unpacked date (see code_080044E4). */
 struct Date {
@@ -124,25 +124,25 @@ struct Date {
     u32 day:5;
     u32 weekday:3;
 };
-void sub_08004914(struct Date *out);    /* today's date (hypothesis) */
-u32 sub_080044E4(u32 year, u32 month, s32 day);  /* calendar event flags for a date */
-s32 sub_08076F9C(void);                 /* Random */
-void sub_08077B24(u16 bgm);
-u32 sub_08063B48(u16 id);
+void GetCurrentDate(struct Date *out);    /* today's date (hypothesis) */
+u32 GetCalendarEvents(u32 year, u32 month, s32 day);  /* calendar event flags for a date */
+s32 Random(void);                 /* Random */
+void PlayBGM(u16 bgm);
+u32 GetRewardPack(u16 id);
 
-void sub_08001C10(u16 textId);
-u32 sub_08001AE4(void);
-u16 sub_08075A6C(u16 speed);        /* FadeToBlack */
+void StartDialogue(u16 textId);
+u32 CB_Bustup(void);
+u16 FadeToBlack(u16 speed);        /* FadeToBlack */
 
 /* Campaign step before the match (hypothesis: calendar-event tournaments). */
-u16 sub_0801CE68(void)
+u16 Campaign_DeliverMagazines(void)
 {
     struct Date d;
 
     switch (gMain.step488A) {
     case 0:
-        sub_08004914(&d);
-        gMain.events = sub_080044E4(d.year, d.month, d.day);
+        GetCurrentDate(&d);
+        gMain.events = GetCalendarEvents(d.year, d.month, d.day);
         if (!(gMain.events & 0x300000))
             return 1;
         gMain.step488A++;
@@ -153,18 +153,18 @@ u16 sub_0801CE68(void)
             gMain.step488A++;
             return 0;
         }
-        sub_08077B24(0x1F);
-        sub_08001C10(0x323);
-        sub_08004914(&d);
-        gUnk_020192E0.result = sub_08076F9C() & 3;
+        PlayBGM(0x1F);
+        StartDialogue(0x323);
+        GetCurrentDate(&d);
+        gDuel.result = Random() & 3;
         if (d.year == 2001 && d.month == 1 && d.day == 9) {
-            sub_08001C10(0x322);
-            gUnk_020192E0.result = 0;
+            StartDialogue(0x322);
+            gDuel.result = 0;
         }
         gMain.step488A++;
     case 2:
     case 5:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
             gMain.seqState2 = 0;
@@ -172,15 +172,15 @@ u16 sub_0801CE68(void)
         }
         return 0;
     case 3:
-        if (gUnk_020192E0.result == 0) {
-            if (sub_08063B48(0x321)) {
+        if (gDuel.result == 0) {
+            if (GetRewardPack(0x321)) {
                 gMain.seqIndex1 = 0;
                 gMain.seqState1 = 0;
                 gMain.seqState2 = 0;
                 gMain.step488A++;
             }
         } else {
-            if (sub_08063B48(0x385)) {
+            if (GetRewardPack(0x385)) {
                 gMain.seqIndex1 = 0;
                 gMain.seqState1 = 0;
                 gMain.seqState2 = 0;
@@ -191,35 +191,35 @@ u16 sub_0801CE68(void)
     case 4:
         if (!(gMain.events & 0x200000))
             return 1;
-        sub_08077B24(0x1F);
-        sub_08001C10(0x321);
+        PlayBGM(0x1F);
+        StartDialogue(0x321);
         gMain.step488A++;
-        sub_08004914(&d);
+        GetCurrentDate(&d);
         if (d.year == 2001 && d.month == 1)
-            sub_08001C10(0x320);
+            StartDialogue(0x320);
         return 0;
     case 6:
-        return sub_08063B48(0x322);
+        return GetRewardPack(0x322);
     }
     return 1;
 }
 
 /* Last Campaign step: bump the match counter. */
-u16 sub_0801D140(void)
+u16 Campaign_AdvanceDay(void)
 {
     gSaveData.unk2150++;
     return 1;
 }
 
-u16 sub_0801D158(void)
+u16 Campaign_DeckTooSmall(void)
 {
     switch (gMain.step488A) {
     case 0:
-        sub_08001C10(0x191);
+        StartDialogue(0x191);
         gMain.step488A++;
         break;
     case 1:
-        if (sub_08001AE4()) {
+        if (CB_Bustup()) {
             gMain.step488A++;
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
@@ -232,10 +232,10 @@ u16 sub_0801D158(void)
     return 0;
 }
 
-/* CB_Campaign: step runner over gUnk_08198EAC, index gMain.seqIndexCampaign. */
-u16 sub_0801D1E8(void)
+/* CB_Campaign: step runner over gCampaignSteps, index gMain.seqIndexCampaign. */
+u16 CB_Campaign(void)
 {
-    StepFunc step = gUnk_08198EAC[gMain.seqIndexCampaign];
+    StepFunc step = gCampaignSteps[gMain.seqIndexCampaign];
     if (step != NULL) {
         if (step()) {
             gMain.seqIndexCampaign++;
@@ -247,11 +247,11 @@ u16 sub_0801D1E8(void)
         }
         return 0;
     }
-    return sub_08075A6C(8);
+    return FadeToBlack(8);
 }
 
 /* Battle calculation between gBattle.atkSlot of `attacker` and gBattle.defSlot of the other player. */
-void sub_0801D264(int attacker, u16 noAtk)
+void CalcBattle(int attacker, u16 noAtk)
 {
     int i;
     int slot;
@@ -265,13 +265,13 @@ void sub_0801D264(int attacker, u16 noAtk)
             slot = gBattle.atkSlot;
         else
             slot = gBattle.defSlot;
-        sub_08075294(copy, ZONE_AT(i & 1, slot), 0x94);
+        MemCopy16(copy, ZONE_AT(i & 1, slot), 0x94);
         s->slot = slot;
         s->destroyed = 0;
         s->defending = ZONE_AT(i & 1, slot)->flag6_0;
         s->cardId = ((struct DuelCard *)ZONE_AT(i & 1, slot))->id;
-        s->atk = sub_0800C894(i, slot);
-        s->def = sub_0800C8A8(i, slot);
+        s->atk = GetZoneCardAtk(i, slot);
+        s->def = GetZoneCardDef(i, slot);
         s->damage = 0;
     }
     if (i != attacker && gBattle.direct) {
@@ -287,17 +287,17 @@ void sub_0801D264(int attacker, u16 noAtk)
     if (gBattle.direct) {
         DEF_SIDE.damage = ATK_SIDE.atk;
         DEF_SIDE.value = 0;
-        if (DEF_SIDE.damage && sub_0800849C(1 - attacker, 0x58F, -1) > 0)
+        if (DEF_SIDE.damage && CountActiveCardsOnFieldExcept(1 - attacker, 0x58F, -1) > 0)
             DEF_SIDE.damage = 0;
         return;
     }
     switch (CARD_NUMBER(ATK_SIDE.cardId)) {
     case 0x1DD:
-        if (sub_0800CAF0(1 - attacker, gBattle.defSlot) == 6)
+        if (GetZoneCardAttribute(1 - attacker, gBattle.defSlot) == 6)
             ATK_SIDE.atk += 1000;
         break;
     case 0x4E5:
-        if (sub_0800C8BC(1 - attacker, gBattle.defSlot) == 15) {
+        if (GetZoneCardType(1 - attacker, gBattle.defSlot) == 15) {
             ATK_SIDE.atk += 2000;
             ATK_SIDE.def += 2000;
         }
@@ -305,11 +305,11 @@ void sub_0801D264(int attacker, u16 noAtk)
     }
     switch (CARD_NUMBER(DEF_SIDE.cardId)) {
     case 0x11F:
-        if (sub_0800CAF0(attacker, gBattle.atkSlot) == 1)
+        if (GetZoneCardAttribute(attacker, gBattle.atkSlot) == 1)
             DEF_SIDE.def /= 2;
         break;
     case 0x4E5:
-        if (sub_0800C8BC(attacker, gBattle.atkSlot) == 15) {
+        if (GetZoneCardType(attacker, gBattle.atkSlot) == 15) {
             DEF_SIDE.atk += 2000;
             DEF_SIDE.def += 2000;
         }
@@ -322,8 +322,8 @@ void sub_0801D264(int attacker, u16 noAtk)
     if (DEF_SIDE.defending)
         DEF_SIDE.value = DEF_SIDE.def;
     {
-        int n = sub_0800A8CC(attacker, gBattle.atkSlot, 0x291);
-        ATK_SIDE.value += sub_0807548C(DEF_SIDE.atk) * n;
+        int n = CountActiveZoneLinksFromCard(attacker, gBattle.atkSlot, 0x291);
+        ATK_SIDE.value += HalveRoundUp(DEF_SIDE.atk) * n;
     }
     if (ATK_SIDE.value == DEF_SIDE.value) {
         if (!DEF_SIDE.defending && ATK_SIDE.value) {
@@ -334,11 +334,11 @@ void sub_0801D264(int attacker, u16 noAtk)
         int pierce = 0;
         if (!DEF_SIDE.defending)
             pierce = 1;
-        if (sub_0800A8CC(attacker, gBattle.atkSlot, 0x521))
+        if (CountActiveZoneLinksFromCard(attacker, gBattle.atkSlot, 0x521))
             pierce = 1;
         if (CARD_NUMBER(ATK_SIDE.cardId) == 0x53D)
             pierce = 1;
-        if (sub_0800A8CC(attacker, gBattle.atkSlot, 0x604))
+        if (CountActiveZoneLinksFromCard(attacker, gBattle.atkSlot, 0x604))
             pierce = 1;
         if (pierce)
             DEF_SIDE.damage = ATK_SIDE.value - DEF_SIDE.value;
@@ -352,37 +352,37 @@ void sub_0801D264(int attacker, u16 noAtk)
     case 0x4CF:
         ATK_SIDE.destroyed = 0;
         ATK_SIDE.damage = 0;
-        sub_08017AB4(attacker, ATK_SIDE.cardId, (u8)(1 - attacker) | (gBattle.defSlot << 8), 3);
+        QueueAddZoneLink(attacker, ATK_SIDE.cardId, (u8)(1 - attacker) | (gBattle.defSlot << 8), 3);
         break;
     case 0x4E3:
         if (DEF_SIDE.atk > 0x76B)
             ATK_SIDE.destroyed = 0;
         break;
     case 0x199:
-        if (sub_0800CAF0(1 - attacker, gBattle.defSlot) == 2)
+        if (GetZoneCardAttribute(1 - attacker, gBattle.defSlot) == 2)
             DEF_SIDE.destroyed = 1;
         break;
     }
-    if (sub_0800A8CC(attacker, gBattle.atkSlot, 0x49E) && sub_0800C8BC(1 - attacker, gBattle.defSlot) == 1)
+    if (CountActiveZoneLinksFromCard(attacker, gBattle.atkSlot, 0x49E) && GetZoneCardType(1 - attacker, gBattle.defSlot) == 1)
         DEF_SIDE.flag6 = 1;
-    if (sub_0800A8CC(1 - attacker, gBattle.defSlot, 0x49E) && sub_0800C8BC(attacker, gBattle.atkSlot) == 1)
+    if (CountActiveZoneLinksFromCard(1 - attacker, gBattle.defSlot, 0x49E) && GetZoneCardType(attacker, gBattle.atkSlot) == 1)
         ATK_SIDE.flag6 = 1;
     if (CARD_NUMBER(DEF_SIDE.cardId) == 0x4E3 && ATK_SIDE.atk > 0x76B)
         DEF_SIDE.destroyed = 0;
     /* Test player flag bit 1 with the original signed-shift form. */
-    if ((s32)((u32)gUnk_020192E4[(1 - attacker) & 1].unk8 << 30) < 0) {
+    if ((s32)((u32)gDuelPlayers[(1 - attacker) & 1].unk8 << 30) < 0) {
         DEF_SIDE.destroyed = 0;
         DEF_SIDE.damage = 0;
     }
-    if (DEF_SIDE.damage && sub_0800849C(1 - attacker, 0x58F, -1) > 0)
+    if (DEF_SIDE.damage && CountActiveCardsOnFieldExcept(1 - attacker, 0x58F, -1) > 0)
         DEF_SIDE.damage = 0;
-    if (ATK_SIDE.damage && sub_0800849C(attacker, 0x58F, -1) > 0)
+    if (ATK_SIDE.damage && CountActiveCardsOnFieldExcept(attacker, 0x58F, -1) > 0)
         ATK_SIDE.damage = 0;
     for (i = 0; i <= 1; i++)
         gBattle.side[i].destroyedCopy = gBattle.side[i].destroyed;
 }
 
-void sub_0801D840(void)
+void CardMenu_DrawIcons(void)
 {
     int i;
     int count = 0;
@@ -398,7 +398,7 @@ void sub_0801D840(void)
     tile = 0x2624;
     x = 0x78 - count * 8;
     y = 0xA0 - gDuelState->sel.rows * 10;
-    switch (gUnk_0201CFB0.zone) {
+    switch (gDuelScreen.zone) {
     case 13:
         x = 0xD8 - count * 8;
         break;
@@ -412,16 +412,16 @@ void sub_0801D840(void)
         m >>= i;
         if (m & 1) {
             if (gDuelState->sel.cursor == i)
-                sub_08076714((y << 16) | x, 0x40, tile, gUnk_081A4424[(gDuelState->sel.timer >> 1) & 0xF] << 16);
+                AddAffineSprite((y << 16) | x, 0x40, tile, gPulseScaleCurve[(gDuelState->sel.timer >> 1) & 0xF] << 16);
             else
-                sub_080761F0((y << 16) | x, 0x40, tile);
+                AddSprite((y << 16) | x, 0x40, tile);
             x += 16;
         }
         tile += 4;
     }
 }
 
-void sub_0801D960(void)
+void CardMenu_DrawLabel(void)
 {
     int i;
     int count = 0;
@@ -436,7 +436,7 @@ void sub_0801D960(void)
     }
     tile = 0x3664;
     x = 0x70 - count * 8;
-    switch (gUnk_0201CFB0.zone) {
+    switch (gDuelScreen.zone) {
     case 13:
         x = 0xD0 - count * 8;
         break;
@@ -447,13 +447,13 @@ void sub_0801D960(void)
     for (i = 0; i <= 12; i++) {
         if ((gSelMask.mask >> i) & 1) {
             if (gSelMask.cursor == i)
-                sub_080761F0((0x60 << 16) | x, 0x4080, tile);
+                AddSprite((0x60 << 16) | x, 0x4080, tile);
             x += 16;
         }
         tile += 8;
     }
 }
-void sub_0801D9F8(void)
+void CardMenu_DrawCardPreview(void)
 {
     u16 tile;
     int x0, y0;
@@ -461,36 +461,36 @@ void sub_0801D9F8(void)
     int player;
 
     /* duel_ui.h declares DuelScreen.zone as u32; this unit switches on it as s32 (signed compares). */
-    switch ((s32)gUnk_0201CFB0.zone) {
+    switch ((s32)gDuelScreen.zone) {
     case 12:
     case 13:
         return;
     }
-    tile = sub_08062140(sub_0805ECFC()) + 0x1400;
+    tile = GetCardIconObjTile(DuelCursor_GetCardId()) + 0x1400;
     if (gDuelState->sel.rows == 1 || gDuelState->sel.rows == 7) {
-        switch ((s32)gUnk_0201CFB0.zone) {
+        switch ((s32)gDuelScreen.zone) {
         case 0:
         case 5:
-            sub_08060FD0(gUnk_0201CFB0.player, gUnk_0201CFB0.zone + gUnk_0201CFB0.cursor);
+            ClearZoneTiles(gDuelScreen.player, gDuelScreen.zone + gDuelScreen.cursor);
             break;
         case 10:
-            sub_08060FD0(gUnk_0201CFB0.player, 10);
+            ClearZoneTiles(gDuelScreen.player, 10);
             break;
         }
     }
     if ((u32)gDuelState->sel.rows < 8) {
-        x0 = sub_080623AC(gUnk_0201CFB0.player, gUnk_0201CFB0.zone, gUnk_0201CFB0.cursor);
-        y0 = sub_080623EC(gUnk_0201CFB0.player, gUnk_0201CFB0.zone, gUnk_0201CFB0.cursor);
+        x0 = GetAreaX(gDuelScreen.player, gDuelScreen.zone, gDuelScreen.cursor);
+        y0 = GetAreaY(gDuelScreen.player, gDuelScreen.zone, gDuelScreen.cursor);
         x = (0x68 - x0) * gDuelState->sel.rows / 8;
         y = (0x20 - y0) * gDuelState->sel.rows / 8;
         x += x0;
         y += y0;
-        switch ((s32)gUnk_0201CFB0.zone) {
+        switch ((s32)gDuelScreen.zone) {
         case 0:
         case 5:
         case 10:
-            player = gUnk_0201CFB0.player & 1;
-            if (!((struct DuelZone *)((u8 *)gUnk_020192E0.players[0].zones + (gUnk_0201CFB0.zone + gUnk_0201CFB0.cursor) * 0x94 + player * 0xD64))->flag6_1) {
+            player = gDuelScreen.player & 1;
+            if (!((struct DuelZone *)((u8 *)gDuel.players[0].zones + (gDuelScreen.zone + gDuelScreen.cursor) * 0x94 + player * 0xD64))->flag6_1) {
                 switch (gDuelState->sel.rows) {
                 case 0:
                 case 1:
@@ -506,31 +506,31 @@ void sub_0801D9F8(void)
             break;
         }
         if ((u32)y < 0xA0)
-            sub_08076714(x | (y << 16), 0x80, tile, gUnk_081A4444[gDuelState->sel.rows] << 16);
+            AddAffineSprite(x | (y << 16), 0x80, tile, gShrinkScaleSteps[gDuelState->sel.rows] << 16);
     } else {
-        sub_08076714(0x00200068, 0x80, tile, 0x800000);
+        AddAffineSprite(0x00200068, 0x80, tile, 0x800000);
     }
 }
-void sub_08077AEC(u16 se);          /* PlaySE */
-void sub_0802AF34(u32 player, u32 a, u32 b, u32 c);
-void sub_08060ECC(s32, s32);
-u32 sub_08060B4C(void);
-u32 sub_08060B2C(void);
-void sub_0800688C(u16 card, u16 b, u16 c);
-u16 sub_08006D08(void);
-void sub_080609C4(void);
-void sub_0805F96C(void);
+void PlaySE(u16 se);          /* PlaySE */
+void CardListView_Open(u32 player, u32 a, u32 b, u32 c);
+void DrawZoneTiles(s32, s32);
+u32 DuelScreen_FadeOutStep(void);
+u32 DuelScreen_FadeInStep(void);
+void CardDetail_Init(u16 card, u16 b, u16 c);
+u16 CardDetail_Run(void);
+void DuelScreen_Init(void);
+void DuelScreen_DrawCursorInfo(void);
 
 #define SEL gDuelState->sel
 #define SEL_HAS(n) ((s32)SEL.mask >> (n) & 1)
 
-void sub_0801DC04(void)
+void CardMenu_Update(void)
 {
     int i;
 
     switch (SEL.state) {
     case 0:
-        gUnk_0201CFB0.busy = 0;
+        gDuelScreen.busy = 0;
         SEL.rows = 0;
         SEL.cursor = 0;
         for (i = 0; !SEL_HAS(SEL.cursor); ) {
@@ -544,16 +544,16 @@ void sub_0801DC04(void)
         SEL.state++;
         break;
     case 1:
-        sub_0801D9F8();
+        CardMenu_DrawCardPreview();
         SEL.rows++;
-        sub_0801D840();
+        CardMenu_DrawIcons();
         if (SEL.rows > 7)
             SEL.state++;
         break;
     case 2:
-        sub_0801D9F8();
-        sub_0801D840();
-        sub_0801D960();
+        CardMenu_DrawCardPreview();
+        CardMenu_DrawIcons();
+        CardMenu_DrawLabel();
         if (gMain.newKeys & 0x20) {
             for (i = 0; i <= 12; i++) {
                 if (SEL.cursor)
@@ -563,7 +563,7 @@ void sub_0801DC04(void)
                 if (SEL_HAS(SEL.cursor))
                     break;
             }
-            sub_08077AEC(0);
+            PlaySE(0);
         }
         if (gMain.newKeys & 0x10) {
             for (i = 0; i <= 12; i++) {
@@ -574,26 +574,26 @@ void sub_0801DC04(void)
                 if (SEL_HAS(SEL.cursor))
                     break;
             }
-            sub_08077AEC(0);
+            PlaySE(0);
         }
         if (gMain.newKeys & 2) {
-            sub_08077AEC(2);
+            PlaySE(2);
             SEL.active = 0;
             SEL.state++;
         } else if (gMain.newKeys & 1) {
             SEL.active = 1;
             SEL.unk34 = 0;
-            gDuelState->selCard = sub_0805ECFC();
-            SEL.player = gUnk_0201CFB0.player;
-            SEL.zone = (u16)gUnk_0201CFB0.zone;
-            SEL.unk65 = gUnk_0201CFB0.cursor;
+            gDuelState->selCard = DuelCursor_GetCardId();
+            SEL.player = gDuelScreen.player;
+            SEL.zone = (u16)gDuelScreen.zone;
+            SEL.unk65 = gDuelScreen.cursor;
             if (!SEL.cursor) {
                 if (SEL.zone == 12) {
-                    sub_0802AF34(SEL.player, 12, 0, 0);
-                    sub_08077AEC(1);
+                    CardListView_Open(SEL.player, 12, 0, 0);
+                    PlaySE(1);
                     SEL.state = 2;
                 } else {
-                    sub_08077AEC(1);
+                    PlaySE(1);
                     SEL.active = 0;
                     SEL.state = 10;
                 }
@@ -604,50 +604,50 @@ void sub_0801DC04(void)
         break;
     case 3:
         SEL.rows--;
-        sub_0801D9F8();
-        sub_0801D840();
+        CardMenu_DrawCardPreview();
+        CardMenu_DrawIcons();
         if (!SEL.rows) {
-            switch ((s32)gUnk_0201CFB0.zone) {
+            switch ((s32)gDuelScreen.zone) {
             case 0:
             case 5:
-                sub_08060ECC(gUnk_0201CFB0.player, gUnk_0201CFB0.zone + gUnk_0201CFB0.cursor);
+                DrawZoneTiles(gDuelScreen.player, gDuelScreen.zone + gDuelScreen.cursor);
                 break;
             case 10:
-                sub_08060ECC(gUnk_0201CFB0.player, 10);
+                DrawZoneTiles(gDuelScreen.player, 10);
                 break;
             }
             SEL.state++;
         }
         break;
     case 10:
-        if (sub_08060B4C()) {
-            gUnk_0201CFB0.flag0_1 = 0;
-            gUnk_0201CFB0.flag0_2 = 0;
-            sub_0800688C(gDuelState->selCard, 0, 0);
+        if (DuelScreen_FadeOutStep()) {
+            gDuelScreen.flag0_1 = 0;
+            gDuelScreen.flag0_2 = 0;
+            CardDetail_Init(gDuelState->selCard, 0, 0);
             SEL.state++;
         }
         break;
     case 11:
-        if (sub_08006D08()) {
-            sub_080609C4();
-            sub_0805F96C();
-            switch ((s32)gUnk_0201CFB0.zone) {
+        if (CardDetail_Run()) {
+            DuelScreen_Init();
+            DuelScreen_DrawCursorInfo();
+            switch ((s32)gDuelScreen.zone) {
             case 0:
             case 5:
-                sub_08060FD0(gUnk_0201CFB0.player, gUnk_0201CFB0.zone + gUnk_0201CFB0.cursor);
+                ClearZoneTiles(gDuelScreen.player, gDuelScreen.zone + gDuelScreen.cursor);
                 break;
             case 10:
-                sub_08060FD0(gUnk_0201CFB0.player, 10);
+                ClearZoneTiles(gDuelScreen.player, 10);
                 break;
             }
             SEL.state++;
         }
         break;
     case 12:
-        sub_0801D9F8();
-        sub_0801D840();
-        sub_0801D960();
-        if (sub_08060B2C())
+        CardMenu_DrawCardPreview();
+        CardMenu_DrawIcons();
+        CardMenu_DrawLabel();
+        if (DuelScreen_FadeInStep())
             SEL.state = 2;
         break;
     default:

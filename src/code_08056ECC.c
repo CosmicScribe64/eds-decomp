@@ -56,15 +56,15 @@ struct DuelPlayer {
     struct DuelCard listB84[80];    /* +0xB84 */
     u16 arrCC4[80];                 /* +0xCC4 */
 };
-extern struct DuelPlayer gUnk_020192E4[2];
+extern struct DuelPlayer gDuelPlayers[2];
 
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
     u8 filler[0xD64 - 11 * 0x94];
 };
-extern struct DuelZonesPlayer gUnk_0201930C[2];
+extern struct DuelZonesPlayer gDuelZones[2];
 /* Zone pointer by byte arithmetic, zone term first (the ROM's address order); callers pass player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 #define CARD_WORD(c) (*(u32 *)&(c))
 #define CARD_ID(w) (((w) << 20) >> 20)
@@ -73,10 +73,10 @@ extern struct DuelZonesPlayer gUnk_0201930C[2];
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 /* Same tables through the extern symbols (the address is then a hoistable constant). */
-extern const u32 gUnk_08621DE0[];
-extern const u16 gUnk_08622AB4[];
-#define CARD_STATS_A(id) (gUnk_08621DE0[(id) & 0x7FF])
-#define CARD_NUMBER_A(id) (gUnk_08622AB4[(id) & 0x7FF])
+extern const u32 gCardStats[];
+extern const u16 gCardIdToNumber[];
+#define CARD_STATS_A(id) (gCardStats[(id) & 0x7FF])
+#define CARD_NUMBER_A(id) (gCardIdToNumber[(id) & 0x7FF])
 #define CARD_TYPE_A(id) ((CARD_STATS_A(id) & 0x1F00000) >> 20)
 /* AI value of a card: 0 for Magic/Trap/Ritual (types 0x15-0x17), 4000 for type 0x18, else ATK-like field * 10. */
 static inline int CardValue(u16 id)
@@ -159,7 +159,7 @@ static inline int CardDefValueA(u16 id)
     return r;
 }
 
-/* One attack option evaluated by the AI (8 bytes, copied with sub_08075294). */
+/* One attack option evaluated by the AI (8 bytes, copied with MemCopy16). */
 struct AttackPlan {
     u16 f0 : 1;
     u16 f1 : 1;
@@ -174,7 +174,7 @@ struct AttackPlan {
     s16 diff;                   /* +0x04 */
     u16 unk6;
 };
-void sub_08075294(void *dest, const void *src, u32 size);
+void MemCopy16(void *dest, const void *src, u32 size);
 
 /* AI working area at 0x02015F00: the best attack plan found is at +0xC. */
 struct AiWork {
@@ -183,35 +183,35 @@ struct AiWork {
     u8 filler14[0x1B22 - 0x14];
     u16 handPick;               /* +0x1B22 chosen hand index */
 };
-extern struct AiWork gUnk_02015F00;
+extern struct AiWork gAiWork;
 extern struct AttackPlan gUnk_02015F0C;
 
 struct Unk02015EE8 {
     u32 unk0;
     u32 flags;                  /* +0x04 bit 9 = restrict the hand pick to the forced list */
 };
-extern struct Unk02015EE8 gUnk_02015EE8;
-extern u32 gUnk_0201D81C[];     /* hand/list card words (ListView.cards) */
-extern const u16 gUnk_0819D2FC[];
-int sub_08044224(int player, u16 number, int flag);
+extern struct Unk02015EE8 gDuelCtrl;
+extern u32 gCardListViewCards[];     /* hand/list card words (ListView.cards) */
+extern const u16 gAiPowerCards[];
+int CollectEffectTargets(int player, u16 number, int flag);
 
-/* Output of sub_0800ABC8 (card-in-zone info); [1] and [2] are the two values summed by the AI. */
-void sub_0800ABC8(int player, int zone, int *out);
-int sub_08076F9C(void);
-extern const u16 gUnk_0819D316[];
-int sub_0804A3D8(int player, int zone);
-void sub_0805797C(int a, int b, struct AttackPlan *out);
-int sub_0804A528(int player, int zone, int flag);
-u16 sub_08057A80(int a, struct AttackPlan *out);
-int sub_0800A78C(int player, int zone, int number);
-int sub_080090C8(int player, int number);
-int sub_0800C8BC(int player, int zone);
-int sub_08007590(u16 number, int flag);
-int sub_080573D0(int p, int skip, u16 useAtk, u16 useDef);
-int sub_0800C894(int player, int zone);
-int sub_0800C8A8(int player, int zone);
-int sub_08008860(int player);
-u16 sub_08057BAC(int a, int b);
+/* Output of GetZoneCardStats (card-in-zone info); [1] and [2] are the two values summed by the AI. */
+void GetZoneCardStats(int player, int zone, int *out);
+int Random(void);
+extern const u16 gAiHandPickPriority[];
+int CanAttackDirectly(int player, int zone);
+void AiEvalAttack(int a, int b, struct AttackPlan *out);
+int CanMonsterAttack(int player, int zone, int flag);
+u16 AiFindAttackTarget(int a, struct AttackPlan *out);
+int CountZoneLinksFromCard(int player, int zone, int number);
+int CountActiveCardsOnField2(int player, int number);
+int GetZoneCardType(int player, int zone);
+int HasFlipEffect(u16 number, int flag);
+int AiGetStrongestMonsterScore(int p, int skip, u16 useAtk, u16 useDef);
+int GetZoneCardAtk(int player, int zone);
+int GetZoneCardDef(int player, int zone);
+int CountMonsters(int player);
+u16 AiCanBeatMonster(int a, int b);
 
 /* gMain (0x03000040): only the byte at +0x4870 is used here. */
 struct Main {
@@ -220,9 +220,9 @@ struct Main {
     u8 handicap : 5;            /* bits 1-5: 0-10 = attack scaling numerator - 5 */
     u8 unk4870_6 : 2;
 };
-extern struct Main gUnk_03000040;
+extern struct Main gMain;
 
-/* AI value helpers for sub_08056ECC: ATK-like field (bits 9-17) * 10 and DEF-like field (bits 0-8) * 10;
+/* AI value helpers for AiPickCardListEntry: ATK-like field (bits 9-17) * 10 and DEF-like field (bits 0-8) * 10;
  * 0 for types 0x15-0x17, 4000 for type 0x18. The u16 return of DefVal56 gives the ROM's add operand order. */
 static inline int AtkVal56(u16 id)
 {
@@ -251,11 +251,11 @@ static inline u16 DefVal56(u16 id)
     }
 }
 /* Card number through the table symbol, index computed first (the ROM's add order). */
-#define CNS56(x) (*(const u16 *)(((x) & 0x7FF) * 2 + (u32)gUnk_08622AB4))
+#define CNS56(x) (*(const u16 *)(((x) & 0x7FF) * 2 + (u32)gCardIdToNumber))
 
-/* AI: choose which card of the list at gUnk_0201D81C (n entries) to use for card `id`; stores it in
- * gUnk_02015F00.handPick, -1 if none. */
-int sub_08056ECC(u16 id)
+/* AI: choose which card of the list at gCardListViewCards (n entries) to use for card `id`; stores it in
+ * gAiWork.handPick, -1 if none. */
+int AiPickCardListEntry(u16 id)
 {
     int n;
     int j;
@@ -264,15 +264,15 @@ int sub_08056ECC(u16 id)
     int best, bestIdx, maxAtk, maxDef;
     int buf[3];
 
-    n = sub_08044224(1, CNS56(id), 0);
-    gUnk_02015F00.handPick = 0;
+    n = CollectEffectTargets(1, CNS56(id), 0);
+    gAiWork.handPick = 0;
     if (n == 0)
         goto fail;
-    if (gUnk_02015EE8.flags & 0x200) {
+    if (gDuelCtrl.flags & 0x200) {
         for (k = 0; k < n; k++) {
             u16 c;
             ok = 0;
-            c = CARD_ID(*(gUnk_0201D81C + k));
+            c = CARD_ID(*(gCardListViewCards + k));
             switch (CNS56(c)) {
             case 0x10:
             case 0x11:
@@ -296,8 +296,8 @@ int sub_08056ECC(u16 id)
                 break;
             }
             if (ok) {
-                gUnk_02015F00.handPick = k;
-                return gUnk_02015F00.handPick;
+                gAiWork.handPick = k;
+                return gAiWork.handPick;
             }
         }
         if (CARD_NUMBER(id) == 0x463)
@@ -309,14 +309,14 @@ int sub_08056ECC(u16 id)
     case 0x443:
         for (k = 0; (u32)k <= 0xC; k++) {
             for (j = 0; j < n; j++) {
-                if (CNS56(CARD_ID(gUnk_0201D81C[j])) == gUnk_0819D2FC[k])
+                if (CNS56(CARD_ID(gCardListViewCards[j])) == gAiPowerCards[k])
                     goto found2;
             }
         }
         /* A copy of the random pick (cross-jumped with the one below); its reloads keep the
          * spill-register round-robin in step with the ROM. */
-        gUnk_02015F00.handPick = sub_08076F9C() % n;
-        return gUnk_02015F00.handPick;
+        gAiWork.handPick = Random() % n;
+        return gAiWork.handPick;
     }
     if (n <= 0)
         goto fail;
@@ -326,7 +326,7 @@ int sub_08056ECC(u16 id)
     bestIdx = -1;
     maxAtk = maxDef = 0;
     for (k = 0; k <= 4; k++) {
-        sub_0800ABC8(0, k, buf);
+        GetZoneCardStats(0, k, buf);
         /* FAKEMATCH: empty asm statements lengthen k's live range so that global-alloc
          * gives k (shared by all five loops) a priority below the 1AB loop's mask and
          * table, which puts k in r6 as in the ROM. They emit no instructions. */
@@ -341,7 +341,7 @@ int sub_08056ECC(u16 id)
             maxAtk = buf[1];
     }
     for (k = 0; k < n; k++) {
-        u16 cid = CARD_ID(gUnk_0201D81C[k]);
+        u16 cid = CARD_ID(gCardListViewCards[k]);
 
         if (best < AtkVal56(cid) + DefVal56(cid)) {
             if (maxAtk <= AtkVal56(cid) || maxDef < AtkVal56(cid) || maxAtk <= DefVal56(cid)) {
@@ -354,7 +354,7 @@ int sub_08056ECC(u16 id)
         bestIdx = -1;
         best = 0;
         for (k = 0; k < n; k++) {
-            u16 cid = CARD_ID(gUnk_0201D81C[k]);
+            u16 cid = CARD_ID(gCardListViewCards[k]);
 
             if (best < CardValue(cid)) {
                 best = CardValue(cid);
@@ -364,20 +364,20 @@ int sub_08056ECC(u16 id)
         if (bestIdx < 0)
             goto random;
     }
-    gUnk_02015F00.handPick = bestIdx;
-    return gUnk_02015F00.handPick;
+    gAiWork.handPick = bestIdx;
+    return gAiWork.handPick;
 random:
-    gUnk_02015F00.handPick = sub_08076F9C() % n;
-    return gUnk_02015F00.handPick;
+    gAiWork.handPick = Random() % n;
+    return gAiWork.handPick;
 found2:
     /* The ROM returns the (unchanged) handPick here, through a temporary. */
-    j = gUnk_02015F00.handPick;
+    j = gAiWork.handPick;
     return j;
 fail:
     return -1;
 }
 /* Best (largest) score among the occupied zones of player `p` other than `skip`; -1 if none. */
-int sub_080573D0(int p, int skip, u16 useAtk, u16 useDef)
+int AiGetStrongestMonsterScore(int p, int skip, u16 useAtk, u16 useDef)
 {
     int best = -1;
     int i;
@@ -394,10 +394,10 @@ int sub_080573D0(int p, int skip, u16 useAtk, u16 useDef)
             continue;
         score = 0;
         if (z->f6_1) {
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
         } else {
             z->f6_1 = 1;
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
             z->f6_1 = 0;
         }
         if (useAtk)
@@ -410,7 +410,7 @@ int sub_080573D0(int p, int skip, u16 useAtk, u16 useDef)
     return best;
 }
 /* Zone index of player p with the largest score; -1 if none. */
-int sub_0805748C(int p, int skip, u16 useAtk, u16 useDef)
+int AiFindStrongestMonster(int p, int skip, u16 useAtk, u16 useDef)
 {
     int bestIdx = -1;
     int best;
@@ -433,10 +433,10 @@ int sub_0805748C(int p, int skip, u16 useAtk, u16 useDef)
             continue;
         score = 0;
         if (z->f6_1) {
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
         } else {
             z->f6_1 = 1;
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
             z->f6_1 = 0;
         }
         if (useAtk)
@@ -452,7 +452,7 @@ int sub_0805748C(int p, int skip, u16 useAtk, u16 useDef)
 }
 
 /* Zone index (0-4, != skip) of player `p` with the smallest score (below 99999); -1 if none. */
-int sub_08057550(int p, int skip, u16 useAtk, u16 useDef)
+int AiFindWeakestMonster(int p, int skip, u16 useAtk, u16 useDef)
 {
     register int bestIdx asm("r10") = -1;
     register int best asm("r9") = 99999;
@@ -472,10 +472,10 @@ int sub_08057550(int p, int skip, u16 useAtk, u16 useDef)
             continue;
         score = 0;
         if (z->f6_1) {
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
         } else {
             z->f6_1 = 1;
-            sub_0800ABC8(p, i, buf);
+            GetZoneCardStats(p, i, buf);
             z->f6_1 = 0;
         }
         if (useAtk)
@@ -490,17 +490,17 @@ int sub_08057550(int p, int skip, u16 useAtk, u16 useDef)
     return bestIdx;
 }
 /* Sum of ATK over the five monster zones of `player`. */
-int sub_0805761C(int player)
+int SumMonsterAtk(int player)
 {
     int sum = 0;
     int i;
 
     for (i = 0; i <= 4; i++)
-        sum += sub_0800C894(player, i);
+        sum += GetZoneCardAtk(player, i);
     return sum;
 }
 /* Can the zone's monster be used (occupied, not flagged, not linked to card 0x15C, no 0x148 restriction)? */
-int sub_0805763C(int p, int zone)
+int AiCanChangePosition(int p, int zone)
 {
     int pl = p & 1;
     struct DuelZone *z = ZB(pl, zone);
@@ -511,44 +511,44 @@ int sub_0805763C(int p, int zone)
         return 0;
     if (z->f7_3)
         return 0;
-    if (sub_0800A78C(p, zone, 0x15C) != 0)
+    if (CountZoneLinksFromCard(p, zone, 0x15C) != 0)
         return 0;
-    if (sub_080090C8(0, 0x148) > 0 || sub_080090C8(1, 0x148) > 0) {
-        if (sub_0800C8BC(p, zone) == 1)
+    if (CountActiveCardsOnField2(0, 0x148) > 0 || CountActiveCardsOnField2(1, 0x148) > 0) {
+        if (GetZoneCardType(p, zone) == 1)
             return 0;
     }
     return 1;
 }
 /* Should the AI play card `id`? (hypothesis: compares its ATK value with the opponent's best monster) */
-int sub_080576BC(u16 id, u16 flag)
+int AiShouldSetMonster(u16 id, u16 flag)
 {
     int num, v;
 
     if (flag == 0) {
         const u16 *p = &CARD_NUMBER(id);
 
-        if (sub_08007590(*p, 1) != 0)
+        if (HasFlipEffect(*p, 1) != 0)
             return 1;
-        if (sub_08007590(*p, 0) != 0)
+        if (HasFlipEffect(*p, 0) != 0)
             return 1;
     }
     num = CARD_NUMBER(id);
     if (num == 0x16D)
         return 1;
     if (num == 0x2DA) {
-        if (sub_08008860(0) > 0)
+        if (CountMonsters(0) > 0)
             return 0;
         return 1;
     }
     v = CardValue(id);
-    if (v <= sub_080573D0(0, -1, 1, 0))
+    if (v <= AiGetStrongestMonsterScore(0, -1, 1, 0))
         return 1;
     v = CardValue(id);
     if ((u32)v > 1000)
         return 0;
-    if (gUnk_020192E4[0].deckCount <= 4)
+    if (gDuelPlayers[0].deckCount <= 4)
         return 0;
-    if (*(u16 *)&gUnk_020192E4[0] > 999)
+    if (*(u16 *)&gDuelPlayers[0] > 999)
         return 1;
     return 0;
 }
@@ -556,17 +556,17 @@ int sub_080576BC(u16 id, u16 flag)
  * FAKEMATCH: initialized register constraints retain the ROM address-add order
  * and per-iteration number-table load. The offset input barrier places the
  * list-offset literal before the pointer addition; it emits no instructions. */
-int sub_080577FC(void)
+int AiCountExodiaInDeck(void)
 {
     s32 i = 0;
     s32 n = 0;
-    register s32 count __asm__("r0") = gUnk_020192E4[1].deckCount;
+    register s32 count __asm__("r0") = gDuelPlayers[1].deckCount;
     if (i < count) {
         s32 bound = count;
         u32 mask;
         register u32 offset __asm__("r6");
         struct DuelCard *p;
-        register u32 base __asm__("r1") = (u32)gUnk_020192E4;
+        register u32 base __asm__("r1") = (u32)gDuelPlayers;
         mask = 0x7FF;
         offset = 0x1528;
         __asm__ volatile("" : : "r"(offset));
@@ -595,17 +595,17 @@ int sub_080577FC(void)
  * FAKEMATCH: initialized register constraints retain the ROM address-add order
  * and per-iteration number-table load. The offset input barrier places the
  * list-offset literal before the pointer addition; it emits no instructions. */
-int sub_08057854(void)
+int AiCountExodiaInGraveyard(void)
 {
     s32 i = 0;
     s32 n = 0;
-    s32 count = gUnk_020192E4[1].count904;
+    s32 count = gDuelPlayers[1].count904;
     if (i < count) {
         s32 bound = count;
         u32 mask;
         register u32 offset __asm__("r6");
         struct DuelCard *p;
-        register u32 base __asm__("r1") = (u32)gUnk_020192E4;
+        register u32 base __asm__("r1") = (u32)gDuelPlayers;
         mask = 0x7FF;
         offset = 0x1668;
         __asm__ volatile("" : : "r"(offset));
@@ -631,14 +631,14 @@ int sub_08057854(void)
 }
 
 /* Number of player 1's monster-zone cards whose card number is 0x10-0x14. */
-int sub_080578AC(void)
+int AiCountExodiaOnField(void)
 {
     int i = 0;
     int n = 0;
 
     for (; i <= 4; i++) {
         int t;
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1].zones[i].card));
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1].zones[i].card));
 
         if (id == 0)
             continue;
@@ -656,24 +656,24 @@ int sub_080578AC(void)
     return n;
 }
 
-/* Index of the first hand card (scanning the priority list gUnk_0819D316 of 26 card numbers) or a random hand index. */
-int sub_080578F4(void)
+/* Index of the first hand card (scanning the priority list gAiHandPickPriority of 26 card numbers) or a random hand index. */
+int AiPickOpponentHandCard(void)
 {
     u32 k;
     int j;
 
     for (k = 0; k <= 0x19; k++) {
-        for (j = 0; j < gUnk_020192E4[0].handCount; j++) {
-            if (CARD_NUMBER(CARD_ID(CARD_WORD(gUnk_020192E4[0].hand[j]))) == gUnk_0819D316[k])
+        for (j = 0; j < gDuelPlayers[0].handCount; j++) {
+            if (CARD_NUMBER(CARD_ID(CARD_WORD(gDuelPlayers[0].hand[j]))) == gAiHandPickPriority[k])
                 return j;
         }
     }
-    return sub_08076F9C() % gUnk_020192E4[0].handCount;
+    return Random() % gDuelPlayers[0].handCount;
 }
 /* Evaluate attacking player 0's zone `b` with player 1's zone `a` (hypothesis): fills `out`. */
-void sub_0805797C(int a, int b, struct AttackPlan *out)
+void AiEvalAttack(int a, int b, struct AttackPlan *out)
 {
-    int x = sub_0800C894(1, a);
+    int x = GetZoneCardAtk(1, a);
     int y = 0;
     struct DuelZone *z;
 
@@ -687,10 +687,10 @@ void sub_0805797C(int a, int b, struct AttackPlan *out)
     out->diff = 0;
     z = ZB(0, b);
     if (z->f6_0) {
-        y = sub_0800C8A8(0, b);
+        y = GetZoneCardDef(0, b);
         if (!z->f6_1) {
-            if (gUnk_03000040.handicap <= 10) {
-                y *= gUnk_03000040.handicap + 5;
+            if (gMain.handicap <= 10) {
+                y *= gMain.handicap + 5;
                 y /= 16;
             }
         }
@@ -701,7 +701,7 @@ void sub_0805797C(int a, int b, struct AttackPlan *out)
             out->diff = x - y;
         }
     } else {
-        y = sub_0800C894(0, b);
+        y = GetZoneCardAtk(0, b);
         if (y < x) {
             out->lose = 1;
             out->le = 1;
@@ -716,16 +716,16 @@ void sub_0805797C(int a, int b, struct AttackPlan *out)
     }
 }
 /* Choose the best player-0 zone to attack with player 1's zone `a`; result in `out`. Returns 1 if a winning option exists. */
-u16 sub_08057A80(int a, struct AttackPlan *out)
+u16 AiFindAttackTarget(int a, struct AttackPlan *out)
 {
     struct AttackPlan tmp;
     int i;
 
-    if (sub_0804A3D8(1, a) != 0 || sub_08008860(0) == 0) {
+    if (CanAttackDirectly(1, a) != 0 || CountMonsters(0) == 0) {
         if (CARD_NUMBER(CARD_ID(CARD_WORD(ZB(1, a)->card))) != 0x5F3) {
             out->f2 = 1;
             out->f1 = 1;
-            out->diff = sub_0800C894(1, a);
+            out->diff = GetZoneCardAtk(1, a);
             out->src = a;
             out->gt = 0;
             out->le = 0;
@@ -737,74 +737,74 @@ u16 sub_08057A80(int a, struct AttackPlan *out)
     for (i = 0; i <= 4; i++) {
         if ((CARD_WORD(ZB(0, i)->card) << 20) == 0)
             continue;
-        sub_0805797C(a, i, &tmp);
+        AiEvalAttack(a, i, &tmp);
         if (!tmp.lose)
             continue;
         if (!out->lose) {
-            sub_08075294(out, &tmp, 8);
+            MemCopy16(out, &tmp, 8);
         } else if (tmp.diff > out->diff) {
-            sub_08075294(out, &tmp, 8);
-        } else if (sub_0800C8A8(0, tmp.dst) > sub_0800C8A8(0, out->dst)) {
-            sub_08075294(out, &tmp, 8);
+            MemCopy16(out, &tmp, 8);
+        } else if (GetZoneCardDef(0, tmp.dst) > GetZoneCardDef(0, out->dst)) {
+            MemCopy16(out, &tmp, 8);
         }
     }
     return out->lose;
 }
 /* Is monster zone `zone` of player 0 (ATK/DEF value, scaled when face-down and above... ) weaker than `value`? */
-u16 sub_08057BAC(int value, int zone)
+u16 AiCanBeatMonster(int value, int zone)
 {
     struct DuelZone *z = ZB(0, zone);
     int v;
 
     if (z->f6_0) {
-        v = sub_0800C8A8(0, zone);
+        v = GetZoneCardDef(0, zone);
         if (!(z->f6_1)) {
-            if (gUnk_03000040.handicap <= 10) {
-                v *= gUnk_03000040.handicap + 5;
+            if (gMain.handicap <= 10) {
+                v *= gMain.handicap + 5;
                 v /= 16;
             }
         }
     } else {
-        v = sub_0800C894(0, zone);
+        v = GetZoneCardAtk(0, zone);
     }
     if (v < value)
         return 1;
     if (v == value) {
         if (!(ZB(0, zone)->f6_0)) {
-            if (sub_08008860(1) > sub_08008860(0))
+            if (CountMonsters(1) > CountMonsters(0))
                 return 1;
         }
     }
     return 0;
 }
 /* 1 if player 0 has no monsters, or any occupied zone of player 0 is weaker than `value`. */
-int sub_08057C50(int value)
+int AiCanBeatAnyMonster(int value)
 {
     int i;
 
-    if (sub_08008860(0) == 0)
+    if (CountMonsters(0) == 0)
         return 1;
     for (i = 0; i <= 4; i++) {
-        if ((CARD_WORD(ZB(0, i)->card) << 20) != 0 && sub_08057BAC(value, i))
+        if ((CARD_WORD(ZB(0, i)->card) << 20) != 0 && AiCanBeatMonster(value, i))
             return 1;
     }
     return 0;
 }
 /* Pick an attacker among player 1's eligible monster zones (sorted by ATK, ascending) whose best attack plan wins; 1 if found. */
-int sub_08057C94(void)
+int AiChooseAttack(void)
 {
     u16 cand[5];
     struct AttackPlan plan;
     int n, done, last, i, next;
 
-    gUnk_02015F00.best.f2 = 0;
-    gUnk_02015F00.best.f1 = 0;
-    gUnk_02015F00.best.diff = 0;
-    gUnk_02015F00.best.gt = 0;
-    gUnk_02015F00.best.le = 0;
+    gAiWork.best.f2 = 0;
+    gAiWork.best.f1 = 0;
+    gAiWork.best.diff = 0;
+    gAiWork.best.gt = 0;
+    gAiWork.best.le = 0;
     n = 0;
     for (i = 0; i <= 4; i++) {
-        if (sub_0804A528(1, i, 1)) {
+        if (CanMonsterAttack(1, i, 1)) {
             cand[n] = i;
             n++;
         }
@@ -825,8 +825,8 @@ int sub_08057C94(void)
             /* ida is never used; its dead load is deleted, but CSE keeps its 0x94 and zone-base registers, which orders the ROM's mov/ldr/mul */
             ida = CARD_ID(CARD_WORD(ZB(1, a)->card));
             idb = CARD_ID(CARD_WORD(ZB(1, b)->card));
-            va = sub_0800C894(1, a);
-            vb = sub_0800C894(1, b);
+            va = GetZoneCardAtk(1, a);
+            vb = GetZoneCardAtk(1, b);
             ok = 1;
             switch (CARD_NUMBER(idb)) {
             case 0x226:
@@ -845,9 +845,9 @@ int sub_08057C94(void)
     for (i = 0; i < n; i++) {
         u16 z = cand[i];
 
-        sub_0800C894(1, z);
-        if (sub_08057A80(z, &plan)) {
-            sub_08075294(&gUnk_02015F0C, &plan, 8);
+        GetZoneCardAtk(1, z);
+        if (AiFindAttackTarget(z, &plan)) {
+            MemCopy16(&gUnk_02015F0C, &plan, 8);
             gUnk_02015F0C.f2 = 1;
             return 1;
         }
@@ -855,7 +855,7 @@ int sub_08057C94(void)
     return 0;
 }
 /* Save the duel state (0x020192E4, 0xD86 words) to the backup buffer 0x02015F14. */
-void sub_08057E08(void)
+void AiBackupDuelState(void)
 {
     vu32 *dma = (vu32 *)0x040000D4;
 
@@ -867,7 +867,7 @@ void sub_08057E08(void)
         ;
 }
 /* Restore the duel state from the backup buffer. */
-void sub_08057E3C(void)
+void AiRestoreDuelState(void)
 {
     vu32 *dma = (vu32 *)0x040000D4;
 
@@ -878,21 +878,21 @@ void sub_08057E3C(void)
     while (dma[2] & 0x80000000)
         ;
 }
-/* For each occupied zone of player 1 whose card fails sub_08007590(number, 0): mark it face-down/flagged and clear its mask bit. */
-void sub_08057E70(void)
+/* For each occupied zone of player 1 whose card fails HasFlipEffect(number, 0): mark it face-down/flagged and clear its mask bit. */
+void AiSimSetAttackPositions(void)
 {
     int i;
 
     for (i = 0; i <= 4; i++) {
-        struct DuelZone *z = &gUnk_020192E4[1].zones[i];
+        struct DuelZone *z = &gDuelPlayers[1].zones[i];
         u16 id = CARD_ID(CARD_WORD(z->card));
 
         if (id != 0) {
-            if (sub_08007590(CARD_NUMBER(id), 0) == 0) {
+            if (HasFlipEffect(CARD_NUMBER(id), 0) == 0) {
                 z->f6_0 = 0;
                 z->f6_1 = 1;
                 z->f7_2 = 0;
-                gUnk_020192E4[1].zoneMask &= ~(1 << i);
+                gDuelPlayers[1].zoneMask &= ~(1 << i);
             }
         }
     }

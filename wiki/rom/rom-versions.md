@@ -55,10 +55,10 @@ Every USA function, classified by [[jpmap]] (`build/jp/map.tsv`; counts re-check
 | no JP counterpart found | 1130 | 60.5% |
 | **JP-only functions** | **1290** (0x56EB4 bytes), 195 of them in the Mobile Adapter library | |
 
-706 of the 846 pairs have every aligned call and function pointer consistent with the map. "No counterpart" does not always mean absent: some USA code exists in JP in a form rewritten past recognition. For example, `sub_0804412C` has its counterpart right before JP `sub_08061840` (the counterpart of `sub_08044224`, [[code-08044224]]), but it scores only 0.36.
+706 of the 846 pairs have every aligned call and function pointer consistent with the map. "No counterpart" does not always mean absent: some USA code exists in JP in a form rewritten past recognition. For example, `CanReviveGraveyardCard` has its counterpart right before JP `sub_08061840` (the counterpart of `CollectEffectTargets`, [[code-08044224]]), but it scores only 0.36.
 
 ### The compiler is the same (verified)
-Ten matched USA C functions whose JP counterparts are identical modulo relocation were compiled with the USA compiler and flags (`old_agbcc -O2`, [[compiler-flags]]), linked at their JP addresses with their relocations set to the JP values, and compared. **All ten are byte-identical** (`build/jp/compile_test.txt`). Every relocation's JP target agrees with the independently derived function and address map. The largest, `sub_0807382C` (0x338 bytes), has 20 relocations, 11 of them to RAM that moved. The 2026-10-01 comparison had already found [[lzss-decompress]] (`sub_0807A1A8`) byte-identical, literal pool included, at JP `0x08002C80`.
+Ten matched USA C functions whose JP counterparts are identical modulo relocation were compiled with the USA compiler and flags (`old_agbcc -O2`, [[compiler-flags]]), linked at their JP addresses with their relocations set to the JP values, and compared. **All ten are byte-identical** (`build/jp/compile_test.txt`). Every relocation's JP target agrees with the independently derived function and address map. The largest, `LinkSioRecvMultiBlock` (0x338 bytes), has 20 relocations, 11 of them to RAM that moved. The 2026-10-01 comparison had already found [[lzss-decompress]] (`LZSSDecompress`) byte-identical, literal pool included, at JP `0x08002C80`.
 
 ### The game logic was reworked
 The duel engine's data model differs between the versions:
@@ -81,7 +81,7 @@ Effect executors, target prompts, the deck editor and the duel UI mostly have no
 | [[code-08071f40]], [[code-080034b8]], [[code-08026124]], [[code-08029750]] | 6–9% | |
 | the other 97 units | under 5% | game logic |
 
-For one worked pair, `build/jp/sub_08044224_diff.md` compares `sub_08044224` with JP `sub_08061840` case by case. It was written as matching hints for [[code-08044224]].
+For one worked pair, `build/jp/sub_08044224_diff.md` compares `CollectEffectTargets` with JP `sub_08061840` case by case. It was written as matching hints for [[code-08044224]].
 
 > [!warning] Contradiction
 > **Localisation or rework?** This page held the hypothesis (2026-10-01): "The low exact-match share comes mostly from localization changing RAM and struct layouts (text buffers, save data), which alters the immediate field offsets in most functions, rather than from different logic." [[jpmap]] and `build/jp/PLAN.md` §6 refute it. The card and player data model differs, JP has 928 cards against 821, and 60% of USA code bytes have no counterpart even at the similarity level. RAM did move (below), and those deltas are verified for the system layer. But a pure layout shift leaves a function's instruction shape unchanged, and only 41 pairs are like that. Resolved: the hypothesis is withdrawn.
@@ -149,7 +149,7 @@ Single source tree with a build-time version switch:
 
 ## Plan (agreed with the user, 2026-10-01)
 1. **Finish USA to 100%** matching source.
-2. **Global rename to semantic names.** Address-suffixed placeholders (`gUnk_0201930C`, `sub_08012345`) resolve through `tools/autosyms.py` from the USA address, so they can't serve two versions. Each name needs a per-version address table.
+2. **Global rename to semantic names.** Address-suffixed placeholders (`gDuelZones`, `sub_08012345`) resolve through `tools/autosyms.py` from the USA address, so they can't serve two versions. Each name needs a per-version address table.
 3. **`make jp` skeleton:** its own baserom (`roms/base_jp.gba`), SHA-1, link order, symbol address table, rodata splits and asset offsets. Bootstrap JP as an all-assembly byte-matching build, the way USA started ([[decomp-workflow]]).
 4. **Share the C.** Replace JP assembly with the USA C function by function, putting struct layouts and constants behind `#if VERSION_JP`. The JP-only functions get decompiled separately.
 
@@ -182,11 +182,11 @@ USA 100% ──► global rename ───────────────�
 stage 1 ─► stage 2 ─► stage 3                stage 4 ─► stage 5
 ```
 
-Stages 1–3 do not depend on the rename and could start at any time; they give a byte-matching JP build and a JP ROM map. (2026-10-02: after the USA decompilation reached 100%, the user paused JP work. The order is the rename pass first, then JP; see [[overview]].) Stage 5 needs only the scoped part of stage 4. Stages 6–7 need the global rename, because otherwise every shared or derived function carries USA-address names the JP build cannot resolve. The duel code reaches struct fields through absolute aliases (`gUnk_0201930C`, `gUnk_02019AA8`, …) where JP uses one base plus offsets, so those aliases have to become struct globals with member accesses first. agbcc still folds `&gDuel.x` into one relocated literal, so USA keeps matching.
+Stages 1–3 do not depend on the rename and could start at any time; they give a byte-matching JP build and a JP ROM map. (2026-10-02: after the USA decompilation reached 100%, the user paused JP work. The order is the rename pass first, then JP; see [[overview]].) Stage 5 needs only the scoped part of stage 4. Stages 6–7 need the global rename, because otherwise every shared or derived function carries USA-address names the JP build cannot resolve. The duel code reaches struct fields through absolute aliases (`gDuelZones`, `gDuelDecks`, …) where JP uses one base plus offsets, so those aliases have to become struct globals with member accesses first. agbcc still folds `&gDuel.x` into one relocated literal, so USA keeps matching.
 
 **Risks and open points** (from `PLAN.md` §5):
 - Identical and same-shape pairs are exact; the 172 low-confidence changed pairs are similarity guesses. Re-run [[jpmap]] after stage 2, when the JP function list is final.
-- Pairing by position (neighbours of matched pairs, shared callers) would recover some of the 1130 rewritten USA functions, such as `sub_0804412C`. The total stays far below what a localisation would give.
+- Pairing by position (neighbours of matched pairs, shared callers) would recover some of the 1130 rewritten USA functions, such as `CanReviveGraveyardCard`. The total stays far below what a localisation would give.
 - Object-file boundaries are unknown in both versions.
 - JP data formats (font, card art, sound) still need analysis, so assets will take longer than they did for USA.
 - A JP placeholder spelled like a USA one (`sub_0806172C` exists in both address spaces) would silently resolve to the wrong address; hence stage 4's distinct spelling.

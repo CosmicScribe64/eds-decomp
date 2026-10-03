@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# CB_MainMenu `sub_08003AA4`
+# CB_MainMenu `CB_MainMenu`
 
 | Function | Address | Size | Proposed name |
 |---|---|---|---|

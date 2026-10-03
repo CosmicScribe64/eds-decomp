@@ -233,7 +233,7 @@ def x_waveram(data, p, rom):
     pats = [{'wave': i // 16, 'level': i % 16, 'samples': _nibbles(data[i * 16:i * 16 + 16])}
             for i in range(len(data) // 16)]
     doc = {
-        'format': 'PSG channel 3 wave-RAM patterns. SoundLoadWaveRam (sub_0807D518) loads pattern wave*16 + '
+        'format': 'PSG channel 3 wave-RAM patterns. SoundLoadWaveRam (SoundLoadWaveRam) loads pattern wave*16 + '
                   'level, where wave is the channel-3 track\'s instrument number and level its volume 1-15 '
                   '(volume 0 silences the channel instead, so level-0 patterns are never loaded). "samples" '
                   'are the 32 4-bit samples in play order, one hex digit each (0 = lowest, F = highest), '
@@ -280,7 +280,7 @@ def x_noise(data, p, rom):
             e['unused_bits'] = f'0x{v & 0x3F00:04X}'
         entries.append(e)
     doc = {
-        'format': 'PSG channel 4 (noise) presets. The sequencer (sub_0807DB58) writes entry n to SOUND4CNT_H '
+        'format': 'PSG channel 4 (noise) presets. The sequencer (SoundSequencerTick) writes entry n to SOUND4CNT_H '
                   '(0x0400007C) when the noise channel\'s pitch value is n, unless bit 1 of the channel\'s dirty '
                   'or command byte is set (then it writes the pitch value itself). Fields: divide_ratio r '
                   '(0-7) and shift_clock s (0-15) give the LFSR clock 524288 / r / 2^(s+1) Hz (r = 0 counts '

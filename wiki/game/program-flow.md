@@ -20,12 +20,12 @@ ROM entry 0x08000000 ─► crt0 0x080000C0 (ARM)
    INTR_VECTOR (0x03007FFC) = IntrMain 0x080000FC (ROM copy)
    bx AgbMain 0x08075F64 (Thumb)     ; loops back to crt0 if it ever returns
 AgbMain:
-   GameInit      sub_08075DF4        ; one-time init
-   MainLoop      sub_08075D70        ; never returns
+   GameInit      GameInit        ; one-time init
+   MainLoop      MainLoop        ; never returns
 ```
 See [[crt0]] and [[agb-main]].
 
-### GameInit `sub_08075DF4` (verified)
+### GameInit `GameInit` (verified)
 crt0 doesn't initialise `.data` or `.bss`. This function clears RAM instead:
 1. DMA3 32-bit fill of 0 over **all of EWRAM** (`0x02000000`, 0x10000 words) and over **IWRAM `0x03000000`–`0x03007A00`** (0x1E80 words). That leaves the stacks alone.
 2. `ReadSram(0x0E000000, 0x02011C20, 0x2170)` loads the save into `gSaveData` (see [[save-type]], [[agb-sram]]).
@@ -36,7 +36,7 @@ crt0 doesn't initialise `.data` or `.bss`. This function clears RAM instead:
 7. `gMain.callback` (`0x03000450`) = `0x08004EAD`, the **License** sequence. `gMain.vblankCallback` = NULL.
 8. `SoundInit(NULL)` (`0x0807D578`). This also rewrites IE: it clears DMA1/DMA2/Timer0, then sets DMA1|Timer0. **Final IE = `0x2229`** (VBlank, Timer0, Timer2, DMA1, Gamepak). Timer0 never raises an IRQ because its control has no IRQ bit.
 9. Timer2: reload `0xF400`, prescaler /1024, IRQ on. That's one tick every 3072×1024 cycles, about 0.1875 s. The handler increments a u16 at `0x030051FC`; its purpose is unknown.
-10. Sets `gMain+0x40E` (u16) = 3, then `ResetBgScroll`, `SetBrightnessWhite`, `SetSeEnabled(1)`, `SetBgmEnabled(1)`, and `sub_080770DC` (writes `gSaveData+4` = 1).
+10. Sets `gMain+0x40E` (u16) = 3, then `ResetBgScroll`, `SetBrightnessWhite`, `SetSeEnabled(1)`, `SetBgmEnabled(1)`, and `SetTextModeLatin` (writes `gSaveData+4` = 1).
 
 > [!note] Sound on by default
 > Step 10's `SetSeEnabled`/`SetBgmEnabled` run **after** the save is loaded. That means the SE/BGM flags stored in the save (`gSaveData+0x2152`) are forced on at every boot (hypothesis about intent; the behaviour itself is verified).
@@ -51,7 +51,7 @@ for (;;) {
     gMain.lagCounter = 0;                   // 0x030048A6
     if (gMain.callback())                   // 0x03000450, called via _call_via_r0
         SetMainCallback(CB_MainMenu);       // 0x080754F8(0x08003AA5)
-    sub_08075D6C();                         // empty (bx lr); stripped debug hook?
+    DebugHook_Nop();                         // empty (bx lr); stripped debug hook?
     gMain.frameCounter++;                   // u16 0x0300489E
     gMain.frameCounter8++;                  // u8  0x030048A0
 }
@@ -68,7 +68,7 @@ for (;;) {
 | HBlank | per scene, `IntrTable[1]` | installed and cleared by scenes (for example `0x08004ABD` on the title screen), and cleared by `SetMainCallback` |
 | Timer2 | `Timer2Intr` `0x0807570C` | reloads, increments u16 `0x030051FC` |
 | DMA1 | `SoundDma1Intr` `0x0807E324` | tracks the Direct Sound FIFO ring-buffer position and restarts DMA1/DMA2 on wrap |
-| Serial (+Timer3) | `0x08075F74` | link-cable multiplayer handler, installed by the link code (`sub_080735D4`); sync word `0xFEFE` |
+| Serial (+Timer3) | `0x08075F74` | link-cable multiplayer handler, installed by the link code (`LinkSioInit`); sync word `0xFEFE` |
 | Gamepak | loops forever inside `IntrMain` | cartridge pulled |
 
 Details: [[interrupt-handlers]].
@@ -95,7 +95,7 @@ each menu scene ──(returns 1)──► MainLoop ──► SetMainCallback(CB
 | Deck Edit | `0x0806EF04` | menu slot 2; "There are no cards." | steps at `0x081A725C`; mode bits in `gMain+0x4874` |
 | Record | `0x08003E94` | menu slot 3 | 5 steps at `0x08198588`, index `gMain+0x485B`; state `0x0201F814` |
 | Calendar | `0x08002940` | menu slot 4 | 4 steps at `0x08198338` (`0x0800257C`, `0x08002704`, `0x08002728`, `0x08002930`), index `gMain+0x485B`; state `0x0201F7D0` |
-| Card Trading | `0x0807D348` | menu slot 5; reaches the link library (`sub_0807BCFC`); debug string "Throw it in now !" | steps at `0x081A79A4` (the menu's A/B choice jumps to index 4, 6 or 8) |
+| Card Trading | `0x0807D348` | menu slot 5; reaches the link library (`LinkSyncStep`); debug string "Throw it in now !" | steps at `0x081A79A4` (the menu's A/B choice jumps to index 4, 6 or 8) |
 | Password | `0x0807CC28` | menu slot 6; strings "Password:", "->%4X" | 6 steps at `0x081A7970`; state `0x0201F7B0`. Lookup: [[password-table]]. |
 | Debug menu | `0x08074A34` | table of `{char name[0x40]; callback}` at `0x081A73A0` | **Never referenced**, so this is dead code. See [[debug-menu]]. |
 
@@ -126,7 +126,7 @@ AgbMain 0x08075F64
 │  ├─ ResetBgScroll 0x080757AC ─ ResetBgHofs 0x08075744, ResetBgVofs 0x08075778
 │  ├─ SetBrightnessWhite 0x08075A30
 │  ├─ SetSeEnabled 0x08077A74, SetBgmEnabled 0x08077AB0
-│  └─ sub_080770DC ─ sub_080770BC              (gSaveData+4)
+│  └─ SetTextModeLatin ─ SetTextMode              (gSaveData+4)
 │  (installs: VBlankIntr 0x0807569C, Timer2Intr 0x0807570C, SoundDma1Intr 0x0807E324,
 │             GamepakIntr 0x08075740, callback CB_License 0x08004EAC)
 └─ MainLoop 0x08075D70
@@ -138,7 +138,7 @@ AgbMain 0x08075F64
    │  └─ Random 0x08076F9C
    ├─ _call_via_r0 0x0807EE98 → gMain.callback (current scene)
    ├─ SetMainCallback 0x080754F8 ─ SaveGame 0x080754BC ─ UpdateSaveChecksum, WriteSram, VerifySram
-   └─ sub_08075D6C (empty)
+   └─ DebugHook_Nop (empty)
 VBlankIntr 0x0807569C
    ├─ gMain.vblankCallbackEarly (0x03000458)
    ├─ SoundVBlank 0x0807E3B0 ─ SoundSequencerTick 0x0807DB58, veneer 0x08080A18 → SoundMixAll 0x0807EAD0 (ARM)
@@ -153,6 +153,6 @@ VBlankIntr 0x0807569C
 ## Open questions
 - What is the Timer2 tick counter (`0x030051FC`) used for? Link timeouts? Play time?
 - Is `SetMainCallback(NULL)` at `0x0801BCBA` really an intentional soft reset?
-- What are the two u16 values that `ResetVideo` sets through `sub_0807289C(0, 0x27E)` (`gMain+0x441C/+0x441E`)?
+- What are the two u16 values that `ResetVideo` sets through `SetTextArea(0, 0x27E)` (`gMain+0x441C/+0x441E`)?
 
 Related: [[ram-map]], [[sound-engine]], [[interrupt-handlers]], [[set-main-callback]], [[main-menu]], [[game-overview]].

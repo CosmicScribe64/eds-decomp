@@ -68,13 +68,13 @@ The driver and the formats are on [[sound-engine]]. This table only pins the ext
 |---|---|---|---|
 | `0x08139F5C` | `0x08139F64` | 2 pointers to the LZSS dialogue-box bitmap `0x0874C650` | V |
 | `0x08139F64` | `0x0813ADD4` | Duelist/character table: 28 × 0x84 `{u32 id; char name[0x40]; char shortName[0x40]}`. See [[duelist-table]] | V |
-| `0x0813ADD4` | `0x0813ADF4` | 8-word step table of the bust-up runner `sub_08001AE4`/`sub_08001B34` (`0x08001365`, `0x080016A9`, …; see [[debug-menu]] "Bustup", [[scene-sets]]) | V |
+| `0x0813ADD4` | `0x0813ADF4` | 8-word step table of the bust-up runner `CB_Bustup`/`CB_AutoBustup` (`0x08001365`, `0x080016A9`, …; see [[debug-menu]] "Bustup", [[scene-sets]]) | V |
 | `0x0813ADF4` | `0x0819739C` | **Dialogue table**: 490 × 0x304 `{u16 eventId; u16 speakerId; char text[0x300]}`. See [[text-system]] | V |
 | `0x0819739C` | `0x081976A0` | Terminator: one complete 0x304-byte dialogue record with event = speaker = 0xFFFF and empty text | V |
 | `0x081976A0` | `0x0819790C` | **Scene-set descriptors**: 31 × 0x14 `{lz bitmap; bgPal; objPal; lz objTiles; anim}`. See [[scene-sets]] | V |
 | `0x0819790C` | `0x0819A9D4` | Code tables, typed item by item by the `tables_code` converter. It contains:<br>• the scene sets' animation track lists (the descriptors' `anim` targets, e.g. `0x08197954`) and their OAM sprite templates;<br>• about 40 NULL-terminated step-function tables;<br>• calendar events `{u32 flags; char name[0x40]}` (`0x081980D4`);<br>• the Mode-4 bitmap table `0x08198440` (5 × `{pal, bitmap}`) and image-pack pointer lists (`0x081985A0`, 25 entries; `0x08198604`, 5 entries);<br>• starter-deck pools `0x08198634`–`0x0819879C` ([[deck-lists]]);<br>• chain banner texts (`0x08198DE4`) and the BGM per opponent (`0x08198F20`);<br>• HBlank scroll waves;<br>• the fusion lists `0x0819A7C8` (52 two-material recipes + a 999 terminator) and `0x0819A970` (3 three-material recipes + terminator) ([[special-card-lists]]).<br>Unreferenced: `0x081979DC` (4 sprite templates), `0x081987B0` (4 scroll waves), the track list `0x081999C4` | V (layout and types), H (some roles) |
 | `0x0819A9D4` | `0x0819D1C4` | Card-effect handler table: 426 × 0x18 `{u16 number; u16 flags (always 0); fn resolve, check, prepare, chainA, chainB}`, with numbers ascending 15..1552. 290 numbers are card numbers. All 867 non-NULL pointers are Thumb entries of known functions. See [[cards]] | V |
-| `0x0819D1C4` | `0x0819D34C` | Tribute-summon prompts `char *[5]` (`0x0819D1C4`); duel step handlers (`0x0819D1D8`, 14 + NULL, `sub_0804E31C`); monster type names `char *[20]` (`0x0819D214`) and attribute names `char *[6]` (`0x0819D264`); the card jump arc `{s32 dx, dy}[16]` (`0x0819D27C`); the AI card lists `0x0819D2FC`/`0x0819D316` ([[special-card-lists]]) | V |
+| `0x0819D1C4` | `0x0819D34C` | Tribute-summon prompts `char *[5]` (`0x0819D1C4`); duel step handlers (`0x0819D1D8`, 14 + NULL, `BattlePhase_Run`); monster type names `char *[20]` (`0x0819D214`) and attribute names `char *[6]` (`0x0819D264`); the card jump arc `{s32 dx, dy}[16]` (`0x0819D27C`); the AI card lists `0x0819D2FC`/`0x0819D316` ([[special-card-lists]]) | V |
 | `0x0819D34C` | `0x0819DD64` | Deck lists (card-number arrays + `{const u16 *cards; u16 count; u16 pad}` header tables). See [[deck-lists]] | V |
 | `0x0819DD64` | `0x081A7A0C` | `.rodata` 2 (sub-tables below): AI card and step tables; the **HBlank warp tables** `0x0819DD94`–`0x081A4194`; UI tables from `0x081A4194` (including the booster-pack slot lists and rarity thresholds, [[booster-packs]]); OAM sprite frames `0x081A5790`–`0x081A70FC`; scene step tables; the **debug-menu item table** `0x081A73A0` ([[debug-menu]]); the **ASCII-to-Shift-JIS table** `0x081A76A0`; the Forbidden/Limited list `0x081A78B4`; sound channel maps | V |
 | `0x081A7A0C` | `0x081ABC4C` | Sound lookup tables ([[sound-sequence-format#Driver lookup tables]]): nibble volume scale `0x081A7A0C` (16 × 256 u8); PCM pitch `0x081A8A0C`–`0x081AA20C` (3,072 u16, one per 1/32 semitone, used from its middle `0x081A960C`); PSG frequency `0x081AA20C`–`0x081AB70C` (2,688 u16, bit 15 = trigger); PSG vibrato steps `0x081AB70C`–`0x081ABC4C` (84 × 8 u16) | V |
@@ -82,7 +82,7 @@ The driver and the formats are on [[sound-engine]]. This table only pins the ext
 
 > [!warning] Contradiction
 > Two `.rodata` 2 claims changed when the table and sound converters decoded the range (2026-10-02).
-> - **The "three 0x2800 blocks, probably tilemaps"** at `0x0819DD94`/`0x081A0594`/`0x081A2D94` are the HBlank warp tables of `sub_0805DC38` ([[code-0805d58c]]): BG2X and BG2Y as `s32[16][160]` (0x2800 each), then BG2PA as `s16[16][160]`. The third table is 0x1400 bytes, not 0x2800, so the UI tables start at `0x081A4194`.
+> - **The "three 0x2800 blocks, probably tilemaps"** at `0x0819DD94`/`0x081A0594`/`0x081A2D94` are the HBlank warp tables of `BattleScene_HBlank` ([[code-0805d58c]]): BG2X and BG2Y as `s32[16][160]` (0x2800 each), then BG2PA as `s16[16][160]`. The third table is 0x1400 bytes, not 0x2800, so the UI tables start at `0x081A4194`.
 > - **The sound lookup row** listed "envelope/volume tables", a pitch table starting at `0x081A8D48`, and one PSG frequency table up to `0x081ABC4C`. The decoded layout is the four tables above. The pitch table starts at `0x081A8A0C`, and the old frequency range holds two tables.
 >
 > Both were re-checked against the ROM for this page: the block sizes, and every value of the pitch and frequency formulas. Resolved in favour of the decoding.
@@ -93,7 +93,7 @@ The `tables_game` converter names each sub-table and writes it as `tables/rodata
 | Address | Name | Contents |
 |---|---|---|
 | `0x0819DD64` | `ai_scan_cards` | 4 card numbers: Time Wizard, Cannon Soldier, Relinquished, Barrel Dragon |
-| `0x0819DD6C` | `ai_turn_steps` | CPU-turn step handlers (10, with NULLs; `sub_0805BBE0`) |
+| `0x0819DD6C` | `ai_turn_steps` | CPU-turn step handlers (10, with NULLs; `AiRunStep`) |
 | `0x0819DD94` / `0x081A0594` / `0x081A2D94` | `warp_bg2x` / `warp_bg2y` / `warp_bg2pa` | HBlank warp: s32[16][160], s32[16][160], s16[16][160] |
 | `0x081A4194` | `shake_offset_regs` | BG2X/BG2Y/BG3X/BG3Y register pointers |
 | `0x081A41A4`, `0x081A41F8` | `attribute_icons`, `kind_icons` | icon graphics pointers into bank A |
@@ -116,9 +116,9 @@ The `tables_game` converter names each sub-table and writes it as `tables/rodata
 | `0x081A78A8` | `save_signature` | `"DMEX1INT"` in a 12-byte field |
 | `0x081A78B4` | `card_copy_limits` | `{u16 card; u16 limit}`[47]: the Forbidden/Limited list ([[special-card-lists]]) |
 | `0x081A7970`, `0x081A79A4` | `password_steps`, `card_trading_steps` | scene step tables |
-| `0x081A79E8`, `0x081A79F4` | `sound_channel_map`, `se_variant_channel_order` | u8[12]; u8[4][6] (read through `gUnk_081A79F9`), ending exactly at `0x081A7A0C` |
+| `0x081A79E8`, `0x081A79F4` | `sound_channel_map`, `se_variant_channel_order` | u8[12]; u8[4][6] (read through `gSeVariantTrackMap`), ending exactly at `0x081A7A0C` |
 
-The OAM frames are 8-byte OAM attribute entries (attr3 always 0). The animation scripts that use them are in `.rodata` 1 at `0x08086C54`–`0x08087338`. Each step is `{u8 frames; u8 count; u16 pad; const OAM *data}`. In `src/code_080784E4.c` the second byte is still `unk1`. The `tables_code` reading of the animation code (`sub_08078670`, `sub_080786D0`, `sub_08077EF4`) treats it as the number of templates drawn, and it matches each frame's OAM count ([[scene-sets#Animation]]).
+The OAM frames are 8-byte OAM attribute entries (attr3 always 0). The animation scripts that use them are in `.rodata` 1 at `0x08086C54`–`0x08087338`. Each step is `{u8 frames; u8 count; u16 pad; const OAM *data}`. In `src/code_080784E4.c` the second byte is still `unk1`. The `tables_code` reading of the animation code (`AnimBlockInit`, `AnimStateTick`, `OamListAddSpriteGroup`) treats it as the number of templates drawn, and it matches each frame's OAM count ([[scene-sets#Animation]]).
 
 ### Font bank (`0x081C0000`–`0x0822C720`)
 See [[font]].
@@ -163,7 +163,7 @@ See [[graphics-formats]]. Almost everything here is uncompressed. The only excep
 | `0x0871CE50` | `0x0874C650` | 5 **Mode-4 bitmaps**, 240×160 8bpp (0x9600) plus a 256-colour palette each (table `0x08198440`): the duelist-select screens | V |
 | `0x0874C650` | `0x0874E324` | LZSS dialogue-box bitmap 240×64 (`0x0874C650`), LZSS 240×24 header strip (`0x0874D5B0`, top 16 rows used), box palette `0x0874E104` and text palette `0x0874E304`. See [[scene-sets]] | V |
 | `0x0874E324` | `0x087BDAA8` | LZSS scene sets 5–30: 26 × `{240×96 bitmap (LZSS 0x5A00), BG palette, OBJ palette, OBJ tiles (LZSS 0x2000)}`, the duelist "bust-up" dialogue scenes. See [[scene-sets]] | V |
-| `0x087BDAA8` | `0x087F8568` | Uncompressed bank B, 64 items (41 packs, 11 palettes, 10 tile blocks, 2 bitmaps). Contents:<br>• the title logo (8bpp pack, 128 colours), copyright line, coin and flame;<br>• the delete-save prompt: stone-frame bitmap `0x087C29D4` and its text OBJ sheet `0x087CC1D4`;<br>• the Konami and KCEJ logos; the sky (`0x087D4B24`); the main-menu OBJ sheet; duel-score packs;<br>• 24 duelist face strips `0x087E795C`–`0x087EA716` (the first 24 pointers of `0x081985A0`) and 6 duelist-name list packs (the 6 pointers at `0x08198600`–`0x08198618`, which overlap the 25th entry of `0x081985A0` and the 5-entry list `gUnk_08198604`);<br>• the calendar bitmap `0x087EA718`, with day numbers, month names (one 0x800 block per season) and weekday names | V |
+| `0x087BDAA8` | `0x087F8568` | Uncompressed bank B, 64 items (41 packs, 11 palettes, 10 tile blocks, 2 bitmaps). Contents:<br>• the title logo (8bpp pack, 128 colours), copyright line, coin and flame;<br>• the delete-save prompt: stone-frame bitmap `0x087C29D4` and its text OBJ sheet `0x087CC1D4`;<br>• the Konami and KCEJ logos; the sky (`0x087D4B24`); the main-menu OBJ sheet; duel-score packs;<br>• 24 duelist face strips `0x087E795C`–`0x087EA716` (the first 24 pointers of `0x081985A0`) and 6 duelist-name list packs (the 6 pointers at `0x08198600`–`0x08198618`, which overlap the 25th entry of `0x081985A0` and the 5-entry list `gRecordPageNameImages`);<br>• the calendar bitmap `0x087EA718`, with day numbers, month names (one 0x800 block per season) and weekday names | V |
 
 ## Method
 - **Block statistics:** `python3 tools/romstats.py <start> <end> <blocksize>` prints the zero, 0xFF and ASCII fractions, entropy, and pointer density per block. Card art shows up as entropy 7.6. Dialogue and name slots show up as 80% zeros.

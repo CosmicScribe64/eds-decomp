@@ -3,12 +3,12 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0800D8A4/sub_0800D8A4.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800D990.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800DA84.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800DD04.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800DF94.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800E1E0.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800E438.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800E630.s"
-	.include "asm/nonmatching/code_0800D8A4/sub_0800E874.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_ChangePosition.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_FlipCard.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_SendToGraveyard.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_Banish.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_BanishFlagged.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_ReturnToHand.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_ReturnToDeck.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_MoveToZone.s"
+	.include "asm/nonmatching/code_0800D8A4/DuelCmd_SwapZones.s"

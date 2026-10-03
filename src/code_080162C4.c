@@ -12,25 +12,25 @@
  */
 
 /* gMain (0x03000040) comes from main.h. */
-#define gMain gUnk_03000040
+#define gMain gMain
 
-/* Duel command block gUnk_020185C0 comes from duel_ui.h. */
+/* Duel command block gDuelCmd comes from duel_ui.h. */
 
-/* Per-player duel state (gUnk_020192E4) and the duel state (gUnk_020192E0) come from duel.h. */
-/* gUnk_020192E0 addressed through the gUnk_020192E4 symbol (lets CSE share the base, see sub_080162C4). */
-#define DUEL_FROM_PLAYERS ((struct DuelState *)((u8 *)gUnk_020192E4 - 4))
+/* Per-player duel state (gDuelPlayers) and the duel state (gDuel) come from duel.h. */
+/* gDuel addressed through the gDuelPlayers symbol (lets CSE share the base, see DuelCmd_ResetDuelState). */
+#define DUEL_FROM_PLAYERS ((struct DuelState *)((u8 *)gDuelPlayers - 4))
 
-/* Duel screen / animation state gUnk_0201CFB0 comes from duel_ui.h. */
+/* Duel screen / animation state gDuelScreen comes from duel_ui.h. */
 
 /* Message box request block at 0x02017A30 (fields used here). */
 struct DuelMsg {
     u8 filler0[6];
     u16 arg;                /* +0x006 */
 };
-extern struct DuelMsg gUnk_02017A30;
+extern struct DuelMsg gDuelScene;
 
 /*
- * Local view for sub_08016488 only. It touches gUnk_020192E0+0x1ACC as a u8 bitfield
+ * Local view for DuelCmd_SetFieldBackground only. It touches gDuel+0x1ACC as a u8 bitfield
  * (unk1ACC_0:4) and the ROM uses ldrb/strb there. duel.h models that word as
  * `u32 unk1ACC_0:15`, which makes agbcc emit ldrh/strh, so the unit keeps its own split.
  */
@@ -40,151 +40,151 @@ struct DuelStateUnk1ACCView {
     u8 unk1ACC_0:4;                 /* +0x1ACC (unit-local split; canonical is u32:15) */
     u8 unk1ACC_4:4;
 };
-extern struct DuelStateUnk1ACCView gUnk_020192E0_lo asm("gUnk_020192E0");
+extern struct DuelStateUnk1ACCView gUnk_020192E0_lo asm("gDuel");
 
-extern u8 gUnk_02017A40[];
-extern const u8 gUnk_08687B9C[];
-extern const u8 gUnk_08687BBC[];
-extern const u16 gUnk_081A4444[];
-extern const u8 gUnk_0867F01C[];
-extern const u8 gUnk_0867F03C[];
-extern const u8 gUnk_0867F63C[];
-extern const u8 gUnk_08688FBC[];
-extern const u8 gUnk_08688FD8[];
-extern const u16 gUnk_081A44FC[];   /* slide offsets, 16 entries */
-extern const u16 gUnk_081A4424[];   /* pulse scale, 16 entries */
-extern const u32 gUnk_08081728[];   /* slide-in x offsets, 16 entries */
+extern u8 gChain[];
+extern const u8 gDuelBannerPal[];
+extern const u8 gStartDuelBannerGfx[];
+extern const u16 gShrinkScaleSteps[];
+extern const u8 gPhaseBannerPal[];
+extern const u8 gPhaseBannerGfx[];
+extern const u8 gBattlePhaseBannerGfx[];
+extern const u8 gChainBannerPal[];
+extern const u8 gChainBannerGfx[];
+extern const u16 gBannerSlideOffsets[];   /* slide offsets, 16 entries */
+extern const u16 gPulseScaleCurve[];   /* pulse scale, 16 entries */
+extern const u32 gBattleBannerSlideX[];   /* slide-in x offsets, 16 entries */
 
 #define REG_BLDCNT (*(vu16 *)0x04000050)
 #define REG_BLDALPHA (*(vu16 *)0x04000052)
 #define BLDALPHA(eva, evb) ((u8)(eva) | ((u8)(evb) << 8))
 
-void sub_080752B0(void *dst, const void *src, u32 size);   /* CopyDoubleWords */
-void sub_08075278(void *dst, u32 size);                    /* MemClear16 */
-void sub_08077AEC(u16 se);                                 /* PlaySE */
-void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);       /* AddSprite */
-void sub_0807625C(u32 yx, u16 shapeSize, u16 attr2);
-void sub_08076714(u32 yx, u16 shapeSize, u16 attr2, s32 affine);
-void sub_08024134(u32 player, u32 a, u32 b);
-void sub_080240A8(u32 player, u32 a);
-void sub_0801E998(u16 msg, u32 a);
-u32 sub_0801EAD8(void);
-void sub_0801EBA8(void);
-void sub_08060964(u32 a, u32 b);
-u32 sub_08060CEC(u32 a);
-u32 sub_08060D64(u32 a);
-void sub_080609C4(void);
-u32 sub_08060B2C(void);
-u32 sub_08060B4C(void);
-void sub_0806044C(u16 a);
+void CopyDoubleWords(void *dst, const void *src, u32 size);   /* CopyDoubleWords */
+void MemClear16(void *dst, u32 size);                    /* MemClear16 */
+void PlaySE(u16 se);                                 /* PlaySE */
+void AddSprite(u32 yx, u16 shapeSize, u16 attr2);       /* AddSprite */
+void AddSpriteAlpha(u32 yx, u16 shapeSize, u16 attr2);
+void AddAffineSprite(u32 yx, u16 shapeSize, u16 attr2, s32 affine);
+void DuelCursor_Select(u32 player, u32 a, u32 b);
+void DuelScreen_ScrollToZone(u32 player, u32 a);
+void DuelScene_Start(u16 msg, u32 a);
+u32 DuelScene_Run(void);
+void PlayDuelBGM(void);
+void DrawPhaseIndicator(u32 a, u32 b);
+u32 DuelFieldFadeToWhite(u32 a);
+u32 DuelFieldFadeFromWhite(u32 a);
+void DuelScreen_Init(void);
+u32 DuelScreen_FadeInStep(void);
+u32 DuelScreen_FadeOutStep(void);
+void DuelScreen_LoadFieldBackground(u16 a);
 
-#define FAST_FORWARD() ((gMain.heldKeys & 2) || gUnk_0201CFB0.fast)
+#define FAST_FORWARD() ((gMain.heldKeys & 2) || gDuelScreen.fast)
 
 /*
  * Restart the duel. Save both players' list7C4/listA44 (and their counts) into the
- * command block, clear the whole duel state and gUnk_02017A40, restore the lists,
+ * command block, clear the whole duel state and gChain, restore the lists,
  * and reset both players to 8000 LP.
  */
-void sub_080162C4(void)
+void DuelCmd_ResetDuelState(void)
 {
     int i;
 
     for (i = 0; i < 2; i++) {
-        gUnk_020185C0.savedCount3[i] = gUnk_020192E4[i & 1].deckCount;
-        sub_080752B0(gUnk_020185C0.savedList7C4[i], gUnk_020192E4[i & 1].deck, 0x140);
-        gUnk_020185C0.savedCount5[i] = gUnk_020192E4[i & 1].fusionCount;
-        sub_080752B0(gUnk_020185C0.savedListA44[i], gUnk_020192E4[i & 1].fusionDeck, 0x140);
+        gDuelCmd.savedCount3[i] = gDuelPlayers[i & 1].deckCount;
+        CopyDoubleWords(gDuelCmd.savedList7C4[i], gDuelPlayers[i & 1].deck, 0x140);
+        gDuelCmd.savedCount5[i] = gDuelPlayers[i & 1].fusionCount;
+        CopyDoubleWords(gDuelCmd.savedListA44[i], gDuelPlayers[i & 1].fusionDeck, 0x140);
     }
-    sub_08075278(gUnk_02017A40, 0x56C);
-    sub_08075278(gUnk_020192E4, 0x1B0C);
+    MemClear16(gChain, 0x56C);
+    MemClear16(gDuelPlayers, 0x1B0C);
     for (i = 0; i < 2; i++) {
-        gUnk_020192E4[i & 1].deckCount = gUnk_020185C0.savedCount3[i];
-        sub_080752B0(gUnk_020192E4[i & 1].deck, gUnk_020185C0.savedList7C4[i], 0x140);
-        gUnk_020192E4[i & 1].fusionCount = gUnk_020185C0.savedCount5[i];
-        sub_080752B0(gUnk_020192E4[i & 1].fusionDeck, gUnk_020185C0.savedListA44[i], 0x140);
+        gDuelPlayers[i & 1].deckCount = gDuelCmd.savedCount3[i];
+        CopyDoubleWords(gDuelPlayers[i & 1].deck, gDuelCmd.savedList7C4[i], 0x140);
+        gDuelPlayers[i & 1].fusionCount = gDuelCmd.savedCount5[i];
+        CopyDoubleWords(gDuelPlayers[i & 1].fusionDeck, gDuelCmd.savedListA44[i], 0x140);
     }
-    gUnk_020192E4[0].lifePoints = 8000;
-    gUnk_020192E4[1].lifePoints = 8000;
+    gDuelPlayers[0].lifePoints = 8000;
+    gDuelPlayers[1].lifePoints = 8000;
     DUEL_FROM_PLAYERS->phase1B12 = 7;
-    gUnk_020185C0.running = 0;
+    gDuelCmd.running = 0;
 }
 
-void sub_08016424(void)
+void DuelCmd_OpenDuelScreen(void)
 {
-    if (!gUnk_0201CFB0.flag0_2)
-        sub_080609C4();
-    else if (sub_08060B2C())
-        gUnk_020185C0.running = 0;
+    if (!gDuelScreen.flag0_2)
+        DuelScreen_Init();
+    else if (DuelScreen_FadeInStep())
+        gDuelCmd.running = 0;
 }
 
-void sub_08016460(void)
+void DuelCmd_CloseDuelScreen(void)
 {
-    if (sub_08060B4C())
-        gUnk_020185C0.running = 0;
+    if (DuelScreen_FadeOutStep())
+        gDuelCmd.running = 0;
 }
 
-void sub_08016488(void)
+void DuelCmd_SetFieldBackground(void)
 {
-    sub_0806044C(gUnk_020185C0.arg2);
-    gUnk_020192E0_lo.unk1ACC_0 = gUnk_020185C0.arg2;
-    gUnk_020185C0.running = 0;
+    DuelScreen_LoadFieldBackground(gDuelCmd.arg2);
+    gUnk_020192E0_lo.unk1ACC_0 = gDuelCmd.arg2;
+    gDuelCmd.running = 0;
 }
 
 /*
- * Duel-start banner: slide the two halves in (gUnk_08081728 offsets), run
- * sub_08060CEC / sub_08060D64 (4x speed when fast-forwarding), slide them out,
- * then set phase1B12 = 3 and notify sub_08060964 / sub_08024134.
+ * Duel-start banner: slide the two halves in (gBattleBannerSlideX offsets), run
+ * DuelFieldFadeToWhite / DuelFieldFadeFromWhite (4x speed when fast-forwarding), slide them out,
+ * then set phase1B12 = 3 and notify DrawPhaseIndicator / DuelCursor_Select.
  */
-void sub_080164D0(void)
+void DuelCmd_EnterBattlePhase(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_080752B0((void *)0x050003E0, gUnk_0867F01C, 0x20);
-        sub_080752B0((void *)0x06016C80, gUnk_0867F63C, 0x200);
-        sub_080240A8(0, 0);
-        gUnk_020185C0.timer = 16;
-        gUnk_020185C0.step++;
+        CopyDoubleWords((void *)0x050003E0, gPhaseBannerPal, 0x20);
+        CopyDoubleWords((void *)0x06016C80, gBattlePhaseBannerGfx, 0x200);
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.timer = 16;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (gUnk_020185C0.timer > 0) {
-            gUnk_020185C0.timer--;
-            if (FAST_FORWARD() && gUnk_020185C0.timer > 4)
-                gUnk_020185C0.timer -= 3;
-            sub_080761F0(gUnk_08081728[gUnk_020185C0.timer] | 0x400000, 0x4080, 0xF364);
-            sub_080761F0((0xD0 - gUnk_08081728[gUnk_020185C0.timer]) | 0x400000, 0x4080, 0xF36C);
+        if (gDuelCmd.timer > 0) {
+            gDuelCmd.timer--;
+            if (FAST_FORWARD() && gDuelCmd.timer > 4)
+                gDuelCmd.timer -= 3;
+            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | 0x400000, 0x4080, 0xF364);
+            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | 0x400000, 0x4080, 0xF36C);
             break;
         }
-        sub_08077AEC(0x1D);
-        gUnk_020185C0.step++;
+        PlaySE(0x1D);
+        gDuelCmd.step++;
     case 2:
-        sub_080761F0(0x00400058, 0x4080, 0xF364);
-        sub_080761F0(0x00400078, 0x4080, 0xF36C);
-        if (sub_08060CEC(FAST_FORWARD() ? 4 : 1))
-            gUnk_020185C0.step++;
+        AddSprite(0x00400058, 0x4080, 0xF364);
+        AddSprite(0x00400078, 0x4080, 0xF36C);
+        if (DuelFieldFadeToWhite(FAST_FORWARD() ? 4 : 1))
+            gDuelCmd.step++;
         break;
     case 3:
-        sub_080761F0(0x00400058, 0x4080, 0xF364);
-        sub_080761F0(0x00400078, 0x4080, 0xF36C);
-        if (sub_08060D64(FAST_FORWARD() ? 4 : 1)) {
-            gUnk_020185C0.timer = 0;
-            gUnk_020185C0.step++;
+        AddSprite(0x00400058, 0x4080, 0xF364);
+        AddSprite(0x00400078, 0x4080, 0xF36C);
+        if (DuelFieldFadeFromWhite(FAST_FORWARD() ? 4 : 1)) {
+            gDuelCmd.timer = 0;
+            gDuelCmd.step++;
         }
         break;
     case 4:
-        if (gUnk_020185C0.timer < 16) {
-            sub_080761F0(gUnk_08081728[gUnk_020185C0.timer] | 0x400000, 0x4080, 0xF364);
-            sub_080761F0((0xD0 - gUnk_08081728[gUnk_020185C0.timer]) | 0x400000, 0x4080, 0xF36C);
-            gUnk_020185C0.timer++;
-            if (FAST_FORWARD() && gUnk_020185C0.timer <= 0xB)
-                gUnk_020185C0.timer += 3;
+        if (gDuelCmd.timer < 16) {
+            AddSprite(gBattleBannerSlideX[gDuelCmd.timer] | 0x400000, 0x4080, 0xF364);
+            AddSprite((0xD0 - gBattleBannerSlideX[gDuelCmd.timer]) | 0x400000, 0x4080, 0xF36C);
+            gDuelCmd.timer++;
+            if (FAST_FORWARD() && gDuelCmd.timer <= 0xB)
+                gDuelCmd.timer += 3;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
     default:
-        gUnk_020192E0.phase1B12 = 3;
-        sub_08060964(gUnk_020192E0.linkSkip, gUnk_020192E0.phase1B12);
-        sub_08024134(gUnk_020192E0.linkSkip, 0, 0);
-        gUnk_020185C0.running = 0;
+        gDuel.phase1B12 = 3;
+        DrawPhaseIndicator(gDuel.linkSkip, gDuel.phase1B12);
+        DuelCursor_Select(gDuel.linkSkip, 0, 0);
+        gDuelCmd.running = 0;
         break;
     }
 }
@@ -195,17 +195,17 @@ struct BannerTimer {
     u32 remainder : 20;
     u32 trailing;
 };
-void sub_08016848(u32 kind)
+void DuelCmd_EnterPhase(u32 kind)
 {
-    u32 step = gUnk_020185C0.step;
+    u32 step = gDuelCmd.step;
     int blend;
 
     switch (step) {
     case 0:
-        sub_080752B0((void *)0x050003E0, gUnk_0867F01C, 0x20);
-        sub_080752B0((void *)0x06016C80, gUnk_0867F03C + kind * 0x200, 0x200);
+        CopyDoubleWords((void *)0x050003E0, gPhaseBannerPal, 0x20);
+        CopyDoubleWords((void *)0x06016C80, gPhaseBannerGfx + kind * 0x200, 0x200);
         {
-            u8 *base = (u8 *)&gUnk_020185C0;
+            u8 *base = (u8 *)&gDuelCmd;
             /* FAKEMATCH: preserve the initialized offset and RMW pointer roles. */
             register u32 offset asm("r3") = 0x80C;
             register struct BannerTimer *timer asm("r1");
@@ -214,282 +214,282 @@ void sub_08016848(u32 kind)
             timer = (struct BannerTimer *)((u32)timer + offset);
             timer->timer = 0;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (gUnk_020185C0.timer < 0x60) {
+        if (gDuelCmd.timer < 0x60) {
             blend = 0;
-            if (gUnk_020185C0.timer < 16) {
+            if (gDuelCmd.timer < 16) {
                 REG_BLDCNT = 0xF40;
-                REG_BLDALPHA = BLDALPHA(gUnk_020185C0.timer, 16 - gUnk_020185C0.timer);
+                REG_BLDALPHA = BLDALPHA(gDuelCmd.timer, 16 - gDuelCmd.timer);
                 blend = 1;
             }
-            if (gUnk_020185C0.timer >= 0x50) {
+            if (gDuelCmd.timer >= 0x50) {
                 REG_BLDCNT = 0xF40;
-                REG_BLDALPHA = BLDALPHA(0x60 - gUnk_020185C0.timer, gUnk_020185C0.timer - 0x50);
+                REG_BLDALPHA = BLDALPHA(0x60 - gDuelCmd.timer, gDuelCmd.timer - 0x50);
                 blend = 1;
             }
             if (!blend) {
                 REG_BLDCNT = 0;
                 REG_BLDALPHA = 0;
             }
-            sub_0807625C(0x00400058, 0x4080, 0xF364);
-            sub_0807625C(0x00400078, 0x4080, 0xF36C);
-            if (FAST_FORWARD() && gUnk_020185C0.timer <= 0x57)
-                gUnk_020185C0.timer += 7;
-            gUnk_020185C0.timer++;
+            AddSpriteAlpha(0x00400058, 0x4080, 0xF364);
+            AddSpriteAlpha(0x00400078, 0x4080, 0xF36C);
+            if (FAST_FORWARD() && gDuelCmd.timer <= 0x57)
+                gDuelCmd.timer += 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step = step + 1;
+        gDuelCmd.step = step + 1;
     default:
-        gUnk_020192E0.phase1B12 = kind;
-        sub_08060964(gUnk_020192E0.linkSkip, gUnk_020192E0.phase1B12);
-        gUnk_020185C0.running = 0;
+        gDuel.phase1B12 = kind;
+        DrawPhaseIndicator(gDuel.linkSkip, gDuel.phase1B12);
+        gDuelCmd.running = 0;
         break;
     }
 }
 
-/* Banner that slides in from the acting player's side, pulses for 0x40 frames, then slides back out (cf. sub_080134EC). */
-void sub_08016A18(void)
+/* Banner that slides in from the acting player's side, pulses for 0x40 frames, then slides back out (cf. DuelCmd_ShowJustAMomentBanner). */
+void DuelCmd_ShowChainBanner(void)
 {
-    u32 player = gUnk_020185C0.cmd >> 15;
-    s32 step = gUnk_020185C0.step;
+    u32 player = gDuelCmd.cmd >> 15;
+    s32 step = gDuelCmd.step;
     s32 timer;
     s32 y;
 
     switch (step) {
     case 0:
-        gUnk_0201CFB0.busy = 0;
-        sub_080752B0((void *)0x050003E0, gUnk_08688FBC, 0x20);
-        sub_080752B0((void *)0x06016C80, gUnk_08688FD8, 0x400);
-        gUnk_0201CFB0.cb85C = (void (*)(void))step;
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
-        sub_08077AEC(0x16);
+        gDuelScreen.busy = 0;
+        CopyDoubleWords((void *)0x050003E0, gChainBannerPal, 0x20);
+        CopyDoubleWords((void *)0x06016C80, gChainBannerGfx, 0x400);
+        gDuelScreen.cb85C = (void (*)(void))step;
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
+        PlaySE(0x16);
         break;
     case 1:
-        timer = gUnk_020185C0.timer;
+        timer = gDuelCmd.timer;
         if (timer < 16) {
             if (player)
-                y = gUnk_081A44FC[timer];
+                y = gBannerSlideOffsets[timer];
             else
-                y = 0x80 - gUnk_081A44FC[timer];
-            sub_080761F0((y << 16) | 0x58, 0x40C0, 0xF364);
-            gUnk_020185C0.timer++;
-            if (FAST_FORWARD() && gUnk_020185C0.timer <= 0xB)
-                gUnk_020185C0.timer += 3;
+                y = 0x80 - gBannerSlideOffsets[timer];
+            AddSprite((y << 16) | 0x58, 0x40C0, 0xF364);
+            gDuelCmd.timer++;
+            if (FAST_FORWARD() && gDuelCmd.timer <= 0xB)
+                gDuelCmd.timer += 3;
             break;
         }
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step = step + 1;
-        sub_08077AEC(0x16);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step = step + 1;
+        PlaySE(0x16);
     case 2:
-        if (gUnk_020185C0.timer < 0x40) {
-            sub_08076714(0x00400058, 0x40C0, 0xF364, gUnk_081A4424[gUnk_020185C0.timer & 0xF] << 16);
-            gUnk_020185C0.timer++;
-            if (FAST_FORWARD() && gUnk_020185C0.timer <= 0x37)
-                gUnk_020185C0.timer += 7;
+        if (gDuelCmd.timer < 0x40) {
+            AddAffineSprite(0x00400058, 0x40C0, 0xF364, gPulseScaleCurve[gDuelCmd.timer & 0xF] << 16);
+            gDuelCmd.timer++;
+            if (FAST_FORWARD() && gDuelCmd.timer <= 0x37)
+                gDuelCmd.timer += 7;
             break;
         }
-        gUnk_020185C0.timer = 16;
-        gUnk_020185C0.step++;
+        gDuelCmd.timer = 16;
+        gDuelCmd.step++;
     case 3:
-        timer = gUnk_020185C0.timer;
+        timer = gDuelCmd.timer;
         if (timer != 0) {
             if (player)
-                y = gUnk_081A44FC[timer - 1];
+                y = gBannerSlideOffsets[timer - 1];
             else
-                y = 0x80 - gUnk_081A44FC[timer - 1];
-            sub_080761F0((y << 16) | 0x58, 0x40C0, 0xF364);
-            gUnk_020185C0.timer--;
-            if (FAST_FORWARD() && gUnk_020185C0.timer > 4)
-                gUnk_020185C0.timer -= 3;
+                y = 0x80 - gBannerSlideOffsets[timer - 1];
+            AddSprite((y << 16) | 0x58, 0x40C0, 0xF364);
+            gDuelCmd.timer--;
+            if (FAST_FORWARD() && gDuelCmd.timer > 4)
+                gDuelCmd.timer -= 3;
             break;
         }
     default:
-        gUnk_020185C0.running = 0;
+        gDuelCmd.running = 0;
         break;
     }
 }
-void sub_08016D24(void)
+void DuelCmd_PointAtCard(void)
 {
-    u32 player = gUnk_020185C0.cmd >> 15;
-    u32 arg2 = gUnk_020185C0.arg2;
-    u32 lo = (u8)gUnk_020185C0.arg4;
-    u32 hi = gUnk_020185C0.arg4 >> 8;
-    u32 step = gUnk_020185C0.step;
+    u32 player = gDuelCmd.cmd >> 15;
+    u32 arg2 = gDuelCmd.arg2;
+    u32 lo = (u8)gDuelCmd.arg4;
+    u32 hi = gDuelCmd.arg4 >> 8;
+    u32 step = gDuelCmd.step;
 
     switch (step) {
     case 0:
-        gUnk_0201CFB0.busy = 1;
-        sub_08024134(arg2, lo, hi);
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        gDuelScreen.busy = 1;
+        DuelCursor_Select(arg2, lo, hi);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 1:
-        gUnk_0201CFB0.busy = 0;
-        if (gUnk_020185C0.timer < 64) {
-            sub_08076714((gUnk_0201CFB0.cursorX + 8) | ((gUnk_0201CFB0.cursorY - gUnk_0201CFB0.scroll) << 16),
-                         0x80, 0, (gUnk_081A4444[gUnk_020185C0.timer & 7] << 16) | (player << 6));
-            gUnk_020185C0.timer++;
-            if (FAST_FORWARD() && gUnk_020185C0.timer <= 0x37)
-                gUnk_020185C0.timer += 7;
+        gDuelScreen.busy = 0;
+        if (gDuelCmd.timer < 64) {
+            AddAffineSprite((gDuelScreen.cursorX + 8) | ((gDuelScreen.cursorY - gDuelScreen.scroll) << 16),
+                         0x80, 0, (gShrinkScaleSteps[gDuelCmd.timer & 7] << 16) | (player << 6));
+            gDuelCmd.timer++;
+            if (FAST_FORWARD() && gDuelCmd.timer <= 0x37)
+                gDuelCmd.timer += 7;
         } else {
-            gUnk_020185C0.step = step + 1;
+            gDuelCmd.step = step + 1;
         }
         break;
     default:
-        gUnk_020185C0.running = 0;
+        gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_08016E74(void)
+void DuelCmd_MoveCursor(void)
 {
-    u32 player = gUnk_020185C0.cmd >> 15;
-    u32 arg2 = gUnk_020185C0.arg2;
-    u32 arg4 = gUnk_020185C0.arg4;
-    gUnk_0201CFB0.busy = 1;
-    sub_08024134(player, arg2, arg4);
-    gUnk_020185C0.running = 0;
+    u32 player = gDuelCmd.cmd >> 15;
+    u32 arg2 = gDuelCmd.arg2;
+    u32 arg4 = gDuelCmd.arg4;
+    gDuelScreen.busy = 1;
+    DuelCursor_Select(player, arg2, arg4);
+    gDuelCmd.running = 0;
 }
 
-void sub_08016EB8(void)
+void DuelCmd_StartDuelBanner(void)
 {
     u32 scale;
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_08077AEC(0xB);
-        sub_080752B0((void *)0x050003E0, gUnk_08687B9C, 0x20);
-        sub_080752B0((void *)0x06016C80, gUnk_08687BBC, 0x400);
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        PlaySE(0xB);
+        CopyDoubleWords((void *)0x050003E0, gDuelBannerPal, 0x20);
+        CopyDoubleWords((void *)0x06016C80, gStartDuelBannerGfx, 0x400);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (gUnk_020185C0.timer != 0 && gUnk_020185C0.timer <= 15) {
-            scale = gUnk_020185C0.timer << 20;
-            sub_08076714(0x00300058, 0x40C0, 0xF364, scale + 0x100000);
+        if (gDuelCmd.timer != 0 && gDuelCmd.timer <= 15) {
+            scale = gDuelCmd.timer << 20;
+            AddAffineSprite(0x00300058, 0x40C0, 0xF364, scale + 0x100000);
         }
-        if (gUnk_020185C0.timer >= 16 && gUnk_020185C0.timer <= 96)
-            sub_080761F0(0x00300058, 0x40C0, 0xF364);
-        scale = gUnk_020185C0.timer;
+        if (gDuelCmd.timer >= 16 && gDuelCmd.timer <= 96)
+            AddSprite(0x00300058, 0x40C0, 0xF364);
+        scale = gDuelCmd.timer;
         if (scale > 96 && scale < 128) {
             scale -= 0x60;
-            sub_08076714(0x00300058, 0x40C0, 0xF364, scale << 24);
-            if (gUnk_020185C0.timer == 0x7F)
-                sub_0801EBA8();
+            AddAffineSprite(0x00300058, 0x40C0, 0xF364, scale << 24);
+            if (gDuelCmd.timer == 0x7F)
+                PlayDuelBGM();
         }
-        gUnk_020185C0.timer++;
-        if (gUnk_020185C0.timer == 0)
-            gUnk_020185C0.step++;
+        gDuelCmd.timer++;
+        if (gDuelCmd.timer == 0)
+            gDuelCmd.step++;
         break;
     default:
-        gUnk_020192E0.flag1B12_0 = 1;
-        gUnk_020185C0.running = 0;
+        gDuel.flag1B12_0 = 1;
+        gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_08017024(void)
+void DuelCmd_ExodiaWinScene(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(1, 0);
-        gUnk_020185C0.step++;
+        DuelScene_Start(1, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_08017084(void)
+void DuelCmd_DestinyBoardWinScene(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(5, 0);
-        gUnk_020185C0.step++;
+        DuelScene_Start(5, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_080170E4(void)
+void DuelCmd_TossCoin(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(0, 0);
-        gUnk_02017A30.arg = (gUnk_020185C0.arg2 << 15) | 0x180 | (u8)gUnk_020185C0.arg4;
-        gUnk_020185C0.step++;
+        DuelScene_Start(0, 0);
+        gDuelScene.arg = (gDuelCmd.arg2 << 15) | 0x180 | (u8)gDuelCmd.arg4;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_0801715C(void)
+void DuelCmd_TossThreeCoins(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(0, 0);
-        gUnk_02017A30.arg = 0x380 | (u8)gUnk_020185C0.arg2;
-        gUnk_020185C0.step++;
+        DuelScene_Start(0, 0);
+        gDuelScene.arg = 0x380 | (u8)gDuelCmd.arg2;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_080171D0(void)
+void DuelCmd_RollGracefulDice(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(2, 0);
-        gUnk_02017A30.arg = gUnk_020185C0.arg2;
-        gUnk_020185C0.step++;
+        DuelScene_Start(2, 0);
+        gDuelScene.arg = gDuelCmd.arg2;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_0801723C(void)
+void DuelCmd_RollSkullDice(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(3, 0);
-        gUnk_02017A30.arg = gUnk_020185C0.arg2;
-        gUnk_020185C0.step++;
+        DuelScene_Start(3, 0);
+        gDuelScene.arg = gDuelCmd.arg2;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }
 
-void sub_080172A8(void)
+void DuelCmd_RollPlainDie(void)
 {
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0801E998(4, 0);
-        gUnk_02017A30.arg = gUnk_020185C0.arg2;
-        gUnk_020185C0.step++;
+        DuelScene_Start(4, 0);
+        gDuelScene.arg = gDuelCmd.arg2;
+        gDuelCmd.step++;
         break;
     case 1:
-        if (sub_0801EAD8())
-            gUnk_020185C0.running = 0;
+        if (DuelScene_Run())
+            gDuelCmd.running = 0;
         break;
     }
 }

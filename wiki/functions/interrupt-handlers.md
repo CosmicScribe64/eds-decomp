@@ -17,7 +17,7 @@ The dispatcher is `IntrMain` (see [[crt0]]). It runs from IWRAM `0x0300004C` aft
 | 9 DMA1 | `SoundDma1Intr` (proposed) | `0x0807E324` | 0x62 | `GameInit` (or `SoundInit(slot)`) |
 | 13 | `GamepakIntr` (proposed) | `0x08075740` | 2 (`b .`) | `GameInit`. Unreachable, because `IntrMain` loops on GAMEPAK itself. |
 | 1 HBlank | per scene | e.g. `0x08004ABD` (title), `0x080261E1`, `0x08026CC9`, `0x0805DC39`, `0x08062421` | | scene code, which writes `*(u32*)0x03000004` with IME off and IE bit 1 cleared first. Cleared by `SetMainCallback`. |
-| 0 Serial + 7 Timer3 | link IRQ (proposed `LinkSerialIntr`) | `0x08075F74` | 0x102 | `sub_080735D4(slotA, slotB)` stores `0x08075F75` into **both** slots it is given and enables IE SERIAL and TIMER3 |
+| 0 Serial + 7 Timer3 | link IRQ (proposed `LinkSerialIntr`) | `0x08075F74` | 0x102 | `LinkSioInit(slotA, slotB)` stores `0x08075F75` into **both** slots it is given and enables IE SERIAL and TIMER3 |
 
 All handlers are Thumb. They're called from ARM `IntrMain` through `bx r0`, in SYS mode with IRQs re-enabled (nesting allowed for Serial, DMA1 and Gamepak only).
 
@@ -55,7 +55,7 @@ gSoundDmaPos[2] = pos; gSoundDmaPos[0] = pos;   // FIFO B pos, FIFO A pos
 DMA2 is configured with its IRQ bit set, but `SoundDmaInit` leaves IE bit 10 (DMA2) cleared, so only DMA1 interrupts. See [[sound-engine]].
 
 ## Link serial IRQ `0x08075F74` (verified mechanics, hypothesis for its origin)
-It reads `SIOMULTI0–3` into `0x03006644`. If the first word is `0xFEFE` (sync) and the state counter at `0x0300658C` is ≥ 10, it resets that counter to −3. Otherwise it copies received words into a buffer, advances the counter (up to 10) and, while the counter is ≤ 9, loads `SIOMLT_SEND` (`0x0400012A`) from a send table at `0x03005B60+0xA3C`. If the "master" flag (`+0xA1E`) is set, it starts the next transfer (`SIOCNT |= 0x80`) and restarts Timer3 (`TM3CNT_H = 0xC0`). The design (the 0xFEFE sync word, and Timer3 driving a multi-player SIO block) looks like **Nintendo's MultiSio sample library** (hypothesis, not byte-compared). It is set up by `sub_080735D4(slotA, slotB)`:
+It reads `SIOMULTI0–3` into `0x03006644`. If the first word is `0xFEFE` (sync) and the state counter at `0x0300658C` is ≥ 10, it resets that counter to −3. Otherwise it copies received words into a buffer, advances the counter (up to 10) and, while the counter is ≤ 9, loads `SIOMLT_SEND` (`0x0400012A`) from a send table at `0x03005B60+0xA3C`. If the "master" flag (`+0xA1E`) is set, it starts the next transfer (`SIOCNT |= 0x80`) and restarts Timer3 (`TM3CNT_H = 0xC0`). The design (the 0xFEFE sync word, and Timer3 driving a multi-player SIO block) looks like **Nintendo's MultiSio sample library** (hypothesis, not byte-compared). It is set up by `LinkSioInit(slotA, slotB)`:
 1. `IE &= ~(SERIAL|TIMER3)` and CpuSet-clear the state at `0x03005B60`.
 2. `RCNT = 0xC000`, then `SIOCNT = 0x1000`, `0`, `3`, `|= 0x2000` (multi-player mode, 115200 bps), and `RCNT = 0`.
 3. With IME off: `IE |= SERIAL`, store `0x08075F75` into both slots, `SIOCNT |= 0x4000` (IRQ).

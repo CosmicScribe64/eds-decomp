@@ -30,7 +30,7 @@ const char gCardDescriptions[821][0x1E0];   /* name is a proposal */
 - Alternate-art duplicates (for example IDs 82 and 83, Blue-Eyes White Dragon) have identical text in both slots.
 
 ## Used by
-- `sub_08005A70` (card detail screen). It computes the slot address with `id*15*32 + 0x082461A0` (`lsls r0,r7,#4; subs r0,r0,r7; lsls r0,r0,#5`), then passes it to a text-box routine (`bl 0x080059B4`).
+- `CardDetail_DrawInfo` (card detail screen). It computes the slot address with `id*15*32 + 0x082461A0` (`lsls r0,r7,#4; subs r0,r0,r7; lsls r0,r0,#5`), then passes it to a text-box routine (`bl 0x080059B4`).
 
 ## Method
 - Stride and alignment: consecutive texts found by a string scan start 0x1E0 apart ("A rare rainbow fish…" at `ROM+0x246380` belongs to ID 1, 7 Colored Fish).

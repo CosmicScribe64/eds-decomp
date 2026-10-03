@@ -11,7 +11,7 @@ _0801982E:
 	add r0, r2, #0
 	mov r2, #1
 	mov r3, #0
-	bl sub_0801EC58
+	bl DuelCmd_Push
 	pop {r0}
 	bx r0
 _0801983C: .4byte 0x00008075

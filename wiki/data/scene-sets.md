@@ -20,7 +20,7 @@ struct SceneSet {               /* 0x14 bytes */
     const void *const *anim;    /* NULL-terminated animation track list, or NULL (sets 0-4) */
 };
 ```
-`GetBustupSet` (`sub_08001C78`, [[code-08001364]]) maps a character ID to a set, with a jump table on the ID.
+`GetBustupSet` (`GetSceneSet`, [[code-08001364]]) maps a character ID to a set, with a jump table on the ID.
 
 > [!warning] Contradiction
 > [[graphics-formats]] described `anim` as a "script in .rodata 2 (e.g. `0x08197954`)". The table plugin's decoding shows it is a NULL-terminated list of step-array pointers in the scene/list range `0x0819790C`–`0x0819A9D4`. The step arrays themselves live in `.rodata` 1, and [[rom-map]] reserves the name ".rodata 2" for `0x0819DD64`–`0x081A7A0C`. Resolved in favour of the decoded tables; [[graphics-formats]] is updated.
@@ -51,13 +51,13 @@ Each set is one contiguous slot: `LZSS bitmap | pad | bgPal[256] | (objPal[256] 
 - Padding after a blob is 0–3 bytes of alignment.
 
 ## Loading
-- The loaders (`0x08000420`, `0x08000570`, `0x08000708`) decode the bitmap into an EWRAM buffer with [[lzss-decompress]]. `sub_080008A4(page, …, size)` then copies it to page 0 (`0x06000000`) or page 1 (`0x0600A000`).
+- The loaders (`0x08000420`, `0x08000570`, `0x08000708`) decode the bitmap into an EWRAM buffer with [[lzss-decompress]]. `CopyBitmapToPage(page, …, size)` then copies it to page 0 (`0x06000000`) or page 1 (`0x0600A000`).
 - **BG palette.** Entries 16–255 come from the set. Entries 0–15 come from the dialogue text palette.
 - **OBJ tiles.** The 0x2000-byte sheet is 16 rows of 16 tiles. Each 0x200-byte row goes to `0x06014000 + row * 0x400`, so the sprites use 2D mapping. The OAM templates address a tile as `row << 4 | column`.
 - **OBJ palette bank.** Each tile's 16-colour bank comes from the set's animation templates (attr2 bits 12–15). The extracted `sprites.png` shows each tile in that bank, but the build stores only `value & 15`.
 
 ## Animation
-- `anim` points to a NULL-terminated list of tracks. `sub_08078670` makes one sprite group per track, `sub_080786D0` steps it and `sub_08077EF4` draws it.
+- `anim` points to a NULL-terminated list of tracks. `AnimBlockInit` makes one sprite group per track, `AnimStateTick` steps it and `OamListAddSpriteGroup` draws it.
 - A track is an `AnimStep[]` array `{u8 frames; u8 count; u16 unk2; const OamTemplate *sprites}`, ended by a step with `frames == 0`. Each step shows `count` sprite templates for `frames + 1` frames.
 - The step arrays of the scene sets are in `.rodata` 1 at `0x08080B08`–`0x08081260`. Their sprite templates (`OamTemplate`: OAM attributes 0–2 plus an unused halfword) are in the scene/list range.
 
@@ -65,13 +65,13 @@ Each set is one contiguous slot: `LZSS bitmap | pad | bgPal[256] | (objPal[256] 
 | Item | Address | Content |
 |---|---|---|
 | Box | `0x0874C650` | LZSS 240×64 (0x3C00), drawn at rows 96–159 of both Mode-4 pages (`0x06005A00` / `0x0600FA00`) |
-| Header strip | `0x0874D5B0` | LZSS 240×24. Only the top 16 rows are copied, to rows 0–15 of the 240×80 scenes. The code reads it through `gUnk_0874D5B0`/`B2`/`B4` |
+| Header strip | `0x0874D5B0` | LZSS 240×24. Only the top 16 rows are copied, to rows 0–15 of the 240×80 scenes. The code reads it through `gDialogueHeaderLz`/`B2`/`B4` |
 | Box palette | `0x0874E104` | 256 colours. The 240×80 loader copies entries 0–31. Both images use only indices 16–31 |
 | Text palette | `0x0874E304` | 16 colours, loaded to BG palette 0–15 for every scene |
 
 Related tables:
-- `0x08139F5C`: 2 pointers to the box blob (`gUnk_08139F5C[box]`), both `0x0874C650`.
-- `0x0813ADD4`: the 8-entry step table of the bust-up runner (`sub_08001AE4`/`sub_08001B34`).
+- `0x08139F5C`: 2 pointers to the box blob (`gDialogueBoxGfx[box]`), both `0x0874C650`.
+- `0x0813ADD4`: the 8-entry step table of the bust-up runner (`CB_Bustup`/`CB_AutoBustup`).
 
 ## Data facts
 - **Size+1 streams.** 16 of the 240×96 bitmaps decode to 0x5A01 bytes, and set 25's sprite sheet decodes to 0x2001. The extra byte is 0x18 for the bitmaps and 0x01 for the sprites. It was part of the compressor's input, not padding ([[graphics-formats#The original compressor]]).
@@ -80,7 +80,7 @@ Related tables:
 
 ## Method
 - Descriptors and sizes: `tools/verify_rom_map.py`, and the exact round trip in `gfx_scenes.py` (`verify --only gfx/scene` 32/32, 2026-10-02).
-- Character mapping: the plugin's table from `sub_08001C78`, checked against the duelist table.
+- Character mapping: the plugin's table from `GetSceneSet`, checked against the duelist table.
 - Tile placement and palette banks: read from the loaders and confirmed by rendering set 25, whose sprites use three banks.
 - Notes and edit tests: `build/assetwf/gfx_scenes/NOTES.md`.
 

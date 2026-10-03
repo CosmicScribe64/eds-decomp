@@ -30,7 +30,7 @@ sub_080288DC: @ 0x080288DC
 	mov r0, #0
 	mov r2, #0x58
 	mov r3, #0x64
-	bl sub_0807B6B8
+	bl OamListAddSprite
 	add sp, #0x24
 	pop {r4}
 	pop {r0}

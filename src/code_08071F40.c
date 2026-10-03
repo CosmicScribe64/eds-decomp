@@ -1,22 +1,22 @@
 #include "global.h"
 
-extern void sub_08075294(void *dst, const void *src, u32 n);
-extern void sub_08075278(void *p, u32 n);
-extern int sub_08073784(void *p, u32 n);
-extern void sub_0807373C(void);
-extern void sub_080735D4(void *a, void *b);
-extern u8 gUnk_081A7374[];
-extern u8 gUnk_081A7382[];
-extern u8 gUnk_081A7390[];
-extern s8 gUnk_08087600[];
-extern u8 gUnk_08087604[];
-extern u8 gUnk_08087614[];
-extern void sub_0801A7DC(const u8 *fmt, ...);
-extern void sub_0801A7E8(void);
-extern u16 sub_08073F04(s32 id, void *buf, u32 n);
-extern void sub_08072010(void *p);
-extern void sub_08071FA0(void);
-extern u16 sub_08072238_u16(int idx) asm("sub_08072238");
+extern void MemCopy16(void *dst, const void *src, u32 n);
+extern void MemClear16(void *p, u32 n);
+extern int LinkSioSend(void *p, u32 n);
+extern void LinkSioStop(void);
+extern void LinkSioInit(void *a, void *b);
+extern u8 gLinkPacketAck[];
+extern u8 gLinkPacketDupAck[];
+extern u8 gLinkPacketResend[];
+extern s8 gLinkPartnerSlot[];
+extern u8 gStrDebugLinkReceiveRetry[];
+extern u8 gStrDebugLinkRecvTimeout[];
+extern void DebugPrintf(const u8 *fmt, ...);
+extern void DebugPrintFlush(void);
+extern u16 LinkSioRecv(s32 id, void *buf, u32 n);
+extern void LinkStoreRecvPacket(void *p);
+extern void LinkSendNextQueued(void);
+extern u16 sub_08072238_u16(int idx) asm("LinkIsRecvMessageComplete");
 #define REG_SIOCNT (*(vu16 *)0x04000128)
 extern u8 gUnk_03005204[];
 extern u32 sub_0807F0AC(u32 a, u32 b);
@@ -25,7 +25,7 @@ typedef struct { u8 b[12]; } Pkt;
 
 /* Link packet buffers at 0x030049D0 (size 0x840). */
 struct LinkBuf {
-    Pkt rx[64];          /* 0x000 received packets, compacted by sub_08071FA0 */
+    Pkt rx[64];          /* 0x000 received packets, compacted by LinkSendNextQueued */
     u16 rxCount;         /* 0x300 */
     u8 pad302[0x30E - 0x302];
     u8 cur[12];          /* 0x30E */
@@ -44,60 +44,60 @@ struct LinkBuf {
     Pkt tx[64];          /* 0x52C */
     int i;               /* 0x830 */
 };
-extern struct LinkBuf gUnk_030049D0;
-extern u8 gUnk_03000000[];
+extern struct LinkBuf gLinkBuf;
+extern u8 IntrTable[];
 struct MainFn {
     u8 pad[0x418];
-    void *hook;         /* per-frame link hook (sub_08072054) */
+    void *hook;         /* per-frame link hook (LinkVBlankHook) */
 };
-extern struct MainFn gUnk_03000040;
-extern int sub_08072054(void);
+extern struct MainFn gMain;
+extern int LinkVBlankHook(void);
 struct MainVar {
     u8 pad[0x441C];
     u16 a, b;
 };
-extern struct MainVar gUnk_03000040_v asm("gUnk_03000040");
+extern struct MainVar gUnk_03000040_v asm("gMain");
 extern u8 gUnk_0300045C[];
 struct MainMap {
     u8 pad[0x41C];
     u16 map[0x2000];    /* BG map buffer at 0x0300045C */
     u16 a, w;           /* 0x441C, 0x441E */
 };
-extern struct MainMap gUnk_03000040_m asm("gUnk_03000040");
+extern struct MainMap gUnk_03000040_m asm("gMain");
 struct MainW {
     u8 pad[0x441E];
     u16 w;
 };
-extern struct MainW gUnk_03000040_w asm("gUnk_03000040");
-extern u16 sub_08074A90(u8 c);
+extern struct MainW gUnk_03000040_w asm("gMain");
+extern u16 AsciiToFullwidthSjis(u8 c);
 extern u8 gUnk_03000C5C[];
-extern u8 gUnk_08608360[];
-extern u16 gUnk_082A6500[];
-extern u16 sub_080728C0_u16(u16 c) asm("sub_080728C0");
-extern u16 sub_080729F8_u16(u16 c) asm("sub_080729F8");
-extern u8 gUnk_0822BB00[];
-extern u8 gUnk_081C0000[];
-extern u32 gUnk_0808765C[];
-extern u32 gUnk_08087634[];
+extern u8 gCardArtPalettes[];
+extern u16 gCardArtGfx[];
+extern u16 sub_080728C0_u16(u16 c) asm("IsLineStartForbidden");
+extern u16 sub_080729F8_u16(u16 c) asm("IsLineEndForbidden");
+extern u8 gFontLatin8x8Bold[];
+extern u8 gFontKanji8x8[];
+extern u32 gHexDigitChars[];
+extern u32 gDecimalDigitChars[];
 struct HW {
     u16 lo, hi;
 };
-extern u16 sub_080725B0(u16 nib, u16 b, u16 c);
-extern u32 sub_08072584(u16 x);
-extern void sub_08072778(u8 ch, u16 *dst, u16 b, u16 c);
-extern void sub_08072808(u16 ch, u16 *dst, u16 b, u16 c);
-extern void sub_08072BB4(u16 col, u16 pk, u16 tile, char *s);
+extern u16 ExpandGlyphNibble(u16 nib, u16 b, u16 c);
+extern u32 SjisToGlyphIndex(u16 x);
+extern void RenderBoldGlyphTile(u8 ch, u16 *dst, u16 b, u16 c);
+extern void RenderSjisGlyphTile(u16 ch, u16 *dst, u16 b, u16 c);
+extern void DrawBgString(u16 col, u16 pk, u16 tile, char *s);
 
-extern u16 sub_08071F40_u16(void *p) asm("sub_08071F40");
+extern u16 sub_08071F40_u16(void *p) asm("LinkSendPacket");
 
 /* Send a packet: stamp the sequence nibble, transmit, and on success ack it. */
-int sub_08071F40(void *p)
+int LinkSendPacket(void *p)
 {
     int ok;
-    sub_08075294(gUnk_03005204, p, 12);
+    MemCopy16(gUnk_03005204, p, 12);
     *(u16 *)gUnk_03005204 = (*(u16 *)gUnk_03005204 & 0xF0FF) | (*(u16 *)(gUnk_03005204 - 0x31A) << 8);
-    if (sub_08073784(gUnk_03005204, 12)) {
-        sub_08075294(gUnk_03005204 - 0x532, gUnk_03005204, 12);
+    if (LinkSioSend(gUnk_03005204, 12)) {
+        MemCopy16(gUnk_03005204 - 0x532, gUnk_03005204, 12);
         *(u16 *)(gUnk_03005204 - 0x31A) = (*(u16 *)(gUnk_03005204 - 0x31A) + 1) & 0xF;
         ok = 1;
     } else {
@@ -107,12 +107,12 @@ int sub_08071F40(void *p)
 }
 
 /* Pop the head of the received queue (after re-sending the ack) and shift the rest down. */
-void sub_08071FA0(void)
+void LinkSendNextQueued(void)
 {
-    u8 *b = (u8 *)&gUnk_030049D0;
+    u8 *b = (u8 *)&gLinkBuf;
     u16 *n = (u16 *)(b + 0x300);
     int *ip;
-    if (*n != 0 && (u16)sub_08071F40(b)) {
+    if (*n != 0 && (u16)LinkSendPacket(b)) {
         u16 left = *n - 1;
         int zero = 0;
         *n = left;
@@ -127,31 +127,31 @@ void sub_08071FA0(void)
                 /* FAKEMATCH: preserve the separate next-packet address. */
                 register u32 source asm("r2") = (u32)queue;
                 source += 12;
-                sub_08075294(dst, (void *)(off + source), 12);
+                MemCopy16(dst, (void *)(off + source), 12);
                 (*counter)++;
             } while (*counter < *n);
         }
     } else {
-        sub_08071F40(gUnk_081A7374);
+        LinkSendPacket(gLinkPacketAck);
     }
 }
 
 /* Queue a packet in the tx ring (64 entries) and send an ack packet. */
-void sub_08072010(void *p)
+void LinkStoreRecvPacket(void *p)
 {
-    u8 *b = (u8 *)&gUnk_030049D0;
+    u8 *b = (u8 *)&gLinkBuf;
     u16 *wr = (u16 *)(b + 0x528);
     int off = *wr * 12;
     u32 addr = (u32)b + 0x52C;
-    sub_08075294((u8 *)(addr + off), p, 12);
+    MemCopy16((u8 *)(addr + off), p, 12);
     *wr = (*wr + 1) & 0x3F;
-    sub_08071F40(gUnk_081A7374);
+    LinkSendPacket(gLinkPacketAck);
 }
 /* Dispatch a received link packet; return 1 for a completed data packet. */
-int sub_08072054(void)
+int LinkVBlankHook(void)
 {
     {
-        struct LinkBuf *b = &gUnk_030049D0;
+        struct LinkBuf *b = &gLinkBuf;
         u8 flags = *(u8 *)((u32)b + 0x524);
         u32 zero = 1;
         zero &= flags;
@@ -162,12 +162,12 @@ int sub_08072054(void)
             ready |= flags;
             *(u8 *)((u32)b + 0x524) = ready;
         }
-        b->st526 = sub_08073F04(gUnk_08087600[(REG_SIOCNT & 0x30) >> 4], b->cur, 12);
+        b->st526 = LinkSioRecv(gLinkPartnerSlot[(REG_SIOCNT & 0x30) >> 4], b->cur, 12);
         if (b->st526 != 0) {
             u16 *last = &b->lastId;
             u16 t = *(u16 *)b->cur >> 8;
             if (*last == (t & 0xF)) {
-                sub_08071F40(gUnk_081A7382);
+                LinkSendPacket(gLinkPacketDupAck);
                 b->st526 = zero;
                 b->busy = 0;
                 return 0;
@@ -175,54 +175,54 @@ int sub_08072054(void)
             *last = t & 0xF;
             switch (t & 0xF0) {
             case 0xE0:
-                sub_0801A7DC(gUnk_08087604);
-                sub_0801A7E8();
-                sub_08071F40(b->pad302);
+                DebugPrintf(gStrDebugLinkReceiveRetry);
+                DebugPrintFlush();
+                LinkSendPacket(b->pad302);
                 b->st51E = zero;
                 b->busy = 0;
                 return 0;
             case 0xD0:
             case 0xF0: {
                     struct LinkBuf *next;
-                    sub_08071FA0();
-                    next = &gUnk_030049D0;
+                    LinkSendNextQueued();
+                    next = &gLinkBuf;
                     next->st51E = 0;
                     next->busy = 0;
                     return 0;
                 }
             case 0xA0:
-                sub_08072010(b->cur);
+                LinkStoreRecvPacket(b->cur);
                 b->st51E = zero;
                 b->busy = 0;
                 return 0;
             case 0x90:
-                sub_08072010(b->cur);
+                LinkStoreRecvPacket(b->cur);
                 b->fl2 = 1;
                 b->st51E = zero;
                 b->busy = 0;
                 return 1;
             case 0xB0:
-                sub_08072010(b->cur);
+                LinkStoreRecvPacket(b->cur);
                 b->fl2 = 1;
                 b->st51E = zero;
                 b->busy = 0;
                 return 1;
             default:
-                sub_08071F40(gUnk_081A7390);
+                LinkSendPacket(gLinkPacketResend);
                 break;
             }
         } else {
-            sub_08071F40(gUnk_081A7374);
+            LinkSendPacket(gLinkPacketAck);
         }
     }
     {
-        struct LinkBuf *b = &gUnk_030049D0;
+        struct LinkBuf *b = &gLinkBuf;
         u16 *timer = &b->st51E;
         u32 updated = *timer + 1;
         *timer = updated;
         if ((u16)updated > 0x78) {
-            sub_0801A7DC(gUnk_08087614, *timer);
-            sub_0801A7E8();
+            DebugPrintf(gStrDebugLinkRecvTimeout, *timer);
+            DebugPrintFlush();
             *timer = 0;
             b->st522 = 1;
         }
@@ -232,9 +232,9 @@ int sub_08072054(void)
 }
 
 /* Search the ring from a valid index 0..63; ignore the sequence nibble. */
-int sub_08072238(int idx)
+int LinkIsRecvMessageComplete(int idx)
 {
-    u32 root = (u32)&gUnk_030049D0;
+    u32 root = (u32)&gLinkBuf;
     u32 b;
     u32 firstOff = (u32)idx * 12;
     u32 first = root + 0x52C;
@@ -258,10 +258,10 @@ int sub_08072238(int idx)
 }
 /* Fetch one queued packet into `dest`: a 0x90 packet is a single 10-byte chunk; 0xA0.. 0xB0 packets
    are multi-part (0xA0 parts are stored at dest + index*2, 0xB0 ends). Returns the length byte or 0. */
-int sub_080722B0(u8 *dest)
+int LinkRecvMessage(u8 *dest)
 {
     /* FAKEMATCH: bounded address bindings preserve the original pointer roles. */
-    register struct LinkBuf *b asm("r1") = &gUnk_030049D0;
+    register struct LinkBuf *b asm("r1") = &gLinkBuf;
     Pkt *q;
     register u8 *p asm("r5");
     u16 *rd;
@@ -297,11 +297,11 @@ int sub_080722B0(u8 *dest)
     t = (*(u16 *)p >> 8) & 0xF0;
     switch (t) {
     case 0x90:
-        sub_08075294(dest, p + 2, 10);
+        MemCopy16(dest, p + 2, 10);
         *rd = (*rd + 1) & 0x3F;
         return p[0];
     case 0xA0:
-        if (!(u16)sub_08072238(*rd))
+        if (!(u16)LinkIsRecvMessageComplete(*rd))
             goto empty;
         {
             u16 *loopRd = rd;
@@ -310,11 +310,11 @@ int sub_080722B0(u8 *dest)
                 u16 h = *(u16 *)p;
                 t = (h >> 8) & 0xF0;
                 if (t == 0xA0) {
-                    sub_08075294(dest + (u8)h * 2, p + 2, 10);
+                    MemCopy16(dest + (u8)h * 2, p + 2, 10);
                     *loopRd = (*loopRd + 1) & 0x3F;
                 } else if (t == 0xB0) {
                     u8 len = h;
-                    sub_08075294(dest, p + 2, 10);
+                    MemCopy16(dest, p + 2, 10);
                     *loopRd = (*loopRd + 1) & 0x3F;
                     return len;
                 }
@@ -341,11 +341,11 @@ struct LinkQ {
     u16 rxCount;         /* 0x300 */
 };
 /* Halfword view of the link buffer's rx queue (struct LinkBuf at 0x030049D0). */
-#define LINKQ (*(struct LinkQ *)&gUnk_030049D0)
+#define LINKQ (*(struct LinkQ *)&gLinkBuf)
 /* Queue `len` bytes (rounded up to halfwords, n) as 12-byte packets: up to 5 halfwords in one
    0x90 packet, otherwise 0xA0 chunks (sent from the tail, header = remaining count) and a final
    0xB0 packet (header = total count). Returns 1 on success, 0 if the queue is full. */
-int sub_080723B4(u16 *src, u32 len)
+int LinkQueueMessage(u16 *src, u32 len)
 {
     u32 n = (len + 1) >> 1;
     u32 j;
@@ -389,25 +389,25 @@ int sub_080723B4(u16 *src, u32 len)
 
 
 /* Reset the link buffers, install the link driver and its per-frame hook. */
-void sub_08072510(void)
+void LinkInit(void)
 {
-    sub_0807373C();
-    sub_08075278(&gUnk_030049D0, 0x840);
-    sub_080735D4(gUnk_03000000, gUnk_03000000 + 0x1C);
-    gUnk_030049D0.lastId = 0xF;
-    gUnk_03000040.hook = sub_08072054;
+    LinkSioStop();
+    MemClear16(&gLinkBuf, 0x840);
+    LinkSioInit(IntrTable, IntrTable + 0x1C);
+    gLinkBuf.lastId = 0xF;
+    gMain.hook = LinkVBlankHook;
 }
 
 /* Shut the link driver down and clear the buffers. */
-void sub_0807255C(void)
+void LinkShutdown(void)
 {
-    sub_0807373C();
-    gUnk_03000040.hook = 0;
-    sub_08075278(&gUnk_030049D0, 0x840);
+    LinkSioStop();
+    gMain.hook = 0;
+    MemClear16(&gLinkBuf, 0x840);
 }
 
 /* Shift-JIS style code (hi, lo) to a linear index (hypothesis). */
-u32 sub_08072584(u16 x)
+u32 SjisToGlyphIndex(u16 x)
 {
     u8 hi = x >> 8;
     u8 lo = x + 0xC0;
@@ -423,7 +423,7 @@ u32 sub_08072584(u16 x)
 #define C (c & 0xF)
 /* Expand a 4-bit glyph row `nib` to four 4bpp pixels: a set bit gives colour b, a clear bit
    gives colour c (bit 3 is the leftmost pixel). */
-u16 sub_080725B0(u16 nib, u16 b, u16 c)
+u16 ExpandGlyphNibble(u16 nib, u16 b, u16 c)
 {
     switch (nib) {
     case 0: {
@@ -471,42 +471,42 @@ u16 sub_080725B0(u16 nib, u16 b, u16 c)
 
 
 
-void sub_08072778(u8 ch, u16 *out, u16 b, u16 c)
+void RenderBoldGlyphTile(u8 ch, u16 *out, u16 b, u16 c)
 {
-    u16 *src = (u16 *)(gUnk_0822BB00 + ch * 8);
+    u16 *src = (u16 *)(gFontLatin8x8Bold + ch * 8);
     int i;
     for (i = 0; i < 4; i++) {
-        *out++ = sub_080725B0((*src >> 4) & 0xF, b, c);
-        *out++ = sub_080725B0(*src & 0xF, b, c);
-        *out++ = sub_080725B0((*src >> 12) & 0xF, b, c);
-        *out++ = sub_080725B0((*src >> 8) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 4) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble(*src & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 12) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 8) & 0xF, b, c);
         src++;
     }
 }
 
-/* Same as sub_08072778 for the 2-byte (kanji) glyph table at 0x081C0000. */
-void sub_08072808(u16 ch, u16 *out, u16 b, u16 c)
+/* Same as RenderBoldGlyphTile for the 2-byte (kanji) glyph table at 0x081C0000. */
+void RenderSjisGlyphTile(u16 ch, u16 *out, u16 b, u16 c)
 {
-    u16 *src = (u16 *)(gUnk_081C0000 + sub_08072584(ch) * 8);
+    u16 *src = (u16 *)(gFontKanji8x8 + SjisToGlyphIndex(ch) * 8);
     int i;
     for (i = 0; i < 4; i++) {
-        *out++ = sub_080725B0((*src >> 4) & 0xF, b, c);
-        *out++ = sub_080725B0(*src & 0xF, b, c);
-        *out++ = sub_080725B0((*src >> 12) & 0xF, b, c);
-        *out++ = sub_080725B0((*src >> 8) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 4) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble(*src & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 12) & 0xF, b, c);
+        *out++ = ExpandGlyphNibble((*src >> 8) & 0xF, b, c);
         src++;
     }
 }
 
 /* Store two u16 values in the main struct at +0x441C / +0x441E. */
-void sub_0807289C(u16 a, u16 b)
+void SetTextArea(u16 a, u16 b)
 {
     gUnk_03000040_v.a = a;
     gUnk_03000040_v.b = b;
 }
 
 /* Is this Shift-JIS code a character that may not start a line (punctuation, small kana)? */
-int sub_080728C0(u16 c)
+int IsLineStartForbidden(u16 c)
 {
     switch (c) {
     case 0x8141:
@@ -547,17 +547,17 @@ int sub_080728C0(u16 c)
     }
 }
 
-int sub_080729F8(u16 c)
+int IsLineEndForbidden(u16 c)
 {
     if (c == 0x8169 || c == 0x8175)
         return 1;
     return 0;
 }
 
-/* Same for 2-byte (Shift-JIS) text with line-break rules (no line start on sub_080728C0 chars,
-   no line end on sub_080729F8 chars). Each char is read as a halfword and byte-swapped; the
+/* Same for 2-byte (Shift-JIS) text with line-break rules (no line start on IsLineStartForbidden chars,
+   no line end on IsLineEndForbidden chars). Each char is read as a halfword and byte-swapped; the
    (u8) casts and the repeated *(u16 *)s reads set col's live length so that ch gets r5. */
-void sub_08072A14(u16 col, u16 pk, u16 tile, u8 *s)
+void DrawBgSjisString(u16 col, u16 pk, u16 tile, u8 *s)
 {
     u16 *map = (u16 *)gUnk_0300045C;
     u8 lo = pk;
@@ -575,7 +575,7 @@ void sub_08072A14(u16 col, u16 pk, u16 tile, u8 *s)
             col = base;
             map = (u16 *)gUnk_0300045C + base;
         }
-        sub_08072808(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
+        RenderSjisGlyphTile(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
         *map++ = tile;
         col++;
         s += 2;
@@ -583,9 +583,9 @@ void sub_08072A14(u16 col, u16 pk, u16 tile, u8 *s)
     }
 }
 
-/* Draw a string of 1-byte chars (converted with sub_08074A90) into the BG map at cell `col`,
+/* Draw a string of 1-byte chars (converted with AsciiToFullwidthSjis) into the BG map at cell `col`,
    glyph tiles from `tile`; wraps to the next 32-cell line near the right edge (width @ +0x441E). */
-void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
+void DrawBgFullwidthString(u16 col, u16 pk, u16 tile, u8 *s)
 {
     u16 *map = (u16 *)gUnk_0300045C;
     u8 lo = pk;
@@ -596,14 +596,14 @@ void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
         u16 ch;
         if (*s == 0)
             return;
-        ch = sub_08074A90(*s);
+        ch = AsciiToFullwidthSjis(*s);
         if (ch != 0) {
             if ((col & 0x1F) >= (gUnk_03000040_m.w & 0x1F) - 2) {
                 base += 0x20;
                 col = base;
                 map = &gUnk_03000040_m.map[base];
             }
-            sub_08072808(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
+            RenderSjisGlyphTile(ch, (u16 *)(0x06004000 + tile * 32), lo, hi);
             *map++ = tile;
             col++;
             tile++;
@@ -613,7 +613,7 @@ void sub_08072AF8(u16 col, u16 pk, u16 tile, u8 *s)
 }
 
 /* Draw a NUL-terminated ASCII string: glyph tiles to 0x06004000 + tile*32, map entries at (col). */
-void sub_08072BB4(u16 col, u16 pk, u16 tile, char *s)
+void DrawBgString(u16 col, u16 pk, u16 tile, char *s)
 {
     u16 *map = (u16 *)gUnk_0300045C;
     u8 lo = pk;
@@ -622,7 +622,7 @@ void sub_08072BB4(u16 col, u16 pk, u16 tile, char *s)
     while (*s != 0) {
         u8 c = *s;
         u16 t = tile;
-        sub_08072778(c, (u16 *)(0x06004000 + t * 32), lo, hi);
+        RenderBoldGlyphTile(c, (u16 *)(0x06004000 + t * 32), lo, hi);
         tile = t + 1;
         *map++ = t;
         s++;
@@ -630,7 +630,7 @@ void sub_08072BB4(u16 col, u16 pk, u16 tile, char *s)
 }
 
 /* Print `val` as decimal (n digits, padded with zeros if `zero` else blanks). */
-void sub_08072C0C(u32 a, u32 b, int val, u16 zero)
+void DrawBgDecimal(u32 a, u32 b, int val, u16 zero)
 {
     char buf[12];
     u16 tile = b;
@@ -643,18 +643,18 @@ void sub_08072C0C(u32 a, u32 b, int val, u16 zero)
         do {
             n--;
             if (val != 0 || first)
-                buf[n] = gUnk_08087634[val % 10];
+                buf[n] = gDecimalDigitChars[val % 10];
             else
                 buf[n] = zero ? '0' : ' ';
             val /= 10;
             first = 0;
         } while (n != 0);
-        sub_08072BB4(a, a >> 16, tile, buf);
+        DrawBgString(a, a >> 16, tile, buf);
     }
 }
 
 /* Print `val` as hex (n digits, zero padded). a = col | pk << 16, b = tile | n << 16. */
-void sub_08072CAC(u32 a, u32 b, int val)
+void DrawBgHex(u32 a, u32 b, int val)
 {
     char buf[12];
     u16 tile = b;
@@ -666,12 +666,12 @@ void sub_08072CAC(u32 a, u32 b, int val)
         do {
             n--;
             if (val != 0)
-                buf[n] = gUnk_0808765C[val & 0xF];
+                buf[n] = gHexDigitChars[val & 0xF];
             else
                 buf[n] = '0';
             val >>= 4;
         } while (n != 0);
-        sub_08072BB4(a, a >> 16, tile, buf);
+        DrawBgString(a, a >> 16, tile, buf);
     }
 }
 
@@ -683,7 +683,7 @@ void sub_08072CAC(u32 a, u32 b, int val)
  * `pal` as a u32 copy (no shortened u16 shift for pal >> 4) and the `lim` bound local keep the insn count
  * at the ROM's, so e<<24 lands at sp+0 and d*32 at sp+4. `off` puts d*32 ahead of c*0x10E0 in that order
  * while the pointer add stays after src; the ROM tables are integer addresses so reload rematerializes them. */
-void sub_08072D28(u16 a, u16 b, u16 c, u16 d, u16 e)
+void DrawCardPortrait(u16 a, u16 b, u16 c, u16 d, u16 e)
 {
     u32 pal = e;
     u16 *map = (u16 *)(0x0300045C + (a & 7) * 0x800);
@@ -704,7 +704,7 @@ void sub_08072D28(u16 a, u16 b, u16 c, u16 d, u16 e)
             map[j] = tile++;
         map += 0x20;
     }
-    sub_08075294((void *)(0x05000000 + (pal >> 4) * 32), (const void *)(0x08608360 + c * 0x80), 0x80);
+    MemCopy16((void *)(0x05000000 + (pal >> 4) * 32), (const void *)(0x08608360 + c * 0x80), 0x80);
     off = d * 32;
     src = (const u16 *)(0x082A6500 + c * 0x10E0);
     dst = (u16 *)(0x06004000 + off);
@@ -735,7 +735,7 @@ void sub_08072D28(u16 a, u16 b, u16 c, u16 d, u16 e)
 
 
 /* Write tile entry `e` at (col b, row-block a) of the BG map buffer at 0x0300045C. */
-void sub_08072E98(u16 a, u16 b, u16 e)
+void SetBgMapEntry(u16 a, u16 b, u16 e)
 {
     u8 *row = gUnk_0300045C + a * 0x800;
     u8 *cell = row + b * 2;
@@ -745,7 +745,7 @@ void sub_08072E98(u16 a, u16 b, u16 e)
 /* Load an image pack (see wiki data/graphics-formats): palette to 0x05000000 + palIdx*2, 8bpp
    tiles to 0x06004000 + tileBase*32 (palIdx added to non-zero pixel bytes), cells to the map
    buffer at 0x03000C5C. Returns the tile count. */
-u16 sub_08072EB0(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
+u16 LoadBgImageMap1(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
 {
     u16 *h = img;
     u16 *hdrT = (u16 *)((u8 *)h + 8 + h[0] * 2);
@@ -768,7 +768,7 @@ u16 sub_08072EB0(u16 mapBase, u16 palIdx, u16 tileBase, u16 *img)
         *dst++ = v;
         tiles++;
     }
-    sub_08075294((void *)(0x05000000 + palIdx * 2), img + 4, h[0] * 2);
+    MemCopy16((void *)(0x05000000 + palIdx * 2), img + 4, h[0] * 2);
     for (i = 0; i < hdrC[0]; i++) {
         u16 pos = *cells++;
         u16 tile = *cells++;

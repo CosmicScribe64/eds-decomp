@@ -72,65 +72,65 @@ struct SaveMirror {
     struct SaveCard card[1];
 };
 
-extern struct Main gUnk_03000040;
-extern struct LinkState gUnk_0201F7B0;
-extern struct SaveMirror gUnk_02011C20;
-int sub_08076F9C(void);
-void sub_08075278(void *dst, u32 size);
-void sub_08075294(void *dest, const void *src, u32 size);
-void sub_08077AEC(int);
-void sub_0807BF68(void);
-void sub_08073498(void);
-void sub_08073574(void);
-void sub_08075630(void);
-void sub_080759F4(void);
-void sub_080757AC(void);
-void sub_080731D0(u32 a, u32 b, u32 c, const void *d);
-int sub_080753E0(const void *p);
-void sub_0807501C(int x, int y, u16 attr, const void *str);
-void sub_08075114(void *dest, u16 v);
-void sub_08074B08(u8 a, u8 b);
+extern struct Main gMain;
+extern struct LinkState gPassword;
+extern struct SaveMirror gSaveData;
+int Random(void);
+void MemClear16(void *dst, u32 size);
+void MemCopy16(void *dest, const void *src, u32 size);
+void PlaySE(int);
+void Password_DrawDigits(void);
+void ClearBgMapBuffers(void);
+void ResetVideo(void);
+void LoadSystemGfx(void);
+void SetBrightnessBlack(void);
+void ResetBgScroll(void);
+void LoadBgImage4bppMap1(u32 a, u32 b, u32 c, const void *d);
+int StrLenWide(const void *p);
+void TextDrawString(int x, int y, u16 attr, const void *str);
+void TextCanvasToTiles(void *dest, u16 v);
+void TextCanvasInit(u8 a, u8 b);
 struct Hblank {
     u32 filler0;
     void *cb;
 };
-extern struct Hblank gUnk_03000000;
-extern const u8 gUnk_0870B5E0[], gUnk_0870B600[], gUnk_0870C620[];
-extern const u8 gUnk_087095E0[], gUnk_0870A5E0[], gUnk_0870B620[];
-extern const u8 gUnk_0822C300[], gUnk_0822C720[][64], gUnk_08707B28[];
-void sub_080761F0(u32 a, u32 b, u16 c);
-void sub_08076714(u32 a, u16 b, u16 c, u32 d);
+extern struct Hblank IntrTable;
+extern const u8 gCardTradingButtonsPal[], gCardTradingButtonsDimPal[], gCardTradingCardPal[];
+extern const u8 gCardTradingButtonsGfx[], gCardTradingButtonsDimGfx[], gCardTradingCardGfx[];
+extern const u8 gSystemFontPal[], gCardNames[][64], gCardTradingBgImage[];
+void AddSprite(u32 a, u32 b, u16 c);
+void AddAffineSprite(u32 a, u16 b, u16 c, u32 d);
 struct Pair16 {
     u16 lo;
     u16 hi;
 };
-extern const u32 gUnk_08087E88[];
-extern const struct Pair16 gUnk_08087F08[];
-void sub_0807BFE0(void);
-void sub_0807C1D0(u16 id);
-extern struct PwState gUnk_0201F780;
-u16 sub_08075A6C(int);
-u16 sub_08075AE4(int);
-u16 sub_08075A6C(int);
-u16 sub_08075AE4(int);
-void sub_0807CCAC(int a, u16 b, int c);
-u32 sub_0807D348(void);
-void sub_0800688C(u16 card, int a, int b);
-u16 sub_08006D08(void);
-u16 sub_0806F01C(void);
-void sub_0807BCF4(u8 *);
-u32 sub_0807BCFC(u16 id, u16 data, void *p);
-u32 sub_0807BE60(void *a, void *b);
-void sub_08077498(u16);
-void sub_0807761C(u16);
-void sub_080754BC(void);
-extern const u16 gUnk_08622AB4[];
-extern const u16 gUnk_08623DF4[];
-void sub_0801A7DC(const void *);
-void sub_0801A7E8(void);
-extern const u8 gUnk_08087FA0[];
-extern u16 (*const gUnk_081A7970[])(void);
-extern u16 (*const gUnk_081A79A4[])(void);
+extern const u32 gPasswordCardSlideHofs[];
+extern const struct Pair16 gPasswordArrowFrames[];
+void Password_DrawKeyCursor(void);
+void Password_DrawCard(u16 id);
+extern struct PwState gCardTrading;
+u16 FadeToBlack(int);
+u16 FadeFromBlack(int);
+u16 FadeToBlack(int);
+u16 FadeFromBlack(int);
+void CardTrading_DrawMenu(int a, u16 b, int c);
+u32 CB_CardTrading(void);
+void CardDetail_Init(u16 card, int a, int b);
+u16 CardDetail_Run(void);
+u16 TradeCardSelect_Run(void);
+void LinkSyncStart(u8 *);
+u32 LinkSyncStep(u16 id, u16 data, void *p);
+u32 LinkSyncClose(void *a, void *b);
+void AddCardToTrunk(u16);
+void RemoveCardFromTrunk(u16);
+void SaveGame(void);
+extern const u16 gCardIdToNumber[];
+extern const u16 gCardNumberToId[];
+void DebugPrintf(const void *);
+void DebugPrintFlush(void);
+extern const u8 gStrDebugThrowItInNow[];
+extern u16 (*const gPasswordSteps[])(void);
+extern u16 (*const gCardTradingSteps[])(void);
 
 /* Second view of the a/b flag pair as one 2-bit value. */
 struct PwPair {
@@ -140,15 +140,15 @@ struct PwPair {
     u8 filler4[0x24];
 };
 
-u32 sub_0807C7C8(void)
+u32 Password_RollAndCheck(void)
 {
-    struct LinkState *s = &gUnk_0201F7B0;
+    struct LinkState *s = &gPassword;
 
     s->a = 0x20;
     s->b = 0x20;
-    sub_0807BF68();
-    sub_0807BFE0();
-    if (gUnk_03000040.keyNew & 1)
+    Password_DrawDigits();
+    Password_DrawKeyCursor();
+    if (gMain.keyNew & 1)
         s->c = 0xB4;
     if (s->c++ <= 0xB3) {
                 int i;
@@ -158,147 +158,147 @@ u32 sub_0807C7C8(void)
         base = (u32)s;
 
         for (; i < 8; i++)
-            *(u8 *)(i + base) = sub_08076F9C() % 10;
-        gUnk_0201F7B0.cursor = sub_08076F9C() % 10;
-        gUnk_0201F7B0.slot = sub_08076F9C() & 7;
-        if ((gUnk_0201F7B0.c & 0xF) == 8)
-            sub_08077AEC(0x27);
+            *(u8 *)(i + base) = Random() % 10;
+        gPassword.cursor = Random() % 10;
+        gPassword.slot = Random() & 7;
+        if ((gPassword.c & 0xF) == 8)
+            PlaySE(0x27);
     } else {
         s->c = 0;
         s->a = 0;
         s->b = 0;
         if (s->card == 0) {
-            sub_08075278(s, 8);
-            gUnk_03000040.step += 3;
-        } else if (gUnk_02011C20.card[s->card].flag1 == 0) {
-            sub_08075294(s, s->pw, 8);
-            sub_0807C1D0(s->card);
-            gUnk_03000040.unk442C = 0;
+            MemClear16(s, 8);
+            gMain.step += 3;
+        } else if (gSaveData.card[s->card].flag1 == 0) {
+            MemCopy16(s, s->pw, 8);
+            Password_DrawCard(s->card);
+            gMain.unk442C = 0;
             REG_BG2HOFS = 0;
             return 1;
         } else {
-            sub_08075278(s, 8);
-            gUnk_03000040.step += 6;
+            MemClear16(s, 8);
+            gMain.step += 6;
         }
     }
     return 0;
 }
 
-u32 sub_0807C924(void)
+u32 Password_RevealAndGiveCard(void)
 {
-    if (gUnk_03000040.keyNew & 1)
-        gUnk_0201F7B0.c = 0x12C;
-    if (gUnk_0201F7B0.c <= 0x12B) {
-        gUnk_0201F7B0.a++;
-        if ((gUnk_0201F7B0.a & 0x1F) == 0x1F)
-            sub_08077AEC(0x29);
-        if ((gUnk_0201F7B0.a & 0x1F) <= 0x1C)
-            sub_0807BF68();
-        if (gUnk_0201F7B0.c <= 0x1F) {
-            gUnk_03000040.unk442C = gUnk_08087E88[gUnk_0201F7B0.c];
-            sub_080761F0(0x1C0070, 0, gUnk_08087F08[gUnk_0201F7B0.c].lo);
-            sub_080761F0(0x4C0070, 0, gUnk_08087F08[gUnk_0201F7B0.c].lo);
-            sub_080761F0(0x7C0070, 0, gUnk_08087F08[gUnk_0201F7B0.c].lo);
+    if (gMain.keyNew & 1)
+        gPassword.c = 0x12C;
+    if (gPassword.c <= 0x12B) {
+        gPassword.a++;
+        if ((gPassword.a & 0x1F) == 0x1F)
+            PlaySE(0x29);
+        if ((gPassword.a & 0x1F) <= 0x1C)
+            Password_DrawDigits();
+        if (gPassword.c <= 0x1F) {
+            gMain.unk442C = gPasswordCardSlideHofs[gPassword.c];
+            AddSprite(0x1C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
+            AddSprite(0x4C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
+            AddSprite(0x7C0070, 0, gPasswordArrowFrames[gPassword.c].lo);
         }
-        gUnk_0201F7B0.c++;
+        gPassword.c++;
         return 0;
     }
-    switch (gUnk_03000040.sub) {
+    switch (gMain.sub) {
     case 0:
-        sub_0807BF68();
-        if (gUnk_03000040.keyNew & 3)
-            gUnk_03000040.sub++;
+        Password_DrawDigits();
+        if (gMain.keyNew & 3)
+            gMain.sub++;
         return 0;
     case 1:
-        sub_0807BF68();
-        if (sub_08075A6C(4)) {
-            gUnk_02011C20.card[gUnk_0201F7B0.card].flag1 = 1;
-            sub_08077498(gUnk_0201F7B0.card);
-            sub_0800688C(gUnk_0201F7B0.card, 0, 0);
-            gUnk_03000040.sub++;
+        Password_DrawDigits();
+        if (FadeToBlack(4)) {
+            gSaveData.card[gPassword.card].flag1 = 1;
+            AddCardToTrunk(gPassword.card);
+            CardDetail_Init(gPassword.card, 0, 0);
+            gMain.sub++;
         }
         return 0;
     case 2:
-        if (sub_08006D08())
-            gUnk_03000040.sub++;
+        if (CardDetail_Run())
+            gMain.sub++;
         return 0;
     default:
         return 1;
     }
 }
-u32 sub_0807CAA0(void)
+u32 Password_ShowError(void)
 {
-    if (gUnk_03000040.keyNew & 1)
-        gUnk_0201F7B0.c = 0x12C;
-    if (gUnk_0201F7B0.c <= 0x12B) {
-        if (gUnk_0201F7B0.c <= 0xB3) {
-            gUnk_0201F7B0.a++;
-            if ((gUnk_0201F7B0.a & 0x1F) == 0x1F)
-                sub_08077AEC(0x28);
+    if (gMain.keyNew & 1)
+        gPassword.c = 0x12C;
+    if (gPassword.c <= 0x12B) {
+        if (gPassword.c <= 0xB3) {
+            gPassword.a++;
+            if ((gPassword.a & 0x1F) == 0x1F)
+                PlaySE(0x28);
         }
-        if (gUnk_0201F7B0.a & 0x20) {
-            sub_080761F0(0x80018, 0x40, 0x10CA);
-            sub_080761F0(0x80028, 0x4080, 0x10CC);
+        if (gPassword.a & 0x20) {
+            AddSprite(0x80018, 0x40, 0x10CA);
+            AddSprite(0x80028, 0x4080, 0x10CC);
         }
-        if (!(gUnk_03000040.keyNew & 8)) {
-            gUnk_0201F7B0.c++;
+        if (!(gMain.keyNew & 8)) {
+            gPassword.c++;
             return 0;
         }
     }
     return 1;
 }
 
-u16 sub_0807CB64(void)
+u16 Password_FadeOut(void)
 {
-    return sub_08075A6C(2);
+    return FadeToBlack(2);
 }
-u32 sub_0807CB74(void)
+u32 Password_ShowUsed(void)
 {
-    if (gUnk_03000040.keyNew & 1)
-        gUnk_0201F7B0.c = 0x12C;
-    if (gUnk_0201F7B0.c <= 0x12B) {
-        if (gUnk_0201F7B0.c <= 0xB3) {
-            gUnk_0201F7B0.a++;
-            if ((gUnk_0201F7B0.a & 0x1F) == 0x1F)
-                sub_08077AEC(0x28);
+    if (gMain.keyNew & 1)
+        gPassword.c = 0x12C;
+    if (gPassword.c <= 0x12B) {
+        if (gPassword.c <= 0xB3) {
+            gPassword.a++;
+            if ((gPassword.a & 0x1F) == 0x1F)
+                PlaySE(0x28);
         }
-        if (gUnk_0201F7B0.a & 0x20)
-            sub_080761F0(0x80028, 0x4080, 0x110B);
-        if (!(gUnk_03000040.keyNew & 8)) {
-            gUnk_0201F7B0.c++;
+        if (gPassword.a & 0x20)
+            AddSprite(0x80028, 0x4080, 0x110B);
+        if (!(gMain.keyNew & 8)) {
+            gPassword.c++;
             return 0;
         }
     }
     return 1;
 }
 /* Password scene callback: runs the current step of the table. */
-u32 sub_0807CC28(void)
+u32 CB_Password(void)
 {
-    u16 (*fn)(void) = gUnk_081A7970[gUnk_03000040.step];
+    u16 (*fn)(void) = gPasswordSteps[gMain.step];
 
     if (fn) {
         if (fn()) {
-            gUnk_03000040.step++;
-            gUnk_03000040.sub = 0;
-            gUnk_03000040.sub2 = 0;
+            gMain.step++;
+            gMain.sub = 0;
+            gMain.sub2 = 0;
         }
         return 0;
     }
     return 1;
 }
 /* Copies `rows` rows of `width` tiles into VRAM 0x06010000 (stride 0x400 bytes). */
-void sub_0807CC78(const void *src, int tile, int width, int rows)
+void CardTrading_LoadObjTiles(const void *src, int tile, int width, int rows)
 {
     u8 *dst = (u8 *)0x06010000 + tile * 32;
     int i;
 
     for (i = 0; i < rows; i++) {
-        sub_08075294(dst, src, width * 32);
+        MemCopy16(dst, src, width * 32);
         dst += 0x400;
         src = (const u8 *)src + width * 32;
     }
 }
-void sub_0807CCAC(int a, u16 b, int c)
+void CardTrading_DrawMenu(int a, u16 b, int c)
 {
     int i, j, limit;
 
@@ -330,22 +330,22 @@ void sub_0807CCAC(int a, u16 b, int c)
             y = 0;
             if (on == 0)
                 y = 0x1000;
-            sub_080761F0(yx | (j << 5), 0x80, (x + j * 4 + iy) | y);
+            AddSprite(yx | (j << 5), 0x80, (x + j * 4 + iy) | y);
         }
         i = next;
     }
     if (b) {
-        sub_08076714(0x380098, 0x80, ((c & 0xC) + 0x100) | 0x2000, ((c << 21) + 0x1000000) | gUnk_0201F780.c);
+        AddAffineSprite(0x380098, 0x80, ((c & 0xC) + 0x100) | 0x2000, ((c << 21) + 0x1000000) | gCardTrading.c);
         if (c == 0)
-            gUnk_0201F780.c = gUnk_0201F780.c + 1;
+            gCardTrading.c = gCardTrading.c + 1;
     }
 }
-u32 sub_0807CDA0(void)
+u32 CardTrading_ClearState(void)
 {
-    sub_08075278(&gUnk_0201F780, 0x28);
+    MemClear16(&gCardTrading, 0x28);
     return 1;
 }
-u32 sub_0807CDB4(void)
+u32 CardTrading_InitVideo(void)
 {
     int len;
     u8 w;
@@ -353,126 +353,126 @@ u32 sub_0807CDB4(void)
     int extent;
     int x;
 
-    gUnk_03000040.unk40E = 3;
+    gMain.unk40E = 3;
     REG_DISPCNT = 0;
     REG_BG0CNT = 4;
     REG_BG1CNT = 0x105;
-    sub_08073574();
-    sub_08073498();
-    sub_08075630();
+    ResetVideo();
+    ClearBgMapBuffers();
+    LoadSystemGfx();
     REG_MOSAIC = 0;
-    sub_080759F4();
-    sub_080757AC();
-    gUnk_03000040.unk414 = 0;
+    SetBrightnessBlack();
+    ResetBgScroll();
+    gMain.unk414 = 0;
     REG_IME = 0;
     REG_IE &= ~2;
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= ~2;
-    gUnk_03000000.cb = 0;
+    IntrTable.cb = 0;
     REG_IME = 1;
-    sub_08075294((void *)0x05000200, gUnk_0870B5E0, 0x20);
-    sub_08075294((void *)0x05000220, gUnk_0870B600, 0x20);
-    sub_08075294((void *)0x05000240, gUnk_0870C620, 0x20);
-    sub_0807CC78(gUnk_087095E0, 0, 0x10, 8);
-    sub_0807CC78(gUnk_0870A5E0, 0x10, 0x10, 8);
-    sub_0807CC78(gUnk_0870B620, 0x100, 0x10, 8);
-    sub_08075294((void *)0x05000000, gUnk_0822C300, 0x20);
-    sub_080731D0(0, 0x10, 0x200, gUnk_08707B28);
-    if (gUnk_0201F780.code != 0) {
+    MemCopy16((void *)0x05000200, gCardTradingButtonsPal, 0x20);
+    MemCopy16((void *)0x05000220, gCardTradingButtonsDimPal, 0x20);
+    MemCopy16((void *)0x05000240, gCardTradingCardPal, 0x20);
+    CardTrading_LoadObjTiles(gCardTradingButtonsGfx, 0, 0x10, 8);
+    CardTrading_LoadObjTiles(gCardTradingButtonsDimGfx, 0x10, 0x10, 8);
+    CardTrading_LoadObjTiles(gCardTradingCardGfx, 0x100, 0x10, 8);
+    MemCopy16((void *)0x05000000, gSystemFontPal, 0x20);
+    LoadBgImage4bppMap1(0, 0x10, 0x200, gCardTradingBgImage);
+    if (gCardTrading.code != 0) {
         int i;
 
-        len = sub_080753E0(gUnk_0822C720[gUnk_0201F780.code]);
+        len = StrLenWide(gCardNames[gCardTrading.code]);
         w = 12;
         if (len > 0x12)
             w = 10;
-        sub_08074B08(0x20, 3);
+        TextCanvasInit(0x20, 3);
         extent = (len * w) >> 1;
         x = 0x78 - extent;
         half = w >> 1;
-        sub_0807501C(x, 0xD - half, (w << 8) | 8, gUnk_0822C720[gUnk_0201F780.code]);
-        sub_0807501C(0x77 - extent, 0xC - half, (w << 8) | 7, gUnk_0822C720[gUnk_0201F780.code]);
-        sub_08075114((void *)0x06005000, 0);
+        TextDrawString(x, 0xD - half, (w << 8) | 8, gCardNames[gCardTrading.code]);
+        TextDrawString(0x77 - extent, 0xC - half, (w << 8) | 7, gCardNames[gCardTrading.code]);
+        TextCanvasToTiles((void *)0x06005000, 0);
         for (i = 0; i < 0x60; i++)
-            gUnk_03000040.tilemap[i] = 0x80 + i;
+            gMain.tilemap[i] = 0x80 + i;
     }
     return 1;
 }
 
-u32 sub_0807CF6C(void)
+u32 CardTrading_FadeIn(void)
 {
-    sub_0807CCAC(gUnk_0201F780.b, gUnk_0201F780.a, gUnk_0201F780.d);
+    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
     REG_DISPCNT |= 0x1300;
-    return sub_08075AE4(2);
+    return FadeFromBlack(2);
 }
-u32 sub_0807CFA8(void)
+u32 CardTrading_HandleInput(void)
 {
-    struct PwState *st = &gUnk_0201F780;
+    struct PwState *st = &gCardTrading;
 
-    sub_0807CCAC(st->b, st->a, st->d);
-    if (gUnk_03000040.keyNew & 2) {
-        sub_08077AEC(2);
-        gUnk_03000040.step = 4;
-    } else if (gUnk_03000040.keyNew & 1) {
+    CardTrading_DrawMenu(st->b, st->a, st->d);
+    if (gMain.keyNew & 2) {
+        PlaySE(2);
+        gMain.step = 4;
+    } else if (gMain.keyNew & 1) {
         if (((struct PwPair *)st)->ab != 3)
-            gUnk_03000040.step = 6;
+            gMain.step = 6;
         else
-            gUnk_03000040.step = 8;
-        sub_08077AEC(1);
-    } else if (gUnk_03000040.keyNew & 0xC0) {
+            gMain.step = 8;
+        PlaySE(1);
+    } else if (gMain.keyNew & 0xC0) {
         if (st->a) {
-            sub_08077AEC(0);
+            PlaySE(0);
             st->b = 1 - st->b;
         } else {
-            sub_08077AEC(3);
+            PlaySE(3);
         }
     }
     return 0;
 }
-u32 sub_0807D060(void)
+u32 CardTrading_UnusedReturnFalse(void)
 {
     return 0;
 }
-u32 sub_0807D064(void)
+u32 CardTrading_FadeOut(void)
 {
-    sub_0807CCAC(gUnk_0201F780.b, gUnk_0201F780.a, gUnk_0201F780.d);
-    if (sub_08075A6C(2) != 0) {
+    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
+    if (FadeToBlack(2) != 0) {
         REG_DISPCNT = 0;
         return 1;
     }
     return 0;
 }
-u32 sub_0807D0A0(void)
+u32 CardTrading_SelectCard(void)
 {
-    if (sub_0806F01C()) {
-        if (gUnk_03000040.unk4872 != 0) {
-            gUnk_0201F780.code = gUnk_03000040.unk4872;
-            gUnk_0201F780.a = 1;
-            gUnk_0201F780.b = 1;
+    if (TradeCardSelect_Run()) {
+        if (gMain.unk4872 != 0) {
+            gCardTrading.code = gMain.unk4872;
+            gCardTrading.a = 1;
+            gCardTrading.b = 1;
         } else {
-            gUnk_0201F780.code = 0;
-            gUnk_0201F780.a = 0;
-            gUnk_0201F780.b = 0;
+            gCardTrading.code = 0;
+            gCardTrading.a = 0;
+            gCardTrading.b = 0;
         }
-        gUnk_03000040.step = 1;
-        gUnk_03000040.sub = 0;
-        gUnk_03000040.sub2 = 0;
+        gMain.step = 1;
+        gMain.sub = 0;
+        gMain.sub2 = 0;
     }
     return 0;
 }
-u32 sub_0807D118(void)
+u32 CardTrading_ThrowCard(void)
 {
-    struct PwState *st = &gUnk_0201F780;
+    struct PwState *st = &gCardTrading;
 
-    sub_0807CCAC(st->b, st->a, st->d);
+    CardTrading_DrawMenu(st->b, st->a, st->d);
     if (st->c != 0x60) {
         if (st->c <= 0x5B)
             st->c += 4;
     } else {
         if (st->d > 14) {
-            sub_0807BCF4(st->link);
-            sub_0801A7DC(gUnk_08087FA0);
-            sub_0801A7E8();
+            LinkSyncStart(st->link);
+            DebugPrintf(gStrDebugThrowItInNow);
+            DebugPrintFlush();
             st->timer = 0x200;
             return 1;
         }
@@ -480,81 +480,81 @@ u32 sub_0807D118(void)
     }
     return 0;
 }
-u32 sub_0807D1AC(void)
+u32 CardTrading_ReverseThrow(void)
 {
-    sub_0807CCAC(gUnk_0201F780.b, gUnk_0201F780.a, gUnk_0201F780.d);
-    if (gUnk_0201F780.d > 1) {
-        gUnk_0201F780.d--;
+    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
+    if (gCardTrading.d > 1) {
+        gCardTrading.d--;
         return 0;
     }
     return 1;
 }
-u32 sub_0807D1F4(void)
+u32 CardTrading_Exchange(void)
 {
-    sub_0807CCAC(gUnk_0201F780.b, gUnk_0201F780.a, gUnk_0201F780.d);
-    if (sub_0807BCFC(gUnk_0201F780.unk22, ((const u16 *)0x08622AB4)[gUnk_0201F780.code & 0x7FF], gUnk_0201F780.link)) {
+    CardTrading_DrawMenu(gCardTrading.b, gCardTrading.a, gCardTrading.d);
+    if (LinkSyncStep(gCardTrading.unk22, ((const u16 *)0x08622AB4)[gCardTrading.code & 0x7FF], gCardTrading.link)) {
         u16 id;
         u32 n;
 
-        sub_0807BE60(gUnk_0201F780.filler4, gUnk_0201F780.linkRx);
-        id = gUnk_0201F780.peerData;
+        LinkSyncClose(gCardTrading.filler4, gCardTrading.linkRx);
+        id = gCardTrading.peerData;
         if (id == 0xFFFF)
             n = 0;
         else if (id < 2000)
             n = ((const u16 *)0x08623DF4)[id & 0x7FF];
         else
             n = ((const u16 *)0x08623DF4)[(id - 2000) & 0x7FF] + 1;
-        gUnk_0201F780.card = n;
-        sub_08077498(gUnk_0201F780.card);
-        sub_0807761C(gUnk_0201F780.code);
-        sub_080754BC();
+        gCardTrading.card = n;
+        AddCardToTrunk(gCardTrading.card);
+        RemoveCardFromTrunk(gCardTrading.code);
+        SaveGame();
         return 1;
     }
-    if (--gUnk_0201F780.timer == 0)
-        gUnk_03000040.step = 0xE;
+    if (--gCardTrading.timer == 0)
+        gMain.step = 0xE;
     return 0;
 }
-u32 sub_0807D2D0(void)
+u32 CardTrading_ShowReceivedCard(void)
 {
-    switch (gUnk_03000040.sub) {
+    switch (gMain.sub) {
     case 0:
-        sub_0800688C(gUnk_0201F780.card, 0, 0);
-        gUnk_03000040.sub++;
+        CardDetail_Init(gCardTrading.card, 0, 0);
+        gMain.sub++;
         break;
     case 1:
-        if (sub_08006D08())
-            gUnk_03000040.sub++;
+        if (CardDetail_Run())
+            gMain.sub++;
         break;
     default:
-        gUnk_0201F780.code = 0;
-        gUnk_0201F780.b = 0;
-        gUnk_0201F780.a = 0;
-        gUnk_0201F780.d = 0;
-        gUnk_03000040.step = 1;
+        gCardTrading.code = 0;
+        gCardTrading.b = 0;
+        gCardTrading.a = 0;
+        gCardTrading.d = 0;
+        gMain.step = 1;
         break;
     }
     return 0;
 }
 /* Card Trading scene callback. */
-u32 sub_0807D348(void)
+u32 CB_CardTrading(void)
 {
-    gUnk_0201F780.unk22 = 0x50;
-    gUnk_03000040.unk4874_0 = 1;
+    gCardTrading.unk22 = 0x50;
+    gMain.unk4874_0 = 1;
     {
-        u16 (*fn)(void) = gUnk_081A79A4[gUnk_03000040.step];
+        u16 (*fn)(void) = gCardTradingSteps[gMain.step];
 
         if (fn) {
             if (fn()) {
-                gUnk_03000040.step++;
-                gUnk_03000040.sub = 0;
-                gUnk_03000040.sub2 = 0;
+                gMain.step++;
+                gMain.sub = 0;
+                gMain.sub2 = 0;
             }
             return 0;
         }
         return 1;
     }
 }
-u16 sub_0807D3C0(void)
+u16 CardTrading_UnusedCallbackWrapper(void)
 {
-    return sub_0807D348();
+    return CB_CardTrading();
 }

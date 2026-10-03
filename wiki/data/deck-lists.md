@@ -81,7 +81,7 @@ At the start of a game the player picks one of three face-down decks (dialogue: 
 | Address | `0x08198744`–`0x0819879C` |
 | Entry | 8 bytes: `const u16 *pool; u32 packed` |
 | Count | 11 groups; the pools themselves sit at `0x08198634`–`0x08198744` (136 card numbers) |
-| Builder | `sub_0800495C` (`0x0800495C`–`0x08004ABC`) |
+| Builder | `BuildStarterDeck` (`0x0800495C`–`0x08004ABC`) |
 
 ```c
 struct StarterPool {

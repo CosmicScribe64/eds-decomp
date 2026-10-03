@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# CB_License `sub_08004EAC`
+# CB_License `CB_License`
 
 | Function | Address | Size | Proposed name |
 |---|---|---|---|

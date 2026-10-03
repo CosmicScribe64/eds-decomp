@@ -28,7 +28,7 @@ _0804E3D8:
 	ldrh r0, [r0]
 	lsl r3, r0, #0x10
 	add r0, r5, #0
-	bl sub_08076714
+	bl AddAffineSprite
 	pop {r4, r5}
 	pop {r0}
 	bx r0
@@ -37,7 +37,7 @@ _0804E404: .4byte 0x002800A0
 _0804E408: .4byte 0x007000A0
 _0804E40C: .4byte 0x000040C0
 _0804E410: .4byte 0x0000F364
-_0804E414: .4byte gUnk_081A4424
+_0804E414: .4byte gPulseScaleCurve
 _0804E418: .4byte 0x03000040
 _0804E41C: .4byte 0x0000485E
 	thumb_func_end sub_0804E3C0

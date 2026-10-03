@@ -1,94 +1,94 @@
 #include "global.h"
 
-void sub_0801EC58(u16 cmd, u16 arg2, u16 arg4, u16 arg6);
-void sub_08018AE8(int player, int zone, int a);
+void DuelCmd_Push(u16 cmd, u16 arg2, u16 arg4, u16 arg6);
+void ReturnFieldCardToHand(int player, int zone, int a);
 struct DuelZone { u32 w0; u8 unk4; u8 unk5; u8 flags6; u8 unk7[0x94 - 7]; };
 #define ID(z) (((z)->w0 << 20) >> 20)
-extern u8 gUnk_020192E0[];
+extern u8 gDuel[];
 struct AE60 { u8 unk0[0x14]; u16 h14; };
-extern struct AE60 gUnk_0201AE60;
-extern const char gUnk_08085BD8[];
+extern struct AE60 gTextBox;
+extern const char gStrAskTransferControlFmt[];
 extern const u16 gUnk_08624244[];
-extern const char gUnk_0822C720[];
-void sub_080753F4(char *dst, const char *fmt, const char *arg);
-void sub_080602A4(int a, int b, int c, char *s);
-void sub_08060308(int a, int b, int c);
+extern const char gCardNames[];
+void FormatStr(char *dst, const char *fmt, const char *arg);
+void TextBoxOpen(int a, int b, int c, char *s);
+void TextBoxSetMenu(int a, int b, int c);
 struct DuelZoneF { u32 w0; u8 pad4[0x8C - 4]; u8 b8c; u8 pad8d[0x94 - 0x8D]; };
-void sub_08018544(int player, int zone, int a);
+void DestroyFieldCard(int player, int zone, int a);
 struct DuelZoneL { u32 w0; u8 pad4[2]; u8 flags6; u8 pad7; u8 b8; u8 pad9[0x94 - 9]; };
 extern const u16 gUnk_08624848[];
 struct SB { u8 b0 : 1; u8 who : 1; u8 rest : 6; u8 pad[7]; };
 struct PS9 { u8 pad[9]; u8 f0 : 2; u8 f2 : 1; u8 rest : 5; u8 pad2[0xD64 - 10]; };
-extern struct PS9 gUnk_020192E4[];
-void sub_08024134(int a, int b, int c);
-int sub_0804A1C8(void);
-void sub_080199E0(int player, int n);
+extern struct PS9 gDuelPlayers[];
+void DuelCursor_Select(int a, int b, int c);
+int DuelScreen_HandleInput(void);
+void DrawCards(int player, int n);
 struct BHdr { u8 b0; u8 lo : 1; u8 defSlot : 3; u8 hi : 4; u8 pad[6]; };
-extern struct BHdr gUnk_02018450;
+extern struct BHdr gBattle;
 extern const u16 gUnk_086249F8[];
-int sub_08021628(void);
-void sub_08046B54(int player, int zone);
-int sub_08008A1C(int player);
-int sub_08008A44(int player);
-int sub_08008524(int player, u16 number);
-int sub_0800A78C(int player, int zone, u16 number);
-void sub_08019078(int player, u16 a, u16 b);
-void sub_080197E0(int player, u16 id);
-extern u8 gUnk_0201CFB0[];
+int Duel_CheckWin(void);
+void ApplyKotodamaToZone(int player, int zone);
+int CountFreeMonsterZones(int player);
+int FindFreeMonsterZone(int player);
+int CountActiveCardsOnField(int player, u16 number);
+int CountZoneLinksFromCard(int player, int zone, u16 number);
+void MoveFieldCard(int player, u16 a, u16 b);
+void ShowCardEffect(int player, u16 id);
+extern u8 gDuelScreen[];
 struct MainK { u8 pad0[6]; u16 keys; u8 pad8[0x485E - 8]; u16 anim; };
-extern struct MainK gUnk_03000040;
-extern const u16 gUnk_081A4424[];
-void sub_08076714(u32 a, int b, int c, int d);
-extern int (*const volatile gUnk_0819D1D8[])(int);
+extern struct MainK gMain;
+extern const u16 gPulseScaleCurve[];
+void AddAffineSprite(u32 a, int b, int c, int d);
+extern int (*const volatile gBattleStageHandlers[])(int);
 /* Adjacent duel steps: word +0x1B14 bits 9-16, then halfword +0x1B16
  * bits 1-8. The latter is bits 17-24 relative to +0x1B14, not an alias. */
 struct StepWord { u32 lo : 9; u32 step : 8; u32 hi : 15; };
 struct StepHalf { u16 lo : 1; u16 step : 8; u16 hi : 7; u8 pad[6]; };
 
-/* Step of a battle effect for card 0x602 or the defender zone's card: if the defender zone (1-player) holds a card and the player's list count is positive and sub_0800A78C(q, def, 0x4DB) holds, send sub_08019078; if card 0x602 is present on either side announce it and finish (return 1), otherwise reset the step and return 0. */
-int sub_0804DB6C(int player)
+/* Step of a battle effect for card 0x602 or the defender zone's card: if the defender zone (1-player) holds a card and the player's list count is positive and CountZoneLinksFromCard(q, def, 0x4DB) holds, send MoveFieldCard; if card 0x602 is present on either side announce it and finish (return 1), otherwise reset the step and return 0. */
+int BattleStage_EndAttack(int player)
 {
     int found = 0;
     int q, qb;
     u8 *e;
     struct DuelZone *zn;
-    if (sub_08021628() != 0)
+    if (Duel_CheckWin() != 0)
         return 1;
     q = 1 - player;
-    sub_08046B54(q, gUnk_02018450.defSlot);
+    ApplyKotodamaToZone(q, gBattle.defSlot);
     qb = q & 1;
-    zn = (struct DuelZone *)(gUnk_02018450.defSlot * 0x94 + qb * 0xD64 + 0x0201930C);
-    if ((zn->w0 << 20) != 0 && sub_08008A1C(player) > 0 && sub_0800A78C(q, gUnk_02018450.defSlot, 0x4DB) != 0) {
+    zn = (struct DuelZone *)(gBattle.defSlot * 0x94 + qb * 0xD64 + 0x0201930C);
+    if ((zn->w0 << 20) != 0 && CountFreeMonsterZones(player) > 0 && CountZoneLinksFromCard(q, gBattle.defSlot, 0x4DB) != 0) {
         int t = q;
         u32 pos;
         /* FAKEMATCH: preserve the initialized player copy before narrowing;
          * q remains live as the first call argument. Emits no instructions. */
         __asm__("" : "+r"(t));
-        pos = (u8)t | gUnk_02018450.defSlot << 8;
-        sub_08019078(q, pos, (u8)player | (u8)sub_08008A44(player) << 8);
+        pos = (u8)t | gBattle.defSlot << 8;
+        MoveFieldCard(q, pos, (u8)player | (u8)FindFreeMonsterZone(player) << 8);
     }
-    if (sub_08008524(player, 0x602) != 0 || sub_08008524(1 - player, 0x602) != 0)
+    if (CountActiveCardsOnField(player, 0x602) != 0 || CountActiveCardsOnField(1 - player, 0x602) != 0)
         found = 1;
     if (found == 0) {
-        e = gUnk_020192E0;
+        e = gDuel;
         ((struct StepWord *)(e + 0x1B14))->step = 1;
         ((struct StepHalf *)(e + 0x1B16))->step = 0;
         return 0;
     }
-    sub_080197E0(player, gUnk_086249F8[0]);
+    ShowCardEffect(player, gUnk_086249F8[0]);
     return 1;
 }
-void sub_08007558(void *, const void *);
-int sub_08008C6C(int);
-int sub_0800A9C8(int, int, u16);
-void sub_08018ED8(int, int, int, int);
-void sub_08022678(int, int, u16, int);
-void sub_08046C6C(int, int, int);
-void sub_08056094(int, void *, int, int);
-extern u8 gUnk_02015EE8[];
+void CopyDuelCard(void *, const void *);
+int FindFreeSpellTrapZone(int);
+int HasZoneCardEffectLink(int, int, u16);
+void ChangeBattlePosition(int, int, int, int);
+void DuelPrompt_Post(int, int, u16, int);
+void ResolvePendingGraveyardEquip(int, int, int);
+void QueueSpecialSummonChoosePosition(int, void *, int, int);
+extern u8 gDuelCtrl[];
 extern const u16 gUnk_08624730[];
 extern const u16 gUnk_0862486C[];
-/* Views of the duel state at 0x020192E0 for sub_0804DC88: player records (0xD64 bytes) at +4 with the
+/* Views of the duel state at 0x020192E0 for BattleStage_EndBattlePhase: player records (0xD64 bytes) at +4 with the
  * graveyard count at +4 and the graveyard list at +0x904, zones (0x94 bytes) at +0x2C, and u16 bitfields
  * at +0x1B14 where the selected player (bits 9-16 from +0x1B16) straddles the halfword, as agbcc lays
  * out straddling bitfields (byte-split access). */
@@ -104,17 +104,17 @@ struct DCState {
     u16 h1B64;
 };
 #define DC_ID(z) (((z)->w0 << 20) >> 20)
-#define DC_PL(p) ((struct DCPlayer *)(gUnk_020192E0 + 4) + ((p) & 1))
-#define DCS ((struct DCState *)gUnk_020192E0)
-#define DC_ZONES (gUnk_020192E0 + 0x2C)
-#define DC_GRAVE (gUnk_020192E0 + 0x908)
+#define DC_PL(p) ((struct DCPlayer *)(gDuel + 4) + ((p) & 1))
+#define DCS ((struct DCState *)gDuel)
+#define DC_ZONES (gDuel + 0x2C)
+#define DC_GRAVE (gDuel + 0x908)
 /* Graveyard effect steps on the halfword step at +0x1B16: step 0 handles card 0x540 in the player's
  * zones and card 0x49E for both players, 1 resolves graveyard entries with bit 24 (linked zone, card
- * 0x52F), 2 selects an entry with bit 28 and jumps to 5-8 (messages 0xDA/0xD3, sub_08022678,
- * sub_08007558, sub_08056094); other steps message 0x47 and reset or set the player's byte-9 bit 4.
+ * 0x52F), 2 selects an entry with bit 28 and jumps to 5-8 (messages 0xDA/0xD3, DuelPrompt_Post,
+ * CopyDuelCard, QueueSpecialSummonChoosePosition); other steps message 0x47 and reset or set the player's byte-9 bit 4.
  * Matching notes: the duel state is read through the global (GCSE keeps one copy in r8); the outer
  * loops use i and the inner ones j in every case. */
-int sub_0804DC88(int player)
+int BattleStage_EndBattlePhase(int player)
 {
     int i, j;
     /* FAKEMATCH: card is first assigned in the zone check (through n, so the compare stays int-wide)
@@ -128,17 +128,17 @@ int sub_0804DC88(int player)
             struct DCZone *z = (struct DCZone *)(i * 0x94 + (player & 1) * 0xD64 + DC_ZONES);
             u16 id = DC_ID(z);
             if (id != 0 && (card = n = ((const u16 *)0x08622AB4)[(u16)id & 0x7FF], n == 0x540) && (z->h6 & 0x2003) == 2) {
-                sub_080197E0(player, id);
-                sub_08018ED8(player, i, 0, 0);
+                ShowCardEffect(player, id);
+                ChangeBattlePosition(player, i, 0, 0);
             }
             for (j = 0; j <= 1; j++) {
                 /* FAKEMATCH: the table pointer is set at the top of the body so loop.c hoists it. */
                 const u16 *t;
                 card = 0x49E;
                 t = gUnk_08624730;
-                if (sub_0800A9C8(j, i, card)) {
-                    sub_080197E0(j, t[0]);
-                    sub_08018544(j, i, 1);
+                if (HasZoneCardEffectLink(j, i, card)) {
+                    ShowCardEffect(j, t[0]);
+                    DestroyFieldCard(j, i, 1);
                 }
             }
         }
@@ -157,9 +157,9 @@ int sub_0804DC88(int player)
                     struct DCZone *z = (struct DCZone *)(((card << 4) >> 29) * 0x94 + qs * 0xD64 + DC_ZONES);
                     u32 id = DC_ID(z);
                     int special = 0;
-                    if ((((u8 *)z)[6] & 2) && id && sub_08008C6C(q) >= 0 && ((const u16 *)0x08622AB4)[(u16)id & 0x7FF] == 0x52F)
+                    if ((((u8 *)z)[6] & 2) && id && FindFreeSpellTrapZone(q) >= 0 && ((const u16 *)0x08622AB4)[(u16)id & 0x7FF] == 0x52F)
                         special = 1;
-                    sub_08046C6C(i, j, special);
+                    ResolvePendingGraveyardEquip(i, j, special);
                     return 0;
                 }
             }
@@ -171,7 +171,7 @@ int sub_0804DC88(int player)
             /* FAKEMATCH: the comma expression loads the player base first in the loop test, so loop.c
              * hoists it in pass 1 and the inner test keeps its own copy (G - 0x904). */
             u8 *y;
-            for (j = 0; j < ((struct DCPlayer *)(y = gUnk_020192E0 + 4, y + (i & 1) * 0xD64))->count; j++) {
+            for (j = 0; j < ((struct DCPlayer *)(y = gDuel + 4, y + (i & 1) * 0xD64))->count; j++) {
                 u32 *g = (u32 *)((i & 1) * 0xD64 + DC_GRAVE);
                 u32 card = g[j];
                 if ((s32)(card << 3) < 0) {
@@ -185,25 +185,25 @@ int sub_0804DC88(int player)
         DCS->step++;
         return 0;
     case 5:
-        if (sub_08008A44(1 - DCS->player) == -1) {
+        if (FindFreeMonsterZone(1 - DCS->player) == -1) {
             int pl = DCS->player;
             u16 msg = 0xDA;
             if (pl)
                 msg = 0x80DA;
-            sub_0801EC58(msg, DCS->index, 1, 0);
+            DuelCmd_Push(msg, DCS->index, 1, 0);
             DCS->step = 2;
             return 0;
         }
-        sub_080197E0(player, gUnk_0862486C[0]);
+        ShowCardEffect(player, gUnk_0862486C[0]);
         DCS->step++;
         return 0;
     case 6:
-        if (DCS->player && !(gUnk_02015EE8[1] & 1)) {
+        if (DCS->player && !(gDuelCtrl[1] & 1)) {
             DCS->h1B64 = 1;
             DCS->step = 8;
             return 0;
         }
-        sub_08022678(1 - DCS->player, 0x12, ((struct DCZone *)((DCS->player & 1) * 0xD64 + (u8 *)DCS + 0x908 + DCS->index * 4))->w0 << 20 >> 20, 0);
+        DuelPrompt_Post(1 - DCS->player, 0x12, ((struct DCZone *)((DCS->player & 1) * 0xD64 + (u8 *)DCS + 0x908 + DCS->index * 4))->w0 << 20 >> 20, 0);
         DCS->step++;
         return 0;
     case 7:
@@ -212,32 +212,32 @@ int sub_0804DC88(int player)
             int msg = 0xD3;
             if (DCS->player)
                 msg = 0x80D3;
-            sub_0801EC58(msg, card[0], card[1], 0);
-            sub_08007558(&DCS->c1B1C, card);
+            DuelCmd_Push(msg, card[0], card[1], 0);
+            CopyDuelCard(&DCS->c1B1C, card);
             DCS->step++;
         } else {
             int pl = DCS->player;
             u16 msg = 0xDA;
             if (pl)
                 msg = 0x80DA;
-            sub_0801EC58(msg, DCS->index, 1, 0);
+            DuelCmd_Push(msg, DCS->index, 1, 0);
             DCS->step = 2;
         }
         return 0;
     case 8:
         DCS->c1B1C.f28 = 0;
-        sub_08056094(1 - DCS->player, &DCS->c1B1C, 1, 0x20);
+        QueueSpecialSummonChoosePosition(1 - DCS->player, &DCS->c1B1C, 1, 0x20);
         DCS->step = 2;
         return 0;
     default:
         {
-            u8 *y = gUnk_020192E0 + 4;
+            u8 *y = gDuel + 4;
             struct DCPlayer *ps = (struct DCPlayer *)(y + (player & 1) * 0xD64);
             if (ps->f6) {
                 u16 msg = 0x47;
                 if (player)
                     msg = 0x8047;
-                sub_0801EC58(msg, 0, 0, 0);
+                DuelCmd_Push(msg, 0, 0, 0);
                 DCS->step1 = 0;
                 DCS->step = 0;
                 return 0;
@@ -249,7 +249,7 @@ int sub_0804DC88(int player)
 }
 struct E240Flags { u8 b0:1; u8 b1:1; u8 b2:1; u8 rest:5; };
 /* Find the first occupied zone with flag +0x8C bit 1 or 2. */
-int sub_0804E240(int player)
+int BattleStage_Cleanup(int player)
 {
     int i = 0, j;
     u8 *zb = (u8 *)0x0201930C;
@@ -260,23 +260,23 @@ int sub_0804E240(int player)
             u8 opp = 1 - i;
             if ((zn->w0 << 20) != 0) {
                 if (((struct E240Flags *)&zn->b8c)->b1) {
-                    sub_08018544(i, j, 1);
+                    DestroyFieldCard(i, j, 1);
                 found:
                     return 0;
                 }
                 if (((struct E240Flags *)&zn->b8c)->b2) {
-                    int r = sub_08008A44(1 - i);
+                    int r = FindFreeMonsterZone(1 - i);
                     u16 msg = 0xA2;
                     u32 pos;
                     if (player != 0)
                         msg = 0x80A2;
                     pos = (u8)i | (u8)j << 8;
-                    sub_0801EC58(msg, pos, 0, 0);
+                    DuelCmd_Push(msg, pos, 0, 0);
                     if (r >= 0) {
-                        sub_08019078(player, pos, (u8)r << 8 | opp);
+                        MoveFieldCard(player, pos, (u8)r << 8 | opp);
                         goto found;
                     }
-                    sub_08018544(i, j, 1);
+                    DestroyFieldCard(i, j, 1);
                     goto found;
                 }
             }
@@ -285,10 +285,10 @@ int sub_0804E240(int player)
     return 1;
 }
 
-int sub_0804E31C(int player)
+int BattlePhase_Run(int player)
 {
-    int (*const volatile *table)(int) = gUnk_0819D1D8;
-    u8 *e = gUnk_020192E0;
+    int (*const volatile *table)(int) = gBattleStageHandlers;
+    u8 *e = gDuel;
     struct StepWord *step = (struct StepWord *)(e + 0x1B14);
     u32 packed = *(u32 *)step << 15;
     if (table[packed >> 24] != 0) {
@@ -305,7 +305,7 @@ int sub_0804E31C(int player)
         int msg = 0x54;
         if (flag)
             msg = 0x8054;
-        sub_0801EC58(msg, 0, 0, 0);
+        DuelCmd_Push(msg, 0, 0, 0);
         return 1;
     }
 }
@@ -316,14 +316,14 @@ void sub_0804E3BC(void)
 /* Queue a sprite/effect draw whose first argument depends on how far the list at 0x0201CFB0+0x810 has advanced; the last argument comes from an animation table indexed by bits 1-4 of a gMain halfword. */
 void sub_0804E3C0(void)
 {
-    u8 *e = gUnk_0201CFB0;
+    u8 *e = gDuelScreen;
     u8 *m;
     const u16 *t;
     int d = *(int *)(e + 0x810) - e[4];
     u32 v = 0x002800A0;
     if (d <= 0x47)
         v = 0x007000A0;
-    sub_08076714(v, 0x40C0, 0xF364, (t = gUnk_081A4424, m = (u8 *)&gUnk_03000040, t[(*(u16 *)(m + 0x485E) >> 1) & 0xF] << 16));
+    AddAffineSprite(v, 0x40C0, 0xF364, (t = gPulseScaleCurve, m = (u8 *)&gMain, t[(*(u16 *)(m + 0x485E) >> 1) & 0xF] << 16));
 }
 
 /* Duel screen fields at 0x0201CFB0 (same layout as struct DuelScreen in code_08012C4C). */
@@ -339,53 +339,53 @@ struct E420Screen {
  * the active player (bit 1 of the duel flags byte at 0x020192E4+0x1B0E). If that
  * player's byte-9 bit 2 is set, it is cleared and the routine ends (returns 1).
  * Otherwise step 0 sends message 0x50 (0x8050), step 1 finishes with
- * sub_080199E0(1, 1) when bit 1 is set or runs sub_08024134(who, 0xD, 0), step 2
+ * DrawCards(1, 1) when bit 1 is set or runs DuelCursor_Select(who, 0xD, 0), step 2
  * sets the screen busy bit, step 4 clears the screen word at +0x85C and finishes
- * with sub_080199E0(0, 1). Other steps advance on key 0x100 when sub_0804A1C8()
+ * with DrawCards(0, 1). Other steps advance on key 0x100 when DuelScreen_HandleInput()
  * is 0. Both player indexes are written `who & 1`: CSE shares the constant 1, and
  * combine folds the AND only in the first block, as in the ROM. The early return
  * in the default case keeps the per-case step increments from being cross-jumped. */
-int sub_0804E420(void)
+int DuelPhase_Draw(void)
 {
-    u8 *e4 = (u8 *)gUnk_020192E4;
+    u8 *e4 = (u8 *)gDuelPlayers;
     struct SB *sb = (struct SB *)(e4 + 0x1B0E);
     u8 *st;
-    int z = gUnk_020192E4[sb->who & 1].f2;
+    int z = gDuelPlayers[sb->who & 1].f2;
     if (z != 0) {
-        gUnk_020192E4[sb->who & 1].f2 = 0;
+        gDuelPlayers[sb->who & 1].f2 = 0;
         return 1;
     }
     st = e4 + 0x1B1C;
     switch (*st) {
     case 0:
-        sub_0801EC58((*(u8 *)sb & 2) ? 0x8050 : 0x50, 0, 0, 0);
+        DuelCmd_Push((*(u8 *)sb & 2) ? 0x8050 : 0x50, 0, 0, 0);
         (*st)++;
         return 0;
     case 1:
         if ((*(u8 *)sb & 2) != 0) {
-            sub_080199E0(1, 1);
+            DrawCards(1, 1);
             return 1;
         }
-        sub_08024134(sb->who, 0xD, 0);
+        DuelCursor_Select(sb->who, 0xD, 0);
         (*st)++;
         return 0;
     case 2:
-        ((struct E420Screen *)gUnk_0201CFB0)->busy = 1;
+        ((struct E420Screen *)gDuelScreen)->busy = 1;
         (*st)++;
         return 0;
     case 4:
-        ((struct E420Screen *)gUnk_0201CFB0)->unk85C = 0;
-        sub_080199E0(0, 1);
+        ((struct E420Screen *)gDuelScreen)->unk85C = 0;
+        DrawCards(0, 1);
         return 1;
     default:
-        if (sub_0804A1C8() != 0 || (gUnk_03000040.keys & 0x100) == 0)
+        if (DuelScreen_HandleInput() != 0 || (gMain.keys & 0x100) == 0)
             return 0;
-        gUnk_020192E0[0x1B20]++;
+        gDuel[0x1B20]++;
         return 0;
     }
 }
-/* For every monster zone (0-4) of `player` holding a face-down card (flags6 bit 1) whose card key is 0x16: send message 0x73 (0x8073 for player 1) and run sub_08018AE8 on it. */
-void sub_0804E538(int player)
+/* For every monster zone (0-4) of `player` holding a face-down card (flags6 bit 1) whose card key is 0x16: send message 0x73 (0x8073 for player 1) and run ReturnFieldCardToHand on it. */
+void EndPhase_ReturnWickedWormBeast(int player)
 {
     int i;
     for (i = 0; i <= 4; i++) {
@@ -398,18 +398,18 @@ void sub_0804E538(int player)
                 u32 msg = 0x73;
                 if (player != 0)
                     msg = 0x8073;
-                sub_0801EC58(msg, n, 1, 0);
-                sub_08018AE8(player, i, 0);
+                DuelCmd_Push(msg, n, 1, 0);
+                ReturnFieldCardToHand(player, i, 0);
             }
         }
     }
 }
-/* Three-step routine on the step byte 0x020192E0+0x1B22 with a zone counter at +0x1B23. Step 0: needs the player's counter (0x020192E4 halfword) > 0x1F3 and sub_08008A1C(1-p) != 0, then scans zones counter..4 for a face-down card with key 0x228 (advancing the step, twice for player 1 which also sets 0x0201AE60+0x14); step 1 prints a card-name prompt; step 2 sends message 0x43 (0x8043) and sub_08019078 for the found zone, then advances the counter and finally the step.
+/* Three-step routine on the step byte 0x020192E0+0x1B22 with a zone counter at +0x1B23. Step 0: needs the player's counter (0x020192E4 halfword) > 0x1F3 and CountFreeMonsterZones(1-p) != 0, then scans zones counter..4 for a face-down card with key 0x228 (advancing the step, twice for player 1 which also sets 0x0201AE60+0x14); step 1 prints a card-name prompt; step 2 sends message 0x43 (0x8043) and MoveFieldCard for the found zone, then advances the counter and finally the step.
  * The loop reads the duel state through the global (not the local e) and recomputes player & 1 at the top of its body: loop.c then hoists the constant 1 first (it later serves the h14 store) and CSE keeps the step value across the h14 store. */
-int sub_0804E5B4(int player)
+int EndPhase_TransferMushroomMan2(int player)
 {
     char buf[0x80];
-    u8 *e = gUnk_020192E0;
+    u8 *e = gDuel;
     u8 *st = e + 0x1B22;
     switch (*st) {
     case 0: {
@@ -417,18 +417,18 @@ int sub_0804E5B4(int player)
         s16 base = (player & 1) * 0xD64;
         if (*(u16 *)(base + (int)pe) <= 0x1F3)
             return 1;
-        if (sub_08008A1C(1 - player) == 0)
+        if (CountFreeMonsterZones(1 - player) == 0)
             return 1;
-        for (; gUnk_020192E0[0x1B23] <= 4; gUnk_020192E0[0x1B23]++) {
+        for (; gDuel[0x1B23] <= 4; gDuel[0x1B23]++) {
             int side = player & 1;
-            int s1 = gUnk_020192E0[0x1B23] * 0x94 + side * 0xD64;
-            struct DuelZone *zn = (struct DuelZone *)(s1 + (int)(gUnk_020192E0 + 0x2C));
+            int s1 = gDuel[0x1B23] * 0x94 + side * 0xD64;
+            struct DuelZone *zn = (struct DuelZone *)(s1 + (int)(gDuel + 0x2C));
             u16 id = ID(zn);
             if (id != 0 && (zn->flags6 & 2) != 0 && ((const u16 *)0x08622AB4)[id & 0x7FF] == 0x228) {
-                gUnk_020192E0[0x1B22]++;
+                gDuel[0x1B22]++;
                 if (player != 0) {
-                    gUnk_0201AE60.h14 = 1;
-                    gUnk_020192E0[0x1B22]++;
+                    gTextBox.h14 = 1;
+                    gDuel[0x1B22]++;
                 }
                 return 0;
             }
@@ -436,21 +436,21 @@ int sub_0804E5B4(int player)
         return 1;
     }
     case 1:
-        sub_080753F4(buf, gUnk_08085BD8, gUnk_0822C720 + (gUnk_08624244[0] << 6));
-        sub_080602A4(0x206, 0x712, 0xB, buf);
-        sub_08060308(1, 0, 0);
+        FormatStr(buf, gStrAskTransferControlFmt, gCardNames + (gUnk_08624244[0] << 6));
+        TextBoxOpen(0x206, 0x712, 0xB, buf);
+        TextBoxSetMenu(1, 0, 0);
         (*st)++;
         return 0;
     case 2:
-        if (gUnk_0201AE60.h14 != 0) {
+        if (gTextBox.h14 != 0) {
             u32 msg = 0x43;
             if (player != 0)
                 msg = 0x8043;
-            sub_0801EC58(msg, 500, 1, 0);
-            sub_08019078(player, (u8)player | e[0x1B23] << 8, (u8)(1 - player) | (u8)sub_08008A44(1 - player) << 8);
+            DuelCmd_Push(msg, 500, 1, 0);
+            MoveFieldCard(player, (u8)player | e[0x1B23] << 8, (u8)(1 - player) | (u8)FindFreeMonsterZone(1 - player) << 8);
         }
         {
-            u8 *g = gUnk_020192E0;
+            u8 *g = gDuel;
             (*(g + 0x1B23))++;
             if (*(g + 0x1B23) <= 4)
                 *(g + 0x1B22) = 0;
@@ -462,8 +462,8 @@ int sub_0804E5B4(int player)
         return 1;
     }
 }
-/* Two passes over the face-down monster zones of `player`: the first sets `found` when a monster of level <= 3 with byte +8 bit 0 clear exists (cleared again unless card 0x52A is present on either side; then message 0x73 is sent), the second destroys such monsters (sub_08018544) when found, and sends message 0xA6 (0x80A6) for each other face-down zone. */
-extern u8 gUnk_0201930C[];
+/* Two passes over the face-down monster zones of `player`: the first sets `found` when a monster of level <= 3 with byte +8 bit 0 clear exists (cleared again unless card 0x52A is present on either side; then message 0x73 is sent), the second destroys such monsters (DestroyFieldCard) when found, and sends message 0xA6 (0x80A6) for each other face-down zone. */
+extern u8 gDuelZones[];
 static inline int Level_E780(u16 id)
 {
     switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
@@ -477,57 +477,57 @@ static inline int Level_E780(u16 id)
         return (((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1E000000) >> 25;
     }
 }
-/* Zone addresses go through the symbol gUnk_0201930C so GCSE keeps one copy of it in sl.
+/* Zone addresses go through the symbol gDuelZones so GCSE keeps one copy of it in sl.
  * Loop 1 computes the zone address twice, player term first: loop.c hoists the 0x94 only
  * in its second pass, so the zone pointer is strength-reduced while i still counts up
  * (a hand-stepped pointer gets a reversed counter). */
-void sub_0804E780(int player)
+void EndPhase_DestroyLowLevelMonsters(int player)
 {
     int found = 0;
     int i;
     for (i = 0; i <= 4; i++) {
-        struct DuelZoneL *zn = (struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C);
+        struct DuelZoneL *zn = (struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gDuelZones);
         u32 id = ID(zn);
         if (id != 0 && (zn->flags6 & 2) != 0) {
-            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C))->b8 & 1) == 0)
+            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gDuelZones))->b8 & 1) == 0)
                 found = 1;
         }
     }
-    if (sub_08008524(0, 0x52A) == 0 && sub_08008524(1, 0x52A) == 0)
+    if (CountActiveCardsOnField(0, 0x52A) == 0 && CountActiveCardsOnField(1, 0x52A) == 0)
         found = 0;
     if (found != 0) {
         u16 msg = 0x73;
         if (player != 0)
             msg = 0x8073;
-        sub_0801EC58(msg, gUnk_08624848[0], 1, 0);
+        DuelCmd_Push(msg, gUnk_08624848[0], 1, 0);
     }
     for (i = 0; i <= 4; i++) {
-        struct DuelZoneL *zn = (struct DuelZoneL *)(i * 0x94 + (player & 1) * 0xD64 + (int)gUnk_0201930C);
+        struct DuelZoneL *zn = (struct DuelZoneL *)(i * 0x94 + (player & 1) * 0xD64 + (int)gDuelZones);
         u16 id = ID(zn);
         if (id != 0 && (zn->flags6 & 2) != 0) {
-            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gUnk_0201930C))->b8 & 1) == 0 && found != 0) {
-                sub_08018544(player, i, 1);
+            if ((u32)Level_E780(id) <= 3 && (((struct DuelZoneL *)((player & 1) * 0xD64 + i * 0x94 + (int)gDuelZones))->b8 & 1) == 0 && found != 0) {
+                DestroyFieldCard(player, i, 1);
             } else {
                 u32 msg = 0xA6;
                 if (player != 0)
                     msg = 0x80A6;
-                sub_0801EC58(msg, i, 1, 0);
+                DuelCmd_Push(msg, i, 1, 0);
             }
         }
     }
 }
-int sub_0800842C(int, u16);
-int sub_080086CC(int, u16);
-int sub_080088A4(int, int, int);
-int sub_08008C6C(int);
-int sub_0800AA40(int, int, u16);
-void sub_0801FBCC(u32, int);
-void sub_08022678(int, int, u16, int);
-void sub_0802272C(int, int, int, int);
-void sub_08046CB0(int, int, int);
-void sub_08046D3C(int, u8);
-int sub_0804E5B4(int);
-void sub_0804E780(int);
+int FindFaceUpCardOnField2(int, u16);
+int CountFaceUpMonstersByNumber(int, u16);
+int CountMonstersFiltered(int, int, int);
+int FindFreeSpellTrapZone(int);
+int FindZoneLinkFromCard(int, int, u16);
+void Chain_AddPending(u32, int);
+void DuelPrompt_Post(int, int, u16, int);
+void DuelPrompt_PostDiscard(int, int, int, int);
+void OnCardDestroyedByEffect(int, int, int);
+void PlaceNextSpiritMessage(int, u8);
+int EndPhase_TransferMushroomMan2(int);
+void EndPhase_DestroyLowLevelMonsters(int);
 extern const u16 gUnk_086249C8[], gUnk_08624A0C[];
 struct E9Zone {
     u32 card;
@@ -545,13 +545,13 @@ struct E9Player {
     u8 c0 : 4; s8 c4 : 1; u8 c5 : 3; u8 padD[0x904 - 0xD]; u32 grave[(0xD64 - 0x904) / 4];
 };
 extern struct E9Player gE9PS_020192E4[];
-extern u32 gUnk_02019BE8[];
+extern u32 gDuelGraveyards[];
 struct E9State {
     u32 header; struct E9Player players[2]; u8 pad1ACC[0x1B12 - 0x1ACC]; u8 flags; u8 pad13[0x1B20 - 0x1B13];
     u8 step, zone, cursor, subcursor; u8 pad24[0x1B64 - 0x1B24]; u16 choice;
 };
-#define E9 ((struct E9State *)gUnk_020192E0)
-#define E9_E gUnk_020192E0
+#define E9 ((struct E9State *)gDuel)
+#define E9_E gDuel
 #define E9_STEP (E9->step)
 #define E9_ZONE (E9->zone)
 #define E9_PS gE9PS_020192E4
@@ -572,47 +572,47 @@ static inline u16 E9CardId(u16 number)
  * player & 1 in its first pass and 0x94, 0xD64 and the side product in its second, as in
  * the ROM), and the table pointer at the top of the loop body (hoisted, left without a hard
  * register and reloaded, which keeps the ROM's reload-register rotation). */
-int sub_0804E948(void)
+int DuelPhase_End(void)
 {
-    u32 player = ((u32)gUnk_020192E0[0x1B12] << 30) >> 31;
+    u32 player = ((u32)gDuel[0x1B12] << 30) >> 31;
     u32 kind;
-    switch (gUnk_020192E0[0x1B20]) {
+    switch (gDuel[0x1B20]) {
     case 0: {
-        sub_0801EC58(player ? 0x8055 : 0x55, 0, 0, 0);
+        DuelCmd_Push(player ? 0x8055 : 0x55, 0, 0, 0);
         E9_E[0x1B22] = 0;
         E9_E[0x1B23] = 0;
         E9_E[0x1B20]++;
     }
     case 1:
-        if ((u16)sub_0804E5B4(player)) {
+        if ((u16)EndPhase_TransferMushroomMan2(player)) {
             u16 msg = 0x47;
             if (player) msg = 0x8047;
-            sub_0801EC58(msg, 0, 0, 0);
-            sub_0804E538(player);
+            DuelCmd_Push(msg, 0, 0, 0);
+            EndPhase_ReturnWickedWormBeast(player);
             E9_STEP++;
         }
         return 0;
     case 2:
-        sub_0804E780(player);
+        EndPhase_DestroyLowLevelMonsters(player);
         E9_STEP++;
         return 0;
     case 3: {
         int i;
         for (i = 0; i <= 4; i++) {
             int other = 1 - player;
-            struct E9Zone *z = (struct E9Zone *)(i * 0x94 + (other & 1) * 0xD64 + (u32)gUnk_0201930C);
+            struct E9Zone *z = (struct E9Zone *)(i * 0x94 + (other & 1) * 0xD64 + (u32)gDuelZones);
             if (E9_ID(z) && (z->f6 & 2)) {
-                int idx = sub_0800AA40(player, i, 0x60C);
+                int idx = FindZoneLinkFromCard(player, i, 0x60C);
                 if (idx >= 0) {
-                    u16 link = ((struct E9Zone *)((player & 1) * 0xD64 + i * 0x94 + (u32)gUnk_0201930C))->links[idx];
+                    u16 link = ((struct E9Zone *)((player & 1) * 0xD64 + i * 0x94 + (u32)gDuelZones))->links[idx];
                     u8 who = link;
                     u32 slot = link >> 8;
-                    struct E9Zone *row = (struct E9Zone *)((who & 1) * 0xD64 + (u32)gUnk_0201930C);
+                    struct E9Zone *row = (struct E9Zone *)((who & 1) * 0xD64 + (u32)gDuelZones);
                     struct E9Zone *lz = &row[slot];
                     if ((lz->f6 & 0x3C) == 8 && !(lz->b91 & 8)) {
-                        sub_08018AE8(who, slot, 0);
-                        sub_08018544(other, i, 1);
-                        sub_08046CB0(player, other, i);
+                        ReturnFieldCardToHand(who, slot, 0);
+                        DestroyFieldCard(other, i, 1);
+                        OnCardDestroyedByEffect(player, other, i);
                     }
                 }
             }
@@ -634,9 +634,9 @@ int sub_0804E948(void)
                     if (((u32)f << 26) >> 28 <= 1) {
                         u16 msg = 0x8A;
                         if (player != 1) msg = 0x808A;
-                        sub_0801EC58(msg, E9_ZONE, 1, 0);
+                        DuelCmd_Push(msg, E9_ZONE, 1, 0);
                     } else
-                        sub_08018544(other, E9_ZONE, 1);
+                        DestroyFieldCard(other, E9_ZONE, 1);
                     E9_ZONE++;
                     return 0;
                 case 0x4CE:
@@ -646,18 +646,18 @@ int sub_0804E948(void)
                          * 0x3C register (`ands r0, r3`) instead of f's. */
                         asm("" :: "r"(f));
                         if (player != 1) msg = 0x808A;
-                        sub_0801EC58(msg, E9_ZONE, 1, 0);
+                        DuelCmd_Push(msg, E9_ZONE, 1, 0);
                     } else
-                        sub_08018544(other, E9_ZONE, 1);
+                        DestroyFieldCard(other, E9_ZONE, 1);
                     E9_ZONE++;
                     return 0;
                 case 0x5F8:
-                    if (sub_08008C6C(other) >= 0
+                    if (FindFreeSpellTrapZone(other) >= 0
                         && !(((struct E9Zone *)(side * 0xD64 + E9_ZONE * 0x94 + E9_E + 0x2C))->b91 & 8)) {
                         u16 msg = 0x8A;
                         if (player != 1) msg = 0x808A;
-                        sub_0801EC58(msg, E9_ZONE, 1, 0);
-                        sub_08046D3C(other, E9_ZONE);
+                        DuelCmd_Push(msg, E9_ZONE, 1, 0);
+                        PlaceNextSpiritMessage(other, E9_ZONE);
                         E9_ZONE++;
                         return 0;
                     }
@@ -669,8 +669,8 @@ int sub_0804E948(void)
         return 0;
     case 5: {
         int other = 1 - player;
-        if (sub_080086CC(other, 0x5EF) && sub_080088A4(player, 1, 0) > 0) {
-            sub_08022678(other, 15, 0x5EF, 0);
+        if (CountFaceUpMonstersByNumber(other, 0x5EF) && CountMonstersFiltered(player, 1, 0) > 0) {
+            DuelPrompt_Post(other, 15, 0x5EF, 0);
             E9_STEP++;
         } else
             E9_STEP = 10;
@@ -680,8 +680,8 @@ int sub_0804E948(void)
         if (E9->choice) {
             int other = 1 - player;
             u32 kind;
-            int index = sub_0800842C(other, 0x5EF);
-            sub_0801FBCC(((u32)(other & 1) << 31) | (((index & 31) << 16) | (kind = 0x6400000)) | E9CardId(0x5EF), 0);
+            int index = FindFaceUpCardOnField2(other, 0x5EF);
+            Chain_AddPending(((u32)(other & 1) << 31) | (((index & 31) << 16) | (kind = 0x6400000)) | E9CardId(0x5EF), 0);
         }
         E9_STEP = 10;
         return 0;
@@ -691,8 +691,8 @@ int sub_0804E948(void)
             /* Declared at the top of the body: loop.c hoists the table address, it gets no
              * hard register and is reloaded at the call (keeps the reload rotation). */
             const u16 *t = gUnk_08624A0C;
-            if (sub_0800A78C(player, E9_ZONE, 0x60C)) {
-                u16 idx = sub_0800AA40(player, E9_ZONE, 0x60C);
+            if (CountZoneLinksFromCard(player, E9_ZONE, 0x60C)) {
+                u16 idx = FindZoneLinkFromCard(player, E9_ZONE, 0x60C);
                 int side = player & 1;
                 u32 off = E9_ZONE * 0x94 + side * 0xD64;
                 u8 *zb = E9_E + 0x2C;
@@ -715,10 +715,10 @@ int sub_0804E948(void)
                         u16 msg = who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who*who;
                         msg = 0x8A;
                         if (who) msg = 0x808A;
-                        sub_0801EC58(msg, slot, 1, 0);
+                        DuelCmd_Push(msg, slot, 1, 0);
                     } else {
-                        sub_080197E0(player, t[0]);
-                        sub_08018AE8(who, slot, 0);
+                        ShowCardEffect(player, t[0]);
+                        ReturnFieldCardToHand(who, slot, 0);
                         ((struct E9State *)(zb - 0x2C))->step++;
                         return 0;
                     }
@@ -729,20 +729,20 @@ int sub_0804E948(void)
         E9_STEP = 20;
         return 0;
     case 11:
-        sub_08018544(player, E9_ZONE, 1);
+        DestroyFieldCard(player, E9_ZONE, 1);
         E9_ZONE++;
         E9_STEP = 10;
         return 0;
     case 20: {
         int i;
         for (i = 0; i < E9_PS[player & 1].graveCount; i++) {
-            u32 *row = (u32 *)((player & 1) * 0xD64 + (u32)gUnk_02019BE8);
+            u32 *row = (u32 *)((player & 1) * 0xD64 + (u32)gDuelGraveyards);
             u32 *p = row + i;
             u32 card = *p;
             if ((s32)(card << 8) < 0) {
                 u16 msg = 0xD2;
                 if (player) msg = 0x80D2;
-                sub_0801EC58(msg, card, card >> 16, 0);
+                DuelCmd_Push(msg, card, card >> 16, 0);
             }
         }
         E9_STEP++;
@@ -752,10 +752,10 @@ int sub_0804E948(void)
         if (E9_PS[player & 1].c4 < 0) {
             u16 msg = 0x4C;
             if (player) msg = 0x804C;
-            sub_0801EC58(msg, 0, 0, 0);
-            if (sub_080088A4(1 - player, 1, 0) > 0) {
+            DuelCmd_Push(msg, 0, 0, 0);
+            if (CountMonstersFiltered(1 - player, 1, 0) > 0) {
                 const u16 *t = gUnk_086249C8;
-                sub_0801FBCC(((player & 1) << 31) | (kind = 0x26600000 | t[0]), 0);
+                Chain_AddPending(((player & 1) << 31) | (kind = 0x26600000 | t[0]), 0);
             }
         }
         E9_STEP++;
@@ -764,18 +764,18 @@ int sub_0804E948(void)
         if (E9_PS[player ^ 1].c4 < 0) {
             u16 msg = 0x4C;
             if (player != 1) msg = 0x804C;
-            sub_0801EC58(msg, 0, 0, 0);
-            if (sub_080088A4(player, 1, 0) > 0) {
+            DuelCmd_Push(msg, 0, 0, 0);
+            if (CountMonstersFiltered(player, 1, 0) > 0) {
                 const u16 *t = gUnk_086249C8;
-                sub_0801FBCC(((player ^ 1) << 31) | (kind = 0x26600000 | t[0]), 0);
+                Chain_AddPending(((player ^ 1) << 31) | (kind = 0x26600000 | t[0]), 0);
             }
         }
         E9_STEP++;
         return 0;
     default:
-        if (sub_08008524(0, 0x593) <= 0 && sub_08008524(1, 0x593) <= 0) {
+        if (CountActiveCardsOnField(0, 0x593) <= 0 && CountActiveCardsOnField(1, 0x593) <= 0) {
             if (E9_PS[player].handCount > 6)
-                sub_0802272C(player, E9_PS[player].handCount - 6, 0, 0);
+                DuelPrompt_PostDiscard(player, E9_PS[player].handCount - 6, 0, 0);
         }
         return 1;
     }

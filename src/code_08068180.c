@@ -2,7 +2,7 @@
 #include "gba.h"
 
 /* Card-list state at 0x0201DB20 (see wiki code-08064af0, code-08065e6c). */
-extern u8 gUnk_0201DB20[];
+extern u8 gDeckEdit[];
 
 #define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define CARD_KIND(id) ((int)((CARD_STATS(id) & 0x1F00000) >> 20))
@@ -30,20 +30,20 @@ struct PageState {
     u8 f1C42[0x1C58 - 0x1C42];
     s16 f1C58;
 };
-extern struct PageState gUnk_0201DB20_p asm("gUnk_0201DB20");
+extern struct PageState gUnk_0201DB20_p asm("gDeckEdit");
 /* Complete two-row views of the overlapping card lists. */
 struct CardList0View { u8 pad[0x644]; u16 cards[2][0x394]; };
 struct CardList1View { u8 pad[0xCAE]; u16 cards[2][0x394]; };
 struct CardList2View { u8 pad[0xD4E]; u16 cards[2][0x394]; };
-extern const u8 gUnk_0822C720[];
+extern const u8 gCardNames[];
 extern u16 gUnk_0201F775_h asm("gUnk_0201F775");
-extern void sub_080791F4(void *src, void *dst, u32 a, u32 b, u32 c);
-extern u16 *sub_08077EF4(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
-extern const u8 gUnk_081A70F4[];
-extern const u8 gUnk_080874A0[];
+extern void RenderStringToTiles(void *src, void *dst, u32 a, u32 b, u32 c);
+extern u16 *OamListAddSpriteGroup(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
+extern const u8 gNameIndexTabSprite[];
+extern const u8 gNameIndexLettersSprite[];
 struct Cnt { u8 pad8[8]; u16 n : 10; };
 struct Cnt9 { u8 pad9[9]; u8 b9; };
-extern u32 gTrunk32[] asm("gUnk_02011C20");
+extern u32 gTrunk32[] asm("gSaveData");
 #define TN(id) (((struct Cnt *)(gTrunk32 + (id)))->n)
 #define T9(id) (((struct Cnt9 *)(gTrunk32 + (id)))->b9)
 #define TRUNK ((u8 *)0x02011C20)
@@ -55,22 +55,22 @@ struct SaveM {
     u16 f20C8;
     u16 f20CA;
 };
-extern struct SaveM gUnk_02011C20_s asm("gUnk_02011C20");
+extern struct SaveM gUnk_02011C20_s asm("gSaveData");
 extern u8 gUnk_0201EFC0[];
 extern u16 gUnk_02013CE8[];
 extern u16 gUnk_02013CEC[];
-extern const u8 gUnk_081A6EB4[];
-extern void sub_0807B864(int a, int b, int c, int d, int e, const void *f, int g, int h, int i, int j, int k, int l);
-extern u16 sub_08068D1C(u8 list, u8 row, u16 col);
-extern u16 sub_080668DC(u16 id);
-extern void sub_08064E28(u8 col, u8 row, u8 set, u8 wrap, u32 base);
+extern const u8 gDeckEditDigitSprites[];
+extern void DrawNumberSprites(int a, int b, int c, int d, int e, const void *f, int g, int h, int i, int j, int k, int l);
+extern u16 DeckEdit_GetListCard(u8 list, u8 row, u16 col);
+extern u16 DeckEdit_IsFusionMonster(u16 id);
+extern void DeckEdit_DrawPortraitTilemap(u8 col, u8 row, u8 set, u8 wrap, u32 base);
 
-#define NUMCALL(a, b, c, d, e) sub_0807B864(a, b, c, d, e, gUnk_081A6EB4, 1, 8, 0, 0, 0, (int)st)
-#define CUR() sub_08068D1C(list, gUnk_0201EFC0[list], st->arr620[list])
+#define NUMCALL(a, b, c, d, e) DrawNumberSprites(a, b, c, d, e, gDeckEditDigitSprites, 1, 8, 0, 0, 0, (int)st)
+#define CUR() DeckEdit_GetListCard(list, gUnk_0201EFC0[list], st->arr620[list])
 /* u16 at byte offset `off` of the trunk block; the same symbol as TN/T9, so CSE shares its base. */
 #define T16(off) (*(u16 *)((u8 *)gTrunk32 + (off)))
 /* Draw the card-count numbers of the deck-edit side panel for list `list` (hypothesis). */
-void sub_08068180(u8 list)
+void DeckEdit_DrawCardCounts(u8 list)
 {
     struct PageState *st = &gUnk_0201DB20_p;
     NUMCALL(TN(CUR()), 2, 1, 0x30, 0x88);
@@ -99,8 +99,8 @@ void sub_08068180(u8 list)
 #define ST gUnk_0201DB20_p
 /* Copies of the current card (by cursor) the deck still holds / may add, from the trunk entry's 2-bit fields (hypothesis). */
 /* Editor rows are 0..1 and each selected column belongs to its list.
- * sub_080668DC is pure, so the nested selectors remain in 0..2. */
-u32 sub_08068434(void)
+ * DeckEdit_IsFusionMonster is pure, so the nested selectors remain in 0..2. */
+u32 DeckEdit_GetSelectedCardCopies(void)
 {
     struct PageState *st = &ST;
     u8 *cursor = &st->cursor;
@@ -117,7 +117,7 @@ u32 sub_08068434(void)
         u32 rowOffset = 0x14A1;
         u8 *rows = (u8 *)((u32)&ST + rowOffset);
         u16 col = ST.arr620[1];
-        if (sub_080668DC(((struct CardList1View *)&ST)->cards[*rows][col])) {
+        if (DeckEdit_IsFusionMonster(((struct CardList1View *)&ST)->cards[*rows][col])) {
             u32 *t;
             u32 id;
             u8 cur = *cursor;
@@ -206,7 +206,7 @@ u32 sub_08068434(void)
 
 #undef ST
 /* Pointer to the row (0x728 bytes) of card list `list` selected by the per-list row index arr14A0[list]. */
-u16 *sub_08068668(int list)
+u16 *DeckEdit_GetActiveListRow(int list)
 {
     switch ((u8)list) {
     case 0:
@@ -217,9 +217,9 @@ u16 *sub_08068668(int list)
         return gUnk_0201DB20_p.lists.l2.a[gUnk_0201DB20_p.arr14A0[2]];
     }
 }
-#define L0_86E8 (((struct CardList0View *)gUnk_0201DB20)->cards)
-#define L1_86E8 (((struct CardList1View *)gUnk_0201DB20)->cards)
-#define L2_86E8 (((struct CardList2View *)gUnk_0201DB20)->cards)
+#define L0_86E8 (((struct CardList0View *)gDeckEdit)->cards)
+#define L1_86E8 (((struct CardList1View *)gDeckEdit)->cards)
+#define L2_86E8 (((struct CardList2View *)gDeckEdit)->cards)
 #define CNT_86E8 (gUnk_0201DB20_p.cnt1494)
 /* Second row of card list `list`. */
 static inline u16 *Row1_86E8(u8 list)
@@ -235,20 +235,20 @@ static inline u16 *Row1_86E8(u8 list)
 }
 static inline int Has2_86E8(u16 id)
 {
-    if (gUnk_0201DB20[0x1C5A] & 0x20)
+    if (gDeckEdit[0x1C5A] & 0x20)
         return (T9(id) << 28) >> 30;
     return ((T9(id) << 28) >> 30) || (T9(id) >> 6);
 }
 struct Mode86E8 { u8 pad[0x4874]; u8 mode : 2; };
-extern struct Mode86E8 gMain_86E8 asm("gUnk_03000040");
+extern struct Mode86E8 gMain_86E8 asm("gMain");
 /* Deck-edit list builder (hypothesis): rebuild row 0 of the three card lists (trunk / deck / side)
  * from the trunk counts, filtered by the list mode, then compact row 1 of every list whose row
  * selector is 1. Views local to this function: the trunk entries at 0x02011C28 (4 bytes per card
  * id) and the list state at 0x0201DB20 (rows of 821 + 80 + 15 ids, 0x728 bytes each). */
 struct Ent86E8 { u16 n : 10; u16 deck : 2; u16 side : 2; u16 extra : 2; u16 pad; };
 struct Save86E8 { u8 pad[8]; struct Ent86E8 e[0x335]; };
-extern u8 gUnk_02011C20[];
-#define gSave86E8 (*(struct Save86E8 *)gUnk_02011C20)
+extern u8 gSaveData[];
+#define gSave86E8 (*(struct Save86E8 *)gSaveData)
 struct Row86E8 { u16 l0[821]; u16 l1[80]; u16 l2[15]; };
 struct Work86E8 {
     u8 pad[0x644];
@@ -258,10 +258,10 @@ struct Work86E8 {
     u8 pad2[0x1C5A - 0x14A3];
     u8 flags;                 /* +0x1C5A */
 };
-#define gWork86E8 (*(struct Work86E8 *)gUnk_0201DB20)
+#define gWork86E8 (*(struct Work86E8 *)gDeckEdit)
 struct Mode86E8b { u8 pad[0x4874]; u8 mode : 2; u8 rest : 6; };
-extern u8 gUnk_03000040[];
-#define gMode86E8 (*(struct Mode86E8b *)gUnk_03000040)
+extern u8 gMain[];
+#define gMode86E8 (*(struct Mode86E8b *)gMain)
 #define W gWork86E8
 #define NUM(i) (((const u16 *)0x08622AB4)[(i) & 0x7FF])
 #define OWN(i) (gSave86E8.e[i].n)
@@ -284,7 +284,7 @@ static inline void Write86E8(u16 val, u8 list, u8 row, u16 col)
     case 2: W.rows[row].l2[col] = val; break;
     }
 }
-void sub_080686E8(void)
+void DeckEdit_BuildCardLists(void)
 {
     u16 i;
     for (i = 0; i <= 2; i++)
@@ -365,7 +365,7 @@ void sub_080686E8(void)
 #undef gMode86E8
 /* Load the graphic of the currently selected card into VRAM 0x06012FE0 if it changed. */
 /* The selected list is 0, 1 or 2, as in the adjacent list accessors. */
-void sub_08068B90(void)
+void DeckEdit_UpdateNameIndexLetters(void)
 {
     u32 id;
     u16 *pp;
@@ -394,11 +394,11 @@ void sub_08068B90(void)
         *pp = v;
         buf[0] = v;
         buf[1] = 0;
-        sub_080791F4(buf, (void *)0x06012FE0, 1, 0, 0);
+        RenderStringToTiles(buf, (void *)0x06012FE0, 1, 0, 0);
     }
 }
 
-void sub_08068C48(void)
+void DeckEdit_DrawNameIndexTab(void)
 {
     int r7;
     if (gUnk_0201DB20_p.f1C42[gUnk_0201DB20_p.cursor] == 0) {
@@ -409,13 +409,13 @@ void sub_08068C48(void)
             r7 = (u32)(gUnk_0201DB20_p.f1BB2 + (gUnk_0201DB20_p.f1BB0 >> 1)) >> 8;
         if (gUnk_0201DB20_p.f1C58 != 0) {
             gUnk_0201DB20_p.f1C58--;
-            sub_08077EF4(gUnk_081A70F4, 0, 1, 0xD8, r7 + 0x1FD, 4, 0, 0, 0, 0, 0, (int)&gUnk_0201DB20_p);
-            sub_08077EF4(gUnk_080874A0, 0, 1, 0xDB, r7 + 1, 4, 0, 0, 0, 0, 0, (int)&gUnk_0201DB20_p);
+            OamListAddSpriteGroup(gNameIndexTabSprite, 0, 1, 0xD8, r7 + 0x1FD, 4, 0, 0, 0, 0, 0, (int)&gUnk_0201DB20_p);
+            OamListAddSpriteGroup(gNameIndexLettersSprite, 0, 1, 0xDB, r7 + 1, 4, 0, 0, 0, 0, 0, (int)&gUnk_0201DB20_p);
         }
     }
 }
 /* Read entry `col` of row `row` of card list `list` (0..2) of the list state: 0x728 bytes per row. */
-u16 sub_08068D1C(u8 list, u8 row, u16 col)
+u16 DeckEdit_GetListCard(u8 list, u8 row, u16 col)
 {
     switch (list) {
     case 0:
@@ -426,8 +426,8 @@ u16 sub_08068D1C(u8 list, u8 row, u16 col)
         return ((struct CardList2View *)&gUnk_0201DB20_p)->cards[row][col];
     }
 }
-/* Write `val` into the same cell sub_08068D1C reads. */
-void sub_08068DA4(u16 val, u8 list, u8 row, u16 col)
+/* Write `val` into the same cell DeckEdit_GetListCard reads. */
+void DeckEdit_SetListCard(u16 val, u8 list, u8 row, u16 col)
 {
     switch (list) {
     case 0:
@@ -441,12 +441,12 @@ void sub_08068DA4(u16 val, u8 list, u8 row, u16 col)
         break;
     }
 }
-void sub_08068E20(u8 a, u8 b, u8 c, u8 d)
+void DeckEdit_PlaceCardArt(u8 a, u8 b, u8 c, u8 d)
 {
-    sub_08064E28(a, b, c, d, 0);
+    DeckEdit_DrawPortraitTilemap(a, b, c, d, 0);
 }
 /* 1 if card a is "worth" more than card b (monster ATK * 10 in stats bits 9..17; 0 for kinds 0x15-0x17, 4000 for 0x18). */
-int sub_08068E44(int a0, int b0)
+int CompareCardsByAtk(int a0, int b0)
 {
     u16 b = b0;
     u16 a = a0;
@@ -480,8 +480,8 @@ int sub_08068E44(int a0, int b0)
     }
     return va - vb > 0;
 }
-/* 1 if card a is "worth" more than card b by the low 9 stat bits * 10 (same kind rules as sub_08068E44). */
-int sub_08068EFC(int a0, int b0)
+/* 1 if card a is "worth" more than card b by the low 9 stat bits * 10 (same kind rules as CompareCardsByAtk). */
+int CompareCardsByDef(int a0, int b0)
 {
     u16 b = b0;
     u16 a = a0;
@@ -516,7 +516,7 @@ int sub_08068EFC(int a0, int b0)
     return va - vb > 0;
 }
 /* 1 if card a has a lower "kind" than card b. */
-u32 sub_08068FBC(int a, int b)
+u32 CompareCardsByType(int a, int b)
 {
     unsigned long long base = 0x08621DE0; /* FAKEMATCH (decomp-permuter): a 64-bit temp stops agbcc from CSEing the table address */
     int ka = (int)((((const u32 *)(u32)base)[a & 0x7FF] & 0x1F00000) >> 20);
@@ -524,14 +524,14 @@ u32 sub_08068FBC(int a, int b)
 }
 
 /* 1 if card a has a lower attribute (stats >> 29) than card b. */
-u32 sub_08068FEC(int a, int b)
+u32 CompareCardsByAttribute(int a, int b)
 {
-    unsigned long long base = 0x08621DE0; /* FAKEMATCH (decomp-permuter): see sub_08068FBC */
+    unsigned long long base = 0x08621DE0; /* FAKEMATCH (decomp-permuter): see CompareCardsByType */
     return (u32)((((const u32 *)(u32)base)[a & 0x7FF] >> 29) - (CARD_STATS(b) >> 29)) >> 31;
 }
 
 /* 1 if card a has a higher level (stats >> 25 & 0xF; 10 for kind 0x18, 0 for kinds 0x15-0x17) than card b. */
-int sub_08069014(int a0, int b0)
+int CompareCardsByLevel(int a0, int b0)
 {
     u16 b = b0;
     u16 a = a0;
@@ -566,15 +566,15 @@ int sub_08069014(int a0, int b0)
     return va - vb > 0;
 }
 struct Range { s16 lo; s16 hi; };
-extern struct Range gUnk_02030000[];
+extern struct Range gScratchBuffer[];
 /* The original swap macro has no braces, so under an unbraced `if` only `t = a` is conditional.
    The median-of-three below relies on that (the pivot is not a true median). */
 #define SORT_SWAP(a, b) t = a; a = b; b = t
 /* Quicksort of n s16 values in arr (insertion sort for ranges of <= 20); cmp(a, b) != 0 means a orders before b.
    The pending (lo, hi) ranges live in an explicit stack at 0x02030000. */
-void sub_080690C4(int n, s16 *arr, u16 (*cmp)(s16, s16))
+void QuickSortS16(int n, s16 *arr, u16 (*cmp)(s16, s16))
 {
-    struct Range *stack = gUnk_02030000;
+    struct Range *stack = gScratchBuffer;
     s16 lo, hi, i, j, x;
     s16 top;
     u16 t;

@@ -4,55 +4,55 @@
 	.section .rodata
 
 @ sound/se_table.json (sound_seq_se_table)
-	.global gUnk_08087FD0
-gUnk_08087FD0: @ 0x08087FD0
+	.global gSeTable
+gSeTable: @ 0x08087FD0
 	.incbin "build/assets/sound__se_table.json.bin", 0x0, 0x540
 @ sound/se_tracks (sound_seq_se_tracks)
 	.incbin "build/assets/sound__se_tracks.bin", 0x0, 0x510
 @ sound/pcm_bank1_table.json (sound_samples_table)
-	.global gUnk_08088A20
-gUnk_08088A20: @ 0x08088A20
+	.global gPcmSampleTable2
+gPcmSampleTable2: @ 0x08088A20
 	.incbin "build/assets/sound__pcm_bank1_table.json.bin", 0x0, 0x70
 @ sound/pcm_bank1_samples (sound_samples_pcm)
 	.incbin "build/assets/sound__pcm_bank1_samples.bin", 0x0, 0x57F40
 @ sound/song_table.json (sound_seq_song_table)
-	.global gUnk_080E09D0
-gUnk_080E09D0: @ 0x080E09D0
+	.global gSongTable
+gSongTable: @ 0x080E09D0
 	.incbin "build/assets/sound__song_table.json.bin", 0x0, 0x570
 @ sound/song_tracks (sound_seq_song_tracks)
 	.incbin "build/assets/sound__song_tracks.bin", 0x0, 0x3A4E0
 @ sound/pcm_bank0_table.json (sound_samples_table)
-	.global gUnk_0811B420
-gUnk_0811B420: @ 0x0811B420
+	.global gPcmSampleTable
+gPcmSampleTable: @ 0x0811B420
 	.incbin "build/assets/sound__pcm_bank0_table.json.bin", 0x0, 0x90
 @ sound/pcm_bank0_samples (sound_samples_pcm)
 	.incbin "build/assets/sound__pcm_bank0_samples.bin", 0x0, 0x1E0A0
 @ sound/wave_ram_patterns.json (sound_samples_waveram)
-	.global gUnk_08139550
-gUnk_08139550: @ 0x08139550
+	.global gWaveRamPatterns
+gWaveRamPatterns: @ 0x08139550
 	.incbin "build/assets/sound__wave_ram_patterns.json.bin", 0x0, 0xA00
 @ sound/noise_table.json (sound_samples_noise)
-	.global gUnk_08139F50
-gUnk_08139F50: @ 0x08139F50
+	.global gNoiseTable
+gNoiseTable: @ 0x08139F50
 	.incbin "build/assets/sound__noise_table.json.bin", 0x0, 0xC
 @ tables/dialogue_box_pointers.json (gfx_scenes_ptrs)
-	.global gUnk_08139F5C
-gUnk_08139F5C: @ 0x08139F5C
+	.global gDialogueBoxGfx
+gDialogueBoxGfx: @ 0x08139F5C
 	.incbin "build/assets/tables__dialogue_box_pointers.json.bin", 0x0, 0x8
 @ text/duelists.json (duelists)
-	.global gUnk_08139F64
-gUnk_08139F64: @ 0x08139F64
+	.global gDuelists
+gDuelists: @ 0x08139F64
 	.incbin "build/assets/text__duelists.json.bin", 0x0, 0x4
 	.global gUnk_08139F68
 gUnk_08139F68: @ 0x08139F68
 	.incbin "build/assets/text__duelists.json.bin", 0x4, 0xE6C
 @ tables/dialogue_box_steps.json (gfx_scenes_ptrs)
-	.global gUnk_0813ADD4
-gUnk_0813ADD4: @ 0x0813ADD4
+	.global gBustupSteps
+gBustupSteps: @ 0x0813ADD4
 	.incbin "build/assets/tables__dialogue_box_steps.json.bin", 0x0, 0x20
 @ text/dialogue.json (dialogue)
-	.global gUnk_0813ADF4
-gUnk_0813ADF4: @ 0x0813ADF4
+	.global gDialogueTable
+gDialogueTable: @ 0x0813ADF4
 	.incbin "build/assets/text__dialogue.json.bin", 0x0, 0x4
 	.global gUnk_0813ADF8
 gUnk_0813ADF8: @ 0x0813ADF8
@@ -60,8 +60,8 @@ gUnk_0813ADF8: @ 0x0813ADF8
 @ text/dialogue_end.json (tables_game_dialogue_end)
 	.incbin "build/assets/text__dialogue_end.json.bin", 0x0, 0x304
 @ gfx/scene_sets.json (gfx_scenes_table)
-	.global gUnk_081976A0
-gUnk_081976A0: @ 0x081976A0
+	.global gSceneSets
+gSceneSets: @ 0x081976A0
 	.incbin "build/assets/gfx__scene_sets.json.bin", 0x0, 0x14
 	.global gUnk_081976B4
 gUnk_081976B4: @ 0x081976B4
@@ -155,340 +155,340 @@ gUnk_081978F8: @ 0x081978F8
 	.incbin "build/assets/gfx__scene_sets.json.bin", 0x258, 0x14
 @ tables/scene_scripts_and_lists (tables_code_layout)
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x0, 0x7C8
-	.global gUnk_081980D4
-gUnk_081980D4: @ 0x081980D4
+	.global gCalendarEvents
+gCalendarEvents: @ 0x081980D4
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x7C8, 0x264
-	.global gUnk_08198338
-gUnk_08198338: @ 0x08198338
+	.global gCalendarSteps
+gCalendarSteps: @ 0x08198338
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xA2C, 0x14
-	.global gUnk_0819834C
-gUnk_0819834C: @ 0x0819834C
+	.global gOpponentSelectDuelists
+gOpponentSelectDuelists: @ 0x0819834C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xA40, 0x34
-	.global gUnk_08198380
-gUnk_08198380: @ 0x08198380
+	.global gOpponentSelectSteps
+gOpponentSelectSteps: @ 0x08198380
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xA74, 0x2C
-	.global gUnk_081983AC
-gUnk_081983AC: @ 0x081983AC
+	.global gOpponentSelectSlotPos
+gOpponentSelectSlotPos: @ 0x081983AC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xAA0, 0x14
-	.global gUnk_081983C0
-gUnk_081983C0: @ 0x081983C0
+	.global gOpponentCursorWobble
+gOpponentCursorWobble: @ 0x081983C0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xAB4, 0x80
-	.global gUnk_08198440
-gUnk_08198440: @ 0x08198440
+	.global gOpponentSelectPageBgs
+gOpponentSelectPageBgs: @ 0x08198440
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xB34, 0x28
-	.global gUnk_08198468
-gUnk_08198468: @ 0x08198468
+	.global gOpponentSelectNames
+gOpponentSelectNames: @ 0x08198468
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xB5C, 0x64
-	.global gUnk_081984CC
-gUnk_081984CC: @ 0x081984CC
+	.global gWinLoseDrawLabels
+gWinLoseDrawLabels: @ 0x081984CC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xBC0, 0xC
-	.global gUnk_081984D8
-gUnk_081984D8: @ 0x081984D8
+	.global gMainMenuTable
+gMainMenuTable: @ 0x081984D8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xBCC, 0x1C
-	.global gUnk_081984F4
-gUnk_081984F4: @ 0x081984F4
+	.global gMainMenuSteps
+gMainMenuSteps: @ 0x081984F4
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xBE8, 0x14
-	.global gUnk_08198508
-gUnk_08198508: @ 0x08198508
+	.global gRecordScrollHofs
+gRecordScrollHofs: @ 0x08198508
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xBFC, 0x80
-	.global gUnk_08198588
-gUnk_08198588: @ 0x08198588
+	.global gRecordSteps
+gRecordSteps: @ 0x08198588
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xC7C, 0x18
-	.global gUnk_081985A0
-gUnk_081985A0: @ 0x081985A0
+	.global gRecordPortraitImages
+gRecordPortraitImages: @ 0x081985A0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xC94, 0x64
-	.global gUnk_08198604
-gUnk_08198604: @ 0x08198604
+	.global gRecordPageNameImages
+gRecordPageNameImages: @ 0x08198604
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xCF8, 0x14
-	.global gUnk_08198618
-gUnk_08198618: @ 0x08198618
+	.global gRecordMarkerAnimTiles
+gRecordMarkerAnimTiles: @ 0x08198618
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xD0C, 0x10
-	.global gUnk_08198628
-gUnk_08198628: @ 0x08198628
+	.global gDaysPerMonth
+gDaysPerMonth: @ 0x08198628
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xD1C, 0x11C
-	.global gUnk_08198744
-gUnk_08198744: @ 0x08198744
+	.global gStarterDeckPools
+gStarterDeckPools: @ 0x08198744
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xE38, 0x58
-	.global gUnk_0819879C
-gUnk_0819879C: @ 0x0819879C
+	.global gLicenseSteps
+gLicenseSteps: @ 0x0819879C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xE90, 0x94
-	.global gUnk_08198830
-gUnk_08198830: @ 0x08198830
+	.global gTitleLogoWave
+gTitleLogoWave: @ 0x08198830
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xF24, 0x80
-	.global gUnk_081988B0
-gUnk_081988B0: @ 0x081988B0
+	.global gTitleSteps
+gTitleSteps: @ 0x081988B0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xFA4, 0x20
-	.global gUnk_081988D0
-gUnk_081988D0: @ 0x081988D0
+	.global gCardTypeNames
+gCardTypeNames: @ 0x081988D0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0xFC4, 0x64
-	.global gUnk_08198934
-gUnk_08198934: @ 0x08198934
+	.global gSpellTrapSubtypeSuffixes
+gSpellTrapSubtypeSuffixes: @ 0x08198934
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1028, 0x1C
-	.global gUnk_08198950
-gUnk_08198950: @ 0x08198950
+	.global gCardIconPals
+gCardIconPals: @ 0x08198950
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1044, 0x2C
-	.global gUnk_0819897C
-gUnk_0819897C: @ 0x0819897C
+	.global gCardIconGfx
+gCardIconGfx: @ 0x0819897C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1070, 0x2C
-	.global gUnk_081989A8
-gUnk_081989A8: @ 0x081989A8
+	.global gAttributeIconImages
+gAttributeIconImages: @ 0x081989A8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x109C, 0x28
-	.global gUnk_081989D0
-gUnk_081989D0: @ 0x081989D0
+	.global gSpellSubtypeIconImages
+gSpellSubtypeIconImages: @ 0x081989D0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x10C4, 0x1C
-	.global gUnk_081989EC
-gUnk_081989EC: @ 0x081989EC
+	.global gMonsterTypeIconImages
+gMonsterTypeIconImages: @ 0x081989EC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x10E0, 0x64
-	.global gUnk_08198A50
-gUnk_08198A50: @ 0x08198A50
+	.global gCardDetailWaveTable
+gCardDetailWaveTable: @ 0x08198A50
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1144, 0x300
-	.global gUnk_08198D50
-gUnk_08198D50: @ 0x08198D50
+	.global gDebugCardDetailSteps
+gDebugCardDetailSteps: @ 0x08198D50
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1444, 0xC
-	.global gUnk_08198D5C
-gUnk_08198D5C: @ 0x08198D5C
+	.global gDebugAutoDetailSteps
+gDebugAutoDetailSteps: @ 0x08198D5C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1450, 0xC
-	.global gUnk_08198D68
-gUnk_08198D68: @ 0x08198D68
+	.global gDuelResultBanners
+gDuelResultBanners: @ 0x08198D68
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x145C, 0x24
-	.global gUnk_08198D8C
-gUnk_08198D8C: @ 0x08198D8C
+	.global gTurnEndHandFrames
+gTurnEndHandFrames: @ 0x08198D8C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1480, 0x40
-	.global gUnk_08198DCC
-gUnk_08198DCC: @ 0x08198DCC
+	.global gEndOfTurnEffectCards
+gEndOfTurnEffectCards: @ 0x08198DCC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x14C0, 0x18
-	.global gUnk_08198DE4
-gUnk_08198DE4: @ 0x08198DE4
+	.global gChainListHeaders
+gChainListHeaders: @ 0x08198DE4
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x14D8, 0x98
-	.global gUnk_08198E7C
-gUnk_08198E7C: @ 0x08198E7C
+	.global gLinkBattleSteps
+gLinkBattleSteps: @ 0x08198E7C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1570, 0x30
-	.global gUnk_08198EAC
-gUnk_08198EAC: @ 0x08198EAC
+	.global gCampaignSteps
+gCampaignSteps: @ 0x08198EAC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x15A0, 0x30
-	.global gUnk_08198EDC
-gUnk_08198EDC: @ 0x08198EDC
+	.global gAiTurnPhases
+gAiTurnPhases: @ 0x08198EDC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x15D0, 0x1C
-	.global gUnk_08198EF8
-gUnk_08198EF8: @ 0x08198EF8
+	.global gDuelSceneHandlers
+gDuelSceneHandlers: @ 0x08198EF8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x15EC, 0x1C
-	.global gUnk_08198F14
-gUnk_08198F14: @ 0x08198F14
+	.global gDuelSceneRunnerSteps
+gDuelSceneRunnerSteps: @ 0x08198F14
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1608, 0xC
-	.global gUnk_08198F20
-gUnk_08198F20: @ 0x08198F20
+	.global gOpponentDuelBGM
+gOpponentDuelBGM: @ 0x08198F20
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1614, 0x60
-	.global gUnk_08198F80
-gUnk_08198F80: @ 0x08198F80
+	.global gDuelPhaseTable
+gDuelPhaseTable: @ 0x08198F80
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x1674, 0x2C
-	.global gUnk_08198FAC
-gUnk_08198FAC: @ 0x08198FAC
+	.global gCoinTossSteps
+gCoinTossSteps: @ 0x08198FAC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x16A0, 0xA40
-	.global gUnk_081999EC
-gUnk_081999EC: @ 0x081999EC
+	.global gDieRollFrames
+gDieRollFrames: @ 0x081999EC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x20E0, 0xC
-	.global gUnk_081999F8
-gUnk_081999F8: @ 0x081999F8
+	.global gSkullDiceCharAnims
+gSkullDiceCharAnims: @ 0x081999F8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x20EC, 0xC
-	.global gUnk_08199A04
-gUnk_08199A04: @ 0x08199A04
+	.global gGracefulDiceCharAnims
+gGracefulDiceCharAnims: @ 0x08199A04
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x20F8, 0xC
-	.global gUnk_08199A10
-gUnk_08199A10: @ 0x08199A10
+	.global gDiceScreenSteps
+gDiceScreenSteps: @ 0x08199A10
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2104, 0x18
-	.global gUnk_08199A28
-gUnk_08199A28: @ 0x08199A28
+	.global gPlainDieScreenSteps
+gPlainDieScreenSteps: @ 0x08199A28
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x211C, 0x18
-	.global gUnk_08199A40
-gUnk_08199A40: @ 0x08199A40
+	.global gSkullDiceSceneSteps
+gSkullDiceSceneSteps: @ 0x08199A40
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2134, 0x18
-	.global gUnk_08199A58
-gUnk_08199A58: @ 0x08199A58
+	.global gDiceScreenGracefulSteps
+gDiceScreenGracefulSteps: @ 0x08199A58
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x214C, 0x18
-	.global gUnk_08199A70
-gUnk_08199A70: @ 0x08199A70
+	.global gDiceScreenPlainSteps
+gDiceScreenPlainSteps: @ 0x08199A70
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2164, 0x258
-	.global gUnk_08199CC8
-gUnk_08199CC8: @ 0x08199CC8
+	.global gExodiaFlameAnimList
+gExodiaFlameAnimList: @ 0x08199CC8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x23BC, 0xAC
-	.global gUnk_08199D74
-gUnk_08199D74: @ 0x08199D74
+	.global gExodiaPieceOamTemplates
+gExodiaPieceOamTemplates: @ 0x08199D74
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2468, 0x28
-	.global gUnk_08199D9C
-gUnk_08199D9C: @ 0x08199D9C
+	.global gExodiaPiecesAnimList
+gExodiaPiecesAnimList: @ 0x08199D9C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2490, 0x8
-	.global gUnk_08199DA4
-gUnk_08199DA4: @ 0x08199DA4
+	.global gExodiaSceneSteps
+gExodiaSceneSteps: @ 0x08199DA4
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2498, 0x28
-	.global gUnk_08199DCC
-gUnk_08199DCC: @ 0x08199DCC
+	.global gDestinyBoardLayerInit
+gDestinyBoardLayerInit: @ 0x08199DCC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x24C0, 0x30
-	.global gUnk_08199DFC
-gUnk_08199DFC: @ 0x08199DFC
+	.global gDestinyBoardSceneSteps
+gDestinyBoardSceneSteps: @ 0x08199DFC
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x24F0, 0x89C
-	.global gUnk_0819A698
-gUnk_0819A698: @ 0x0819A698
+	.global gDestinyBoardAnimList
+gDestinyBoardAnimList: @ 0x0819A698
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2D8C, 0x18
-	.global gUnk_0819A6B0
-gUnk_0819A6B0: @ 0x0819A6B0
+	.global gTurnOrderRpsSubsteps
+gTurnOrderRpsSubsteps: @ 0x0819A6B0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2DA4, 0x20
-	.global gUnk_0819A6D0
-gUnk_0819A6D0: @ 0x0819A6D0
+	.global gTurnOrderChoiceSubsteps
+gTurnOrderChoiceSubsteps: @ 0x0819A6D0
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2DC4, 0x48
-	.global gUnk_0819A718
-gUnk_0819A718: @ 0x0819A718
+	.global gTurnOrderRpsSteps
+gTurnOrderRpsSteps: @ 0x0819A718
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2E0C, 0x14
-	.global gUnk_0819A72C
-gUnk_0819A72C: @ 0x0819A72C
+	.global gTurnOrderPlayerChoiceSteps
+gTurnOrderPlayerChoiceSteps: @ 0x0819A72C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2E20, 0x10
-	.global gUnk_0819A73C
-gUnk_0819A73C: @ 0x0819A73C
+	.global gTurnOrderCpuChoiceSteps
+gTurnOrderCpuChoiceSteps: @ 0x0819A73C
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2E30, 0x44
-	.global gUnk_0819A780
-gUnk_0819A780: @ 0x0819A780
+	.global gTurnOrderWaitAnimList
+gTurnOrderWaitAnimList: @ 0x0819A780
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2E74, 0x8
-	.global gUnk_0819A788
-gUnk_0819A788: @ 0x0819A788
+	.global gCardListViewCursorSlide
+gCardListViewCursorSlide: @ 0x0819A788
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2E7C, 0x30
-	.global gUnk_0819A7B8
-gUnk_0819A7B8: @ 0x0819A7B8
+	.global gCardListViewSteps
+gCardListViewSteps: @ 0x0819A7B8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2EAC, 0x10
-	.global gUnk_0819A7C8
-gUnk_0819A7C8: @ 0x0819A7C8
+	.global gFusionRecipes2
+gFusionRecipes2: @ 0x0819A7C8
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x2EBC, 0x1A8
-	.global gUnk_0819A970
-gUnk_0819A970: @ 0x0819A970
+	.global gFusionRecipes3
+gFusionRecipes3: @ 0x0819A970
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x3064, 0x20
-	.global gUnk_0819A990
-gUnk_0819A990: @ 0x0819A990
+	.global gRitualRecipes
+gRitualRecipes: @ 0x0819A990
 	.incbin "build/assets/tables__scene_scripts_and_lists.bin", 0x3084, 0x44
 @ tables/card_effect_handlers (tables_code_effects)
-	.global gUnk_0819A9D4
-gUnk_0819A9D4: @ 0x0819A9D4
+	.global gCardEffects
+gCardEffects: @ 0x0819A9D4
 	.incbin "build/assets/tables__card_effect_handlers.bin", 0x0, 0x27F0
 @ tables/pointer_tables (tables_game_layout)
-	.global gUnk_0819D1C4
-gUnk_0819D1C4: @ 0x0819D1C4
+	.global gTributeSummonPrompts
+gTributeSummonPrompts: @ 0x0819D1C4
 	.incbin "build/assets/tables__pointer_tables.bin", 0x0, 0x14
-	.global gUnk_0819D1D8
-gUnk_0819D1D8: @ 0x0819D1D8
+	.global gBattleStageHandlers
+gBattleStageHandlers: @ 0x0819D1D8
 	.incbin "build/assets/tables__pointer_tables.bin", 0x14, 0x3C
-	.global gUnk_0819D214
-gUnk_0819D214: @ 0x0819D214
+	.global gMonsterTypeNames
+gMonsterTypeNames: @ 0x0819D214
 	.incbin "build/assets/tables__pointer_tables.bin", 0x50, 0x50
-	.global gUnk_0819D264
-gUnk_0819D264: @ 0x0819D264
+	.global gAttributeNames
+gAttributeNames: @ 0x0819D264
 	.incbin "build/assets/tables__pointer_tables.bin", 0xA0, 0x18
-	.global gUnk_0819D27C
-gUnk_0819D27C: @ 0x0819D27C
+	.global gCardJumpArc
+gCardJumpArc: @ 0x0819D27C
 	.incbin "build/assets/tables__pointer_tables.bin", 0xB8, 0x4
 	.global gUnk_0819D280
 gUnk_0819D280: @ 0x0819D280
 	.incbin "build/assets/tables__pointer_tables.bin", 0xBC, 0x7C
-	.global gUnk_0819D2FC
-gUnk_0819D2FC: @ 0x0819D2FC
+	.global gAiPowerCards
+gAiPowerCards: @ 0x0819D2FC
 	.incbin "build/assets/tables__pointer_tables.bin", 0x138, 0x1A
-	.global gUnk_0819D316
-gUnk_0819D316: @ 0x0819D316
+	.global gAiHandPickPriority
+gAiHandPickPriority: @ 0x0819D316
 	.incbin "build/assets/tables__pointer_tables.bin", 0x152, 0x36
 @ tables/deck_lists.json (tables_game_decks)
 	.incbin "build/assets/tables__deck_lists.json.bin", 0x0, 0x920
-	.global gUnk_0819DC6C
-gUnk_0819DC6C: @ 0x0819DC6C
+	.global gOpponentDecks
+gOpponentDecks: @ 0x0819DC6C
 	.incbin "build/assets/tables__deck_lists.json.bin", 0x920, 0xC8
-	.global gUnk_0819DD34
-gUnk_0819DD34: @ 0x0819DD34
+	.global gOpponentAltDecks
+gOpponentAltDecks: @ 0x0819DD34
 	.incbin "build/assets/tables__deck_lists.json.bin", 0x9E8, 0x30
 @ tables/rodata2 (tables_game_layout)
-	.global gUnk_0819DD64
-gUnk_0819DD64: @ 0x0819DD64
+	.global gAiEffectMonsters
+gAiEffectMonsters: @ 0x0819DD64
 	.incbin "build/assets/tables__rodata2.bin", 0x0, 0x8
-	.global gUnk_0819DD6C
-gUnk_0819DD6C: @ 0x0819DD6C
+	.global gAiSteps
+gAiSteps: @ 0x0819DD6C
 	.incbin "build/assets/tables__rodata2.bin", 0x8, 0x28
-	.global gUnk_0819DD94
-gUnk_0819DD94: @ 0x0819DD94
+	.global gBattleSceneOpenBgX
+gBattleSceneOpenBgX: @ 0x0819DD94
 	.incbin "build/assets/tables__rodata2.bin", 0x30, 0x2800
-	.global gUnk_081A0594
-gUnk_081A0594: @ 0x081A0594
+	.global gBattleSceneOpenBgY
+gBattleSceneOpenBgY: @ 0x081A0594
 	.incbin "build/assets/tables__rodata2.bin", 0x2830, 0x2800
-	.global gUnk_081A2D94
-gUnk_081A2D94: @ 0x081A2D94
+	.global gBattleSceneOpenBgPA
+gBattleSceneOpenBgPA: @ 0x081A2D94
 	.incbin "build/assets/tables__rodata2.bin", 0x5030, 0x1400
-	.global gUnk_081A4194
-gUnk_081A4194: @ 0x081A4194
+	.global gBattleSceneShakeRegs
+gBattleSceneShakeRegs: @ 0x081A4194
 	.incbin "build/assets/tables__rodata2.bin", 0x6430, 0x10
-	.global gUnk_081A41A4
-gUnk_081A41A4: @ 0x081A41A4
+	.global gCardTypeIcons
+gCardTypeIcons: @ 0x081A41A4
 	.incbin "build/assets/tables__rodata2.bin", 0x6440, 0x54
-	.global gUnk_081A41F8
-gUnk_081A41F8: @ 0x081A41F8
+	.global gCardAttributeIcons
+gCardAttributeIcons: @ 0x081A41F8
 	.incbin "build/assets/tables__rodata2.bin", 0x6494, 0x1C
-	.global gUnk_081A4214
-gUnk_081A4214: @ 0x081A4214
+	.global gTextBoxColors
+gTextBoxColors: @ 0x081A4214
 	.incbin "build/assets/tables__rodata2.bin", 0x64B0, 0x28
-	.global gUnk_081A423C
-gUnk_081A423C: @ 0x081A423C
+	.global gAButtonIconFrames
+gAButtonIconFrames: @ 0x081A423C
 	.incbin "build/assets/tables__rodata2.bin", 0x64D8, 0x40
-	.global gUnk_081A427C
-gUnk_081A427C: @ 0x081A427C
+	.global gZoneMarkerAnimTiles
+gZoneMarkerAnimTiles: @ 0x081A427C
 	.incbin "build/assets/tables__rodata2.bin", 0x6518, 0x20
-	.global gUnk_081A429C
-gUnk_081A429C: @ 0x081A429C
+	.global gDuelScreenLerpWeights
+gDuelScreenLerpWeights: @ 0x081A429C
 	.incbin "build/assets/tables__rodata2.bin", 0x6538, 0x8
-	.global gUnk_081A42A4
-gUnk_081A42A4: @ 0x081A42A4
+	.global gDuelZonePositions
+gDuelZonePositions: @ 0x081A42A4
 	.incbin "build/assets/tables__rodata2.bin", 0x6540, 0x100
-	.global gUnk_081A43A4
-gUnk_081A43A4: @ 0x081A43A4
+	.global gDuelZoneScrollTargets
+gDuelZoneScrollTargets: @ 0x081A43A4
 	.incbin "build/assets/tables__rodata2.bin", 0x6640, 0x40
-	.global gUnk_081A43E4
-gUnk_081A43E4: @ 0x081A43E4
+	.global gBounceScaleCurve
+gBounceScaleCurve: @ 0x081A43E4
 	.incbin "build/assets/tables__rodata2.bin", 0x6680, 0x40
-	.global gUnk_081A4424
-gUnk_081A4424: @ 0x081A4424
+	.global gPulseScaleCurve
+gPulseScaleCurve: @ 0x081A4424
 	.incbin "build/assets/tables__rodata2.bin", 0x66C0, 0x20
-	.global gUnk_081A4444
-gUnk_081A4444: @ 0x081A4444
+	.global gShrinkScaleSteps
+gShrinkScaleSteps: @ 0x081A4444
 	.incbin "build/assets/tables__rodata2.bin", 0x66E0, 0x10
-	.global gUnk_081A4454
-gUnk_081A4454: @ 0x081A4454
+	.global gDuelAnimLerpWeights
+gDuelAnimLerpWeights: @ 0x081A4454
 	.incbin "build/assets/tables__rodata2.bin", 0x66F0, 0x20
-	.global gUnk_081A4474
-gUnk_081A4474: @ 0x081A4474
+	.global gCardFlipTiles
+gCardFlipTiles: @ 0x081A4474
 	.incbin "build/assets/tables__rodata2.bin", 0x6710, 0x60
-	.global gUnk_081A44D4
-gUnk_081A44D4: @ 0x081A44D4
+	.global gCardRotateAngles
+gCardRotateAngles: @ 0x081A44D4
 	.incbin "build/assets/tables__rodata2.bin", 0x6770, 0x28
-	.global gUnk_081A44FC
-gUnk_081A44FC: @ 0x081A44FC
+	.global gBannerSlideOffsets
+gBannerSlideOffsets: @ 0x081A44FC
 	.incbin "build/assets/tables__rodata2.bin", 0x6798, 0x20
-	.global gUnk_081A451C
-gUnk_081A451C: @ 0x081A451C
+	.global gPackSceneRasterColors
+gPackSceneRasterColors: @ 0x081A451C
 	.incbin "build/assets/tables__rodata2.bin", 0x67B8, 0x1110
-	.global gUnk_081A562C
-gUnk_081A562C: @ 0x081A562C
+	.global gPackContents
+gPackContents: @ 0x081A562C
 	.incbin "build/assets/tables__rodata2.bin", 0x78C8, 0xE0
-	.global gUnk_081A570C
-gUnk_081A570C: @ 0x081A570C
+	.global gPackRarityThresholds
+gPackRarityThresholds: @ 0x081A570C
 	.incbin "build/assets/tables__rodata2.bin", 0x79A8, 0x20
-	.global gUnk_081A572C
-gUnk_081A572C: @ 0x081A572C
+	.global gGetPackSteps
+gGetPackSteps: @ 0x081A572C
 	.incbin "build/assets/tables__rodata2.bin", 0x79C8, 0x2C
-	.global gUnk_081A5758
-gUnk_081A5758: @ 0x081A5758
+	.global gUnlockablePackIds
+gUnlockablePackIds: @ 0x081A5758
 	.incbin "build/assets/tables__rodata2.bin", 0x79F4, 0x9C0
-	.global gUnk_081A6118
-gUnk_081A6118: @ 0x081A6118
+	.global gListFilterAnimScripts
+gListFilterAnimScripts: @ 0x081A6118
 	.incbin "build/assets/tables__rodata2.bin", 0x83B4, 0x40C
 	.global gUnk_081A6524
 gUnk_081A6524: @ 0x081A6524
 	.incbin "build/assets/tables__rodata2.bin", 0x87C0, 0x860
-	.global gUnk_081A6D84
-gUnk_081A6D84: @ 0x081A6D84
+	.global gCardMoveSprite
+gCardMoveSprite: @ 0x081A6D84
 	.incbin "build/assets/tables__rodata2.bin", 0x9020, 0x8
-	.global gUnk_081A6D8C
-gUnk_081A6D8C: @ 0x081A6D8C
+	.global gDeckEditCommandLabelSprites
+gDeckEditCommandLabelSprites: @ 0x081A6D8C
 	.incbin "build/assets/tables__rodata2.bin", 0x9028, 0x118
 	.global gUnk_081A6EA4
 gUnk_081A6EA4: @ 0x081A6EA4
@@ -496,185 +496,185 @@ gUnk_081A6EA4: @ 0x081A6EA4
 	.global gUnk_081A6EAC
 gUnk_081A6EAC: @ 0x081A6EAC
 	.incbin "build/assets/tables__rodata2.bin", 0x9148, 0x8
-	.global gUnk_081A6EB4
-gUnk_081A6EB4: @ 0x081A6EB4
+	.global gDeckEditDigitSprites
+gDeckEditDigitSprites: @ 0x081A6EB4
 	.incbin "build/assets/tables__rodata2.bin", 0x9150, 0x240
-	.global gUnk_081A70F4
-gUnk_081A70F4: @ 0x081A70F4
+	.global gNameIndexTabSprite
+gNameIndexTabSprite: @ 0x081A70F4
 	.incbin "build/assets/tables__rodata2.bin", 0x9390, 0x8
-	.global gUnk_081A70FC
-gUnk_081A70FC: @ 0x081A70FC
+	.global gDeckEditAnimScripts
+gDeckEditAnimScripts: @ 0x081A70FC
 	.incbin "build/assets/tables__rodata2.bin", 0x9398, 0x48
-	.global gUnk_081A7144
-gUnk_081A7144: @ 0x081A7144
+	.global gCardFrameSprites
+gCardFrameSprites: @ 0x081A7144
 	.incbin "build/assets/tables__rodata2.bin", 0x93E0, 0x18
-	.global gUnk_081A715C
-gUnk_081A715C: @ 0x081A715C
+	.global gListFilterCursorSprites
+gListFilterCursorSprites: @ 0x081A715C
 	.incbin "build/assets/tables__rodata2.bin", 0x93F8, 0x70
-	.global gUnk_081A71CC
-gUnk_081A71CC: @ 0x081A71CC
+	.global gListFilterFlashSprites
+gListFilterFlashSprites: @ 0x081A71CC
 	.incbin "build/assets/tables__rodata2.bin", 0x9468, 0x70
-	.global gUnk_081A723C
-gUnk_081A723C: @ 0x081A723C
+	.global gListFilterSteps
+gListFilterSteps: @ 0x081A723C
 	.incbin "build/assets/tables__rodata2.bin", 0x94D8, 0x10
-	.global gUnk_081A724C
-gUnk_081A724C: @ 0x081A724C
+	.global gDeckStatsSteps
+gDeckStatsSteps: @ 0x081A724C
 	.incbin "build/assets/tables__rodata2.bin", 0x94E8, 0x10
-	.global gUnk_081A725C
-gUnk_081A725C: @ 0x081A725C
+	.global gDeckEditSteps
+gDeckEditSteps: @ 0x081A725C
 	.incbin "build/assets/tables__rodata2.bin", 0x94F8, 0x44
-	.global gUnk_081A72A0
-gUnk_081A72A0: @ 0x081A72A0
+	.global gSideDeckSwapSteps
+gSideDeckSwapSteps: @ 0x081A72A0
 	.incbin "build/assets/tables__rodata2.bin", 0x953C, 0x44
-	.global gUnk_081A72E4
-gUnk_081A72E4: @ 0x081A72E4
+	.global gTradeCardSelectSteps
+gTradeCardSelectSteps: @ 0x081A72E4
 	.incbin "build/assets/tables__rodata2.bin", 0x9580, 0x4C
-	.global gUnk_081A7330
-gUnk_081A7330: @ 0x081A7330
+	.global gProhibitCardSelectSteps
+gProhibitCardSelectSteps: @ 0x081A7330
 	.incbin "build/assets/tables__rodata2.bin", 0x95CC, 0x44
-	.global gUnk_081A7374
-gUnk_081A7374: @ 0x081A7374
+	.global gLinkPacketAck
+gLinkPacketAck: @ 0x081A7374
 	.incbin "build/assets/tables__rodata2.bin", 0x9610, 0xE
-	.global gUnk_081A7382
-gUnk_081A7382: @ 0x081A7382
+	.global gLinkPacketDupAck
+gLinkPacketDupAck: @ 0x081A7382
 	.incbin "build/assets/tables__rodata2.bin", 0x961E, 0xE
-	.global gUnk_081A7390
-gUnk_081A7390: @ 0x081A7390
+	.global gLinkPacketResend
+gLinkPacketResend: @ 0x081A7390
 	.incbin "build/assets/tables__rodata2.bin", 0x962C, 0x10
-	.global gUnk_081A73A0
-gUnk_081A73A0: @ 0x081A73A0
+	.global gDebugMenuItems
+gDebugMenuItems: @ 0x081A73A0
 	.incbin "build/assets/tables__rodata2.bin", 0x963C, 0x2EC
-	.global gUnk_081A768C
-gUnk_081A768C: @ 0x081A768C
+	.global gDebugMenuSteps
+gDebugMenuSteps: @ 0x081A768C
 	.incbin "build/assets/tables__rodata2.bin", 0x9928, 0x14
-	.global gUnk_081A76A0
-gUnk_081A76A0: @ 0x081A76A0
+	.global gAsciiToSjisTable
+gAsciiToSjisTable: @ 0x081A76A0
 	.incbin "build/assets/tables__rodata2.bin", 0x993C, 0xC0
-	.global gUnk_081A7760
-gUnk_081A7760: @ 0x081A7760
+	.global gMapFillTile
+gMapFillTile: @ 0x081A7760
 	.incbin "build/assets/tables__rodata2.bin", 0x99FC, 0x4
-	.global gUnk_081A7764
-gUnk_081A7764: @ 0x081A7764
+	.global gBgHofsRegs
+gBgHofsRegs: @ 0x081A7764
 	.incbin "build/assets/tables__rodata2.bin", 0x9A00, 0x20
-	.global gUnk_081A7784
-gUnk_081A7784: @ 0x081A7784
+	.global gBgVofsRegs
+gBgVofsRegs: @ 0x081A7784
 	.incbin "build/assets/tables__rodata2.bin", 0x9A20, 0x24
-	.global gUnk_081A77A8
-gUnk_081A77A8: @ 0x081A77A8
+	.global gSineTable128
+gSineTable128: @ 0x081A77A8
 	.incbin "build/assets/tables__rodata2.bin", 0x9A44, 0x100
-	.global gUnk_081A78A8
-gUnk_081A78A8: @ 0x081A78A8
+	.global gSaveSignature
+gSaveSignature: @ 0x081A78A8
 	.incbin "build/assets/tables__rodata2.bin", 0x9B44, 0xC
-	.global gUnk_081A78B4
-gUnk_081A78B4: @ 0x081A78B4
+	.global gCardCopyLimits
+gCardCopyLimits: @ 0x081A78B4
 	.incbin "build/assets/tables__rodata2.bin", 0x9B50, 0xBC
-	.global gUnk_081A7970
-gUnk_081A7970: @ 0x081A7970
+	.global gPasswordSteps
+gPasswordSteps: @ 0x081A7970
 	.incbin "build/assets/tables__rodata2.bin", 0x9C0C, 0x34
-	.global gUnk_081A79A4
-gUnk_081A79A4: @ 0x081A79A4
+	.global gCardTradingSteps
+gCardTradingSteps: @ 0x081A79A4
 	.incbin "build/assets/tables__rodata2.bin", 0x9C40, 0x44
-	.global gUnk_081A79E8
-gUnk_081A79E8: @ 0x081A79E8
+	.global gSeTrackPcmChannel
+gSeTrackPcmChannel: @ 0x081A79E8
 	.incbin "build/assets/tables__rodata2.bin", 0x9C84, 0x11
-	.global gUnk_081A79F9
-gUnk_081A79F9: @ 0x081A79F9
+	.global gSeVariantTrackMap
+gSeVariantTrackMap: @ 0x081A79F9
 	.incbin "build/assets/tables__rodata2.bin", 0x9C95, 0x13
 @ sound/lookup_tables.json (sound_seq_lookup)
 	.incbin "build/assets/sound__lookup_tables.json.bin", 0x0, 0x1C00
-	.global gUnk_081A960C
-gUnk_081A960C: @ 0x081A960C
+	.global gSoundPitchTable
+gSoundPitchTable: @ 0x081A960C
 	.incbin "build/assets/sound__lookup_tables.json.bin", 0x1C00, 0xC00
-	.global gUnk_081AA20C
-gUnk_081AA20C: @ 0x081AA20C
+	.global gPsgFreqTable
+gPsgFreqTable: @ 0x081AA20C
 	.incbin "build/assets/sound__lookup_tables.json.bin", 0x2800, 0x1A40
 @ tables/sine.json (tables_game_sine)
-	.global gUnk_081ABC4C
-gUnk_081ABC4C: @ 0x081ABC4C
+	.global gVibratoSineTable
+gVibratoSineTable: @ 0x081ABC4C
 	.incbin "build/assets/tables__sine.json.bin", 0x0, 0x200
 @ padding_081ABE4C (zero)
 	.space 0x141B4
 @ fonts/kanji_8x8.png (font1bpp)
-	.global gUnk_081C0000
-gUnk_081C0000: @ 0x081C0000
+	.global gFontKanji8x8
+gFontKanji8x8: @ 0x081C0000
 	.incbin "build/assets/fonts__kanji_8x8.png.bin", 0x0, 0x10200
 @ fonts/kanji_10x10.png (font1bpp)
-	.global gUnk_081D0200
-gUnk_081D0200: @ 0x081D0200
+	.global gFontKanji10x10
+gFontKanji10x10: @ 0x081D0200
 	.incbin "build/assets/fonts__kanji_10x10.png.bin", 0x0, 0x28500
 @ fonts/kanji_12x12.png (font1bpp)
-	.global gUnk_081F8700
-gUnk_081F8700: @ 0x081F8700
+	.global gFontKanji12x12
+gFontKanji12x12: @ 0x081F8700
 	.incbin "build/assets/fonts__kanji_12x12.png.bin", 0x0, 0x30600
 @ fonts/latin_8x8.png (font1bpp)
-	.global gUnk_08228D00
-gUnk_08228D00: @ 0x08228D00
+	.global gFontLatin8x8
+gFontLatin8x8: @ 0x08228D00
 	.incbin "build/assets/fonts__latin_8x8.png.bin", 0x0, 0x800
 @ fonts/latin_8x10.png (font1bpp)
-	.global gUnk_08229500
-gUnk_08229500: @ 0x08229500
+	.global gFontLatin8x10
+gFontLatin8x10: @ 0x08229500
 	.incbin "build/assets/fonts__latin_8x10.png.bin", 0x0, 0xA00
 @ fonts/latin_8x12.png (font1bpp)
-	.global gUnk_08229F00
-gUnk_08229F00: @ 0x08229F00
+	.global gFontLatin8x12
+gFontLatin8x12: @ 0x08229F00
 	.incbin "build/assets/fonts__latin_8x12.png.bin", 0x0, 0xC00
 @ fonts/latin_8x16.png (font1bpp)
-	.global gUnk_0822AB00
-gUnk_0822AB00: @ 0x0822AB00
+	.global gFontLatin8x16
+gFontLatin8x16: @ 0x0822AB00
 	.incbin "build/assets/fonts__latin_8x16.png.bin", 0x0, 0x1000
 @ fonts/latin_8x8_bold.png (font1bpp)
-	.global gUnk_0822BB00
-gUnk_0822BB00: @ 0x0822BB00
+	.global gFontLatin8x8Bold
+gFontLatin8x8Bold: @ 0x0822BB00
 	.incbin "build/assets/fonts__latin_8x8_bold.png.bin", 0x0, 0x800
 @ gfx/system.pal (palette)
-	.global gUnk_0822C300
-gUnk_0822C300: @ 0x0822C300
+	.global gSystemFontPal
+gSystemFontPal: @ 0x0822C300
 	.incbin "build/assets/gfx__system.pal.bin", 0x0, 0x20
 @ gfx/system_tiles.png (tiles4bpp)
-	.global gUnk_0822C320
-gUnk_0822C320: @ 0x0822C320
+	.global gSystemTiles
+gSystemTiles: @ 0x0822C320
 	.incbin "build/assets/gfx__system_tiles.png.bin", 0x0, 0x40
 	.global gUnk_0822C360
 gUnk_0822C360: @ 0x0822C360
 	.incbin "build/assets/gfx__system_tiles.png.bin", 0x40, 0x3C0
 @ cards/names.json (strings)
-	.global gUnk_0822C720
-gUnk_0822C720: @ 0x0822C720
+	.global gCardNames
+gCardNames: @ 0x0822C720
 	.incbin "build/assets/cards__names.json.bin", 0x0, 0xCD40
 @ cards/unused_name_bank (zero)
 	.space 0xCD40
 @ cards/descriptions.json (strings)
-	.global gUnk_082461A0
-gUnk_082461A0: @ 0x082461A0
+	.global gCardDescriptions
+gCardDescriptions: @ 0x082461A0
 	.incbin "build/assets/cards__descriptions.json.bin", 0x0, 0x60360
 @ cards/art (card_art)
-	.global gUnk_082A6500
-gUnk_082A6500: @ 0x082A6500
+	.global gCardArtGfx
+gCardArtGfx: @ 0x082A6500
 	.incbin "build/assets/cards__art.bin", 0x0, 0x361E60
-	.global gUnk_08608360
-gUnk_08608360: @ 0x08608360
+	.global gCardArtPalettes
+gCardArtPalettes: @ 0x08608360
 	.incbin "build/assets/cards__art.bin", 0x361E60, 0x19A80
 @ cards/stats.csv (card_stats)
-	.global gUnk_08621DE0
-gUnk_08621DE0: @ 0x08621DE0
+	.global gCardStats
+gCardStats: @ 0x08621DE0
 	.incbin "build/assets/cards__stats.csv.bin", 0x0, 0xCD4
 @ cards/id_to_number.json (u16)
-	.global gUnk_08622AB4
-gUnk_08622AB4: @ 0x08622AB4
+	.global gCardIdToNumber
+gCardIdToNumber: @ 0x08622AB4
 	.incbin "build/assets/cards__id_to_number.json.bin", 0x0, 0x66A
 	.global gUnk_0862311E
 gUnk_0862311E: @ 0x0862311E
 	.incbin "build/assets/cards__id_to_number.json.bin", 0x66A, 0x2
 @ cards/passwords.csv (tables_game_passwords)
-	.global gUnk_08623120
-gUnk_08623120: @ 0x08623120
+	.global gCardPasswords
+gCardPasswords: @ 0x08623120
 	.incbin "build/assets/cards__passwords.csv.bin", 0x0, 0x206
 	.global gUnk_08623326
 gUnk_08623326: @ 0x08623326
 	.incbin "build/assets/cards__passwords.csv.bin", 0x206, 0xACE
 @ cards/number_to_id.json (u16)
-	.global gUnk_08623DF4
-gUnk_08623DF4: @ 0x08623DF4
+	.global gCardNumberToId
+gCardNumberToId: @ 0x08623DF4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x0, 0x1C
 	.global gUnk_08623E10
 gUnk_08623E10: @ 0x08623E10
@@ -829,70 +829,70 @@ gUnk_08624CF4: @ 0x08624CF4
 @ cards/sort_keys.json (u16)
 	.incbin "build/assets/cards__sort_keys.json.bin", 0x0, 0x66C
 @ gfx/card_frames (gfx_banks_bank)
-	.global gUnk_08625460
-gUnk_08625460: @ 0x08625460
+	.global gCardFrameNormalGfx
+gCardFrameNormalGfx: @ 0x08625460
 	.incbin "build/assets/gfx__card_frames.bin", 0x0, 0x2698
-	.global gUnk_08627AF8
-gUnk_08627AF8: @ 0x08627AF8
+	.global gCardFrameEffectGfx
+gCardFrameEffectGfx: @ 0x08627AF8
 	.incbin "build/assets/gfx__card_frames.bin", 0x2698, 0x2698
-	.global gUnk_0862A190
-gUnk_0862A190: @ 0x0862A190
+	.global gCardFrameFusionGfx
+gCardFrameFusionGfx: @ 0x0862A190
 	.incbin "build/assets/gfx__card_frames.bin", 0x4D30, 0x2698
-	.global gUnk_0862C828
-gUnk_0862C828: @ 0x0862C828
+	.global gCardFrameRitualGfx
+gCardFrameRitualGfx: @ 0x0862C828
 	.incbin "build/assets/gfx__card_frames.bin", 0x73C8, 0x2698
-	.global gUnk_0862EEC0
-gUnk_0862EEC0: @ 0x0862EEC0
+	.global gCardFrameMagicGfx
+gCardFrameMagicGfx: @ 0x0862EEC0
 	.incbin "build/assets/gfx__card_frames.bin", 0x9A60, 0x2698
-	.global gUnk_08631558
-gUnk_08631558: @ 0x08631558
+	.global gCardFrameTrapGfx
+gCardFrameTrapGfx: @ 0x08631558
 	.incbin "build/assets/gfx__card_frames.bin", 0xC0F8, 0x2698
-	.global gUnk_08633BF0
-gUnk_08633BF0: @ 0x08633BF0
+	.global gCardFrameTicketGfx
+gCardFrameTicketGfx: @ 0x08633BF0
 	.incbin "build/assets/gfx__card_frames.bin", 0xE790, 0x2698
 @ gfx/bank_a (gfx_banks_bank)
 	.incbin "build/assets/gfx__bank_a.bin", 0x0, 0xC0
-	.global gUnk_08636348
-gUnk_08636348: @ 0x08636348
+	.global gTrapIconPal
+gTrapIconPal: @ 0x08636348
 	.incbin "build/assets/gfx__bank_a.bin", 0xC0, 0x20
-	.global gUnk_08636368
-gUnk_08636368: @ 0x08636368
+	.global gMagicIconPal
+gMagicIconPal: @ 0x08636368
 	.incbin "build/assets/gfx__bank_a.bin", 0xE0, 0x20
-	.global gUnk_08636388
-gUnk_08636388: @ 0x08636388
+	.global gDivineIconPal
+gDivineIconPal: @ 0x08636388
 	.incbin "build/assets/gfx__bank_a.bin", 0x100, 0x320
-	.global gUnk_086366A8
-gUnk_086366A8: @ 0x086366A8
+	.global gTrapIconGfx
+gTrapIconGfx: @ 0x086366A8
 	.incbin "build/assets/gfx__bank_a.bin", 0x420, 0x80
-	.global gUnk_08636728
-gUnk_08636728: @ 0x08636728
+	.global gMagicIconGfx
+gMagicIconGfx: @ 0x08636728
 	.incbin "build/assets/gfx__bank_a.bin", 0x4A0, 0x80
-	.global gUnk_086367A8
-gUnk_086367A8: @ 0x086367A8
+	.global gDivineIconGfx
+gDivineIconGfx: @ 0x086367A8
 	.incbin "build/assets/gfx__bank_a.bin", 0x520, 0x530
-	.global gUnk_08636CD8
-gUnk_08636CD8: @ 0x08636CD8
+	.global gTrapBadgeImage
+gTrapBadgeImage: @ 0x08636CD8
 	.incbin "build/assets/gfx__bank_a.bin", 0xA50, 0xC8
-	.global gUnk_08636DA0
-gUnk_08636DA0: @ 0x08636DA0
+	.global gMagicBadgeImage
+gMagicBadgeImage: @ 0x08636DA0
 	.incbin "build/assets/gfx__bank_a.bin", 0xB18, 0x5D4
-	.global gUnk_08637374
-gUnk_08637374: @ 0x08637374
+	.global gSpellTrapSubtypeIconGfx
+gSpellTrapSubtypeIconGfx: @ 0x08637374
 	.incbin "build/assets/gfx__bank_a.bin", 0x10EC, 0x20
 	.global gUnk_08637394
 gUnk_08637394: @ 0x08637394
 	.incbin "build/assets/gfx__bank_a.bin", 0x110C, 0xC0
-	.global gUnk_08637454
-gUnk_08637454: @ 0x08637454
+	.global gSpellTrapSubtypeIconPal
+gSpellTrapSubtypeIconPal: @ 0x08637454
 	.incbin "build/assets/gfx__bank_a.bin", 0x11CC, 0xFB8
-	.global gUnk_0863840C
-gUnk_0863840C: @ 0x0863840C
+	.global gCardStatDigitsPal
+gCardStatDigitsPal: @ 0x0863840C
 	.incbin "build/assets/gfx__bank_a.bin", 0x2184, 0x20
-	.global gUnk_0863842C
-gUnk_0863842C: @ 0x0863842C
+	.global gCardStatDigitsGfx
+gCardStatDigitsGfx: @ 0x0863842C
 	.incbin "build/assets/gfx__bank_a.bin", 0x21A4, 0x140
-	.global gUnk_0863856C
-gUnk_0863856C: @ 0x0863856C
+	.global gCardStatLabelGfx
+gCardStatLabelGfx: @ 0x0863856C
 	.incbin "build/assets/gfx__bank_a.bin", 0x22E4, 0x20
 	.global gUnk_0863858C
 gUnk_0863858C: @ 0x0863858C
@@ -903,38 +903,38 @@ gUnk_086385AC: @ 0x086385AC
 	.global gUnk_086385CC
 gUnk_086385CC: @ 0x086385CC
 	.incbin "build/assets/gfx__bank_a.bin", 0x2344, 0x60
-	.global gUnk_0863862C
-gUnk_0863862C: @ 0x0863862C
+	.global gPasswordKeypadBgGfx
+gPasswordKeypadBgGfx: @ 0x0863862C
 	.incbin "build/assets/gfx__bank_a.bin", 0x23A4, 0x1130
-	.global gUnk_0863975C
-gUnk_0863975C: @ 0x0863975C
+	.global gPasswordPanelBgGfx
+gPasswordPanelBgGfx: @ 0x0863975C
 	.incbin "build/assets/gfx__bank_a.bin", 0x34D4, 0x6A0
-	.global gUnk_08639DFC
-gUnk_08639DFC: @ 0x08639DFC
+	.global gPasswordObjPal
+gPasswordObjPal: @ 0x08639DFC
 	.incbin "build/assets/gfx__bank_a.bin", 0x3B74, 0x20
-	.global gUnk_08639E1C
-gUnk_08639E1C: @ 0x08639E1C
+	.global gPasswordObjGfx
+gPasswordObjGfx: @ 0x08639E1C
 	.incbin "build/assets/gfx__bank_a.bin", 0x3B94, 0x2C00
-	.global gUnk_0863CA1C
-gUnk_0863CA1C: @ 0x0863CA1C
+	.global gAtkDefIconImage
+gAtkDefIconImage: @ 0x0863CA1C
 	.incbin "build/assets/gfx__bank_a.bin", 0x6794, 0x80
-	.global gUnk_0863CA9C
-gUnk_0863CA9C: @ 0x0863CA9C
+	.global gPackSceneBgPal
+gPackSceneBgPal: @ 0x0863CA9C
 	.incbin "build/assets/gfx__bank_a.bin", 0x6814, 0x20
-	.global gUnk_0863CABC
-gUnk_0863CABC: @ 0x0863CABC
+	.global gPackSceneBgTiles
+gPackSceneBgTiles: @ 0x0863CABC
 	.incbin "build/assets/gfx__bank_a.bin", 0x6834, 0x80
-	.global gUnk_0863CB3C
-gUnk_0863CB3C: @ 0x0863CB3C
+	.global gPackCursorFramePal
+gPackCursorFramePal: @ 0x0863CB3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x68B4, 0x20
-	.global gUnk_0863CB5C
-gUnk_0863CB5C: @ 0x0863CB5C
+	.global gPackCursorFrameTiles
+gPackCursorFrameTiles: @ 0x0863CB5C
 	.incbin "build/assets/gfx__bank_a.bin", 0x68D4, 0x120
-	.global gUnk_0863CC7C
-gUnk_0863CC7C: @ 0x0863CC7C
+	.global gPackListPal
+gPackListPal: @ 0x0863CC7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x69F4, 0x200
-	.global gUnk_0863CE7C
-gUnk_0863CE7C: @ 0x0863CE7C
+	.global gPackListBgTiles
+gPackListBgTiles: @ 0x0863CE7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x6BF4, 0x40
 	.global gUnk_0863CEBC
 gUnk_0863CEBC: @ 0x0863CEBC
@@ -942,80 +942,80 @@ gUnk_0863CEBC: @ 0x0863CEBC
 	.global gUnk_0863CEFC
 gUnk_0863CEFC: @ 0x0863CEFC
 	.incbin "build/assets/gfx__bank_a.bin", 0x6C74, 0x40
-	.global gUnk_0863CF3C
-gUnk_0863CF3C: @ 0x0863CF3C
+	.global gStarterDeckBgImage
+gStarterDeckBgImage: @ 0x0863CF3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x6CB4, 0x1F0
-	.global gUnk_0863D12C
-gUnk_0863D12C: @ 0x0863D12C
+	.global gStarterDeckBoxBlackImage
+gStarterDeckBoxBlackImage: @ 0x0863D12C
 	.incbin "build/assets/gfx__bank_a.bin", 0x6EA4, 0x1270
-	.global gUnk_0863E39C
-gUnk_0863E39C: @ 0x0863E39C
+	.global gStarterDeckBoxRedImage
+gStarterDeckBoxRedImage: @ 0x0863E39C
 	.incbin "build/assets/gfx__bank_a.bin", 0x8114, 0x11B0
-	.global gUnk_0863F54C
-gUnk_0863F54C: @ 0x0863F54C
+	.global gStarterDeckBoxGreenImage
+gStarterDeckBoxGreenImage: @ 0x0863F54C
 	.incbin "build/assets/gfx__bank_a.bin", 0x92C4, 0x383F0
-	.global gUnk_0867793C
-gUnk_0867793C: @ 0x0867793C
+	.global gHandCursorPal
+gHandCursorPal: @ 0x0867793C
 	.incbin "build/assets/gfx__bank_a.bin", 0x416B4, 0x20
-	.global gUnk_0867795C
-gUnk_0867795C: @ 0x0867795C
+	.global gCardIconPal
+gCardIconPal: @ 0x0867795C
 	.incbin "build/assets/gfx__bank_a.bin", 0x416D4, 0x20
-	.global gUnk_0867797C
-gUnk_0867797C: @ 0x0867797C
+	.global gHandCursorGfx
+gHandCursorGfx: @ 0x0867797C
 	.incbin "build/assets/gfx__bank_a.bin", 0x416F4, 0x800
 	.global gUnk_0867817C
 gUnk_0867817C: @ 0x0867817C
 	.incbin "build/assets/gfx__bank_a.bin", 0x41EF4, 0x800
-	.global gUnk_0867897C
-gUnk_0867897C: @ 0x0867897C
+	.global gCardIconNormalGfx
+gCardIconNormalGfx: @ 0x0867897C
 	.incbin "build/assets/gfx__bank_a.bin", 0x426F4, 0x800
-	.global gUnk_0867917C
-gUnk_0867917C: @ 0x0867917C
+	.global gCardIconEffectGfx
+gCardIconEffectGfx: @ 0x0867917C
 	.incbin "build/assets/gfx__bank_a.bin", 0x42EF4, 0x800
-	.global gUnk_0867997C
-gUnk_0867997C: @ 0x0867997C
+	.global gCardIconFusionGfx
+gCardIconFusionGfx: @ 0x0867997C
 	.incbin "build/assets/gfx__bank_a.bin", 0x436F4, 0x800
-	.global gUnk_0867A17C
-gUnk_0867A17C: @ 0x0867A17C
+	.global gCardIconRitualGfx
+gCardIconRitualGfx: @ 0x0867A17C
 	.incbin "build/assets/gfx__bank_a.bin", 0x43EF4, 0x800
-	.global gUnk_0867A97C
-gUnk_0867A97C: @ 0x0867A97C
+	.global gCardIconTrapGfx
+gCardIconTrapGfx: @ 0x0867A97C
 	.incbin "build/assets/gfx__bank_a.bin", 0x446F4, 0x800
-	.global gUnk_0867B17C
-gUnk_0867B17C: @ 0x0867B17C
+	.global gCardIconMagicGfx
+gCardIconMagicGfx: @ 0x0867B17C
 	.incbin "build/assets/gfx__bank_a.bin", 0x44EF4, 0x800
 	.global gUnk_0867B97C
 gUnk_0867B97C: @ 0x0867B97C
 	.incbin "build/assets/gfx__bank_a.bin", 0x456F4, 0x200
-	.global gUnk_0867BB7C
-gUnk_0867BB7C: @ 0x0867BB7C
+	.global gDuelFieldImage
+gDuelFieldImage: @ 0x0867BB7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x458F4, 0x2450
-	.global gUnk_0867DFCC
-gUnk_0867DFCC: @ 0x0867DFCC
+	.global gTitleGridImage
+gTitleGridImage: @ 0x0867DFCC
 	.incbin "build/assets/gfx__bank_a.bin", 0x47D44, 0x4F0
-	.global gUnk_0867E4BC
-gUnk_0867E4BC: @ 0x0867E4BC
+	.global gDuelDigitsPal
+gDuelDigitsPal: @ 0x0867E4BC
 	.incbin "build/assets/gfx__bank_a.bin", 0x48234, 0x200
-	.global gUnk_0867E6BC
-gUnk_0867E6BC: @ 0x0867E6BC
+	.global gDuelDigitsGfx
+gDuelDigitsGfx: @ 0x0867E6BC
 	.incbin "build/assets/gfx__bank_a.bin", 0x48434, 0x780
-	.global gUnk_0867EE3C
-gUnk_0867EE3C: @ 0x0867EE3C
+	.global gPhaseIndicatorPal
+gPhaseIndicatorPal: @ 0x0867EE3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x48BB4, 0x20
-	.global gUnk_0867EE5C
-gUnk_0867EE5C: @ 0x0867EE5C
+	.global gLpLabelGfx
+gLpLabelGfx: @ 0x0867EE5C
 	.incbin "build/assets/gfx__bank_a.bin", 0x48BD4, 0x40
-	.global gUnk_0867EE9C
-gUnk_0867EE9C: @ 0x0867EE9C
+	.global gPhaseIndicatorGfx
+gPhaseIndicatorGfx: @ 0x0867EE9C
 	.incbin "build/assets/gfx__bank_a.bin", 0x48C14, 0x180
-	.global gUnk_0867F01C
-gUnk_0867F01C: @ 0x0867F01C
+	.global gPhaseBannerPal
+gPhaseBannerPal: @ 0x0867F01C
 	.incbin "build/assets/gfx__bank_a.bin", 0x48D94, 0x20
-	.global gUnk_0867F03C
-gUnk_0867F03C: @ 0x0867F03C
+	.global gPhaseBannerGfx
+gPhaseBannerGfx: @ 0x0867F03C
 	.incbin "build/assets/gfx__bank_a.bin", 0x48DB4, 0x600
-	.global gUnk_0867F63C
-gUnk_0867F63C: @ 0x0867F63C
+	.global gBattlePhaseBannerGfx
+gBattlePhaseBannerGfx: @ 0x0867F63C
 	.incbin "build/assets/gfx__bank_a.bin", 0x493B4, 0x600
 	.global gUnk_0867FC3C
 gUnk_0867FC3C: @ 0x0867FC3C
@@ -1029,29 +1029,29 @@ gUnk_0868045C: @ 0x0868045C
 	.global gUnk_0868047C
 gUnk_0868047C: @ 0x0868047C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4A1F4, 0x1000
-	.global gUnk_0868147C
-gUnk_0868147C: @ 0x0868147C
+	.global gTextBoxPal
+gTextBoxPal: @ 0x0868147C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B1F4, 0x20
-	.global gUnk_0868149C
-gUnk_0868149C: @ 0x0868149C
+	.global gTextBoxFrameGfx
+gTextBoxFrameGfx: @ 0x0868149C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B214, 0x1E0
 	.global gUnk_0868167C
 gUnk_0868167C: @ 0x0868167C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B3F4, 0x200
-	.global gUnk_0868187C
-gUnk_0868187C: @ 0x0868187C
+	.global gButtonIconsGfx
+gButtonIconsGfx: @ 0x0868187C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B5F4, 0x500
-	.global gUnk_08681D7C
-gUnk_08681D7C: @ 0x08681D7C
+	.global gDuelUiIconsGfx
+gDuelUiIconsGfx: @ 0x08681D7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4BAF4, 0x100
-	.global gUnk_08681E7C
-gUnk_08681E7C: @ 0x08681E7C
+	.global gYesNoLabelsGfx
+gYesNoLabelsGfx: @ 0x08681E7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4BBF4, 0x600
-	.global gUnk_0868247C
-gUnk_0868247C: @ 0x0868247C
+	.global gLpDigitsPal
+gLpDigitsPal: @ 0x0868247C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4C1F4, 0x200
-	.global gUnk_0868267C
-gUnk_0868267C: @ 0x0868267C
+	.global gLpDigitsGfx
+gLpDigitsGfx: @ 0x0868267C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4C3F4, 0x2000
 	.global gUnk_0868467C
 gUnk_0868467C: @ 0x0868467C
@@ -1074,74 +1074,74 @@ gUnk_0868557C: @ 0x0868557C
 	.global gUnk_0868559C
 gUnk_0868559C: @ 0x0868559C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4F314, 0x2600
-	.global gUnk_08687B9C
-gUnk_08687B9C: @ 0x08687B9C
+	.global gDuelBannerPal
+gDuelBannerPal: @ 0x08687B9C
 	.incbin "build/assets/gfx__bank_a.bin", 0x51914, 0x20
-	.global gUnk_08687BBC
-gUnk_08687BBC: @ 0x08687BBC
+	.global gStartDuelBannerGfx
+gStartDuelBannerGfx: @ 0x08687BBC
 	.incbin "build/assets/gfx__bank_a.bin", 0x51934, 0x400
-	.global gUnk_08687FBC
-gUnk_08687FBC: @ 0x08687FBC
+	.global gAttackBannerGfx
+gAttackBannerGfx: @ 0x08687FBC
 	.incbin "build/assets/gfx__bank_a.bin", 0x51D34, 0x400
-	.global gUnk_086883BC
-gUnk_086883BC: @ 0x086883BC
+	.global gDirectAttackBannerGfx
+gDirectAttackBannerGfx: @ 0x086883BC
 	.incbin "build/assets/gfx__bank_a.bin", 0x52134, 0x400
-	.global gUnk_086887BC
-gUnk_086887BC: @ 0x086887BC
+	.global gSurrenderBannerGfx
+gSurrenderBannerGfx: @ 0x086887BC
 	.incbin "build/assets/gfx__bank_a.bin", 0x52534, 0x400
-	.global gUnk_08688BBC
-gUnk_08688BBC: @ 0x08688BBC
+	.global gJustAMomentBannerGfx
+gJustAMomentBannerGfx: @ 0x08688BBC
 	.incbin "build/assets/gfx__bank_a.bin", 0x52934, 0x400
-	.global gUnk_08688FBC
-gUnk_08688FBC: @ 0x08688FBC
+	.global gChainBannerPal
+gChainBannerPal: @ 0x08688FBC
 	.incbin "build/assets/gfx__bank_a.bin", 0x52D34, 0x1C
-	.global gUnk_08688FD8
-gUnk_08688FD8: @ 0x08688FD8
+	.global gChainBannerGfx
+gChainBannerGfx: @ 0x08688FD8
 	.incbin "build/assets/gfx__bank_a.bin", 0x52D50, 0x400
-	.global gUnk_086893D8
-gUnk_086893D8: @ 0x086893D8
+	.global gLinkConnectingImage
+gLinkConnectingImage: @ 0x086893D8
 	.incbin "build/assets/gfx__bank_a.bin", 0x53150, 0x36E8
-	.global gUnk_0868CAC0
-gUnk_0868CAC0: @ 0x0868CAC0
+	.global gExplosionAnim
+gExplosionAnim: @ 0x0868CAC0
 	.incbin "build/assets/gfx__bank_a.bin", 0x56838, 0x10D4
-	.global gUnk_0868DB94
-gUnk_0868DB94: @ 0x0868DB94
+	.global gNegateAnim
+gNegateAnim: @ 0x0868DB94
 	.incbin "build/assets/gfx__bank_a.bin", 0x5790C, 0x10A4
-	.global gUnk_0868EC38
-gUnk_0868EC38: @ 0x0868EC38
+	.global gNegateAnimSideways
+gNegateAnimSideways: @ 0x0868EC38
 	.incbin "build/assets/gfx__bank_a.bin", 0x589B0, 0x20D4
-	.global gUnk_08690D0C
-gUnk_08690D0C: @ 0x08690D0C
+	.global gTributeAnim
+gTributeAnim: @ 0x08690D0C
 	.incbin "build/assets/gfx__bank_a.bin", 0x5AA84, 0x419C
-	.global gUnk_08694EA8
-gUnk_08694EA8: @ 0x08694EA8
+	.global gDeckShuffleAnim
+gDeckShuffleAnim: @ 0x08694EA8
 	.incbin "build/assets/gfx__bank_a.bin", 0x5EC20, 0x2874
-	.global gUnk_0869771C
-gUnk_0869771C: @ 0x0869771C
+	.global gSmokePuffAnim
+gSmokePuffAnim: @ 0x0869771C
 	.incbin "build/assets/gfx__bank_a.bin", 0x61494, 0x1560
 	.global gUnk_08698C7C
 gUnk_08698C7C: @ 0x08698C7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x629F4, 0x20
-	.global gUnk_08698C9C
-gUnk_08698C9C: @ 0x08698C9C
+	.global gCardListViewButtonsGfx
+gCardListViewButtonsGfx: @ 0x08698C9C
 	.incbin "build/assets/gfx__bank_a.bin", 0x62A14, 0x2080
 	.global gUnk_0869AD1C
 gUnk_0869AD1C: @ 0x0869AD1C
 	.incbin "build/assets/gfx__bank_a.bin", 0x64A94, 0x20
-	.global gUnk_0869AD3C
-gUnk_0869AD3C: @ 0x0869AD3C
+	.global gCardListViewStatusIconsGfx
+gCardListViewStatusIconsGfx: @ 0x0869AD3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x64AB4, 0x800
 	.global gUnk_0869B53C
 gUnk_0869B53C: @ 0x0869B53C
 	.incbin "build/assets/gfx__bank_a.bin", 0x652B4, 0x20
-	.global gUnk_0869B55C
-gUnk_0869B55C: @ 0x0869B55C
+	.global gCardListViewTitlesGfx
+gCardListViewTitlesGfx: @ 0x0869B55C
 	.incbin "build/assets/gfx__bank_a.bin", 0x652D4, 0xF00
 	.global gUnk_0869C45C
 gUnk_0869C45C: @ 0x0869C45C
 	.incbin "build/assets/gfx__bank_a.bin", 0x661D4, 0x12FC
-	.global gUnk_0869D758
-gUnk_0869D758: @ 0x0869D758
+	.global gCardListViewInfoPanelImage
+gCardListViewInfoPanelImage: @ 0x0869D758
 	.incbin "build/assets/gfx__bank_a.bin", 0x674D0, 0x118C
 	.global gUnk_0869E8E4
 gUnk_0869E8E4: @ 0x0869E8E4
@@ -1149,212 +1149,212 @@ gUnk_0869E8E4: @ 0x0869E8E4
 	.global gUnk_0869EECC
 gUnk_0869EECC: @ 0x0869EECC
 	.incbin "build/assets/gfx__bank_a.bin", 0x68C44, 0x20
-	.global gUnk_0869EEEC
-gUnk_0869EEEC: @ 0x0869EEEC
+	.global gCardListViewCursorFrameGfx
+gCardListViewCursorFrameGfx: @ 0x0869EEEC
 	.incbin "build/assets/gfx__bank_a.bin", 0x68C64, 0x2400
-	.global gUnk_086A12EC
-gUnk_086A12EC: @ 0x086A12EC
+	.global gEgyptCorridorBitmap
+gEgyptCorridorBitmap: @ 0x086A12EC
 	.incbin "build/assets/gfx__bank_a.bin", 0x6B064, 0x9600
-	.global gUnk_086AA8EC
-gUnk_086AA8EC: @ 0x086AA8EC
+	.global gEgyptCorridorPal
+gEgyptCorridorPal: @ 0x086AA8EC
 	.incbin "build/assets/gfx__bank_a.bin", 0x74664, 0x200
-	.global gUnk_086AAAEC
-gUnk_086AAAEC: @ 0x086AAAEC
+	.global gRockCardPal
+gRockCardPal: @ 0x086AAAEC
 	.incbin "build/assets/gfx__bank_a.bin", 0x74864, 0x14
-	.global gUnk_086AAB00
-gUnk_086AAB00: @ 0x086AAB00
+	.global gScissorsCardPal
+gScissorsCardPal: @ 0x086AAB00
 	.incbin "build/assets/gfx__bank_a.bin", 0x74878, 0x20
-	.global gUnk_086AAB20
-gUnk_086AAB20: @ 0x086AAB20
+	.global gPaperCardPal
+gPaperCardPal: @ 0x086AAB20
 	.incbin "build/assets/gfx__bank_a.bin", 0x74898, 0x20
-	.global gUnk_086AAB40
-gUnk_086AAB40: @ 0x086AAB40
+	.global gTurnChoiceBannerPal
+gTurnChoiceBannerPal: @ 0x086AAB40
 	.incbin "build/assets/gfx__bank_a.bin", 0x748B8, 0x20
-	.global gUnk_086AAB60
-gUnk_086AAB60: @ 0x086AAB60
+	.global gSelectCardBannerPal
+gSelectCardBannerPal: @ 0x086AAB60
 	.incbin "build/assets/gfx__bank_a.bin", 0x748D8, 0x20
-	.global gUnk_086AAB80
-gUnk_086AAB80: @ 0x086AAB80
+	.global gDuelLogoPal
+gDuelLogoPal: @ 0x086AAB80
 	.incbin "build/assets/gfx__bank_a.bin", 0x748F8, 0x20
-	.global gUnk_086AABA0
-gUnk_086AABA0: @ 0x086AABA0
+	.global gWinBannerPal
+gWinBannerPal: @ 0x086AABA0
 	.incbin "build/assets/gfx__bank_a.bin", 0x74918, 0x1C
-	.global gUnk_086AABBC
-gUnk_086AABBC: @ 0x086AABBC
+	.global gLoseBannerPal
+gLoseBannerPal: @ 0x086AABBC
 	.incbin "build/assets/gfx__bank_a.bin", 0x74934, 0x20
-	.global gUnk_086AABDC
-gUnk_086AABDC: @ 0x086AABDC
+	.global gDrawBannerPal
+gDrawBannerPal: @ 0x086AABDC
 	.incbin "build/assets/gfx__bank_a.bin", 0x74954, 0x24
-	.global gUnk_086AAC00
-gUnk_086AAC00: @ 0x086AAC00
+	.global gTurnChoiceBannerDimPal
+gTurnChoiceBannerDimPal: @ 0x086AAC00
 	.incbin "build/assets/gfx__bank_a.bin", 0x74978, 0x20
-	.global gUnk_086AAC20
-gUnk_086AAC20: @ 0x086AAC20
+	.global gWaitSignPal
+gWaitSignPal: @ 0x086AAC20
 	.incbin "build/assets/gfx__bank_a.bin", 0x74998, 0x8
-	.global gUnk_086AAC28
-gUnk_086AAC28: @ 0x086AAC28
+	.global gRockCardTiles
+gRockCardTiles: @ 0x086AAC28
 	.incbin "build/assets/gfx__bank_a.bin", 0x749A0, 0x400
-	.global gUnk_086AB028
-gUnk_086AB028: @ 0x086AB028
+	.global gScissorsCardTiles
+gScissorsCardTiles: @ 0x086AB028
 	.incbin "build/assets/gfx__bank_a.bin", 0x74DA0, 0x400
-	.global gUnk_086AB428
-gUnk_086AB428: @ 0x086AB428
+	.global gPaperCardTiles
+gPaperCardTiles: @ 0x086AB428
 	.incbin "build/assets/gfx__bank_a.bin", 0x751A0, 0x400
-	.global gUnk_086AB828
-gUnk_086AB828: @ 0x086AB828
+	.global gTurnChoiceBannerTiles
+gTurnChoiceBannerTiles: @ 0x086AB828
 	.incbin "build/assets/gfx__bank_a.bin", 0x755A0, 0x800
-	.global gUnk_086AC028
-gUnk_086AC028: @ 0x086AC028
+	.global gSelectCardBannerTiles
+gSelectCardBannerTiles: @ 0x086AC028
 	.incbin "build/assets/gfx__bank_a.bin", 0x75DA0, 0x800
-	.global gUnk_086AC828
-gUnk_086AC828: @ 0x086AC828
+	.global gDuelLogoTiles0
+gDuelLogoTiles0: @ 0x086AC828
 	.incbin "build/assets/gfx__bank_a.bin", 0x765A0, 0x800
-	.global gUnk_086AD028
-gUnk_086AD028: @ 0x086AD028
+	.global gDuelLogoTiles1
+gDuelLogoTiles1: @ 0x086AD028
 	.incbin "build/assets/gfx__bank_a.bin", 0x76DA0, 0x800
-	.global gUnk_086AD828
-gUnk_086AD828: @ 0x086AD828
+	.global gDuelLogoTiles2
+gDuelLogoTiles2: @ 0x086AD828
 	.incbin "build/assets/gfx__bank_a.bin", 0x775A0, 0x800
-	.global gUnk_086AE028
-gUnk_086AE028: @ 0x086AE028
+	.global gWinBannerTiles
+gWinBannerTiles: @ 0x086AE028
 	.incbin "build/assets/gfx__bank_a.bin", 0x77DA0, 0x800
-	.global gUnk_086AE828
-gUnk_086AE828: @ 0x086AE828
+	.global gLoseBannerTiles
+gLoseBannerTiles: @ 0x086AE828
 	.incbin "build/assets/gfx__bank_a.bin", 0x785A0, 0x800
-	.global gUnk_086AF028
-gUnk_086AF028: @ 0x086AF028
+	.global gDrawBannerTiles
+gDrawBannerTiles: @ 0x086AF028
 	.incbin "build/assets/gfx__bank_a.bin", 0x78DA0, 0x800
-	.global gUnk_086AF828
-gUnk_086AF828: @ 0x086AF828
+	.global gWaitSignTiles
+gWaitSignTiles: @ 0x086AF828
 	.incbin "build/assets/gfx__bank_a.bin", 0x795A0, 0x200
-	.global gUnk_086AFA28
-gUnk_086AFA28: @ 0x086AFA28
+	.global gCoinPalette
+gCoinPalette: @ 0x086AFA28
 	.incbin "build/assets/gfx__bank_a.bin", 0x797A0, 0x20
-	.global gUnk_086AFA48
-gUnk_086AFA48: @ 0x086AFA48
+	.global gCoinSpinGfx
+gCoinSpinGfx: @ 0x086AFA48
 	.incbin "build/assets/gfx__bank_a.bin", 0x797C0, 0x200
-	.global gUnk_086AFC48
-gUnk_086AFC48: @ 0x086AFC48
+	.global gCoinSpinGfx_Frame1
+gCoinSpinGfx_Frame1: @ 0x086AFC48
 	.incbin "build/assets/gfx__bank_a.bin", 0x799C0, 0x200
-	.global gUnk_086AFE48
-gUnk_086AFE48: @ 0x086AFE48
+	.global gCoinSpinGfx_Frame2
+gCoinSpinGfx_Frame2: @ 0x086AFE48
 	.incbin "build/assets/gfx__bank_a.bin", 0x79BC0, 0x200
-	.global gUnk_086B0048
-gUnk_086B0048: @ 0x086B0048
+	.global gCoinSpinGfx_Frame3
+gCoinSpinGfx_Frame3: @ 0x086B0048
 	.incbin "build/assets/gfx__bank_a.bin", 0x79DC0, 0x200
-	.global gUnk_086B0248
-gUnk_086B0248: @ 0x086B0248
+	.global gCoinSpinGfx_Frame4
+gCoinSpinGfx_Frame4: @ 0x086B0248
 	.incbin "build/assets/gfx__bank_a.bin", 0x79FC0, 0x200
-	.global gUnk_086B0448
-gUnk_086B0448: @ 0x086B0448
+	.global gCoinSpinGfx_Frame5
+gCoinSpinGfx_Frame5: @ 0x086B0448
 	.incbin "build/assets/gfx__bank_a.bin", 0x7A1C0, 0x200
-	.global gUnk_086B0648
-gUnk_086B0648: @ 0x086B0648
+	.global gCoinSpinGfx_Frame6
+gCoinSpinGfx_Frame6: @ 0x086B0648
 	.incbin "build/assets/gfx__bank_a.bin", 0x7A3C0, 0x200
-	.global gUnk_086B0848
-gUnk_086B0848: @ 0x086B0848
+	.global gCoinSpinGfx_Frame7
+gCoinSpinGfx_Frame7: @ 0x086B0848
 	.incbin "build/assets/gfx__bank_a.bin", 0x7A5C0, 0x200
-	.global gUnk_086B0A48
-gUnk_086B0A48: @ 0x086B0A48
+	.global gCoinGlintGfx
+gCoinGlintGfx: @ 0x086B0A48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7A7C0, 0x200
-	.global gUnk_086B0C48
-gUnk_086B0C48: @ 0x086B0C48
+	.global gCoinGlintGfx_Frame1
+gCoinGlintGfx_Frame1: @ 0x086B0C48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7A9C0, 0x200
-	.global gUnk_086B0E48
-gUnk_086B0E48: @ 0x086B0E48
+	.global gCoinGlintGfx_Frame2
+gCoinGlintGfx_Frame2: @ 0x086B0E48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7ABC0, 0x200
-	.global gUnk_086B1048
-gUnk_086B1048: @ 0x086B1048
+	.global gCoinGlintGfx_Frame3
+gCoinGlintGfx_Frame3: @ 0x086B1048
 	.incbin "build/assets/gfx__bank_a.bin", 0x7ADC0, 0x200
-	.global gUnk_086B1248
-gUnk_086B1248: @ 0x086B1248
+	.global gCoinGlintGfx_Frame4
+gCoinGlintGfx_Frame4: @ 0x086B1248
 	.incbin "build/assets/gfx__bank_a.bin", 0x7AFC0, 0x200
-	.global gUnk_086B1448
-gUnk_086B1448: @ 0x086B1448
+	.global gCoinGlintGfx_Frame5
+gCoinGlintGfx_Frame5: @ 0x086B1448
 	.incbin "build/assets/gfx__bank_a.bin", 0x7B1C0, 0x200
-	.global gUnk_086B1648
-gUnk_086B1648: @ 0x086B1648
+	.global gCoinGlintGfx_Frame6
+gCoinGlintGfx_Frame6: @ 0x086B1648
 	.incbin "build/assets/gfx__bank_a.bin", 0x7B3C0, 0x200
-	.global gUnk_086B1848
-gUnk_086B1848: @ 0x086B1848
+	.global gCoinGlintGfx_Frame7
+gCoinGlintGfx_Frame7: @ 0x086B1848
 	.incbin "build/assets/gfx__bank_a.bin", 0x7B5C0, 0x200
-	.global gUnk_086B1A48
-gUnk_086B1A48: @ 0x086B1A48
+	.global gCoinGlintGfx_Frame8
+gCoinGlintGfx_Frame8: @ 0x086B1A48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7B7C0, 0x200
-	.global gUnk_086B1C48
-gUnk_086B1C48: @ 0x086B1C48
+	.global gCoinGlintGfx_Frame9
+gCoinGlintGfx_Frame9: @ 0x086B1C48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7B9C0, 0x200
-	.global gUnk_086B1E48
-gUnk_086B1E48: @ 0x086B1E48
+	.global gSparkleGfx
+gSparkleGfx: @ 0x086B1E48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BBC0, 0x80
-	.global gUnk_086B1EC8
-gUnk_086B1EC8: @ 0x086B1EC8
+	.global gSparkleGfx_Frame1
+gSparkleGfx_Frame1: @ 0x086B1EC8
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BC40, 0x80
-	.global gUnk_086B1F48
-gUnk_086B1F48: @ 0x086B1F48
+	.global gSparkleGfx_Frame2
+gSparkleGfx_Frame2: @ 0x086B1F48
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BCC0, 0x80
-	.global gUnk_086B1FC8
-gUnk_086B1FC8: @ 0x086B1FC8
+	.global gSparkleGfx_Frame3
+gSparkleGfx_Frame3: @ 0x086B1FC8
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BD40, 0x80
-	.global gUnk_086B2048
-gUnk_086B2048: @ 0x086B2048
+	.global gSparkleGfx_Frame4
+gSparkleGfx_Frame4: @ 0x086B2048
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BDC0, 0x80
-	.global gUnk_086B20C8
-gUnk_086B20C8: @ 0x086B20C8
+	.global gSparkleGfx_Frame5
+gSparkleGfx_Frame5: @ 0x086B20C8
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BE40, 0x80
-	.global gUnk_086B2148
-gUnk_086B2148: @ 0x086B2148
+	.global gSparklePalette
+gSparklePalette: @ 0x086B2148
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BEC0, 0x20
-	.global gUnk_086B2168
-gUnk_086B2168: @ 0x086B2168
+	.global gDiceSceneObjTilesLeft
+gDiceSceneObjTilesLeft: @ 0x086B2168
 	.incbin "build/assets/gfx__bank_a.bin", 0x7BEE0, 0x2000
-	.global gUnk_086B4168
-gUnk_086B4168: @ 0x086B4168
+	.global gDiceSceneObjTilesRight
+gDiceSceneObjTilesRight: @ 0x086B4168
 	.incbin "build/assets/gfx__bank_a.bin", 0x7DEE0, 0x2000
-	.global gUnk_086B6168
-gUnk_086B6168: @ 0x086B6168
+	.global gDiceSceneObjPal
+gDiceSceneObjPal: @ 0x086B6168
 	.incbin "build/assets/gfx__bank_a.bin", 0x7FEE0, 0x200
-	.global gUnk_086B6368
-gUnk_086B6368: @ 0x086B6368
+	.global gExodiaPiecesObjPal
+gExodiaPiecesObjPal: @ 0x086B6368
 	.incbin "build/assets/gfx__bank_a.bin", 0x800E0, 0x200
-	.global gUnk_086B6568
-gUnk_086B6568: @ 0x086B6568
+	.global gExodiaPiecesObjTiles
+gExodiaPiecesObjTiles: @ 0x086B6568
 	.incbin "build/assets/gfx__bank_a.bin", 0x802E0, 0x2000
-	.global gUnk_086B8568
-gUnk_086B8568: @ 0x086B8568
+	.global gMillenniumEyeBitmap
+gMillenniumEyeBitmap: @ 0x086B8568
 	.incbin "build/assets/gfx__bank_a.bin", 0x822E0, 0x9600
-	.global gUnk_086C1B68
-gUnk_086C1B68: @ 0x086C1B68
+	.global gMillenniumEyePal
+gMillenniumEyePal: @ 0x086C1B68
 	.incbin "build/assets/gfx__bank_a.bin", 0x8B8E0, 0x200
-	.global gUnk_086C1D68
-gUnk_086C1D68: @ 0x086C1D68
+	.global gExodiaFlameBgTiles0
+gExodiaFlameBgTiles0: @ 0x086C1D68
 	.incbin "build/assets/gfx__bank_a.bin", 0x8BAE0, 0x2000
-	.global gUnk_086C3D68
-gUnk_086C3D68: @ 0x086C3D68
+	.global gExodiaFlameBgTiles1
+gExodiaFlameBgTiles1: @ 0x086C3D68
 	.incbin "build/assets/gfx__bank_a.bin", 0x8DAE0, 0x2000
-	.global gUnk_086C5D68
-gUnk_086C5D68: @ 0x086C5D68
+	.global gExodiaFlameBgTiles2
+gExodiaFlameBgTiles2: @ 0x086C5D68
 	.incbin "build/assets/gfx__bank_a.bin", 0x8FAE0, 0x2000
-	.global gUnk_086C7D68
-gUnk_086C7D68: @ 0x086C7D68
+	.global gExodiaFlameBgTiles3
+gExodiaFlameBgTiles3: @ 0x086C7D68
 	.incbin "build/assets/gfx__bank_a.bin", 0x91AE0, 0x2000
-	.global gUnk_086C9D68
-gUnk_086C9D68: @ 0x086C9D68
+	.global gExodiaFlameBg2Map
+gExodiaFlameBg2Map: @ 0x086C9D68
 	.incbin "build/assets/gfx__bank_a.bin", 0x93AE0, 0x4B0
-	.global gUnk_086CA218
-gUnk_086CA218: @ 0x086CA218
+	.global gExodiaFlameBg1Map
+gExodiaFlameBg1Map: @ 0x086CA218
 	.incbin "build/assets/gfx__bank_a.bin", 0x93F90, 0x4B0
-	.global gUnk_086CA6C8
-gUnk_086CA6C8: @ 0x086CA6C8
+	.global gExodiaFlameBg0Map
+gExodiaFlameBg0Map: @ 0x086CA6C8
 	.incbin "build/assets/gfx__bank_a.bin", 0x94440, 0x4B0
-	.global gUnk_086CAB78
-gUnk_086CAB78: @ 0x086CAB78
+	.global gExodiaFlameBgPal
+gExodiaFlameBgPal: @ 0x086CAB78
 	.incbin "build/assets/gfx__bank_a.bin", 0x948F0, 0x200
 	.global gUnk_086CAD78
 gUnk_086CAD78: @ 0x086CAD78
 	.incbin "build/assets/gfx__bank_a.bin", 0x94AF0, 0x2000
-	.global gUnk_086CCD78
-gUnk_086CCD78: @ 0x086CCD78
+	.global gExodiaFlameObjTilesB
+gExodiaFlameObjTilesB: @ 0x086CCD78
 	.incbin "build/assets/gfx__bank_a.bin", 0x96AF0, 0x2000
 	.global gUnk_086CED78
 gUnk_086CED78: @ 0x086CED78
@@ -1362,89 +1362,89 @@ gUnk_086CED78: @ 0x086CED78
 	.global gUnk_086CF778
 gUnk_086CF778: @ 0x086CF778
 	.incbin "build/assets/gfx__bank_a.bin", 0x994F0, 0xA00
-	.global gUnk_086D0178
-gUnk_086D0178: @ 0x086D0178
+	.global gDestinyBoardBgTiles0
+gDestinyBoardBgTiles0: @ 0x086D0178
 	.incbin "build/assets/gfx__bank_a.bin", 0x99EF0, 0x2000
-	.global gUnk_086D2178
-gUnk_086D2178: @ 0x086D2178
+	.global gDestinyBoardBgTiles1
+gDestinyBoardBgTiles1: @ 0x086D2178
 	.incbin "build/assets/gfx__bank_a.bin", 0x9BEF0, 0x2000
-	.global gUnk_086D4178
-gUnk_086D4178: @ 0x086D4178
+	.global gDestinyBoardBgTiles2
+gDestinyBoardBgTiles2: @ 0x086D4178
 	.incbin "build/assets/gfx__bank_a.bin", 0x9DEF0, 0x2000
-	.global gUnk_086D6178
-gUnk_086D6178: @ 0x086D6178
+	.global gDestinyBoardObjTiles0
+gDestinyBoardObjTiles0: @ 0x086D6178
 	.incbin "build/assets/gfx__bank_a.bin", 0x9FEF0, 0x2000
-	.global gUnk_086D8178
-gUnk_086D8178: @ 0x086D8178
+	.global gDestinyBoardObjTiles1
+gDestinyBoardObjTiles1: @ 0x086D8178
 	.incbin "build/assets/gfx__bank_a.bin", 0xA1EF0, 0x2000
-	.global gUnk_086DA178
-gUnk_086DA178: @ 0x086DA178
+	.global gDestinyBoardObjTiles2
+gDestinyBoardObjTiles2: @ 0x086DA178
 	.incbin "build/assets/gfx__bank_a.bin", 0xA3EF0, 0x2000
-	.global gUnk_086DC178
-gUnk_086DC178: @ 0x086DC178
+	.global gDestinyBoardObjTiles3
+gDestinyBoardObjTiles3: @ 0x086DC178
 	.incbin "build/assets/gfx__bank_a.bin", 0xA5EF0, 0x2000
-	.global gUnk_086DE178
-gUnk_086DE178: @ 0x086DE178
+	.global gFinalLetterTiles
+gFinalLetterTiles: @ 0x086DE178
 	.incbin "build/assets/gfx__bank_a.bin", 0xA7EF0, 0x302C
-	.global gUnk_086E11A4
-gUnk_086E11A4: @ 0x086E11A4
+	.global gDestinyBoardBg2Map
+gDestinyBoardBg2Map: @ 0x086E11A4
 	.incbin "build/assets/gfx__bank_a.bin", 0xAAF1C, 0xAC8
-	.global gUnk_086E1C6C
-gUnk_086E1C6C: @ 0x086E1C6C
+	.global gDestinyBoardBg1Map
+gDestinyBoardBg1Map: @ 0x086E1C6C
 	.incbin "build/assets/gfx__bank_a.bin", 0xAB9E4, 0x564
-	.global gUnk_086E21D0
-gUnk_086E21D0: @ 0x086E21D0
+	.global gDestinyBoardWaveMap
+gDestinyBoardWaveMap: @ 0x086E21D0
 	.incbin "build/assets/gfx__bank_a.bin", 0xABF48, 0x100
-	.global gUnk_086E22D0
-gUnk_086E22D0: @ 0x086E22D0
+	.global gDestinyBoardBgPal
+gDestinyBoardBgPal: @ 0x086E22D0
 	.incbin "build/assets/gfx__bank_a.bin", 0xAC048, 0x200
-	.global gUnk_086E24D0
-gUnk_086E24D0: @ 0x086E24D0
+	.global gDestinyBoardObjPal
+gDestinyBoardObjPal: @ 0x086E24D0
 	.incbin "build/assets/gfx__bank_a.bin", 0xAC248, 0x200
-	.global gUnk_086E26D0
-gUnk_086E26D0: @ 0x086E26D0
+	.global gDeckEditFrameMap
+gDeckEditFrameMap: @ 0x086E26D0
 	.incbin "build/assets/gfx__bank_a.bin", 0xAC448, 0x960
-	.global gUnk_086E3030
-gUnk_086E3030: @ 0x086E3030
+	.global gDeckEditBgTiles
+gDeckEditBgTiles: @ 0x086E3030
 	.incbin "build/assets/gfx__bank_a.bin", 0xACDA8, 0x2000
-	.global gUnk_086E5030
-gUnk_086E5030: @ 0x086E5030
+	.global gDeckEditObjTiles
+gDeckEditObjTiles: @ 0x086E5030
 	.incbin "build/assets/gfx__bank_a.bin", 0xAEDA8, 0x2000
-	.global gUnk_086E7030
-gUnk_086E7030: @ 0x086E7030
+	.global gDeckEditCardStackObjTiles
+gDeckEditCardStackObjTiles: @ 0x086E7030
 	.incbin "build/assets/gfx__bank_a.bin", 0xB0DA8, 0x2000
-	.global gUnk_086E9030
-gUnk_086E9030: @ 0x086E9030
+	.global gDeckEditCardIconObjTiles
+gDeckEditCardIconObjTiles: @ 0x086E9030
 	.incbin "build/assets/gfx__bank_a.bin", 0xB2DA8, 0x2000
-	.global gUnk_086EB030
-gUnk_086EB030: @ 0x086EB030
+	.global gDeckEditCardFrameObjTiles
+gDeckEditCardFrameObjTiles: @ 0x086EB030
 	.incbin "build/assets/gfx__bank_a.bin", 0xB4DA8, 0x2000
-	.global gUnk_086ED030
-gUnk_086ED030: @ 0x086ED030
+	.global gDeckEditBgPals4to7
+gDeckEditBgPals4to7: @ 0x086ED030
 	.incbin "build/assets/gfx__bank_a.bin", 0xB6DA8, 0x80
-	.global gUnk_086ED0B0
-gUnk_086ED0B0: @ 0x086ED0B0
+	.global gDeckEditBgPals1to3
+gDeckEditBgPals1to3: @ 0x086ED0B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xB6E28, 0xE0
-	.global gUnk_086ED190
-gUnk_086ED190: @ 0x086ED190
+	.global gDeckEditBgPal3
+gDeckEditBgPal3: @ 0x086ED190
 	.incbin "build/assets/gfx__bank_a.bin", 0xB6F08, 0x20
-	.global gUnk_086ED1B0
-gUnk_086ED1B0: @ 0x086ED1B0
+	.global gDeckEditObjPal
+gDeckEditObjPal: @ 0x086ED1B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xB6F28, 0x200
-	.global gUnk_086ED3B0
-gUnk_086ED3B0: @ 0x086ED3B0
+	.global gDeckEditLabelTiles
+gDeckEditLabelTiles: @ 0x086ED3B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xB7128, 0x2000
-	.global gUnk_086EF3B0
-gUnk_086EF3B0: @ 0x086EF3B0
+	.global gDeckEditCommandLabelGfx
+gDeckEditCommandLabelGfx: @ 0x086EF3B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xB9128, 0x1C00
-	.global gUnk_086F0FB0
-gUnk_086F0FB0: @ 0x086F0FB0
+	.global gDeckEditSwapLabelGfx
+gDeckEditSwapLabelGfx: @ 0x086F0FB0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBAD28, 0x400
-	.global gUnk_086F13B0
-gUnk_086F13B0: @ 0x086F13B0
+	.global gDeckEditDecideLabelGfx
+gDeckEditDecideLabelGfx: @ 0x086F13B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB128, 0x400
-	.global gUnk_086F17B0
-gUnk_086F17B0: @ 0x086F17B0
+	.global gDeckEditMenuTilemap
+gDeckEditMenuTilemap: @ 0x086F17B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB528, 0x24
 	.global gUnk_086F17D4
 gUnk_086F17D4: @ 0x086F17D4
@@ -1458,86 +1458,86 @@ gUnk_086F17E8: @ 0x086F17E8
 	.global gUnk_086F1B10
 gUnk_086F1B10: @ 0x086F1B10
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB888, 0x150
-	.global gUnk_086F1C60
-gUnk_086F1C60: @ 0x086F1C60
+	.global gListFilterBgPal
+gListFilterBgPal: @ 0x086F1C60
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB9D8, 0x200
-	.global gUnk_086F1E60
-gUnk_086F1E60: @ 0x086F1E60
+	.global gListFilterObjPal
+gListFilterObjPal: @ 0x086F1E60
 	.incbin "build/assets/gfx__bank_a.bin", 0xBBBD8, 0x200
-	.global gUnk_086F2060
-gUnk_086F2060: @ 0x086F2060
+	.global gListFilterBgTiles0
+gListFilterBgTiles0: @ 0x086F2060
 	.incbin "build/assets/gfx__bank_a.bin", 0xBBDD8, 0x2000
-	.global gUnk_086F4060
-gUnk_086F4060: @ 0x086F4060
+	.global gListFilterBgTiles1
+gListFilterBgTiles1: @ 0x086F4060
 	.incbin "build/assets/gfx__bank_a.bin", 0xBDDD8, 0x140
-	.global gUnk_086F41A0
-gUnk_086F41A0: @ 0x086F41A0
+	.global gListFilterBarFillTiles
+gListFilterBarFillTiles: @ 0x086F41A0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBDF18, 0x1EC0
-	.global gUnk_086F6060
-gUnk_086F6060: @ 0x086F6060
+	.global gListFilterBgTiles2
+gListFilterBgTiles2: @ 0x086F6060
 	.incbin "build/assets/gfx__bank_a.bin", 0xBFDD8, 0x2000
-	.global gUnk_086F8060
-gUnk_086F8060: @ 0x086F8060
+	.global gListFilterObjTiles0
+gListFilterObjTiles0: @ 0x086F8060
 	.incbin "build/assets/gfx__bank_a.bin", 0xC1DD8, 0x2000
-	.global gUnk_086FA060
-gUnk_086FA060: @ 0x086FA060
+	.global gListFilterObjTiles1
+gListFilterObjTiles1: @ 0x086FA060
 	.incbin "build/assets/gfx__bank_a.bin", 0xC3DD8, 0x2000
-	.global gUnk_086FC060
-gUnk_086FC060: @ 0x086FC060
+	.global gListFilterBgPatternMap
+gListFilterBgPatternMap: @ 0x086FC060
 	.incbin "build/assets/gfx__bank_a.bin", 0xC5DD8, 0x80
 	.global gUnk_086FC0E0
 gUnk_086FC0E0: @ 0x086FC0E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xC5E58, 0x4B0
-	.global gUnk_086FC590
-gUnk_086FC590: @ 0x086FC590
+	.global gListFilterFilterPageMap
+gListFilterFilterPageMap: @ 0x086FC590
 	.incbin "build/assets/gfx__bank_a.bin", 0xC6308, 0x4B0
-	.global gUnk_086FCA40
-gUnk_086FCA40: @ 0x086FCA40
+	.global gListFilterSortPageMap
+gListFilterSortPageMap: @ 0x086FCA40
 	.incbin "build/assets/gfx__bank_a.bin", 0xC67B8, 0x690
-	.global gUnk_086FD0D0
-gUnk_086FD0D0: @ 0x086FD0D0
+	.global gListFilterBarFrameMap
+gListFilterBarFrameMap: @ 0x086FD0D0
 	.incbin "build/assets/gfx__bank_a.bin", 0xC6E48, 0x4B0
-	.global gUnk_086FD580
-gUnk_086FD580: @ 0x086FD580
+	.global gListFilterNowFilteringMap
+gListFilterNowFilteringMap: @ 0x086FD580
 	.incbin "build/assets/gfx__bank_a.bin", 0xC72F8, 0x2D0
-	.global gUnk_086FD850
-gUnk_086FD850: @ 0x086FD850
+	.global gListFilterListIconMap
+gListFilterListIconMap: @ 0x086FD850
 	.incbin "build/assets/gfx__bank_a.bin", 0xC75C8, 0xD4
-	.global gUnk_086FD924
-gUnk_086FD924: @ 0x086FD924
+	.global gDeckStatsBgPal
+gDeckStatsBgPal: @ 0x086FD924
 	.incbin "build/assets/gfx__bank_a.bin", 0xC769C, 0x200
-	.global gUnk_086FDB24
-gUnk_086FDB24: @ 0x086FDB24
+	.global gDeckStatsBgTiles
+gDeckStatsBgTiles: @ 0x086FDB24
 	.incbin "build/assets/gfx__bank_a.bin", 0xC789C, 0x2000
-	.global gUnk_086FFB24
-gUnk_086FFB24: @ 0x086FFB24
+	.global gDeckStatsLabelTiles
+gDeckStatsLabelTiles: @ 0x086FFB24
 	.incbin "build/assets/gfx__bank_a.bin", 0xC989C, 0x2000
-	.global gUnk_08701B24
-gUnk_08701B24: @ 0x08701B24
+	.global gDeckStatsPatternMap
+gDeckStatsPatternMap: @ 0x08701B24
 	.incbin "build/assets/gfx__bank_a.bin", 0xCB89C, 0x80
-	.global gUnk_08701BA4
-gUnk_08701BA4: @ 0x08701BA4
+	.global gDeckStatsPanelMap
+gDeckStatsPanelMap: @ 0x08701BA4
 	.incbin "build/assets/gfx__bank_a.bin", 0xCB91C, 0x4B0
-	.global gUnk_08702054
-gUnk_08702054: @ 0x08702054
+	.global gDeckStatsBg1Map
+gDeckStatsBg1Map: @ 0x08702054
 	.incbin "build/assets/gfx__bank_a.bin", 0xCBDCC, 0x4B0
-	.global gUnk_08702504
-gUnk_08702504: @ 0x08702504
+	.global gDeckStatsListIconMap
+gDeckStatsListIconMap: @ 0x08702504
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC27C, 0xD4
-	.global gUnk_087025D8
-gUnk_087025D8: @ 0x087025D8
+	.global gProhibitSelectFrameMap
+gProhibitSelectFrameMap: @ 0x087025D8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC350, 0x4B0
-	.global gUnk_08702A88
-gUnk_08702A88: @ 0x08702A88
+	.global gProhibitSelectBgPals4to7
+gProhibitSelectBgPals4to7: @ 0x08702A88
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC800, 0x80
-	.global gUnk_08702B08
-gUnk_08702B08: @ 0x08702B08
+	.global gProhibitSelectBgPals1to3
+gProhibitSelectBgPals1to3: @ 0x08702B08
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC880, 0xE0
-	.global gUnk_08702BE8
-gUnk_08702BE8: @ 0x08702BE8
+	.global gProhibitSelectBgPal3
+gProhibitSelectBgPal3: @ 0x08702BE8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC960, 0x20
-	.global gUnk_08702C08
-gUnk_08702C08: @ 0x08702C08
+	.global gProhibitSelectBgTiles
+gProhibitSelectBgTiles: @ 0x08702C08
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC980, 0x2140
 	.global gUnk_08704D48
 gUnk_08704D48: @ 0x08704D48
@@ -1695,26 +1695,26 @@ gUnk_08707A28: @ 0x08707A28
 	.global gUnk_08707AA8
 gUnk_08707AA8: @ 0x08707AA8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1820, 0x80
-	.global gUnk_08707B28
-gUnk_08707B28: @ 0x08707B28
+	.global gCardTradingBgImage
+gCardTradingBgImage: @ 0x08707B28
 	.incbin "build/assets/gfx__bank_a.bin", 0xD18A0, 0x1AB8
-	.global gUnk_087095E0
-gUnk_087095E0: @ 0x087095E0
+	.global gCardTradingButtonsGfx
+gCardTradingButtonsGfx: @ 0x087095E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xD3358, 0x1000
-	.global gUnk_0870A5E0
-gUnk_0870A5E0: @ 0x0870A5E0
+	.global gCardTradingButtonsDimGfx
+gCardTradingButtonsDimGfx: @ 0x0870A5E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xD4358, 0x1000
-	.global gUnk_0870B5E0
-gUnk_0870B5E0: @ 0x0870B5E0
+	.global gCardTradingButtonsPal
+gCardTradingButtonsPal: @ 0x0870B5E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xD5358, 0x20
-	.global gUnk_0870B600
-gUnk_0870B600: @ 0x0870B600
+	.global gCardTradingButtonsDimPal
+gCardTradingButtonsDimPal: @ 0x0870B600
 	.incbin "build/assets/gfx__bank_a.bin", 0xD5378, 0x20
-	.global gUnk_0870B620
-gUnk_0870B620: @ 0x0870B620
+	.global gCardTradingCardGfx
+gCardTradingCardGfx: @ 0x0870B620
 	.incbin "build/assets/gfx__bank_a.bin", 0xD5398, 0x1000
-	.global gUnk_0870C620
-gUnk_0870C620: @ 0x0870C620
+	.global gCardTradingCardPal
+gCardTradingCardPal: @ 0x0870C620
 	.incbin "build/assets/gfx__bank_a.bin", 0xD6398, 0x20
 @ gfx/scenes/set02 (gfx_scenes_set)
 	.incbin "build/assets/gfx__scenes__set02.bin", 0x0, 0x3880
@@ -1727,39 +1727,39 @@ gUnk_0870C620: @ 0x0870C620
 @ gfx/scenes/set01 (gfx_scenes_set)
 	.incbin "build/assets/gfx__scenes__set01.bin", 0x0, 0x2D90
 @ gfx/small_graphics (gfx_banks_bank)
-	.global gUnk_0871B650
-gUnk_0871B650: @ 0x0871B650
+	.global gOpponentSelectObjPal
+gOpponentSelectObjPal: @ 0x0871B650
 	.incbin "build/assets/gfx__small_graphics.bin", 0x0, 0x200
-	.global gUnk_0871B850
-gUnk_0871B850: @ 0x0871B850
+	.global gOpponentSelectObjTiles
+gOpponentSelectObjTiles: @ 0x0871B850
 	.incbin "build/assets/gfx__small_graphics.bin", 0x200, 0x1000
-	.global gUnk_0871C850
-gUnk_0871C850: @ 0x0871C850
+	.global gOpponentSelectTextPal
+gOpponentSelectTextPal: @ 0x0871C850
 	.incbin "build/assets/gfx__small_graphics.bin", 0x1200, 0x200
-	.global gUnk_0871CA50
-gUnk_0871CA50: @ 0x0871CA50
+	.global gOpponentSelectDigitTiles
+gOpponentSelectDigitTiles: @ 0x0871CA50
 	.incbin "build/assets/gfx__small_graphics.bin", 0x1400, 0x140
-	.global gUnk_0871CB90
-gUnk_0871CB90: @ 0x0871CB90
+	.global gOpponentSelectDimDigitTiles
+gOpponentSelectDimDigitTiles: @ 0x0871CB90
 	.incbin "build/assets/gfx__small_graphics.bin", 0x1540, 0x2C0
 @ gfx/mode4_bitmaps (gfx_banks_bank)
 	.incbin "build/assets/gfx__mode4_bitmaps.bin", 0x0, 0x2F800
 @ gfx/dialogue_box (gfx_scenes_box)
 	.incbin "build/assets/gfx__dialogue_box.bin", 0x0, 0xF60
-	.global gUnk_0874D5B0
-gUnk_0874D5B0: @ 0x0874D5B0
+	.global gDialogueHeaderLz
+gDialogueHeaderLz: @ 0x0874D5B0
 	.incbin "build/assets/gfx__dialogue_box.bin", 0xF60, 0x2
-	.global gUnk_0874D5B2
-gUnk_0874D5B2: @ 0x0874D5B2
+	.global gDialogueHeaderLzSizeHi
+gDialogueHeaderLzSizeHi: @ 0x0874D5B2
 	.incbin "build/assets/gfx__dialogue_box.bin", 0xF62, 0x2
-	.global gUnk_0874D5B4
-gUnk_0874D5B4: @ 0x0874D5B4
+	.global gDialogueHeaderLzData
+gDialogueHeaderLzData: @ 0x0874D5B4
 	.incbin "build/assets/gfx__dialogue_box.bin", 0xF64, 0xB50
-	.global gUnk_0874E104
-gUnk_0874E104: @ 0x0874E104
+	.global gDialogueBoxPalette
+gDialogueBoxPalette: @ 0x0874E104
 	.incbin "build/assets/gfx__dialogue_box.bin", 0x1AB4, 0x200
-	.global gUnk_0874E304
-gUnk_0874E304: @ 0x0874E304
+	.global gDialogueTextPalette
+gDialogueTextPalette: @ 0x0874E304
 	.incbin "build/assets/gfx__dialogue_box.bin", 0x1CB4, 0x20
 @ gfx/scenes/set05 (gfx_scenes_set)
 	.incbin "build/assets/gfx__scenes__set05.bin", 0x0, 0x4A24
@@ -1814,113 +1814,113 @@ gUnk_0874E304: @ 0x0874E304
 @ gfx/scenes/set30 (gfx_scenes_set)
 	.incbin "build/assets/gfx__scenes__set30.bin", 0x0, 0x4108
 @ gfx/bank_b (gfx_banks_bank)
-	.global gUnk_087BDAA8
-gUnk_087BDAA8: @ 0x087BDAA8
+	.global gTitleLogoImage
+gTitleLogoImage: @ 0x087BDAA8
 	.incbin "build/assets/gfx__bank_b.bin", 0x0, 0x2AC4
-	.global gUnk_087C056C
-gUnk_087C056C: @ 0x087C056C
+	.global gTitleCopyrightImage
+gTitleCopyrightImage: @ 0x087C056C
 	.incbin "build/assets/gfx__bank_b.bin", 0x2AC4, 0x768
-	.global gUnk_087C0CD4
-gUnk_087C0CD4: @ 0x087C0CD4
+	.global gTitleCoinImage
+gTitleCoinImage: @ 0x087C0CD4
 	.incbin "build/assets/gfx__bank_b.bin", 0x322C, 0x10F8
-	.global gUnk_087C1DCC
-gUnk_087C1DCC: @ 0x087C1DCC
+	.global gTitleFlameImage
+gTitleFlameImage: @ 0x087C1DCC
 	.incbin "build/assets/gfx__bank_b.bin", 0x4324, 0xC08
-	.global gUnk_087C29D4
-gUnk_087C29D4: @ 0x087C29D4
+	.global gDeletePromptBgBitmap
+gDeletePromptBgBitmap: @ 0x087C29D4
 	.incbin "build/assets/gfx__bank_b.bin", 0x4F2C, 0x9600
-	.global gUnk_087CBFD4
-gUnk_087CBFD4: @ 0x087CBFD4
+	.global gDeletePromptBgPal
+gDeletePromptBgPal: @ 0x087CBFD4
 	.incbin "build/assets/gfx__bank_b.bin", 0xE52C, 0x200
-	.global gUnk_087CC1D4
-gUnk_087CC1D4: @ 0x087CC1D4
+	.global gDeletePromptObjGfx
+gDeletePromptObjGfx: @ 0x087CC1D4
 	.incbin "build/assets/gfx__bank_b.bin", 0xE72C, 0x4000
-	.global gUnk_087D01D4
-gUnk_087D01D4: @ 0x087D01D4
+	.global gDeletePromptObjPal
+gDeletePromptObjPal: @ 0x087D01D4
 	.incbin "build/assets/gfx__bank_b.bin", 0x1272C, 0x20
-	.global gUnk_087D01F4
-gUnk_087D01F4: @ 0x087D01F4
+	.global gKonamiLogoImage
+gKonamiLogoImage: @ 0x087D01F4
 	.incbin "build/assets/gfx__bank_b.bin", 0x1274C, 0x2738
-	.global gUnk_087D292C
-gUnk_087D292C: @ 0x087D292C
+	.global gKcejLogoImage
+gKcejLogoImage: @ 0x087D292C
 	.incbin "build/assets/gfx__bank_b.bin", 0x14E84, 0x21F8
-	.global gUnk_087D4B24
-gUnk_087D4B24: @ 0x087D4B24
+	.global gMainMenuSkyImage
+gMainMenuSkyImage: @ 0x087D4B24
 	.incbin "build/assets/gfx__bank_b.bin", 0x1707C, 0x9D34
-	.global gUnk_087DE858
-gUnk_087DE858: @ 0x087DE858
+	.global gMainMenuObjPal
+gMainMenuObjPal: @ 0x087DE858
 	.incbin "build/assets/gfx__bank_b.bin", 0x20DB0, 0x20
-	.global gUnk_087DE878
-gUnk_087DE878: @ 0x087DE878
+	.global gMainMenuObjGfx
+gMainMenuObjGfx: @ 0x087DE878
 	.incbin "build/assets/gfx__bank_b.bin", 0x20DD0, 0x4000
-	.global gUnk_087E2878
-gUnk_087E2878: @ 0x087E2878
+	.global gRecordMarkerObjPal
+gRecordMarkerObjPal: @ 0x087E2878
 	.incbin "build/assets/gfx__bank_b.bin", 0x24DD0, 0x200
-	.global gUnk_087E2A78
-gUnk_087E2A78: @ 0x087E2A78
+	.global gRecordArrowObjPal
+gRecordArrowObjPal: @ 0x087E2A78
 	.incbin "build/assets/gfx__bank_b.bin", 0x24FD0, 0x200
-	.global gUnk_087E2C78
-gUnk_087E2C78: @ 0x087E2C78
+	.global gRecordMarkerObjGfx
+gRecordMarkerObjGfx: @ 0x087E2C78
 	.incbin "build/assets/gfx__bank_b.bin", 0x251D0, 0x200
-	.global gUnk_087E2E78
-gUnk_087E2E78: @ 0x087E2E78
+	.global gRecordArrowObjGfxTop
+gRecordArrowObjGfxTop: @ 0x087E2E78
 	.incbin "build/assets/gfx__bank_b.bin", 0x253D0, 0x200
-	.global gUnk_087E3078
-gUnk_087E3078: @ 0x087E3078
+	.global gRecordArrowObjGfxBottom
+gRecordArrowObjGfxBottom: @ 0x087E3078
 	.incbin "build/assets/gfx__bank_b.bin", 0x255D0, 0x200
-	.global gUnk_087E3278
-gUnk_087E3278: @ 0x087E3278
+	.global gRecordDigitPal
+gRecordDigitPal: @ 0x087E3278
 	.incbin "build/assets/gfx__bank_b.bin", 0x257D0, 0x200
-	.global gUnk_087E3478
-gUnk_087E3478: @ 0x087E3478
+	.global gRecordDigitGfx
+gRecordDigitGfx: @ 0x087E3478
 	.incbin "build/assets/gfx__bank_b.bin", 0x259D0, 0x140
-	.global gUnk_087E35B8
-gUnk_087E35B8: @ 0x087E35B8
+	.global gRecordBgPatternImage
+gRecordBgPatternImage: @ 0x087E35B8
 	.incbin "build/assets/gfx__bank_b.bin", 0x25B10, 0xCC8
-	.global gUnk_087E4280
-gUnk_087E4280: @ 0x087E4280
+	.global gRecordFrameImage
+gRecordFrameImage: @ 0x087E4280
 	.incbin "build/assets/gfx__bank_b.bin", 0x267D8, 0x1024
-	.global gUnk_087E52A4
-gUnk_087E52A4: @ 0x087E52A4
+	.global gRecordRows5Image
+gRecordRows5Image: @ 0x087E52A4
 	.incbin "build/assets/gfx__bank_b.bin", 0x277FC, 0xA50
-	.global gUnk_087E5CF4
-gUnk_087E5CF4: @ 0x087E5CF4
+	.global gRecordRows4Image
+gRecordRows4Image: @ 0x087E5CF4
 	.incbin "build/assets/gfx__bank_b.bin", 0x2824C, 0x1AC0
-	.global gUnk_087E77B4
-gUnk_087E77B4: @ 0x087E77B4
+	.global gRecordUnknownPortraitImage
+gRecordUnknownPortraitImage: @ 0x087E77B4
 	.incbin "build/assets/gfx__bank_b.bin", 0x29D0C, 0x2F64
-	.global gUnk_087EA718
-gUnk_087EA718: @ 0x087EA718
+	.global gCalendarBgBitmap
+gCalendarBgBitmap: @ 0x087EA718
 	.incbin "build/assets/gfx__bank_b.bin", 0x2CC70, 0x7080
-	.global gUnk_087F1798
-gUnk_087F1798: @ 0x087F1798
+	.global gCalendarBgEventPanel
+gCalendarBgEventPanel: @ 0x087F1798
 	.incbin "build/assets/gfx__bank_b.bin", 0x33CF0, 0x2580
-	.global gUnk_087F3D18
-gUnk_087F3D18: @ 0x087F3D18
+	.global gCalendarBgPal
+gCalendarBgPal: @ 0x087F3D18
 	.incbin "build/assets/gfx__bank_b.bin", 0x36270, 0x200
-	.global gUnk_087F3F18
-gUnk_087F3F18: @ 0x087F3F18
+	.global gCalendarNumberPal
+gCalendarNumberPal: @ 0x087F3F18
 	.incbin "build/assets/gfx__bank_b.bin", 0x36470, 0x200
-	.global gUnk_087F4118
-gUnk_087F4118: @ 0x087F4118
+	.global gCalendarNumberTiles
+gCalendarNumberTiles: @ 0x087F4118
 	.incbin "build/assets/gfx__bank_b.bin", 0x36670, 0xC00
-	.global gUnk_087F4D18
-gUnk_087F4D18: @ 0x087F4D18
+	.global gCalendarIconPal
+gCalendarIconPal: @ 0x087F4D18
 	.incbin "build/assets/gfx__bank_b.bin", 0x37270, 0xC0
-	.global gUnk_087F4DD8
-gUnk_087F4DD8: @ 0x087F4DD8
+	.global gCalendarIconTiles
+gCalendarIconTiles: @ 0x087F4DD8
 	.incbin "build/assets/gfx__bank_b.bin", 0x37330, 0x1000
-	.global gUnk_087F5DD8
-gUnk_087F5DD8: @ 0x087F5DD8
+	.global gCalendarMonthNamePal
+gCalendarMonthNamePal: @ 0x087F5DD8
 	.incbin "build/assets/gfx__bank_b.bin", 0x38330, 0x20
-	.global gUnk_087F5DF8
-gUnk_087F5DF8: @ 0x087F5DF8
+	.global gCalendarMonthNameTiles
+gCalendarMonthNameTiles: @ 0x087F5DF8
 	.incbin "build/assets/gfx__bank_b.bin", 0x38350, 0x2000
-	.global gUnk_087F7DF8
-gUnk_087F7DF8: @ 0x087F7DF8
+	.global gCalendarWeekdayPal
+gCalendarWeekdayPal: @ 0x087F7DF8
 	.incbin "build/assets/gfx__bank_b.bin", 0x3A350, 0x20
-	.global gUnk_087F7E18
-gUnk_087F7E18: @ 0x087F7E18
+	.global gCalendarWeekdayTiles
+gCalendarWeekdayTiles: @ 0x087F7E18
 	.incbin "build/assets/gfx__bank_b.bin", 0x3A370, 0x750
 @ padding_end (zero)
 	.space 0x7A98

@@ -111,7 +111,7 @@ and rerun `--verify-compiler`. The next run rebuilds every tree whose stamp no l
     involve pseudos with no aligned evidence: a high register on one side turns their code into other insns.
   - Selftest was not re-run here because it rewrites `build/regoracle/<func>/`.
 
-## Use on `sub_08044224`
+## Use on `CollectEffectTargets`
 The six region workers of the last round ([[code-08044224#How it matched (2026-10-02)]]) used it as follows:
 - They used its differing-line count as a second metric next to `check.py`. For example, r1B went from 183 to
   129 lines. r1C's scratch build combining the fixes for 0x3FA, 0x400, 0x41E, 0x439 and 0x47B was at 68.

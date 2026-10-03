@@ -1,4 +1,4 @@
-extern const unsigned int gUnk_08621DE0[];
+extern const unsigned int gCardStats[];
 #include "global.h"
 
 
@@ -56,15 +56,15 @@ struct DuelPlayer {
     struct DuelCard listB84[80];    /* +0xB84 */
     u16 arrCC4[80];                 /* +0xCC4 */
 };
-extern struct DuelPlayer gUnk_020192E4[2];
+extern struct DuelPlayer gDuelPlayers[2];
 
 struct DuelZonesPlayer {
     struct DuelZone zones[11];
     u8 filler[0xD64 - 11 * 0x94];
 };
-extern struct DuelZonesPlayer gUnk_0201930C[2];
+extern struct DuelZonesPlayer gDuelZones[2];
 /* Zone pointer by byte arithmetic, zone term first (the ROM's address order); callers pass player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 #define CARD_WORD(c) (*(u32 *)&(c))
 #define CARD_ID(w) (((w) << 20) >> 20)
@@ -73,8 +73,8 @@ extern struct DuelZonesPlayer gUnk_0201930C[2];
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 /* Card word of player 1's zone i (zones start at 0x0201930C + 0xD64). */
-extern u8 gUnk_0201A070[];
-#define ZONE1_WORD(i) (*(u32 *)((i) * 0x94 + (u32)gUnk_0201A070))
+extern u8 gDuelZonesP1[];
+#define ZONE1_WORD(i) (*(u32 *)((i) * 0x94 + (u32)gDuelZonesP1))
 
 /* Monster level as the game computes it: Magic/Trap types 0x15-0x17 count as 0, type 0x18 as 10. */
 #define CARD_LEVEL(id, r)                                     \
@@ -163,12 +163,12 @@ struct ZoneCardInfo {
     u32 unk4;
     u32 unk8;
 };
-void sub_0800ABC8(u32 player, u32 slot, struct ZoneCardInfo *out);
-int sub_08007994(u32 id);
-int sub_080563B8(int skip, u16 flag);
-extern const u16 gUnk_08622AB4[];
+void GetZoneCardStats(u32 player, u32 slot, struct ZoneCardInfo *out);
+int IsFusionMonster(u32 id);
+int AiPickTributeMonster(int skip, u16 flag);
+extern const u16 gCardIdToNumber[];
 
-/* Duel action record at 0x0201CF90 (0x10 bytes), filled in and handed to sub_08055A00. */
+/* Duel action record at 0x0201CF90 (0x10 bytes), filled in and handed to SummonAction_Start. */
 struct ActRec {
     u32 player : 1;     /* bit 0 */
     u32 zone5 : 5;      /* bits 1-5 */
@@ -193,13 +193,13 @@ struct ActRec {
     u8 f0E_5 : 3;
     u8 pad0F;
 };
-extern struct ActRec gUnk_0201CF90;
-void sub_08055A00(void);
-void sub_08007558(struct DuelCard *dst, struct DuelCard *src);
+extern struct ActRec gSummonAction;
+void SummonAction_Start(void);
+void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
 
-void sub_08055EB0(int player, int zone)
+void QueueFlipSummon(int player, int zone)
 {
-    struct ActRec *r = &gUnk_0201CF90;
+    struct ActRec *r = &gSummonAction;
 
     r->player = player;
     r->zone5 = zone;
@@ -210,26 +210,26 @@ void sub_08055EB0(int player, int zone)
     r->f19 = 0;
     r->f25 = 0;
     r->f26 = 0;
-    r->cardId = CARD_ID(*(u32 *)((player & 1) * 0xD64 + zone * 0x94 + (u32)gUnk_0201930C));
+    r->cardId = CARD_ID(*(u32 *)((player & 1) * 0xD64 + zone * 0x94 + (u32)gDuelZones));
     r->kind = 3;
     r->h0C = 3;
-    sub_08055A00();
+    SummonAction_Start();
 }
-int sub_08008524(int player, u16 number);
-int sub_08007834(u16 id);
-int sub_08008A44(int player);
+int CountActiveCardsOnField(int player, u16 number);
+int IsSpecialSummonOnly(u16 id);
+int FindFreeMonsterZone(int player);
 
-void sub_08055F70(int player, struct DuelCard *card, u16 c, u16 d, u16 e)
+void QueueSpecialSummon(int player, struct DuelCard *card, u16 c, u16 d, u16 e)
 {
     struct ActRec *r;
 
-    if (sub_08008524(0, 0x47F) != 0 || sub_08008524(1, 0x47F) != 0)
+    if (CountActiveCardsOnField(0, 0x47F) != 0 || CountActiveCardsOnField(1, 0x47F) != 0)
         c = 1;
-    if (sub_08007834(CARD_ID(CARD_WORD(*card))) != 0)
+    if (IsSpecialSummonOnly(CARD_ID(CARD_WORD(*card))) != 0)
         c = 1;
-    r = &gUnk_0201CF90;
+    r = &gSummonAction;
     r->player = player;
-    r->zone5 = sub_08008A44(player);
+    r->zone5 = FindFreeMonsterZone(player);
     r->zone8 = 0;
     r->f14 = c;
     r->f15 = d;
@@ -239,22 +239,22 @@ void sub_08055F70(int player, struct DuelCard *card, u16 c, u16 d, u16 e)
     r->f26 = 0;
     r->cardId = CARD_ID(CARD_WORD(*card));
     r->h0C = e;
-    sub_08007558(&r->card, card);
+    CopyDuelCard(&r->card, card);
     r->kind = 4;
     r->h0C = e | 4;
-    sub_08055A00();
+    SummonAction_Start();
 }
-void sub_08056094(int player, struct DuelCard *card, u16 c, u16 d)
+void QueueSpecialSummonChoosePosition(int player, struct DuelCard *card, u16 c, u16 d)
 {
     struct ActRec *r;
 
-    if (sub_08008524(0, 0x47F) != 0 || sub_08008524(1, 0x47F) != 0)
+    if (CountActiveCardsOnField(0, 0x47F) != 0 || CountActiveCardsOnField(1, 0x47F) != 0)
         c = 1;
-    if (sub_08007834(CARD_ID(CARD_WORD(*card))) != 0)
+    if (IsSpecialSummonOnly(CARD_ID(CARD_WORD(*card))) != 0)
         c = 1;
-    r = &gUnk_0201CF90;
+    r = &gSummonAction;
     r->player = player;
-    r->zone5 = sub_08008A44(player);
+    r->zone5 = FindFreeMonsterZone(player);
     r->zone8 = 0;
     r->f14 = c;
     r->f15 = 0;
@@ -263,40 +263,40 @@ void sub_08056094(int player, struct DuelCard *card, u16 c, u16 d)
     r->f25 = 0;
     r->f26 = 0;
     r->cardId = CARD_ID(CARD_WORD(*card));
-    sub_08007558(&r->card, card);
+    CopyDuelCard(&r->card, card);
     r->kind = 5;
     r->h0C = d | 4;
-    sub_08055A00();
+    SummonAction_Start();
 }
-void sub_08046A74(int player);
+void PayChainEnergyCost(int player);
 
 /* The AI passes the packed tribute word directly in r3. The original callee
  * decodes only the low halfwords of that word and the fifth stack argument. */
-void sub_080561A0(int player, int zone, int x, int packed, int faceUp)
+void QueueSpecialSummonFromHand(int player, int zone, int x, int packed, int faceUp)
 {
     u16 y = packed;
     u16 z = faceUp;
 
-    gUnk_0201CF90.player = player;
-    gUnk_0201CF90.zone5 = x;
-    gUnk_0201CF90.zone8 = zone;
-    gUnk_0201CF90.f14 = 1;
-    gUnk_0201CF90.f15 = z == 0;
+    gSummonAction.player = player;
+    gSummonAction.zone5 = x;
+    gSummonAction.zone8 = zone;
+    gSummonAction.f14 = 1;
+    gSummonAction.f15 = z == 0;
     if (y != 0) {
         u8 lo = y;
         u8 hi = y >> 8;
 
-        gUnk_0201CF90.f16 = lo & 7;
-        gUnk_0201CF90.f19 = hi & 7;
-        gUnk_0201CF90.f25 = lo >> 7;
-        gUnk_0201CF90.f26 = hi >> 7;
-        gUnk_0201CF90.f28 = (lo >> 4) & 1;
-        gUnk_0201CF90.f29 = (hi >> 4) & 1;
+        gSummonAction.f16 = lo & 7;
+        gSummonAction.f19 = hi & 7;
+        gSummonAction.f25 = lo >> 7;
+        gSummonAction.f26 = hi >> 7;
+        gSummonAction.f28 = (lo >> 4) & 1;
+        gSummonAction.f29 = (hi >> 4) & 1;
     } else {
-        gUnk_0201CF90.f16 = 0;
-        gUnk_0201CF90.f19 = 0;
-        gUnk_0201CF90.f25 = 0;
-        gUnk_0201CF90.f26 = 0;
+        gSummonAction.f16 = 0;
+        gSummonAction.f19 = 0;
+        gSummonAction.f25 = 0;
+        gSummonAction.f26 = 0;
     }
     {
         /* FAKEMATCH: initialized address constraints and input barrier reproduce
@@ -312,14 +312,14 @@ void sub_080561A0(int player, int zone, int x, int packed, int faceUp)
         pl = 0x02019968;
         __asm__ volatile("" : : "r"(pl));
         off += pl;
-        gUnk_0201CF90.cardId = CARD_ID(*(u32 *)off);
+        gSummonAction.cardId = CARD_ID(*(u32 *)off);
     }
-    gUnk_0201CF90.kind = 6;
-    gUnk_0201CF90.h0C = 5;
-    sub_08046A74(player);
-    sub_08055A00();
+    gSummonAction.kind = 6;
+    gSummonAction.h0C = 5;
+    PayChainEnergyCost(player);
+    SummonAction_Start();
 }
-int sub_08056300(int a, u16 number)
+int AiIsKeyCard(int a, u16 number)
 {
     switch (number) {
     case 0x10:
@@ -356,7 +356,7 @@ int sub_08056300(int a, u16 number)
     return 0;
 }
 
-int sub_080563B8(int skip, u16 flag)
+int AiPickTributeMonster(int skip, u16 flag)
 {
     int i;
     int best;
@@ -381,11 +381,11 @@ int sub_080563B8(int skip, u16 flag)
             int ok = 1;
             int v;
 
-            if (sub_08007994(id))
+            if (IsFusionMonster(id))
                 ok = 0;
             if (ok == 0 && flag == 0)
                 continue;
-            sub_0800ABC8(1, i, &info);
+            GetZoneCardStats(1, i, &info);
             v = info.unk4 * 2 + info.unk8;
             if (v < best) {
                 bestIdx = i;
@@ -395,7 +395,7 @@ int sub_080563B8(int skip, u16 flag)
     }
     return bestIdx;
 }
-int sub_080564A8(u16 id)
+int AiHasTributesFor(u16 id)
 {
     s8 lvl;
     int a, b;
@@ -421,15 +421,15 @@ int sub_080564A8(u16 id)
         goto slow;
     {
         int none = -1;
-        if (sub_080563B8(none, 0) != none)
+        if (AiPickTributeMonster(none, 0) != none)
             return 1;
         return 0;
     }
 slow:
     {
         int none = -1;
-        a = sub_080563B8(none, 0);
-        b = sub_080563B8(a, 0);
+        a = AiPickTributeMonster(none, 0);
+        b = AiPickTributeMonster(a, 0);
         if (a == none)
             return 0;
         if (b == none)
@@ -437,7 +437,7 @@ slow:
     }
     return 1;
 }
-int sub_08056544(int skip)
+int AiPickEffectTribute(int skip)
 {
     int i;
     int best;
@@ -468,7 +468,7 @@ int sub_08056544(int skip)
     for (i = 0; i <= 4; i++) {
         if (CARD_ID(ZONE1_WORD(i)) != 0 && i != skip) {
             int v;
-            sub_0800ABC8(1, i, &info);
+            GetZoneCardStats(1, i, &info);
             v = info.unk4 + info.unk8;
             if (best > v) {
                 bestIdx = i;
@@ -479,7 +479,7 @@ int sub_08056544(int skip)
     return bestIdx;
 }
 /* Pick the hand card of `player` with the lowest ATK+DEF value (in three passes of decreasing
- * strictness: first only cards whose "kind" key is 0, then any that passes sub_08056300, then
+ * strictness: first only cards whose "kind" key is 0, then any that passes AiIsKeyCard, then
  * even empty slots); returns the hand index or -1. */
 /* ATK-like value as a statement, so every arm writes the result local itself (CardValue's return copy
  * gives the ROM an extra move). */
@@ -498,16 +498,16 @@ int sub_08056544(int skip)
         break;                                               \
     }
 
-int sub_0805664C(struct DuelPlayer *duel, int player)
+int AiPickWeakestHandCard(struct DuelPlayer *duel, int player)
 {
     int bestIdx = -1;
     int best = 9999;
     int i;
 
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[player & 1].hand[i]));
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i]));
         if (id != 0) {
-            if (CARD_TYPE(id) <= 0x14 && CardKey(id) == 0 && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+            if (CARD_TYPE(id) <= 0x14 && CardKey(id) == 0 && (u16)AiIsKeyCard(1, CARD_NUMBER(id)) == 0) {
                 int atk;
                 int v;
 
@@ -523,13 +523,13 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
     if (bestIdx >= 0)
         return bestIdx;
     best = 9999;
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         struct DuelPlayer *pd = duel + (player & 1);
         u32 off = i * 4 + 0x684;
         u16 id = CARD_ID(*(u32 *)((u32)pd + off));
         if (id != 0) {
             const u32 *st = &CARD_STATS(id);
-            if (((*st & 0x1F00000) >> 20) <= 0x14 && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+            if (((*st & 0x1F00000) >> 20) <= 0x14 && (u16)AiIsKeyCard(1, CARD_NUMBER(id)) == 0) {
                 int atk;
                 int v;
 
@@ -545,11 +545,11 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
     if (bestIdx >= 0)
         return bestIdx;
     best = 9999;
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         struct DuelPlayer *pd = duel + (player & 1);
         u32 off = i * 4 + 0x684;
         u16 id = CARD_ID(*(u32 *)((u32)pd + off));
-        if ((u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+        if ((u16)AiIsKeyCard(1, CARD_NUMBER(id)) == 0) {
             int atk;
             int v;
 
@@ -565,22 +565,22 @@ int sub_0805664C(struct DuelPlayer *duel, int player)
 }
 
 /* Picks the hand card index of `player` (duel is the base of the two DuelPlayers) to play: the
- * strongest (by CardValue) monster-like card that passes sub_08056300 and has a level above 4.
+ * strongest (by CardValue) monster-like card that passes AiIsKeyCard and has a level above 4.
  * If none qualifies, picks the strongest without the level test. Returns -1 if there is none. */
-int sub_08056A94(struct DuelPlayer *duel, int player)
+int AiPickStrongestHandMonster(struct DuelPlayer *duel, int player)
 {
     int bestIdx = -1;
     int best = -1;
     int i;
 
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         struct DuelPlayer *pd = duel + (player & 1);
         u32 off = i * 4 + 0x684;
         u16 id = CARD_ID(*(u32 *)((u32)pd + off));
         if (id != 0) {
             const u32 *st = &CARD_STATS(id);
-            if (((*st & 0x1F00000) >> 20) <= 0x14 && sub_08007834(id) == 0
-                && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+            if (((*st & 0x1F00000) >> 20) <= 0x14 && IsSpecialSummonOnly(id) == 0
+                && (u16)AiIsKeyCard(1, CARD_NUMBER(id)) == 0) {
                 int v = CardValue(id);
                 if (best < v) {
                     u32 lvl;
@@ -595,14 +595,14 @@ int sub_08056A94(struct DuelPlayer *duel, int player)
     }
     if (bestIdx >= 0)
         return bestIdx;
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
         struct DuelPlayer *pd = duel + (player & 1);
         u32 off = i * 4 + 0x684;
         u16 id = CARD_ID(*(u32 *)((u32)pd + off));
         if (id != 0) {
             const u32 *st = &CARD_STATS(id);
-            if (((*st & 0x1F00000) >> 20) <= 0x14 && sub_08007834(id) == 0
-                && (u16)sub_08056300(1, CARD_NUMBER(id)) == 0) {
+            if (((*st & 0x1F00000) >> 20) <= 0x14 && IsSpecialSummonOnly(id) == 0
+                && (u16)AiIsKeyCard(1, CARD_NUMBER(id)) == 0) {
                 int v = CardValue(id);
                 if (best < v) {
                     best = v;
@@ -613,61 +613,61 @@ int sub_08056A94(struct DuelPlayer *duel, int player)
     }
     return bestIdx;
 }
-int sub_0800A304(int player, u16 number);
-int sub_0805930C(u16 number);
-int sub_08008A1C(int player);
-int sub_0805664C(struct DuelPlayer *duel, int player);
-int sub_08056CE8(void)
+int FindHandCardByNumber(int player, u16 number);
+int AiHasUsableSpellTrap(u16 number);
+int CountFreeMonsterZones(int player);
+int AiPickWeakestHandCard(struct DuelPlayer *duel, int player);
+int AiPickDiscard(void)
 {
     int r = -1;
     int i;
 
-    if (sub_0800A304(1, 0x3F0) > r || sub_0800A304(1, 0x488) > r || sub_0805930C(0x447) != 0) {
-        if (sub_08008A1C(1) > 0) {
-            r = sub_08056A94(gUnk_020192E4, 1);
+    if (FindHandCardByNumber(1, 0x3F0) > r || FindHandCardByNumber(1, 0x488) > r || AiHasUsableSpellTrap(0x447) != 0) {
+        if (CountFreeMonsterZones(1) > 0) {
+            r = AiPickStrongestHandMonster(gDuelPlayers, 1);
             if (r >= 0)
                 return r;
         }
     }
-    for (i = 0; i < gUnk_020192E4[1].handCount; i++) {
-        if (CARD_NUMBER(CARD_ID(CARD_WORD(gUnk_020192E4[1].hand[i]))) == 0x1DA)
+    for (i = 0; i < gDuelPlayers[1].handCount; i++) {
+        if (CARD_NUMBER(CARD_ID(CARD_WORD(gDuelPlayers[1].hand[i]))) == 0x1DA)
             return i;
     }
-    return sub_0805664C(gUnk_020192E4, 1);
+    return AiPickWeakestHandCard(gDuelPlayers, 1);
 }
 
 /* First index of the list whose card number is `number`, or -1. */
-int sub_08056D98(int player, u16 number, int limit)
+int FindDeckCardByNumber(int player, u16 number, int limit)
 {
     int i;
 
-    for (i = 0; i < gUnk_020192E4[player & 1].deckCount && i < limit; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gUnk_020192E4[player & 1].deck[i])) & 0x7FF;
-        if (gUnk_08622AB4[idx] == number)
+    for (i = 0; i < gDuelPlayers[player & 1].deckCount && i < limit; i++) {
+        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].deck[i])) & 0x7FF;
+        if (gCardIdToNumber[idx] == number)
             return i;
     }
     return -1;
 }
 /* Signed table entries arrive as words; preserve the original low-half decode. */
-int sub_08056E04(int player, int numberWord)
+int AiFindHandCardByNumber(int player, int numberWord)
 {
     u16 number = numberWord;
     int i;
 
-    for (i = 0; i < gUnk_020192E4[player & 1].handCount; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gUnk_020192E4[player & 1].hand[i])) & 0x7FF;
-        if (gUnk_08622AB4[idx] == number)
+    for (i = 0; i < gDuelPlayers[player & 1].handCount; i++) {
+        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].hand[i])) & 0x7FF;
+        if (gCardIdToNumber[idx] == number)
             return i;
     }
     return -1;
 }
-int sub_08056E68(int player, u16 number)
+int FindFusionDeckCardByNumber(int player, u16 number)
 {
     int i;
 
-    for (i = 0; i < gUnk_020192E4[player & 1].fusionCount; i++) {
-        u32 idx = CARD_ID(CARD_WORD(gUnk_020192E4[player & 1].fusionDeck[i])) & 0x7FF;
-        if (gUnk_08622AB4[idx] == number)
+    for (i = 0; i < gDuelPlayers[player & 1].fusionCount; i++) {
+        u32 idx = CARD_ID(CARD_WORD(gDuelPlayers[player & 1].fusionDeck[i])) & 0x7FF;
+        if (gCardIdToNumber[idx] == number)
             return i;
     }
     return -1;

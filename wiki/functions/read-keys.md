@@ -6,7 +6,7 @@ confidence: high
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# ReadKeys `sub_08075228`
+# ReadKeys `ReadKeys`
 
 | Field | Value |
 |---|---|

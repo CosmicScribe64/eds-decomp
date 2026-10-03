@@ -75,7 +75,7 @@ LAYOUTS['bank_a'] = """
 08637164 pack bpp=4
 08637220 pack bpp=4
 086372D8 pack bpp=4
-08637394 tiles cols=6 pal=08637454         # 6 small icons, index-1 via 0x08637374 (sub_08005A70)
+08637394 tiles cols=6 pal=08637454         # 6 small icons, index-1 via 0x08637374 (CardDetail_DrawInfo)
 08637454 pal
 08637474 pack bpp=4                        # table 0x081989F0
 0863753C pack bpp=4                        # table 0x081989F0
@@ -106,13 +106,13 @@ LAYOUTS['bank_a'] = """
 0863862C pack bpp=4
 0863975C pack bpp=4
 08639DFC pal
-08639E1C tiles cols=32 pal=08639DFC         # 0x2C00 to OBJ 0x06010000 (sub_0807C374)
+08639E1C tiles cols=32 pal=08639DFC         # 0x2C00 to OBJ 0x06010000 (Password_InitVideo)
 0863CA1C pack bpp=4
 0863CA9C pal
 0863CABC tiles cols=4 pal=0863CA9C
 0863CB3C pal
 0863CB5C tiles cols=9 pal=0863CB3C
-0863CC7C pal name=shop_bg                   # BG palette of the shop / pack covers (sub_080647A4)
+0863CC7C pal name=shop_bg                   # BG palette of the shop / pack covers (PackList_DrawBackground)
 0863CE7C tiles bpp=8 cols=1 pal=0863CC7C
 0863CEBC tiles bpp=8 cols=1 pal=0863CC7C
 0863CEFC tiles bpp=8 cols=1 pal=0863CC7C
@@ -249,7 +249,7 @@ LAYOUTS['bank_a'] = """
 0868C868 pack bpp=4
 0868C930 pack bpp=4
 0868C9F8 pack bpp=4
-# Sprite animation streams (sub_0807695C via sub_08024380 / sub_080241F0)
+# Sprite animation streams (SprAnimLoad via DuelAnim_PlayZoneEffect / DuelSprAnim_Load)
 0868CAC0 sprite
 0868DB94 sprite
 0868EC38 sprite
@@ -257,7 +257,7 @@ LAYOUTS['bank_a'] = """
 08694EA8 sprite
 0869771C sprite
 08698C7C pal
-08698C9C tiles cols=32 pal=08698C7C       # 0x2000 to OBJ 0x06010000 (sub_0802A6DC)
+08698C9C tiles cols=32 pal=08698C7C       # 0x2000 to OBJ 0x06010000 (CardListView_InitScreen)
 0869AC9C pack bpp=4
 0869AD1C pal
 0869AD3C tiles cols=32 pal=0869AD1C
@@ -268,7 +268,7 @@ LAYOUTS['bank_a'] = """
 0869E8E4 pack bpp=4
 0869EECC pal
 0869EEEC tiles cols=16 pal=0869EECC
-086A12EC bitmap pal=086AA8EC                # Mode 4 240x160 (sub_08028AEC)
+086A12EC bitmap pal=086AA8EC                # Mode 4 240x160 (TurnOrder_Load)
 086AA8EC pal in=086A12EC
 086AAAEC pal                                 # OBJ palettes, loaded 0x20 at a time (they overlap)
 086AAB00 pal                                 # OBJ palettes, loaded 0x20 at a time (they overlap)
@@ -281,18 +281,18 @@ LAYOUTS['bank_a'] = """
 086AABDC pal                                 # OBJ palettes, loaded 0x20 at a time (they overlap)
 086AAC00 pal                                 # OBJ palettes, loaded 0x20 at a time (they overlap)
 086AAC20 pal                                 # OBJ palettes, loaded 0x20 at a time (they overlap)
-086AAC28 tiles cols=4 pal=086AAAEC            # sub_08028AB8 (rows of 4 tiles)
-086AB028 tiles cols=4 pal=086AAAEC            # sub_08028AB8 (rows of 4 tiles)
-086AB428 tiles cols=4 pal=086AAAEC            # sub_08028AB8 (rows of 4 tiles)
-086AB828 tiles cols=16 pal=086AAB80            # sub_08028AB8 (rows of 16 tiles)
-086AC028 tiles cols=16 pal=086AAB80            # sub_08028AB8 (rows of 16 tiles)
-086AC828 tiles cols=8 pal=086AAB80            # sub_08028AB8 (rows of 8 tiles)
-086AD028 tiles cols=8 pal=086AAB80            # sub_08028AB8 (rows of 8 tiles)
-086AD828 tiles cols=8 pal=086AAB80            # sub_08028AB8 (rows of 8 tiles)
-086AE028 tiles cols=16 pal=086AAB80            # sub_08028AB8 (rows of 16 tiles)
-086AE828 tiles cols=16 pal=086AAB80            # sub_08028AB8 (rows of 16 tiles)
-086AF028 tiles cols=16 pal=086AAB80            # sub_08028AB8 (rows of 16 tiles)
-086AF828 tiles cols=4 pal=086AAAEC            # sub_08028AB8 (rows of 4 tiles)
+086AAC28 tiles cols=4 pal=086AAAEC            # TurnOrder_LoadObjTiles (rows of 4 tiles)
+086AB028 tiles cols=4 pal=086AAAEC            # TurnOrder_LoadObjTiles (rows of 4 tiles)
+086AB428 tiles cols=4 pal=086AAAEC            # TurnOrder_LoadObjTiles (rows of 4 tiles)
+086AB828 tiles cols=16 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 16 tiles)
+086AC028 tiles cols=16 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 16 tiles)
+086AC828 tiles cols=8 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 8 tiles)
+086AD028 tiles cols=8 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 8 tiles)
+086AD828 tiles cols=8 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 8 tiles)
+086AE028 tiles cols=16 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 16 tiles)
+086AE828 tiles cols=16 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 16 tiles)
+086AF028 tiles cols=16 pal=086AAB80            # TurnOrder_LoadObjTiles (rows of 16 tiles)
+086AF828 tiles cols=4 pal=086AAAEC            # TurnOrder_LoadObjTiles (rows of 4 tiles)
 086AFA28 pal
 086AFA48 tiles frame=4x4 pal=086AFA28
 086AFC48 tiles frame=4x4 pal=086AFA28
@@ -319,33 +319,33 @@ LAYOUTS['bank_a'] = """
 086B2048 tiles cols=2 pal=086AFA28
 086B20C8 tiles cols=2 pal=086AFA28
 086B2148 pal
-086B2168 tiles cols=16 pal=086B6168        # sub_08077CEC: 16 rows of 16 tiles
+086B2168 tiles cols=16 pal=086B6168        # CopyTileSheetTo2D: 16 rows of 16 tiles
 086B4168 tiles cols=16 pal=086B6168
 086B6168 pal
 086B6368 pal
 086B6568 tiles cols=16 pal=086B6368
-086B8568 bitmap pal=086C1B68                # Mode 4 240x160 (sub_080263C8)
+086B8568 bitmap pal=086C1B68                # Mode 4 240x160 (ExodiaScene_LoadEye)
 086C1B68 pal in=086B8568
-086C1D68 tiles cols=16 pal=086CAB78           # BG charblock (sub_080264D4)
-086C3D68 tiles cols=16 pal=086CAB78           # BG charblock (sub_080264D4)
-086C5D68 tiles cols=16 pal=086CAB78           # BG charblock (sub_080264D4)
-086C7D68 tiles cols=16 pal=086CAB78           # BG charblock (sub_080264D4)
+086C1D68 tiles cols=16 pal=086CAB78           # BG charblock (ExodiaScene_LoadFlames)
+086C3D68 tiles cols=16 pal=086CAB78           # BG charblock (ExodiaScene_LoadFlames)
+086C5D68 tiles cols=16 pal=086CAB78           # BG charblock (ExodiaScene_LoadFlames)
+086C7D68 tiles cols=16 pal=086CAB78           # BG charblock (ExodiaScene_LoadFlames)
 086C9D68 map w=30
 086CA218 map w=30
 086CA6C8 map w=30
 086CAB78 pal
 086CAD78 tiles cols=16 pal=086B6368
 086CCD78 tiles cols=16 pal=086B6368
-086CED78 tiles frame=4x4 pal=086B6368      # 32x32 sprites (sub_080263B0)
+086CED78 tiles frame=4x4 pal=086B6368      # 32x32 sprites (LoadObjTileBlock4x4)
 086CF778 tiles frame=4x4 pal=086B6368
-086D0178 tiles cols=16 pal=086E22D0           # BG charblock (sub_08027754)
-086D2178 tiles cols=16 pal=086E22D0           # BG charblock (sub_08027754)
-086D4178 tiles cols=16 pal=086E22D0           # BG charblock (sub_08027754)
-086D6178 tiles cols=16 pal=086E24D0           # sub_08077CEC
-086D8178 tiles cols=16 pal=086E24D0           # sub_08077CEC
-086DA178 tiles cols=16 pal=086E24D0           # sub_08077CEC
-086DC178 tiles cols=16 pal=086E24D0           # sub_08077CEC
-086DE178 tiles cols=16 pal=086E24D0           # sub_08077CEC
+086D0178 tiles cols=16 pal=086E22D0           # BG charblock (DestinyBoardScene_Load)
+086D2178 tiles cols=16 pal=086E22D0           # BG charblock (DestinyBoardScene_Load)
+086D4178 tiles cols=16 pal=086E22D0           # BG charblock (DestinyBoardScene_Load)
+086D6178 tiles cols=16 pal=086E24D0           # CopyTileSheetTo2D
+086D8178 tiles cols=16 pal=086E24D0           # CopyTileSheetTo2D
+086DA178 tiles cols=16 pal=086E24D0           # CopyTileSheetTo2D
+086DC178 tiles cols=16 pal=086E24D0           # CopyTileSheetTo2D
+086DE178 tiles cols=16 pal=086E24D0           # CopyTileSheetTo2D
 086E0178 map w=30                          # reel strips (table 0x08199DCC)
 086E0C40 map w=30
 086E11A4 map w=30
@@ -356,16 +356,16 @@ LAYOUTS['bank_a'] = """
 086E24D0 pal
 086E26D0 map w=30
 086E3030 tiles cols=16 pal=086F1C60
-086E5030 tiles cols=16 pal=086ED1B0           # sub_08077CEC
-086E7030 tiles cols=16 pal=086ED1B0           # sub_08077CEC
-086E9030 tiles cols=16 pal=086ED1B0           # sub_08077CEC
-086EB030 tiles cols=16 pal=086ED1B0           # sub_08077CEC
+086E5030 tiles cols=16 pal=086ED1B0           # CopyTileSheetTo2D
+086E7030 tiles cols=16 pal=086ED1B0           # CopyTileSheetTo2D
+086E9030 tiles cols=16 pal=086ED1B0           # CopyTileSheetTo2D
+086EB030 tiles cols=16 pal=086ED1B0           # CopyTileSheetTo2D
 086ED030 pal
 086ED0B0 pal
 086ED190 pal
 086ED1B0 pal
 086ED3B0 tiles cols=16 pal=086ED030
-086EF3B0 tiles cols=16 pal=086F1C60        # 0x400 blocks (sub_08067540)
+086EF3B0 tiles cols=16 pal=086F1C60        # 0x400 blocks (DeckEdit_CommandLabelVBlank)
 086F0FB0 tiles cols=16 pal=086F1C60
 086F13B0 tiles cols=16 pal=086F1C60
 086F17B0 map w=30                          # one 30x20 map; code also reads it at +0x24, +0x30, +0x38, +0x360
@@ -395,7 +395,7 @@ LAYOUTS['bank_a'] = """
 08702B08 pal
 08702BE8 pal
 08702C08 tiles cols=16 pal=08702A88
-# 16x16 metatile icons and their palettes (sub_080653F0, tables 0x08087394..0x08087440)
+# 16x16 metatile icons and their palettes (DeckEdit_LoadCardIconTiles, tables 0x08087394..0x08087440)
 08704D48 tiles cols=2 pal=08704DC8
 08704DC8 pal
 08704DE8 tiles cols=2 pal=08704E68
@@ -517,7 +517,7 @@ LAYOUTS['bank_a'] = """
 08707A28 tiles cols=2 pal=0870B5E0
 08707AA8 tiles cols=2 pal=0870B5E0
 08707B28 pack bpp=4
-087095E0 tiles cols=16 pal=0870B5E0        # sub_0807CC78: 8 rows of 16 tiles
+087095E0 tiles cols=16 pal=0870B5E0        # CardTrading_LoadObjTiles: 8 rows of 16 tiles
 0870A5E0 tiles cols=16 pal=0870B600
 0870B5E0 pal
 0870B600 pal
@@ -526,9 +526,9 @@ LAYOUTS['bank_a'] = """
 """
 
 LAYOUTS['small_graphics'] = """
-0871B650 pal                                # 0x60 loaded to OBJ palettes 0-2 (sub_08002980)
+0871B650 pal                                # 0x60 loaded to OBJ palettes 0-2 (OpponentSelect_Init)
 0871B850 tiles bpp=8 cols=16 pal=0871B650     # 0x1000 to OBJ 0x06014000; 8bpp, 2D mapping
-0871C850 pal                                # 0x20 loaded to OBJ palette 3 (sub_08003298)
+0871C850 pal                                # 0x20 loaded to OBJ palette 3 (OpponentSelect_LoadPage)
 0871CA50 tiles cols=10 pal=0871C850:0
 0871CB90 tiles cols=10 pal=0871C850:0
 """
@@ -547,29 +547,29 @@ LAYOUTS['mode4_bitmaps'] = """
 """
 
 LAYOUTS['bank_b'] = """
-087BDAA8 pack bpp=8                         # sub_08004FD8 (sub_08072FAC)
-087C056C pack bpp=4                         # sub_08005368
-087C0CD4 pack bpp=4 name=coin               # sub_08004FD8
-087C1DCC pack bpp=4                         # sub_08004FD8
-087C29D4 bitmap pal=087CBFD4                # Mode 4 240x160 (sub_0800553C)
+087BDAA8 pack bpp=8                         # Title_LoadGraphics (LoadBgImage)
+087C056C pack bpp=4                         # Title_FadeIn
+087C0CD4 pack bpp=4 name=coin               # Title_LoadGraphics
+087C1DCC pack bpp=4                         # Title_LoadGraphics
+087C29D4 bitmap pal=087CBFD4                # Mode 4 240x160 (Title_ConfirmDeleteSave)
 087CBFD4 pal in=087C29D4
 087CC1D4 tiles cols=32 pal=087D01D4         # 0x4000 to OBJ 0x06014000 (2D mapping)
 087D01D4 pal
-087D01F4 pack bpp=8 name=license_logo1      # sub_08004CBC
-087D292C pack bpp=8 name=license_logo2      # sub_08004D60
-087D4B24 pack bpp=8 name=sky                # sub_08003920
+087D01F4 pack bpp=8 name=license_logo1      # License_ShowKonamiLogo
+087D292C pack bpp=8 name=license_logo2      # License_ShowKcejLogo
+087D4B24 pack bpp=8 name=sky                # MainMenu_Init
 087DE858 pal
-087DE878 tiles cols=32 pal=087DE858         # 0x4000 to OBJ 0x06010000 (sub_08003920, 2D mapping)
+087DE878 tiles cols=32 pal=087DE858         # 0x4000 to OBJ 0x06010000 (MainMenu_Init, 2D mapping)
 087E2878 pal
 087E2A78 pal
-087E2C78 tiles cols=16 pal=087E2A78         # sub_08003B64: OBJ rows 0-2 (2D mapping)
+087E2C78 tiles cols=16 pal=087E2A78         # Record_LoadGfx: OBJ rows 0-2 (2D mapping)
 087E2E78 tiles cols=16 pal=087E2A78
 087E3078 tiles cols=16 pal=087E2878
 087E3278 pal
 087E3478 tiles cols=10 pal=087E3278
-087E35B8 pack bpp=4                         # sub_08003B64 (sub_0807332C)
+087E35B8 pack bpp=4                         # Record_LoadGfx (LoadBgImage4bppToMap)
 087E4280 pack bpp=4
-087E52A4 pack bpp=4                         # sub_080040E4
+087E52A4 pack bpp=4                         # Record_DrawPage
 087E5CF4 pack bpp=4
 087E6610 pack bpp=4                         # table 0x08198600
 087E6974 pack bpp=4
@@ -601,14 +601,14 @@ LAYOUTS['bank_b'] = """
 087EA164 pack bpp=4
 087EA34C pack bpp=4
 087EA530 pack bpp=4
-087EA718 bitmap pal=087F3D18 name=calendar  # Mode 4 240x160 (sub_0800257C); rows 120-159 are also read as 0x087F1798
+087EA718 bitmap pal=087F3D18 name=calendar  # Mode 4 240x160 (Calendar_Init); rows 120-159 are also read as 0x087F1798
 087F3D18 pal in=087EA718
 087F3F18 pal
 087F4118 tiles cols=32 pal=087F3F18         # calendar day numbers
 087F4D18 pal                                # 6 OBJ palettes
 087F4DD8 tiles bpp=8 cols=16 pal=087F4D18     # 8bpp OBJ icons
 087F5DD8 pal
-087F5DF8 tiles cols=32 pal=087F5DD8         # month names, 4 x 0x800, one per season (sub_08002220)
+087F5DF8 tiles cols=32 pal=087F5DD8         # month names, 4 x 0x800, one per season (Calendar_DrawCursorAndHeader)
 087F7DF8 pal
 087F7E18 tiles cols=32 pal=087F7DF8         # weekday names; read as 0x800 bytes, the last 0xB0 from the padding
 """
@@ -941,7 +941,7 @@ SIZE_CODE = {0: 8, 0x4000: 16, 0x8000: 32, 0xC000: 64}
 
 
 def x_sprite(raw, it, ctx):
-    """Sprite animation stream (sub_0807695C): u16 palette[16]; u16 n; {u16 size, u16 b}[n];
+    """Sprite animation stream (SprAnimLoad): u16 palette[16]; u16 n; {u16 size, u16 b}[n];
     n x {u16 nTiles; 4bpp tiles}; u16 nFrames; nFrames x {u16 pieces; {u16 graphic; s16 dx; s16 dy}[pieces]}."""
     pal = colours(raw[:0x20])
     n = struct.unpack_from('<H', raw, 0x20)[0]

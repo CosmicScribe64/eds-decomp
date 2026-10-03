@@ -3,6 +3,6 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0800AB08/sub_0800AB08.s"
-	.include "asm/nonmatching/code_0800AB08/sub_0800AB6C.s"
-	.include "asm/nonmatching/code_0800AB08/sub_0800ABC8.s"
+	.include "asm/nonmatching/code_0800AB08/CountMonstersAffectedByCard.s"
+	.include "asm/nonmatching/code_0800AB08/FindMonsterAffectedByCard.s"
+	.include "asm/nonmatching/code_0800AB08/GetZoneCardStats.s"

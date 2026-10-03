@@ -594,7 +594,7 @@ def b_header(read, p):
 
 
 # ============================================================================================= effects
-# 0x0819A9D4: sorted by card number; sub_08047058 binary-searches it (fixed 0..0x1A9) with a card's number.
+# 0x0819A9D4: sorted by card number; FindCardEffect binary-searches it (fixed 0..0x1A9) with a card's number.
 # The slot names follow the code that calls them: +4 resolve (code_08020AF4, code_08035198 "executor"),
 # +8 check (code_0802CAE8 checkZone, code_08046738 runs it per card), +0xC prepare (code_0802CAE8),
 # +0x10 / +0x14 chain_a / chain_b (code_0801F454 fnA/fnB, code_08050A70 fn10/fn14).
@@ -625,7 +625,7 @@ def x_effects(data, p, rom):
 def b_effects(read, p):
     rows = json.loads(read(p['path'] + '.json'))
     if len(rows) != EFF_COUNT:
-        raise ValueError(f'the table must have {EFF_COUNT} entries (sub_08047058 searches 0..0x1A9), not {len(rows)}')
+        raise ValueError(f'the table must have {EFF_COUNT} entries (FindCardEffect searches 0..0x1A9), not {len(rows)}')
     nums = [num(r['number']) for r in rows]
     if nums != sorted(set(nums)):
         raise ValueError('entries must be sorted by number, without duplicates (the lookup is a binary search)')
@@ -859,7 +859,7 @@ LAYOUT_RANGES = [(0x08080A20, 0x08087FB4), (0x0819790C, 0x0819A9D4)]  # the tabl
 # Other groups' ranges that hold pointer tables into ours (their words are pointer-target candidates).
 OTHER_POINTER_RANGES = [(0x0819D1C4, 0x0819D34C), (0x0819DD64, 0x081A7A0C)]
 
-# Sprite animations (sub_08078670 / sub_080786D0 / sub_08077EF4). A track list is a NULL-terminated array of
+# Sprite animations (AnimBlockInit / AnimStateTick / OamListAddSpriteGroup). A track list is a NULL-terminated array of
 # pointers to step arrays. A step is {u8 frames; u8 count; u16 unk2; const OamTemplate *sprites}; a step with
 # frames == 0 ends the array. The sprites are `count` 8-byte OAM templates {attr0, attr1, attr2, u16 unk6}.
 ANIM_STEP, OAM = 'AnimStep', 'OamTemplate'
@@ -869,7 +869,7 @@ TYPEDEFS = {
                     '_:bits16(tile:10,prio?:2,pal:4),unk6?:u16}'),
 }
 SCENE_SETS, SCENE_SET_COUNT = 0x081976A0, 31  # gfx/scene_sets: {bitmapLz, bgPal, objPal, objTilesLz, anim}
-ANIM_LISTS = {  # track lists passed to sub_08078670 besides the scene sets' own
+ANIM_LISTS = {  # track lists passed to AnimBlockInit besides the scene sets' own
     0x0819A698: 'code_08027580', 0x081999F8: 'code_08025108', 0x08199A04: 'code_08025108',
     0x08199D9C: 'code_08026124', 0x08199CC8: 'code_08026124', 0x0819A780: 'code_08028684',
     0x081999C4: 'unreferenced, lists the die-toss step arrays', 0x081A6118: 'code_08069284',
@@ -949,7 +949,7 @@ TABLES = [
     (0x08080A5C, 'u8', 8, 'text box: sparkle palettes (code_08000228)'),
     (0x08080AA8, 'u16', 7, 'code_08000228'),
     (0x08080AB6, 'u16', 5, 'opponent select: sparkle start x per slot (code_08001364)'),
-    (0x08080AC0, 'u16', 10, 'digit sprite tiles 0-9 (sub_08000324)'),
+    (0x08080AC0, 'u16', 10, 'digit sprite tiles 0-9 (Bustup_DrawNumber)'),
     (0x08080AD4, 'u16', 6, 'struct Unk08080AD4 (code_08001364)'),
     (0x08080AE0, 'u8', 25, 'opponent record index [page * 5 + slot] (code_08001364)'),
     (0x08080AFA, '{x:u8,y:u8}', 6, 'unreferenced positions'),
@@ -961,7 +961,7 @@ TABLES = [
     (0x080817FC, '{win:u16,lose:u16,draw:u16,unk6:u16,unk8:u16,winAlt4:u16,winAlt9:u16,unkE:u16}', 25,
      'dialogue event per opponent and duel result (struct OpponentText, code_0801BCFC)'),
     (0x0808198C, 'u16', 25, 'dialogue event per opponent (code_0801BCFC)'),
-    (0x080819BE, 'u16', 28, 'booster pack IDs checked with sub_08063EDC (code_0801BCFC)'),
+    (0x080819BE, 'u16', 28, 'booster pack IDs checked with IsPackUnlocked (code_0801BCFC)'),
     (0x080819F6, 'u16', 25, 'BGM per opponent (code_0801A7B4)'),
     (0x08081A28, 'duelist', 20, 'random opponents, 4 pools of 5 (code_0801A7B4)'),
     (0x08081A50, 'duelist', 4, 'random opponents (code_0801A7B4)'),
@@ -996,13 +996,13 @@ TABLES = [
     (0x0808270C, 'u16', 2, 'code_08028684, code_08029750'),
     (0x08082710, 'u8', 2, 'code_08028684, code_08029750'),
     (0x08082712, 'u16', 17, 'squares 0-256 (code_08028684, code_08029750)'),
-    (0x08086394, 'cardnum', 54, 'cards the AI tries (sub_08059408, code_080590E4)'),
-    (0x08086400, 'cardnum', 36, 'cards the AI tries (sub_08059408, code_080590E4)'),
+    (0x08086394, 'cardnum', 54, 'cards the AI tries (AiTryPlaySpellTrap, code_080590E4)'),
+    (0x08086400, 'cardnum', 36, 'cards the AI tries (AiTryPlaySpellTrap, code_080590E4)'),
     (0x08086448, 'cardnum', 20, 'cards checked by code_0805A30C'),
-    (0x08086470, 'strings', None, 'glyph strings for sub_0805EE30 (0x81 and 0xC4 are custom glyphs)'),
-    (0x08086478, 'strings', None, 'glyph strings for sub_0805EE30'),
-    (0x0808649C, 'strings', None, 'glyph strings for sub_0805EE30'),
-    (0x080864A4, 'strings', None, 'glyph strings for sub_0805EE30'),
+    (0x08086470, 'strings', None, 'glyph strings for TextCellsPutString (0x81 and 0xC4 are custom glyphs)'),
+    (0x08086478, 'strings', None, 'glyph strings for TextCellsPutString'),
+    (0x0808649C, 'strings', None, 'glyph strings for TextCellsPutString'),
+    (0x080864A4, 'strings', None, 'glyph strings for TextCellsPutString'),
     (0x08086550, 'ptr', 15, 'images (code_0805F96C)'),
     (0x0808658C, 'u16', 8, 'scroll offsets (code_080629F0)'),
     (0x0808659C, 'x16', 24, 'sprite attribute word per kind (code_080619E8)'),

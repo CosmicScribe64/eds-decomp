@@ -8,7 +8,7 @@ updated: 2026-10-02
 ---
 # Sound sequence format
 
-The Konami driver ([[sound-engine]]) plays two kinds of sequence: sound effects (SE) and songs (BGM). Each has a table and a track bytecode. Both bytecodes were read from the matched decoders: `sub_0807D6B4` decodes SE tracks, and `SoundSequencerTick` (`sub_0807DB58`) decodes BGM tracks ([[sound-driver]]). The formats are **verified**: `tools/assetfmt/sound_seq.py` decodes all SE and BGM data to text and assembles it back byte-identical, and it round-trips 300 synthetic SE and 300 BGM blobs that use every opcode. The text syntax shown here is the one of the extracted files ([[assets]]).
+The Konami driver ([[sound-engine]]) plays two kinds of sequence: sound effects (SE) and songs (BGM). Each has a table and a track bytecode. Both bytecodes were read from the matched decoders: `SoundSeTrackTick` decodes SE tracks, and `SoundSequencerTick` (`SoundSequencerTick`) decodes BGM tracks ([[sound-driver]]). The formats are **verified**: `tools/assetfmt/sound_seq.py` decodes all SE and BGM data to text and assembles it back byte-identical, and it round-trips 300 synthetic SE and 300 BGM blobs that use every opcode. The text syntax shown here is the one of the extracted files ([[assets]]).
 
 ## Timing
 A track event is preceded or followed by a tick count. One tick is one VBlank, so 59.73 per second. Counts 0–0xEF take one byte. Counts 0xF0–0xFFF take two bytes, `0xF0 | hi, lo`. A count of 0 runs the next event in the same frame.
@@ -24,7 +24,7 @@ struct SoundEffect {        /* 0x1C bytes */
 ```
 - The table has exactly 48 entries. It ends where the track data starts (`0x08088510`, SE 37's track).
 - The SE lock counter counts down once per frame. An SE with non-zero `lockTicks` is refused while the counter is non-zero.
-- `SoundRequestSE` variants 1–3 remap the four PCM tracks through `se_variant_channel_order` (`0x081A79F4`, `u8[4][6]`). The code addresses that table through `gUnk_081A79F9`, which is `&row[0][5]`.
+- `SoundRequestSE` variants 1–3 remap the four PCM tracks through `se_variant_channel_order` (`0x081A79F4`, `u8[4][6]`). The code addresses that table through `gSeVariantTrackMap`, which is `&row[0][5]`.
 - Only the first three track slots (sq2, noise, pcm5) are used. There are 48 track-entry files plus one called subroutine (`sub_0808866A`). SE 4 and SE 5 share a track.
 
 ## SE track bytecode
@@ -75,11 +75,11 @@ A track is `[ticks]`, then `[opcode][operands][ticks]` repeated, then a terminat
 
 Use in the game: `play` 35,576, `off` 21,016, `note` 19,672, `vol` 6,909, `vibrato` 1,357, `loopstart` 300, `end` 325, `loop` 54, `stop` 4. `call`, `wave`, `pan`, `bend` and `rest` never occur. `sq1` carries the `loop`/`stop`. PCM tracks 4–5 play drums with `play inst=` at base pitch, and tracks 6–9 use `play inst=31-35 note=`.
 
-**Loop mechanism (verified from the matched `sub_0807DB58`).** `0xF3` adds the current position to the track's base offset. `0xFE` resets every track's position to 0 without restoring the base, so each track restarts at its own `0xF3`. 54 of the 58 songs loop this way. Songs 0 (title, 22.6 s), 20 (7.9 s), 22 (4.0 s) and 23 (3.2 s) end with `0xFF`.
+**Loop mechanism (verified from the matched `SoundSequencerTick`).** `0xF3` adds the current position to the track's base offset. `0xFE` resets every track's position to 0 without restoring the base, so each track restarts at its own `0xF3`. 54 of the 58 songs loop this way. Songs 0 (title, 22.6 s), 20 (7.9 s), 22 (4.0 s) and 23 (3.2 s) end with `0xFF`.
 
 **Quirks (unused by the game).**
 - `0x9X` counts *events*, not repeats, and never clears the return position. After returning, the counter keeps decrementing and would jump back again 256 events later.
-- On the noise track, `note N` indexes the 6-entry noise table at `0x08139F50` without a bound. `note 1` reads `gUnk_08139F50[32]`, 64 bytes past it, inside the duelist table at `0x08139F90` (value 0x0000). `note 0` reads 0x8000. 13 songs use `note 1` on noise and 2 use `note 0`. The effect is the noise register written without the restart bit (observation).
+- On the noise track, `note N` indexes the 6-entry noise table at `0x08139F50` without a bound. `note 1` reads `gNoiseTable[32]`, 64 bytes past it, inside the duelist table at `0x08139F90` (value 0x0000). `note 0` reads 0x8000. 13 songs use `note 1` on noise and 2 use `note 0`. The effect is the noise register written without the restart bit (observation).
 
 ## Driver lookup tables
 The four tables fill `0x081A7A0C`–`0x081ABC4C`. Each formula was checked against every value.
@@ -87,7 +87,7 @@ The four tables fill `0x081A7A0C`–`0x081ABC4C`. Each formula was checked again
 | Name | Address | Size | Content |
 |---|---|---|---|
 | `volume_nibble_scale` | `0x081A7A0C` | 16 × 256 u8 | `table[k][x]` scales both nibbles of x by k/15 (floor). No code reference found. Hypothesis: it generated pre-scaled wave patterns, but `wave_ram_patterns` doesn't match it |
-| `pcm_pitch` | `0x081A8A0C` | 3,072 u16 | `round(4096 * 2^((i - 1536) / 384))`: the PCM step multiplier per 1/32 semitone, −48..+48 semitones. Code uses its middle, `gUnk_081A960C` (= 0x1000) |
+| `pcm_pitch` | `0x081A8A0C` | 3,072 u16 | `round(4096 * 2^((i - 1536) / 384))`: the PCM step multiplier per 1/32 semitone, −48..+48 semitones. Code uses its middle, `gSoundPitchTable` (= 0x1000) |
 | `psg_frequency` | `0x081AA20C` | 2,688 u16 | `0x8000 \| int(2048 - 131072 / f)`, with f = C2 × 2^(i/384) and C2 = 440 × 2^(−33/12) ≈ 65.406 Hz: the GB frequency register per 1/32 semitone, C2..B8 |
 | `psg_vibrato_steps` | `0x081AB70C` | 84 × 8 u16 | per semitone: value, −1..−3 steps, value, +1..+3 steps. No code reference found |
 

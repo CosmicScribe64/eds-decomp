@@ -47,9 +47,9 @@ struct SoundPcmVoice {
     u8 volume;
 };
 
-extern struct SoundDriver gUnk_03005210;
-extern struct SoundTrack gUnk_03005308[6];
-extern struct SoundPcmVoice gUnk_030053AC[6];
+extern struct SoundDriver gSoundDriver;
+extern struct SoundTrack gSoundSeTracks[6];
+extern struct SoundPcmVoice gSoundPcmChannels[6];
 
 typedef char sound_track_size_check[sizeof(struct SoundTrack) == 0x18 ? 1 : -1];
 typedef char sound_flags_offset_check[(u32)&((struct SoundDriver *)0)->flags == 0x188 ? 1 : -1];

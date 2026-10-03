@@ -21,7 +21,7 @@ Drafts go to `build/m2c/<unit>/<func>.c`; `src/` is never touched. A draft is a 
 - **Jump tables.** A literal-pool word pointing at a label in the same function becomes that label. m2c only finds agbcc's Thumb switch tables (`lsl; ldr =table; add; ldr; mov pc`) when the pool word is a symbol. Without this, 33 of 162 functions failed.
 - **Old spellings.** Divided-syntax `ldsh`/`ldsb` become `ldrsh`/`ldrsb`.
 - **Symbol names.** Pool words holding RAM or ROM-data addresses become symbols: real names from `build/eds.elf`, else `gUnk_XXXXXXXX`.
-- **Context.** The unit's own C, preprocessed with other function bodies stripped, is passed as `--context`, so drafts use our structs and field names, e.g. `gUnk_02015EF0.phase`.
+- **Context.** The unit's own C, preprocessed with other function bodies stripped, is passed as `--context`, so drafts use our structs and field names, e.g. `gAiState.phase`.
 
 ## Results (2026-09-30)
 Drafts were generated for all 162 functions that had no C attempt, with 0 failures, in about 2.5 minutes.

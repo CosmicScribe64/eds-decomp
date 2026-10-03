@@ -8,7 +8,7 @@ sub_08021CEC: @ 0x08021CEC
 	lsl r2, r2, #0x10
 	lsr r6, r2, #0x10
 	add r0, r5, #0
-	bl sub_08062140
+	bl GetCardIconObjTile
 	mov r2, #0x80
 	lsl r2, r2, #5
 	add r1, r2, #0
@@ -29,7 +29,7 @@ sub_08021CEC: @ 0x08021CEC
 	lsl r3, r0, #0x10
 	b _08021D38
 	.align 2, 0
-_08021D28: .4byte gUnk_081A4424
+_08021D28: .4byte gPulseScaleCurve
 _08021D2C: .4byte 0x03000040
 _08021D30: .4byte 0x0000485E
 _08021D34:
@@ -39,11 +39,11 @@ _08021D38:
 	ldr r0, _08021D5C @ =0x00400050
 	mov r1, #0x80
 	add r2, r4, #0
-	bl sub_08076714
+	bl AddAffineSprite
 	cmp r7, #0
 	beq _08021D60
 	add r0, r5, #0
-	bl sub_08062140
+	bl GetCardIconObjTile
 	mov r2, #0x80
 	lsl r2, r2, #5
 	add r1, r2, #0
@@ -71,7 +71,7 @@ _08021D62:
 	mov r0, #0x20
 	orr r3, r0
 	b _08021D8E
-_08021D80: .4byte gUnk_081A4424
+_08021D80: .4byte gPulseScaleCurve
 _08021D84: .4byte 0x03000040
 _08021D88: .4byte 0x0000485E
 _08021D8C:
@@ -80,7 +80,7 @@ _08021D8E:
 	ldr r0, _08021DA4 @ =0x004000A0
 	mov r1, #0x80
 	add r2, r4, #0
-	bl sub_08076714
+	bl AddAffineSprite
 	pop {r4, r5, r6, r7}
 	pop {r0}
 	bx r0

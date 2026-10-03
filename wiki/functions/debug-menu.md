@@ -1,5 +1,5 @@
 ---
-title: Debug menu (unused) CB_DebugMenu `sub_08074A34`
+title: Debug menu (unused) CB_DebugMenu `CB_DebugMenu`
 type: function
 status: draft
 confidence: high

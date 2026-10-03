@@ -19,19 +19,19 @@ callbacks), so a matched member is a good model for the others (see also `tools/
 ## Largest tables (verified as pointer runs; roles are hypotheses)
 | Table | Entries | Indexed by | First members |
 |---|---|---|---|
-| `0x081A723C` | 77 | `sub_0806A92C`, `sub_0806A96C` | `sub_08069A90`, `sub_08069AE0`, `sub_08069FE4` |
-| `0x08198E7C` | 40 | `sub_0801AD18` | `sub_0801A7F4`, `sub_0801A8A4`, `sub_0801A8CC` |
-| `0x0819A6B0` | 39 | `sub_080297B4` | `sub_08028D9C`, `sub_08028FD0`, `sub_080292C8` |
-| `0x081A7970` | 29 | `sub_0807CC28` | `sub_0807C374`, `sub_0807C46C`, `sub_0807C4A8` |
-| `0x08199A2C` | 22 | (no literal-pool reference found) | `sub_08025DF0`, `sub_080256D8` |
-| `0x08198F80` | 14 | `sub_08021A48` | `sub_08021834`, `sub_0801F97C`, `sub_0804F168` |
-| `0x0819D1D8` | 14 | `sub_0804E31C` | `sub_0804AB90`, `sub_0804AC18`, `sub_0804AE64` |
+| `0x081A723C` | 77 | `DeckEdit_RunListFilter`, `ProhibitCardSelect_RunListFilter` | `ListFilter_Reset`, `ListFilter_Init`, `ListFilter_Update` |
+| `0x08198E7C` | 40 | `CB_LinkBattle` | `LinkBattle_Init`, `LinkBattle_DecideTurnOrder`, `LinkBattle_Connect` |
+| `0x0819A6B0` | 39 | `TurnOrder_RpsMain` | `TurnOrder_ChooseHand`, `TurnOrder_ShowResult`, `TurnOrder_ChooseTurn` |
+| `0x081A7970` | 29 | `CB_Password` | `Password_InitVideo`, `Password_InitState`, `Password_FadeIn` |
+| `0x08199A2C` | 22 | (no literal-pool reference found) | `DiceScreen_HoldDie`, `DiceScreen_ThrowDie` |
+| `0x08198F80` | 14 | `DuelMainStep` | `DuelPhase_Init`, `DuelPhase_Opening`, `DuelPhase_TurnStart` |
+| `0x0819D1D8` | 14 | `BattlePhase_Run` | `BattleStage_Start`, `BattleStage_SelectAttacker`, `BattleStage_SelectTarget` |
 
 > [!warning] Contradiction
 > Three of the "largest tables" above are runs that span several tables. The scanner allows single NULL gaps, so it joins NULL-terminated step tables that sit back to back. The asset converters, which split the data at code labels (2026-10-02), give these boundaries:
-> - **`0x081A723C` (77)** is six step tables ending at `0x081A7374`: `transfer_steps` (`0x081A723C`, the one `sub_0806A92C`/`sub_0806A96C` load), `statistics_steps` (`0x081A724C`, `sub_0806D198`), `deck_edit_steps` (`0x081A725C`, `sub_0806EF04`), `deck_edit_select_steps` (`0x081A72A0`, `sub_0806EF74`), `deck_edit_sub_steps` (`0x081A72E4`, `sub_0806F01C`) and `deck_edit_popup_steps` (`0x081A7330`, `sub_0806F05C`).
-> - **`0x081A7970` (29)** is `password_steps` (`0x081A7970`, `sub_0807CC28`) followed by `card_trading_steps` (`0x081A79A4`, `sub_0807D348`).
-> - **`0x08199A2C` (22, "no literal-pool reference")** starts one word into `gUnk_08199A28`, whose first entry is NULL, and continues into `gUnk_08199A40` and further tables of [[code-08025108]]. The references are to the labels, which is why the scanner found none for `0x08199A2C`.
+> - **`0x081A723C` (77)** is six step tables ending at `0x081A7374`: `transfer_steps` (`0x081A723C`, the one `DeckEdit_RunListFilter`/`ProhibitCardSelect_RunListFilter` load), `statistics_steps` (`0x081A724C`, `DeckEdit_RunStatistics`), `deck_edit_steps` (`0x081A725C`, `CB_DeckEdit`), `deck_edit_select_steps` (`0x081A72A0`, `SideDeckSwap_Run`), `deck_edit_sub_steps` (`0x081A72E4`, `TradeCardSelect_Run`) and `deck_edit_popup_steps` (`0x081A7330`, `ProhibitCardSelect_Run`).
+> - **`0x081A7970` (29)** is `password_steps` (`0x081A7970`, `CB_Password`) followed by `card_trading_steps` (`0x081A79A4`, `CB_CardTrading`).
+> - **`0x08199A2C` (22, "no literal-pool reference")** starts one word into `gPlainDieScreenSteps`, whose first entry is NULL, and continues into `gSkullDiceSceneSteps` and further tables of [[code-08025108]]. The references are to the labels, which is why the scanner found none for `0x08199A2C`.
 >
 > Resolved in favour of the label-split tables. The scanner's runs are still valid groupings of related functions.
 

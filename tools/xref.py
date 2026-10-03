@@ -3105,7 +3105,7 @@ def cmd_selftest(db, args):
     smc = 0x080754F8  # set-main-callback.md
     check('SetMainCallback: stores its argument into gMain.callback and calls SaveGame',
           [0, 0x03000450] in F[smc]['param_slots'] and 0x080754BC in callees(smc))
-    check('sub_08000420 (scene loader): 5 parameters, like its C signature',
+    check('Bustup_LoadSceneSet (scene loader): 5 parameters, like its C signature',
           F[0x08000420]['nparams'] == 5)
     dm = 0x08021A48   # names.txt DuelMainStep: phase table 0x08198F80 indexed by *(u8*)0x02015EE8
     check('DuelMainStep: dispatches sDuelPhaseTable 0x08198F80 and reads the phase byte 0x02015EE8',
@@ -3118,10 +3118,10 @@ def cmd_selftest(db, args):
     check('Password lookup reads cards/passwords and returns a value',
           any(r.get('asset', '').startswith('cards/passwords') for r in F[pw]['rom']) and F[pw]['ret'])
     cn = 0x08000C54   # card-data-functions.md: card number -> ID -> name
-    check('sub_08000C54 uses the number->ID map and the card name table',
+    check('Bustup_UpdateTextBox uses the number->ID map and the card name table',
           {'cards/number_to_id', 'cards/names'} <= {asset_stem(r.get('asset', '')) for r in F[cn]['rom']})
     eff = 0x0802C77C  # cards.md: effect table 0x0819A9D4 {u32 key; fn[5]}
-    check('Effect handler sub_0802C77C is fn[3] of the Monster Eye record (key 401) in 0x0819A9D4',
+    check('Effect handler EffectPayLifePointsChainA is fn[3] of the Monster Eye record (key 401) in 0x0819A9D4',
           any(d[0] == 0x0819B08C and 'Monster Eye' in (d[3] or '') for d in F[eff].get('datarefs', [])))
     sd = 0x08001C10   # names.txt StartDialogue(eventId)
     check('StartDialogue: argument 0 decoded as a dialogue event ID',

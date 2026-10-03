@@ -9,16 +9,16 @@ updated: 2026-10-01
 # Shared headers
 
 Until 2026-09-30 every C unit declared its own view of the shared globals. A survey (`tools/typesurvey.py`) found
-`gUnk_03000040` declared with 9 different types across 65 units, and `gUnk_020192E4` with 20. `struct Main` alone
+`gMain` declared with 9 different types across 65 units, and `gDuelPlayers` with 20. `struct Main` alone
 had 43 distinct layouts. This caused near-misses, because a field declared u8 in one unit and u16 in another
 compiles differently.
 
 ## Canonical headers
-- `include/main.h`: `struct Main` (gMain, `gUnk_03000040`, known up to `+0x488C`).
+- `include/main.h`: `struct Main` (gMain, `gMain`, known up to `+0x488C`).
 - `include/duel.h`: `struct DuelCard`, `DuelZone` (0x94), `DuelPlayer` (0xD64), `DuelState` (prefix only),
-  `DuelZonesPlayer`, with externs for `gUnk_020192E0`, `gUnk_020192E4` and `gUnk_0201930C`.
-- `include/duel_ui.h`: `struct DuelCmd` (`gUnk_020185C0`, the command runner) and `struct DuelScreen`
-  (`gUnk_0201CFB0`), plus `DuelCmdEntry` and `DuelLoc`. It is kept separate so that adding it did not break units that
+  `DuelZonesPlayer`, with externs for `gDuel`, `gDuelPlayers` and `gDuelZones`.
+- `include/duel_ui.h`: `struct DuelCmd` (`gDuelCmd`, the command runner) and `struct DuelScreen`
+  (`gDuelScreen`), plus `DuelCmdEntry` and `DuelLoc`. It is kept separate so that adding it did not break units that
   already included duel.h.
 - `struct DuelState` covers the players plus the queue/flags tail up to `+0x1B20` (the contested bitfields are left unknown).
 - All headers carry compile-time size and offset checks. Field access was verified by compiling probes with old_agbcc

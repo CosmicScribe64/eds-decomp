@@ -24,8 +24,8 @@ updated: 2026-10-01
 This is the Nintendo SDK `crt0.s` template, the same one as fireemblem8u's `src/crt0.s`. EDS built it with its own configuration:
 - **Priority / IntrTable slot order:** SERIAL, HBLANK, VBLANK, VCOUNT, TIMER0, TIMER1, TIMER2, TIMER3, DMA0, DMA1, DMA2, DMA3, KEYPAD (13 slots). After those, GAMEPAK goes to an infinite loop. The **link cable (SIO) has top priority**, and there's no leading GAMEPAK check as in FE8.
 - **Nested interrupts:** while a handler runs, `IE = 0x2280` (SERIAL | DMA1 | GAMEPAK), and handlers run in SYS mode with IRQs enabled, so only SIO, sound FIFO DMA1 and cart removal can pre-empt a handler. The original IE and SPSR are restored afterwards. Unlike pokeemerald's variant, IME isn't saved.
-- **IntrMain is moved to IWRAM at boot.** The boot init `sub_08075DF4`, which AgbMain calls, uses DMA3 to copy `0x400` bytes from `0x080000FC` to `0x0300004C` (DMA3CNT `0x80000200`). It then sets `INTR_VECTOR = 0x0300004C`. So the ROM copy installed by `crt0` runs only until the init code executes, and after that the dispatcher runs from IWRAM. It still works there, because its literal pool is copied along with it and all its accesses are PC-relative.
-- `sub_08075DF4` also fills `IntrTable` (`0x03000000`, 16 words, `0x40` bytes). Every slot starts as 0 except these (verified from the stores at `0x08075E2C`–`0x08075E54`):
+- **IntrMain is moved to IWRAM at boot.** The boot init `GameInit`, which AgbMain calls, uses DMA3 to copy `0x400` bytes from `0x080000FC` to `0x0300004C` (DMA3CNT `0x80000200`). It then sets `INTR_VECTOR = 0x0300004C`. So the ROM copy installed by `crt0` runs only until the init code executes, and after that the dispatcher runs from IWRAM. It still works there, because its literal pool is copied along with it and all its accesses are PC-relative.
+- `GameInit` also fills `IntrTable` (`0x03000000`, 16 words, `0x40` bytes). Every slot starts as 0 except these (verified from the stores at `0x08075E2C`–`0x08075E54`):
   - slot 2 (VBlank) = `0x0807569D`
   - slot 6 (Timer2) = `0x0807570D`
   - slot 9 (DMA1) = `0x0807E325` (inside the Konami sound driver)

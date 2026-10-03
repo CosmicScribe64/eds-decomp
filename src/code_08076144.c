@@ -20,9 +20,9 @@ struct Main {
     u8 oamCount;                /* +0x4830 */
     u8 affineCount;             /* +0x4831 */
 };
-extern struct Main gUnk_03000040;
-extern struct OamEntry gUnk_03004470[];
-extern const s16 gUnk_081A77A8[];
+extern struct Main gMain;
+extern struct OamEntry gMain_oamBuffer[];
+extern const s16 gSineTable128[];
 
 /* Animated OBJ graphics stream state (hypothesis): header = 0x20 byte palette, u16 count, count*4 bytes of table, then count * {u16 tiles; tiles*32 bytes}. */
 struct SprAnim {
@@ -33,9 +33,9 @@ struct SprAnim {
     u16 count;              /* +C */
     u16 pieces;             /* +E */
 };
-extern void sub_08075294(void *dst, const void *src, u32 size);
-extern void sub_08076160(u16 idx, u16 scale, u16 angle);
-extern void sub_080769DC(struct SprAnim *a);
+extern void MemCopy16(void *dst, const void *src, u32 size);
+extern void SetOamAffineRotScale(u16 idx, u16 scale, u16 angle);
+extern void SprAnimRewind(struct SprAnim *a);
 
 /* Save mirror at 0x02011C20 (see code_0807717C). */
 struct CardCount {
@@ -63,21 +63,21 @@ struct SaveHead {
     u8 pad0[4];
     u8 modeByte;            /* mode:7 | jpFont:1<<7 */
 };
-extern struct SaveHead gUnk_02011C20;
-extern u8 gUnk_02013D86[];
-extern const u8 gUnk_081A78A8[];
+extern struct SaveHead gSaveData;
+extern u8 gSaveDataSignature[];
+extern const u8 gSaveSignature[];
 extern char *strcpy(char *, const char *);
-extern const u16 gUnk_08622AB4[];
-extern void sub_08077498(u16 id);
-extern void sub_08075278(void *, u32);
-extern void sub_08077A74(u32);
-extern void sub_08077AB0(u32);
-extern void sub_080770BC(u16 v);
-extern void sub_080770DC(void);
-extern void sub_0807701C(void);
-extern u32 sub_08076FC4(const u8 *a, const u8 *b, u8 n);
-void sub_08076144(u16 idx, u16 scale) {
-    u16 *p = (u16 *)gUnk_03004470;
+extern const u16 gCardIdToNumber[];
+extern void AddCardToTrunk(u16 id);
+extern void MemClear16(void *, u32);
+extern void SetSeEnabled(u32);
+extern void SetBgmEnabled(u32);
+extern void SetTextMode(u16 v);
+extern void SetTextModeLatin(void);
+extern void WriteSaveSignature(void);
+extern u32 MemDiffers(const u8 *a, const u8 *b, u8 n);
+void SetOamAffineScale(u16 idx, u16 scale) {
+    u16 *p = (u16 *)gMain_oamBuffer;
     p += (u32)idx << 4;
     p[3] = scale;
     p[7] = 0;
@@ -86,11 +86,11 @@ void sub_08076144(u16 idx, u16 scale) {
 }
 
 /* Affine matrix `idx` = rotation by `angle` (128 steps per turn) and scale (8.8). */
-void sub_08076160(u16 idx, u16 scale, u16 angle) {
-    struct OamEntry *o = gUnk_03004470;
-    s32 s = gUnk_081A77A8[angle & 0x7F];
-    s32 c = gUnk_081A77A8[(angle + 0x20) & 0x7F];
-    s32 ns = gUnk_081A77A8[(angle + 0x40) & 0x7F];
+void SetOamAffineRotScale(u16 idx, u16 scale, u16 angle) {
+    struct OamEntry *o = gMain_oamBuffer;
+    s32 s = gSineTable128[angle & 0x7F];
+    s32 c = gSineTable128[(angle + 0x20) & 0x7F];
+    s32 ns = gSineTable128[(angle + 0x40) & 0x7F];
     o += (u32)idx << 2;
     s *= scale;
     c *= scale;
@@ -105,8 +105,8 @@ void sub_08076160(u16 idx, u16 scale, u16 angle) {
 }
 
 /* Affine matrix `idx` = scale with a shear (PB = shear, PC = -shear). */
-void sub_080761CC(u16 idx, u16 scale, u16 shear) {
-    struct OamEntry *o = gUnk_03004470;
+void SetOamAffineShear(u16 idx, u16 scale, u16 shear) {
+    struct OamEntry *o = gMain_oamBuffer;
     s16 t;
     o += (u32)idx << 2;
     o[0].affine = scale;
@@ -117,14 +117,14 @@ void sub_080761CC(u16 idx, u16 scale, u16 shear) {
 }
 
 /* Append one OAM entry (AddSprite): yx = y << 16 | x, shape = attr0/attr1 high bits, attr2 = tile/palette. */
-void sub_080761F0(u32 yx, u16 shape, u16 attr2) {
+void AddSprite(u32 yx, u16 shape, u16 attr2) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -138,14 +138,14 @@ void sub_080761F0(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* Same with attr0 |= 0x400 (semi-transparent). */
-void sub_0807625C(u32 yx, u16 shape, u16 attr2) {
+void AddSpriteAlpha(u32 yx, u16 shape, u16 attr2) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -159,14 +159,14 @@ void sub_0807625C(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* Same with 256-colour mode (attr0 |= 0x2000) and tile index doubled. */
-void sub_080762D0(u32 yx, u16 shape, u16 attr2) {
+void AddSprite8bpp(u32 yx, u16 shape, u16 attr2) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -180,14 +180,14 @@ void sub_080762D0(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* 256-colour sprite with extra attr1 bits (flip/size). */
-void sub_08076348(u32 yx, u16 shape, u16 attr2, u16 extra) {
+void AddSprite8bppFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -201,14 +201,14 @@ void sub_08076348(u32 yx, u16 shape, u16 attr2, u16 extra) {
 }
 
 /* 256-colour semi-transparent sprite (attr0 |= 0x2400). */
-void sub_080763D0(u32 yx, u16 shape, u16 attr2) {
+void AddSprite8bppAlpha(u32 yx, u16 shape, u16 attr2) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -222,7 +222,7 @@ void sub_080763D0(u32 yx, u16 shape, u16 attr2) {
 }
 
 /* Affine (rotate/scale) sprite, 8bpp+alpha, double-size box: (x, y) is the sprite centre; the switch on the shape/size code subtracts half the sprite size. sa = scale << 16 | angle. */
-void sub_08076448(u32 yx, u16 shape, u16 attr2, u32 sa) {
+void AddAffineSprite8bppAlpha(u32 yx, u16 shape, u16 attr2, u32 sa) {
     u16 x = yx;
     u16 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
@@ -232,9 +232,9 @@ void sub_08076448(u32 yx, u16 shape, u16 attr2, u32 sa) {
     u16 angle = sa;
     /* gMain is referenced directly (no local pointer): GCSE then gives the
      * ROM's copy of the base address before the first compare. */
-    if (gUnk_03000040.oamCount == 0x80)
+    if (gMain.oamCount == 0x80)
         return;
-    if (gUnk_03000040.affineCount == 0x20)
+    if (gMain.affineCount == 0x20)
         return;
     switch (shape) {
     case 0x0000:
@@ -287,26 +287,26 @@ void sub_08076448(u32 yx, u16 shape, u16 attr2, u32 sa) {
         break;
     }
     {
-        struct OamEntry *e = &gUnk_03000040.oam[gUnk_03000040.oamCount];
+        struct OamEntry *e = &gMain.oam[gMain.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x2700;
-        e->attr1 = (x & 0x1FF) | a1 | (gUnk_03000040.affineCount << 9);
+        e->attr1 = (x & 0x1FF) | a1 | (gMain.affineCount << 9);
         e->attr2 = attr2 << 1;
-        sub_08076160(gUnk_03000040.affineCount, scale, angle);
-        gUnk_03000040.oamCount++;
-        gUnk_03000040.affineCount++;
+        SetOamAffineRotScale(gMain.affineCount, scale, angle);
+        gMain.oamCount++;
+        gMain.affineCount++;
     }
 }
 
 
 /* AddSprite variant with extra attr1 bits (flip / size). */
-void sub_08076624(u32 yx, u16 shape, u16 attr2, u16 extra) {
+void AddSpriteFlip(u32 yx, u16 shape, u16 attr2, u16 extra) {
     struct Main *m;
     u16 x = yx;
     u32 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -319,13 +319,13 @@ void sub_08076624(u32 yx, u16 shape, u16 attr2, u16 extra) {
     }
 }
 
-void sub_080766A4(u16 x, s16 y, u16 shape, u16 attr2) {
+void AddSpriteXY(u16 x, s16 y, u16 shape, u16 attr2) {
     struct Main *m;
     s16 nv;
     u32 a0 = shape & 0xFF00;
     u16 a1 = (shape << 8) & ~0x1FF;
     u8 *cnt;
-    m = &gUnk_03000040;
+    m = &gMain;
     cnt = &m->oamCount;
     if (*cnt != 0x80) {
         u32 off = *cnt << 3;
@@ -340,7 +340,7 @@ void sub_080766A4(u16 x, s16 y, u16 shape, u16 attr2) {
 }
 
 /* Affine (rotate/scale) sprite, 4bpp, double-size box: (x, y) is the sprite centre; the switch on the shape/size code subtracts half the sprite size. sa = scale << 16 | angle. */
-void sub_08076714(u32 yx, u16 shape, u16 attr2, u32 sa) {
+void AddAffineSprite(u32 yx, u16 shape, u16 attr2, u32 sa) {
     u16 x = yx;
     u16 y = yx >> 16;
     u32 a0 = shape & 0xFF00;
@@ -352,9 +352,9 @@ void sub_08076714(u32 yx, u16 shape, u16 attr2, u32 sa) {
     angle = sa;
     /* gMain is referenced directly (no local pointer): GCSE then gives the
      * ROM's copy of the base address before the first compare. */
-    if (gUnk_03000040.oamCount == 0x80)
+    if (gMain.oamCount == 0x80)
         return;
-    if (gUnk_03000040.affineCount == 0x20)
+    if (gMain.affineCount == 0x20)
         return;
     switch (shape) {
     case 0x0000:
@@ -407,19 +407,19 @@ void sub_08076714(u32 yx, u16 shape, u16 attr2, u32 sa) {
         break;
     }
     {
-        struct OamEntry *e = &gUnk_03000040.oam[gUnk_03000040.oamCount];
+        struct OamEntry *e = &gMain.oam[gMain.oamCount];
         e->attr0 = a0 | (y & 0xFF) | 0x300;
-        e->attr1 = (x & 0x1FF) | a1 | (gUnk_03000040.affineCount << 9);
+        e->attr1 = (x & 0x1FF) | a1 | (gMain.affineCount << 9);
         e->attr2 = attr2;
-        sub_08076160(gUnk_03000040.affineCount, scale, angle);
-        gUnk_03000040.oamCount++;
-        gUnk_03000040.affineCount++;
+        SetOamAffineRotScale(gMain.affineCount, scale, angle);
+        gMain.oamCount++;
+        gMain.affineCount++;
     }
 }
 
 
 
-void sub_080768F0(void) {
+void ClearObjPalettesAndFirstTiles(void) {
     vu16 zero = 0;
     vu32 *dma = (vu32 *)0x040000D4;
     dma[0] = (u32)&zero;
@@ -439,7 +439,7 @@ void sub_080768F0(void) {
 }
 
 /* Load a sprite animation stream: palette 15, then the tile blocks into OBJ VRAM from tile 1; leaves `cur` at the first frame header. */
-void sub_0807695C(u8 *src, struct SprAnim *a) {
+void SprAnimLoad(u8 *src, struct SprAnim *a) {
     u8 *p;
     u16 n;
     u16 i;
@@ -447,7 +447,7 @@ void sub_0807695C(u8 *src, struct SprAnim *a) {
     a->base = src;
     a->cur = src;
     REG_DISPCNT |= 0x40;
-    sub_08075294((void *)0x050003E0, src, 0x20);
+    MemCopy16((void *)0x050003E0, src, 0x20);
     p = a->cur;
     n = *(u16 *)(p + 0x20);
     p += 0x22;
@@ -462,7 +462,7 @@ void sub_0807695C(u8 *src, struct SprAnim *a) {
             len = *(u16 *)q;
             a->cur = q + 2;
             len <<= 5;
-            sub_08075294(dst, a->cur, len);
+            MemCopy16(dst, a->cur, len);
             dst += len;
             a->cur += len;
             i++;
@@ -474,10 +474,10 @@ void sub_0807695C(u8 *src, struct SprAnim *a) {
         a->unk8 = v;
         a->unkA = 0;
     }
-    sub_080769DC(a);
+    SprAnimRewind(a);
 }
 
-void sub_080769DC(struct SprAnim *a) {
+void SprAnimRewind(struct SprAnim *a) {
     /* FAKEMATCH: preserve pointer/count scheduling and ROM iterator registers. */
     u32 n;
     register u8 *p __asm__("r0");
@@ -532,7 +532,7 @@ struct MainA20 {
     u8 pad0[0x4430 - 4];
     struct OamBitsA20 oam[128];
 };
-#define gMainA20 (*(struct MainA20 *)&gUnk_03000040)
+#define gMainA20 (*(struct MainA20 *)&gMain)
 static inline u16 A20_Read16(u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
@@ -566,11 +566,11 @@ static inline void A20_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at (x, y) plus per-piece offsets (hypothesis). */
-void sub_08076A20(u16 x, u16 y, struct SprAnim *a, u16 flag) {
+void SprAnimDrawFrame(u16 x, u16 y, struct SprAnim *a, u16 flag) {
     u8 *cur = a->cur;
     int i, next;
     if (a->unkA >= a->unk8) {
-        sub_080769DC(a);
+        SprAnimRewind(a);
         return;
     }
     REG_DISPCNT |= 0x40;
@@ -630,7 +630,7 @@ struct MainBEC {
     u8 pad0[0x4430 - 4];
     struct OamBitsBEC oam[128];
 };
-#define gMainBEC (*(struct MainBEC *)&gUnk_03000040)
+#define gMainBEC (*(struct MainBEC *)&gMain)
 static inline u16 BEC_Read16(u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
@@ -663,11 +663,11 @@ static inline void BEC_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-void sub_08076BEC(u16 x, u16 y, struct SprAnim *a, u16 flag) {
+void SprAnimDrawFrameAt(u16 x, u16 y, struct SprAnim *a, u16 flag) {
     u8 *cur = a->cur;
     int i, next;
     if (a->unkA >= a->unk8) {
-        sub_080769DC(a);
+        SprAnimRewind(a);
         return;
     }
     REG_DISPCNT |= 0x40;
@@ -729,7 +729,7 @@ struct MainDAC {
     u8 pad0[0x4430 - 4];
     struct OamBitsDAC oam[128];
 };
-#define gMainDAC (*(struct MainDAC *)&gUnk_03000040)
+#define gMainDAC (*(struct MainDAC *)&gMain)
 static inline u16 DAC_Read16(u8 **pp) {
     u16 v = *(u16 *)*pp;
     *pp += 2;
@@ -761,13 +761,13 @@ static inline void DAC_SetSize(int i, struct SprAnim *a, u16 fmt) {
     }
 }
 /* Emit the OAM entries of the current animation frame at a fixed position (x, y) (hypothesis). */
-void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
+void SprAnimDrawFrameAtFlip(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
     u16 x = yx;
     u16 y = yx >> 16;
     u8 *cur = a->cur;
     int i, next;
     if (a->unkA >= a->unk8) {
-        sub_080769DC(a);
+        SprAnimRewind(a);
         return;
     }
     REG_DISPCNT |= 0x40;
@@ -809,8 +809,8 @@ void sub_08076DAC(u32 yx, struct SprAnim *a, u16 flag, u16 hflip) {
 }
 /* Random: LCG (MSVC constants) on gMain.rngState, rotated by 16 (written as shifts, not a rotate); returns 15 bits. */
 /* The generator returns a zero-extended 15-bit value to word consumers. */
-int sub_08076F9C(void) {
-    struct Main *m = &gUnk_03000040;
+int Random(void) {
+    struct Main *m = &gMain;
     u32 x = m->rngState * 0x343FD + 0x269EC3;
     u32 t = x << 16;
     x >>= 16;
@@ -820,7 +820,7 @@ int sub_08076F9C(void) {
 }
 
 /* memcmp-like: returns 1 if the first n bytes differ, else 0. */
-u32 sub_08076FC4(const u8 *a, const u8 *b, u8 n) {
+u32 MemDiffers(const u8 *a, const u8 *b, u8 n) {
     u8 i;
     for (i = 0; i < n; i++) {
         if (*a++ != *b++)
@@ -829,24 +829,24 @@ u32 sub_08076FC4(const u8 *a, const u8 *b, u8 n) {
     return 0;
 }
 
-u32 sub_08076FF8(void) {
-    if (sub_08076FC4(gUnk_081A78A8, gUnk_02013D86, 8) == 0)
+u32 IsSaveSignatureValid(void) {
+    if (MemDiffers(gSaveSignature, gSaveDataSignature, 8) == 0)
         return 1;
     return 0;
 }
 
 /* Write the save signature. */
-void sub_0807701C(void) {
-    strcpy((char *)gUnk_02013D86, (const char *)gUnk_081A78A8);
+void WriteSaveSignature(void) {
+    strcpy((char *)gSaveDataSignature, (const char *)gSaveSignature);
 }
 
-u32 sub_08077034(void) {
+u32 IsSaveChecksumValid(void) {
     u16 sum;
     u16 *p;
     u16 i;
     u8 *base;
     sum = 0;
-    p = (u16 *)&gUnk_02011C20;
+    p = (u16 *)&gSaveData;
     i = 0;
     base = (u8 *)p;
     for (; i <= 0x10B5; p++, i++)
@@ -856,14 +856,14 @@ u32 sub_08077034(void) {
     return 0;
 }
 
-void sub_08077080(void) {
+void UpdateSaveChecksum(void) {
     u16 sum;
     u16 *p;
     u16 i;
     u8 *base;
     u16 v;
     sum = 0;
-    p = (u16 *)&gUnk_02011C20;
+    p = (u16 *)&gSaveData;
     i = 0;
     base = (u8 *)p;
     for (; i <= 0x10B5; p++, i++)
@@ -872,41 +872,41 @@ void sub_08077080(void) {
     *(u16 *)(base + 0x216E) = v;
 }
 
-void sub_080770BC(u16 v) {
-    struct SaveHead *s = &gUnk_02011C20;
+void SetTextMode(u16 v) {
+    struct SaveHead *s = &gSaveData;
     u8 t = v & 0x7F;
     s->modeByte = t;
     if (v == 0)
         s->modeByte = t | 0x80;
 }
 
-void sub_080770DC(void) {
-    sub_080770BC(1);
+void SetTextModeLatin(void) {
+    SetTextMode(1);
 }
 
 /* Reset the whole save mirror to defaults. */
-void sub_080770E8(void) {
-    sub_08075278(&gUnk_02011C20, 0x2170);
-    sub_08077A74(1);
-    sub_08077AB0(1);
-    sub_080770DC();
-    sub_0807701C();
+void InitSaveData(void) {
+    MemClear16(&gSaveData, 0x2170);
+    SetSeEnabled(1);
+    SetBgmEnabled(1);
+    SetTextModeLatin();
+    WriteSaveSignature();
 }
 
 /* Debug "Get all card": give 3 copies of every card id 1..0x334 (skipping ids whose key is in 0x780..0x7CF). */
-void sub_08077114(void) {
+void DebugGetAllCards(void) {
     s32 id;
     for (id = 1; id <= 0x334; ) {
-        u16 k = *(const u16 *)((const u8 *)gUnk_08622AB4 + ((id & 0x7FF) << 1)) - 0x780;
+        u16 k = *(const u16 *)((const u8 *)gCardIdToNumber + ((id & 0x7FF) << 1)) - 0x780;
         s32 next = id + 1;
         if (k > 0x4F) {
             u8 *s;
             struct CardRec *r;
             u32 idv = id << 16;
-            s = (u8 *)&gUnk_02011C20;
+            s = (u8 *)&gSaveData;
             r = (struct CardRec *)(s + id * 4);
             do {
-                sub_08077498(idv >> 16);
+                AddCardToTrunk(idv >> 16);
             } while (r->e.c.count + r->e.b.n1 + r->e.b.n2 + r->e.b.n3 <= 2);
         }
         id = next;

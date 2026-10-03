@@ -3,13 +3,13 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_08069284/sub_08069284.s"
-	.include "asm/nonmatching/code_08069284/sub_08069A90.s"
-	.include "asm/nonmatching/code_08069284/sub_08069AE0.s"
-	.include "asm/nonmatching/code_08069284/sub_08069DD8.s"
-	.include "asm/nonmatching/code_08069284/sub_08069E20.s"
-	.include "asm/nonmatching/code_08069284/sub_08069E64.s"
-	.include "asm/nonmatching/code_08069284/sub_08069EA4.s"
-	.include "asm/nonmatching/code_08069284/sub_08069F40.s"
-	.include "asm/nonmatching/code_08069284/sub_08069FAC.s"
-	.include "asm/nonmatching/code_08069284/sub_08069FE4.s"
+	.include "asm/nonmatching/code_08069284/DeckEdit_FilterAndSortList.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_Reset.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_Init.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_DrawCursor.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_DrawCursorFlash.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_ShowNowFiltering.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_CopyBarTileColumns.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_DrawProgressBar.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_ProgressBarVBlank.s"
+	.include "asm/nonmatching/code_08069284/ListFilter_Update.s"

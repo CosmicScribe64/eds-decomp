@@ -16,19 +16,19 @@ Add a question when it comes up. When one is answered, strike it through, then l
 - [ ] Were the ARM sound mixer (`0x0807EAD0`) and the Konami link-cable library written in asm or C (`agbcc_arm`)? See [[sound-mixer]].
 - [ ] Where are the real translation-unit boundaries? The current units are 4 KiB chunks. Hints: rodata grouping, and static functions called from only one place. The Japanese build links the shared code in a different order, so the breaks between the 428 runs both builds keep in order are further evidence ([[rom-versions]], `build/jp/blocks.tsv`).
 - [ ] Which compiler and flags built the Japanese build's Mobile Adapter GB library (195 functions at JP `0x0807D2E4`) and its ARM HBlank routine (JP `0x0805CA00`)? See [[rom-versions]].
-- [ ] Were some functions built without GCSE? `sub_0802F5F8`, `sub_08030620` and `sub_0802FEA4` match more naturally with `-fno-gcse`, but that flag breaks most other functions. That would suggest per-file flags or the original's TU boundaries. See [[code-0802fb64]], [[compiler-flags]].
+- [ ] Were some functions built without GCSE? `CanRedirectEffectToZone`, `EffectBigEyeResolve` and `EffectBanishGraveToDestroyPrepare` match more naturally with `-fno-gcse`, but that flag breaks most other functions. That would suggest per-file flags or the original's TU boundaries. See [[code-0802fb64]], [[compiler-flags]].
 
 ## ROM structure
 - [x] ~~Where does code end and data begin?~~ `.text` ends at `0x08080A20`, after the 8-byte linker veneer. See [[rom-map]].
 - [x] ~~Which sound engine: m4a or a custom Konami one?~~ Custom Konami driver. See [[sound-engine]].
 - [x] ~~Are graphics compressed?~~ No BIOS compression. A custom LZSS is used for dialogue scenes only; card art is 6bpp-packed. See [[graphics-formats]].
 - [x] ~~About 30% of the uncompressed graphics banks is unlabelled, and so are the three 0x2800-byte blocks at `0x0819DD94`.~~ The asset converters itemise every bank (562 items), and the blocks are HBlank warp tables. See [[rom-map]], [[graphics-formats]].
-- [x] ~~Which function loads the 4bpp image packs?~~ `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C` and `sub_080733F4`. See [[graphics-formats]].
+- [x] ~~Which function loads the 4bpp image packs?~~ `LoadBgImage4bppMap4Rel`, `LoadBgImage4bppGfx`, `LoadBgImage4bppMap1`, `LoadBgImage4bpp`, `LoadBgImage4bppToMap` and `LoadBgImage4bppMap1Rel`. See [[graphics-formats]].
 - [x] ~~How is the song sequence bytecode encoded, and how are tracks assigned to PSG or PCM?~~ See [[sound-sequence-format]]: every song has ten tracks in a fixed channel order.
 - [ ] Some data has no reference from code or data: OAM entries `0x081A6154`–`0x081A6434`, sprite templates `0x081979DC`, scroll waves `0x081987B0`, the track list `0x081999C4`, several small `.rodata` 1 items, and 13 of the 36 booster-pack covers. Are they leftovers, or reached through computed addresses? See [[rom-map]], [[booster-packs]].
 - [ ] Is the sound driver's nibble volume-scale table (`0x081A7A0C`) or vibrato-step table (`0x081AB70C`) used at all? What is the second u16 (`b`) of each sprite-stream graphic entry? What does the 2-bit `env` field of the SE tone commands do audibly? See [[sound-sequence-format]], [[graphics-formats]].
 - [ ] Is the 86-entry folded-hiragana table at `0x080874A8` a sort map? It has no label. See [[rom-map]].
-- [ ] How many of the 1130 USA functions without a JP counterpart exist in JP in rewritten form? `sub_0804412C` does (JP `sub_0806172C`, which scores only 0.36). Pairing by position and shared callers would find more ([[jpmap]]).
+- [ ] How many of the 1130 USA functions without a JP counterpart exist in JP in rewritten form? `CanReviveGraveyardCard` does (JP `sub_0806172C`, which scores only 0.36). Pairing by position and shared callers would find more ([[jpmap]]).
 - [ ] What makes JP's IWRAM 0x10 bytes shorter between `0x0300245C` and `0x03004470` (`oamBuffer` moved by −0x10)? See [[rom-versions]].
 
 ## Program structure

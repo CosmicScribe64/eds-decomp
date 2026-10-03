@@ -9,7 +9,7 @@ updated: 2026-10-02
 # Konami sound driver (`0x0807D3D0`–`0x0807EACF`)
 
 > [!note] Status update (2026-10-02)
-> Both remaining functions now match: `sub_0807D6B4` (commit `acd0f2c`) and `sub_0807DB58` (commit `01c08ce`). `src/sound_driver.c` has no `INCLUDE_ASM` left, so it is **30/30 in C**. Their match notes are not written up on this page yet. The bytecodes they decode are on [[sound-sequence-format]]. The rest of this page describes the state before those matches.
+> Both remaining functions now match: `SoundSeTrackTick` (commit `acd0f2c`) and `SoundSequencerTick` (commit `01c08ce`). `src/sound_driver.c` has no `INCLUDE_ASM` left, so it is **30/30 in C**. Their match notes are not written up on this page yet. The bytecodes they decode are on [[sound-sequence-format]]. The rest of this page describes the state before those matches.
 
 `src/sound_driver.c` contained **28 of 30 functions in byte-matching C**, with two assembly fallbacks. The complete unit is 0x1700 bytes and passes `tools/dr python3 tools/check.py sound_driver`. The per-function checker reports 30/30 because it includes those two fallbacks; C coverage is 28/30. The compiler is `agbcc -O2 -mthumb-interwork -fhex-asm -fprologue-bugfix`, as configured in `config/cflags.txt` ([[compiler-flags]]).
 
@@ -21,36 +21,36 @@ All entries are Thumb functions. Sizes include each function's literal pool and 
 
 | Address / symbol | Size | Status | Verified behavior |
 |---|---|---|---|
-| `sub_0807D3D0` | 0x148 | matching C | Configures Timer0, FIFO DMA and interrupts; copies the inner mixer to IWRAM and clears PCM voices/buffers. |
-| `sub_0807D518` | 0x60 | matching C | Loads four wave-RAM words, toggles driver flag 0x200, and selects the next wave bank. |
-| `sub_0807D578` | 0x13C | matching C | Initializes sound hardware and driver state, optionally installs the DMA1 handler, clears tracks, and calls DMA setup. |
-| `sub_0807D6B4` | 0x4A4 | matching C (2026-10-02) | Updates an SE track and decodes its bytecode ([[sound-sequence-format#SE track bytecode]]). |
-| `sub_0807DB58` | 0x7CC | matching C (2026-10-02) | Advances the sequencer and programs PSG/PCM channels ([[sound-sequence-format#BGM track bytecode]]). |
-| `sub_0807E324` | 0x8C | matching C | DMA1 IRQ: advances the read position by 16 and restarts both FIFO DMAs at the 0x2C0-byte wrap. |
-| `sub_0807E3B0` | 0x28 | matching C | Calls the sequencer and ARM mixer unless driver flag 0x2000 pauses them. |
-| `sub_0807E3D8` | 0x17C | matching C | Starts the pending SE, arbitrating slot masks and priorities. |
-| `sub_0807E554` | 0x120 | matching C | Processes the pending SE, handles BGM fade-out, loads a requested song, and initializes its ten tracks. |
-| `sub_0807E674` | 0x1C | matching C | Sets a BGM request and clears its requested fade speed. |
-| `sub_0807E690` | 0x20 | matching C | Sets a BGM request and supplied fade speed. |
-| `sub_0807E6B0` | 0x38 | matching C | Tests whether BGM flag 0x80 is set and the current song equals the supplied ID. |
-| `sub_0807E6E8` | 0x3C | matching C | Requests a song if it is not already playing. |
-| `sub_0807E724` | 0x40 | matching C | Sets the playing BGM's target volume and fade speed 0x40; returns its ID, or −1 if inactive. |
-| `sub_0807E764` | 0x1C | matching C | Sets target volume to zero and the supplied fade speed. |
-| `sub_0807E780` | 0x38 | matching C | Sets flag 0x100, target volume zero, and fade speed. |
-| `sub_0807E7B8` | 0x30 | matching C | Clears flag 0x100 and fades toward volume 0x10. |
-| `sub_0807E7E8` | 0x2C | matching C | Tests whether current and target volume are equal. |
-| `sub_0807E814` | 0x5C | matching C | Queues an SE with full volume and variant zero; bit 15 suppresses requests for an already active identical ID. |
-| `sub_0807E870` | 0x28 | matching C | Requests an SE, sets variant `& 3`, and immediately invokes pending-SE processing. |
-| `sub_0807E898` | 0x44 | matching C | Marks matching active SE tracks for stopping; wakes delayed tracks by clearing flag 1 and setting delay 1. |
-| `sub_0807E8DC` | 0x3C | matching C | Applies the same stop operation to every active SE track. |
-| `sub_0807E918` | 0x78 | matching C | Starts a PCM voice from `(voice, sampleId, volume, note)`, calculating pitch and loop flags from the sample header. |
-| `sub_0807E990` | 0x2C | matching C | Counts the six PCM voices whose active flag is set. |
-| `sub_0807E9BC` | 0xC | matching C | Returns the driver status word. |
-| `sub_0807E9C8` | 0x84 | matching C | Pauses normal ticks, optionally starts a song, advances a requested number of sequencer ticks, and restores target volume. |
-| `sub_0807EA4C` | 0x3C | matching C | Calls the manual-tick routine, then starts a fade-in from volume zero. |
-| `sub_0807EA88` | 0x18 | matching C | Sets driver flag 4. |
-| `sub_0807EAA0` | 0x18 | matching C | Sets driver flag 1. |
-| `sub_0807EAB8` | 0x18 | matching C | Sets driver flags 1 and 4. |
+| `SoundDmaInit` | 0x148 | matching C | Configures Timer0, FIFO DMA and interrupts; copies the inner mixer to IWRAM and clears PCM voices/buffers. |
+| `SoundLoadWaveRam` | 0x60 | matching C | Loads four wave-RAM words, toggles driver flag 0x200, and selects the next wave bank. |
+| `SoundInit` | 0x13C | matching C | Initializes sound hardware and driver state, optionally installs the DMA1 handler, clears tracks, and calls DMA setup. |
+| `SoundSeTrackTick` | 0x4A4 | matching C (2026-10-02) | Updates an SE track and decodes its bytecode ([[sound-sequence-format#SE track bytecode]]). |
+| `SoundSequencerTick` | 0x7CC | matching C (2026-10-02) | Advances the sequencer and programs PSG/PCM channels ([[sound-sequence-format#BGM track bytecode]]). |
+| `SoundDma1Intr` | 0x8C | matching C | DMA1 IRQ: advances the read position by 16 and restarts both FIFO DMAs at the 0x2C0-byte wrap. |
+| `SoundVBlank` | 0x28 | matching C | Calls the sequencer and ARM mixer unless driver flag 0x2000 pauses them. |
+| `SoundStartPendingSE` | 0x17C | matching C | Starts the pending SE, arbitrating slot masks and priorities. |
+| `SoundMain` | 0x120 | matching C | Processes the pending SE, handles BGM fade-out, loads a requested song, and initializes its ten tracks. |
+| `SoundRequestBGM` | 0x1C | matching C | Sets a BGM request and clears its requested fade speed. |
+| `SoundRequestBGMFadeIn` | 0x20 | matching C | Sets a BGM request and supplied fade speed. |
+| `SoundIsBGMPlaying` | 0x38 | matching C | Tests whether BGM flag 0x80 is set and the current song equals the supplied ID. |
+| `SoundRequestBGMIfNotPlaying` | 0x3C | matching C | Requests a song if it is not already playing. |
+| `SoundSetBGMVolume` | 0x40 | matching C | Sets the playing BGM's target volume and fade speed 0x40; returns its ID, or −1 if inactive. |
+| `SoundFadeOutBGM` | 0x1C | matching C | Sets target volume to zero and the supplied fade speed. |
+| `SoundPauseBGM` | 0x38 | matching C | Sets flag 0x100, target volume zero, and fade speed. |
+| `SoundResumeBGM` | 0x30 | matching C | Clears flag 0x100 and fades toward volume 0x10. |
+| `SoundIsBGMFadeDone` | 0x2C | matching C | Tests whether current and target volume are equal. |
+| `SoundRequestSE` | 0x5C | matching C | Queues an SE with full volume and variant zero; bit 15 suppresses requests for an already active identical ID. |
+| `SoundStartSEVariant` | 0x28 | matching C | Requests an SE, sets variant `& 3`, and immediately invokes pending-SE processing. |
+| `SoundReleaseSE` | 0x44 | matching C | Marks matching active SE tracks for stopping; wakes delayed tracks by clearing flag 1 and setting delay 1. |
+| `SoundReleaseAllSE` | 0x3C | matching C | Applies the same stop operation to every active SE track. |
+| `SoundPcmStart` | 0x78 | matching C | Starts a PCM voice from `(voice, sampleId, volume, note)`, calculating pitch and loop flags from the sample header. |
+| `SoundCountActivePcm` | 0x2C | matching C | Counts the six PCM voices whose active flag is set. |
+| `SoundGetBGMTick` | 0xC | matching C | Returns the driver status word. |
+| `SoundSeekBGM` | 0x84 | matching C | Pauses normal ticks, optionally starts a song, advances a requested number of sequencer ticks, and restores target volume. |
+| `SoundSeekBGMFadeIn` | 0x3C | matching C | Calls the manual-tick routine, then starts a fade-in from volume zero. |
+| `SoundStopAllSE` | 0x18 | matching C | Sets driver flag 4. |
+| `SoundStopBGM` | 0x18 | matching C | Sets driver flag 1. |
+| `SoundStopAll` | 0x18 | matching C | Sets driver flags 1 and 4. |
 
 ## Layouts and calling conventions
 
@@ -58,7 +58,7 @@ All entries are Thumb functions. Sizes include each function's literal pool and 
 
 PCM voices are at `0x030053AC`. The +8 word contains a low-halfword step and a high-halfword mixer fraction. PCM start writes the full word. `SoundPcmStart` takes volume in **r2** and note in **r3**, verified against the matched C and its caller. See the correction recorded in [[sound-engine]].
 
-Driver initialization optionally writes `sub_0807E324` through the DMA1 callback pointer. VBlank processing calls `sub_0807DB58` and the linker veneer `__sub_0807EAD0_from_thumb`. Song requests and manual ticking call the matched pending-song loader; variant SE requests call the matched SE allocator.
+Driver initialization optionally writes `SoundDma1Intr` through the DMA1 callback pointer. VBlank processing calls `SoundSequencerTick` and the linker veneer `__sub_0807EAD0_from_thumb`. Song requests and manual ticking call the matched pending-song loader; variant SE requests call the matched SE allocator.
 
 ## Matching details
 
@@ -81,7 +81,7 @@ Related: [[sound-engine]], [[sound-mixer]], [[sound-api]], [[compiler-flags]], [
 
 The DMA initializer is now enabled in exact C after its three hoisted pointer
 registers were matched with the empty voice-base input described above.
-`sub_0807D6B4` has a preliminary typed SE decoder draft in source,
+`SoundSeTrackTick` has a preliminary typed SE decoder draft in source,
 with explicit 0x18-byte track and 8-byte channel-output views. It compiles after
 fixing recovered pointer scaling and narrowing errors. Its channel state at
 track +0x0A has both a halfword view and separate flag/volume byte views; commands
@@ -113,7 +113,7 @@ experiment was repeated successfully for the current 0x4AC candidate, using
 
 ### Paired main-sequencer draft
 
-The complete `sub_0807DB58` draft shares the eight-byte `SoundChannelParams`
+The complete `SoundSequencerTick` draft shares the eight-byte `SoundChannelParams`
 view with the SE decoder. BGM tracks use a separate 0x18-byte local view: pitch
 at +0, instrument/volume at +2/+3, song offset and position at +4/+6, return
 position/offset at +8/+0xA, delay at +0xC, vibrato phase/depth at +0xE/+0xF,
@@ -188,7 +188,7 @@ that once occupied r2 is invalid when the opcode must remain live while an
 operand replaces it; split those live ranges before considering such a form.
 
 **Rejected historical pin candidate:**
-`build/decomp_large/game-batch/sub_0807D6B4/lifetime-out-entry-stream-index/`
+`build/decomp_large/game-batch/SoundSeTrackTick/lifetime-out-entry-stream-index/`
 initializes the output alias in r7, then agbcc reuses r7 for the track pointer.
 The existing decoder interpreter confirms a failure at flags 0x80, opcode
 0x20, SE index 0: both output bytes and track state differ. The counterexample

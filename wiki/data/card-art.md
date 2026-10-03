@@ -29,13 +29,13 @@ Exactly four functions load the art base `0x082A6500` (and the palette base `0x0
 
 | Function | Art literal | Callers (`bl`) | Notes |
 |---|---|---|---|
-| `sub_0805DF34` | `0x0805E044` | 2 | Copies the palette to PRAM and the tiles to VRAM. See [[card-data-functions]] |
-| `sub_08061D24` | `0x08061E48` | 6 | |
-| `sub_08072D28` | `0x08072E84` | 2 | draws into the card-frame view after the frame pack (`0x08006CF2`) |
-| `sub_0807AEF0` | `0x0807AFF0` | 1, the wrapper `sub_0807AFFC` (13 callers in duel/deck code: `0x08067290`, `0x08067AEC`, `0x0806BB82`, …) | walked through below |
+| `BattleScene_LoadCardArt` | `0x0805E044` | 2 | Copies the palette to PRAM and the tiles to VRAM. See [[card-data-functions]] |
+| `LoadCardPicture` | `0x08061E48` | 6 | |
+| `DrawCardPortrait` | `0x08072E84` | 2 | draws into the card-frame view after the frame pack (`0x08006CF2`) |
+| `UnpackCardArt8bpp` | `0x0807AFF0` | 1, the wrapper `LoadCardArt8bpp` (13 callers in duel/deck code: `0x08067290`, `0x08067AEC`, `0x0806BB82`, …) | walked through below |
 
-### `sub_0807AEF0(u16 id, u16 *dst, u8 slot)`
-1. Copies the palette with `sub_08075294(0x05000000 + (0x80 + 0x40·slot)·2, 0x08608360 + id·0x80, 0x80)`, so a card uses BG palette entries **128–191** (slot 0) or **192–255** (slot 1).
+### `UnpackCardArt8bpp(u16 id, u16 *dst, u8 slot)`
+1. Copies the palette with `MemCopy16(0x05000000 + (0x80 + 0x40·slot)·2, 0x08608360 + id·0x80, 0x80)`, so a card uses BG palette entries **128–191** (slot 0) or **192–255** (slot 1).
 2. Computes `src = 0x082A6500 + id·0x10E0`, written in the code as `id·((17·8 − 1)·32)`.
 3. Loops 720 times. Each pass reads 3 × u16 and writes 4 × u16, which unpacks 8 six-bit pixels into 8 bytes of 8bpp tile data:
    ```c

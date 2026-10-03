@@ -23,7 +23,7 @@ struct SparklePos {
     u8 filler2[2];
 };
 
-/* Text-box / scene state (0x0201478C = gUnk_02013DE0 + 0x9AC). */
+/* Text-box / scene state (0x0201478C = gBustup + 0x9AC). */
 struct TextBox {
     void *bitmap;           /* +0x00 decoded scene bitmap (EWRAM) */
     const u16 *bgPal;       /* +0x04 */
@@ -71,13 +71,13 @@ struct ScriptState {
     u8 objCount:3;                  /* +0x9A4 */
     u8 filler9A5;
     u8 flag9A6;                     /* +0x9A6 `$h`/`$k` flag */
-    u8 blinkIndex:5;                /* +0x9A7 index into gUnk_08080AA8 */
+    u8 blinkIndex:5;                /* +0x9A7 index into gBlinkIntervals */
     u16 blinkTimer;                 /* +0x9A8 */
     u8 filler9AA[2];
     struct TextBox textBox;         /* +0x9AC */
-    u8 unkAA8[0x12E8 - 0xAA8];      /* +0xAA8 initialised by sub_0807A2EC */
+    u8 unkAA8[0x12E8 - 0xAA8];      /* +0xAA8 initialised by OamListClear */
     u8 unk12E8;                     /* +0x12E8 */
-    u8 unk12E9;                     /* +0x12E9 index into gUnk_08080A48 (sparkle start pos) */
+    u8 unk12E9;                     /* +0x12E9 index into gBustupSlotPositions (sparkle start pos) */
     u8 unk12EA;                     /* +0x12EA */
     u8 speaker;                     /* +0x12EB copy of gMain speaker */
     u8 filler12EC[0x12F9 - 0x12EC];
@@ -89,30 +89,30 @@ struct ScriptState {
     u8 unk136F;                     /* +0x136F */
     u8 unk1370;                     /* +0x1370 */
     u8 filler1371[3];
-    u8 timer1374[4];                /* +0x1374 sub_0807B0C0 timer */
-    u8 timer1378[4];                /* +0x1378 sub_0807B0C0 timer */
+    u8 timer1374[4];                /* +0x1374 Timer_Reset timer */
+    u8 timer1378[4];                /* +0x1378 Timer_Reset timer */
     u8 flags137C;                   /* +0x137C bit 1: auto-advance */
 };
 
-extern struct ScriptState gUnk_02013DE0;
-extern struct Duelist gUnk_08139F64[];
-extern const u8 gUnk_08087B90[];
-extern const u16 gUnk_08080AA8[];
+extern struct ScriptState gBustup;
+extern struct Duelist gDuelists[];
+extern const u8 gBustupTextHome[];
+extern const u16 gBlinkIntervals[];
 
-extern u8 gUnk_02014888[];
-extern u8 gUnk_02031014[];
-extern u8 gUnk_0203A614[];
-extern const u16 gUnk_08080AC0[];
-extern const u16 *const gUnk_08139F5C[];
-extern const u16 gUnk_0874D5B0;
-extern const u16 gUnk_0874D5B2;
-extern const u8 gUnk_0874D5B4[];
-extern const u16 gUnk_0874E104[];
-extern const u16 gUnk_0874E304[];
+extern u8 gBustupSprites[];
+extern u8 gBustupBitmapBuffer[];
+extern u8 gBustupBoxBitmap[];
+extern const u16 gBustupDigitTiles[];
+extern const u16 *const gDialogueBoxGfx[];
+extern const u16 gDialogueHeaderLz;
+extern const u16 gDialogueHeaderLzSizeHi;
+extern const u8 gDialogueHeaderLzData[];
+extern const u16 gDialogueBoxPalette[];
+extern const u16 gDialogueTextPalette[];
 
 /* LZSS blob: {u16 sizeLo, sizeHi; u8 stream[]} */
 #define LZ_DECOMPRESS(blob, dest) \
-    sub_0807A1A8((u8 *)(blob) + 4, dest, ((blob)[1] << 16) | (blob)[0])
+    LZSSDecompress((u8 *)(blob) + 4, dest, ((blob)[1] << 16) | (blob)[0])
 
 /* Scene-set descriptor (0x081976A0, 31 x 0x14). See [[graphics-formats]]. */
 struct SceneSet {
@@ -123,31 +123,31 @@ struct SceneSet {
     const void *anim;
 };
 
-u16 *sub_0807A320(u32 a, void *b);
-void *sub_0807B6B8();
-void sub_0807A1A8(const u8 *src, void *dest, s32 size);
-void sub_08077CEC(const void *src, void *dest, u32 n);
-u32 sub_08078670(const void *anim, void *objs);
-void sub_08075294(void *dest, const void *src, u32 size);
-void sub_080008A4(u8 page, void **gfx, u16 size);
+u16 *OamListAlloc(u32 a, void *b);
+void *OamListAddSprite();
+void LZSSDecompress(const u8 *src, void *dest, s32 size);
+void CopyTileSheetTo2D(const void *src, void *dest, u32 n);
+u32 AnimBlockInit(const void *anim, void *objs);
+void MemCopy16(void *dest, const void *src, u32 size);
+void CopyBitmapToPage(u8 page, void **gfx, u16 size);
 
 /* Returns the full (full != 0) or short name of character `id`. */
-char *sub_08000228(u32 id, u16 full)
+char *GetDuelistName(u32 id, u16 full)
 {
     u32 i;
 
     for (i = 1; i <= 27; i++) {
-        if (gUnk_08139F64[i].id == id) {
+        if (gDuelists[i].id == id) {
             if (full)
-                return gUnk_08139F64[i].name;
-            return gUnk_08139F64[i].shortName;
+                return gDuelists[i].name;
+            return gDuelists[i].shortName;
         }
     }
-    return gUnk_08139F64[0].name;
+    return gDuelists[0].name;
 }
 
 /* Copies `rows` 240-byte rows from `src` into `dest` (row pitch `pitch` bytes). */
-void sub_08000270(u8 *src, u32 *dest, u16 width, u16 rows, u16 pitch)
+void CopyBitmapRows(u8 *src, u32 *dest, u16 width, u16 rows, u16 pitch)
 {
     u8 i;
 
@@ -155,12 +155,12 @@ void sub_08000270(u8 *src, u32 *dest, u16 width, u16 rows, u16 pitch)
         CpuSet(src + i * 240, dest + ((i * pitch) >> 2), width / 2);
 }
 
-void sub_080002C0(u16 x, u16 y, u16 attr, u16 n)
+void Bustup_DrawLabel(u16 x, u16 y, u16 attr, u16 n)
 {
     u8 i;
 
     for (i = 0; i < n * 2 + 2; i++) {
-        u16 *obj = sub_0807A320(0, (void *)0x02014888);
+        u16 *obj = OamListAlloc(0, (void *)0x02014888);
         *(u32 *)obj = 0x80004000 | attr;
         obj[1] |= y + i * 32;
         obj[2] = (x + i * 4) | 0x2200;
@@ -168,7 +168,7 @@ void sub_080002C0(u16 x, u16 y, u16 attr, u16 n)
 }
 
 /* Draws `value` as `digits` right-aligned 8x8 digit sprites; leading zeros are blank. */
-void sub_08000324(u16 value, u16 x, u16 y, u16 digits, u8 pal)
+void Bustup_DrawNumber(u16 value, u16 x, u16 y, u16 digits, u8 pal)
 {
     u8 i;
     u16 digit;
@@ -177,31 +177,31 @@ void sub_08000324(u16 value, u16 x, u16 y, u16 digits, u8 pal)
         digit = value % 10;
         value = value / 10;
         if (i == 0) {
-            sub_0807B6B8(0, gUnk_08080AC0[digit], x + (digits - i - 1) * 8, y, 8, 8, 4, pal, 0, 0, 0, 0, gUnk_02014888);
+            OamListAddSprite(0, gBustupDigitTiles[digit], x + (digits - i - 1) * 8, y, 8, 8, 4, pal, 0, 0, 0, 0, gBustupSprites);
         } else if (value != 0 || digit != 0) {
-            sub_0807B6B8(0, gUnk_08080AC0[digit], x + (digits - (u16)(i + 1)) * 8, y, 8, 8, 4, pal, 0, 0, 0, 0, gUnk_02014888);
+            OamListAddSprite(0, gBustupDigitTiles[digit], x + (digits - (u16)(i + 1)) * 8, y, 8, 8, 4, pal, 0, 0, 0, 0, gBustupSprites);
         }
     }
 }
 
 /* Loads scene set `set` (240x96 bitmap) and dialogue box `box` into both Mode-4 pages. */
-void sub_08000420(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
+void Bustup_LoadSceneSet(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
 {
-    const u16 *blob = gUnk_08139F5C[box];
+    const u16 *blob = gDialogueBoxGfx[box];
 
-    LZ_DECOMPRESS(blob, gUnk_0203A614);
-    tb->boxBitmap = gUnk_0203A614;
-    CpuSet(gUnk_0203A614, (void *)0x06005A00, 0x1E00);
-    CpuSet(gUnk_0203A614, (void *)0x0600FA00, 0x1E00);
-    LZ_DECOMPRESS(set->bitmapLz, gUnk_02031014);
-    tb->bitmap = gUnk_02031014;
-    sub_080008A4(0, &tb->bitmap, 0x5A00);
-    sub_080008A4(1, &tb->bitmap, 0x5A00);
+    LZ_DECOMPRESS(blob, gBustupBoxBitmap);
+    tb->boxBitmap = gBustupBoxBitmap;
+    CpuSet(gBustupBoxBitmap, (void *)0x06005A00, 0x1E00);
+    CpuSet(gBustupBoxBitmap, (void *)0x0600FA00, 0x1E00);
+    LZ_DECOMPRESS(set->bitmapLz, gBustupBitmapBuffer);
+    tb->bitmap = gBustupBitmapBuffer;
+    CopyBitmapToPage(0, &tb->bitmap, 0x5A00);
+    CopyBitmapToPage(1, &tb->bitmap, 0x5A00);
     tb->bgPal = set->bgPal;
     tb->objPal = set->objPal;
     if (set->objTilesLz) {
-        LZ_DECOMPRESS(set->objTilesLz, gUnk_02031014);
-        sub_08077CEC(gUnk_02031014, (void *)0x06014000, 16);
+        LZ_DECOMPRESS(set->objTilesLz, gBustupBitmapBuffer);
+        CopyTileSheetTo2D(gBustupBitmapBuffer, (void *)0x06014000, 16);
     } else {
         u16 zero = 0;
         CpuSet(&zero, (void *)0x06014000, 0x01002000);
@@ -213,61 +213,61 @@ void sub_08000420(const struct SceneSet *set, const u8 *text, struct TextBox *tb
     if ((tb->objPal = set->objPal))
         CpuSet(tb->objPal, (void *)0x05000200, 0x100);
     if ((tb->anim = set->anim))
-        gUnk_02013DE0.objCount = sub_08078670(tb->anim, objs);
-    sub_08075294((void *)0x05000000, gUnk_0874E304, 0x20);
+        gBustup.objCount = AnimBlockInit(tb->anim, objs);
+    MemCopy16((void *)0x05000000, gDialogueTextPalette, 0x20);
 }
-/* Like sub_08000420, for a 240x80 scene: bitmap at rows 16-95 under a header strip. */
-void sub_08000570(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
+/* Like Bustup_LoadSceneSet, for a 240x80 scene: bitmap at rows 16-95 under a header strip. */
+void Bustup_LoadSceneSetWithHeader(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
 {
-    const u16 *blob = gUnk_08139F5C[box];
+    const u16 *blob = gDialogueBoxGfx[box];
 
-    LZ_DECOMPRESS(blob, gUnk_0203A614);
-    tb->boxBitmap = gUnk_0203A614;
-    CpuSet(gUnk_0203A614, (void *)0x06005A00, 0x1E00);
-    CpuSet(gUnk_0203A614, (void *)0x0600FA00, 0x1E00);
+    LZ_DECOMPRESS(blob, gBustupBoxBitmap);
+    tb->boxBitmap = gBustupBoxBitmap;
+    CpuSet(gBustupBoxBitmap, (void *)0x06005A00, 0x1E00);
+    CpuSet(gBustupBoxBitmap, (void *)0x0600FA00, 0x1E00);
     /* header strip: LZSS blob 0x0874D5B0, referenced as three separate labels */
-    sub_0807A1A8(gUnk_0874D5B4, gUnk_02031014, gUnk_0874D5B0 | (gUnk_0874D5B2 << 16));
-    CpuSet(gUnk_02031014, (void *)0x06000000, 0x780);
-    CpuSet(gUnk_02031014, (void *)0x0600A000, 0x780);
-    LZ_DECOMPRESS(set->bitmapLz, gUnk_02031014);
-    tb->bitmap = gUnk_02031014;
-    CpuSet(gUnk_02031014, (void *)0x06000F00, 0x2580);
+    LZSSDecompress(gDialogueHeaderLzData, gBustupBitmapBuffer, gDialogueHeaderLz | (gDialogueHeaderLzSizeHi << 16));
+    CpuSet(gBustupBitmapBuffer, (void *)0x06000000, 0x780);
+    CpuSet(gBustupBitmapBuffer, (void *)0x0600A000, 0x780);
+    LZ_DECOMPRESS(set->bitmapLz, gBustupBitmapBuffer);
+    tb->bitmap = gBustupBitmapBuffer;
+    CpuSet(gBustupBitmapBuffer, (void *)0x06000F00, 0x2580);
     CpuSet(tb->bitmap, (void *)0x0600AF00, 0x2580);
     if (set->objTilesLz) {
-        LZ_DECOMPRESS(set->objTilesLz, gUnk_02031014);
-        sub_08077CEC(gUnk_02031014, (void *)0x06014000, 16);
+        LZ_DECOMPRESS(set->objTilesLz, gBustupBitmapBuffer);
+        CopyTileSheetTo2D(gBustupBitmapBuffer, (void *)0x06014000, 16);
     } else {
         u16 zero = 0;
         CpuSet(&zero, (void *)0x06014000, 0x01002000);
     }
     tb->text = text;
-    sub_08075294((void *)0x05000000, gUnk_0874E104, 0x40);
+    MemCopy16((void *)0x05000000, gDialogueBoxPalette, 0x40);
     if ((tb->bgPal = set->bgPal))
         CpuSet(tb->bgPal + 16, (void *)0x05000020, 0xF8);
     if ((tb->objPal = set->objPal))
         CpuSet(tb->objPal, (void *)0x05000200, 0x100);
     if ((tb->anim = set->anim))
-        gUnk_02013DE0.objCount = sub_08078670(tb->anim, objs);
-    sub_08075294((void *)0x05000000, gUnk_0874E304, 0x20);
+        gBustup.objCount = AnimBlockInit(tb->anim, objs);
+    MemCopy16((void *)0x05000000, gDialogueTextPalette, 0x20);
 }
 
-/* Like sub_08000420, but loads the scene bitmap before the dialogue box. */
-void sub_08000708(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
+/* Like Bustup_LoadSceneSet, but loads the scene bitmap before the dialogue box. */
+void Bustup_ChangeSceneSet(const struct SceneSet *set, const u8 *text, struct TextBox *tb, void *objs, u8 box)
 {
     const u16 *blob;
 
-    LZ_DECOMPRESS(set->bitmapLz, gUnk_02031014);
-    tb->bitmap = gUnk_02031014;
-    sub_080008A4(0, &tb->bitmap, 0x5A00);
-    sub_080008A4(1, &tb->bitmap, 0x5A00);
-    blob = gUnk_08139F5C[box];
-    LZ_DECOMPRESS(blob, gUnk_0203A614);
-    tb->boxBitmap = gUnk_0203A614;
+    LZ_DECOMPRESS(set->bitmapLz, gBustupBitmapBuffer);
+    tb->bitmap = gBustupBitmapBuffer;
+    CopyBitmapToPage(0, &tb->bitmap, 0x5A00);
+    CopyBitmapToPage(1, &tb->bitmap, 0x5A00);
+    blob = gDialogueBoxGfx[box];
+    LZ_DECOMPRESS(blob, gBustupBoxBitmap);
+    tb->boxBitmap = gBustupBoxBitmap;
     tb->bgPal = set->bgPal;
     tb->objPal = set->objPal;
     if (set->objTilesLz) {
-        LZ_DECOMPRESS(set->objTilesLz, gUnk_02031014);
-        sub_08077CEC(gUnk_02031014, (void *)0x06014000, 16);
+        LZ_DECOMPRESS(set->objTilesLz, gBustupBitmapBuffer);
+        CopyTileSheetTo2D(gBustupBitmapBuffer, (void *)0x06014000, 16);
     } else {
         u16 zero = 0;
         CpuSet(&zero, (void *)0x06014000, 0x01002000);
@@ -278,12 +278,12 @@ void sub_08000708(const struct SceneSet *set, const u8 *text, struct TextBox *tb
     if ((tb->objPal = set->objPal))
         CpuSet(tb->objPal, (void *)0x05000200, 0x100);
     if ((tb->anim = set->anim))
-        gUnk_02013DE0.objCount = sub_08078670(tb->anim, objs);
-    sub_08075294((void *)0x05000000, gUnk_0874E304, 0x20);
+        gBustup.objCount = AnimBlockInit(tb->anim, objs);
+    MemCopy16((void *)0x05000000, gDialogueTextPalette, 0x20);
 }
 
 /* Selects the displayed Mode-4 page (DISPCNT bit 4). */
-void sub_08000838(struct TextBox *tb)
+void Bustup_ShowPage(struct TextBox *tb)
 {
     s32 dispcnt = *(vu16 *)0x04000000 & ~0x10;
     if (tb->page)
@@ -292,13 +292,13 @@ void sub_08000838(struct TextBox *tb)
 }
 
 /* Redraws the dialogue-box bitmap into the hidden page when flagged. */
-void sub_08000854(struct TextBox *tb)
+void Bustup_ClearHiddenBox(struct TextBox *tb)
 {
     if (tb->boxDirty == 1)
         CpuSet(tb->boxBitmap, (void *)(tb->page == 1 ? 0x06005A00 : 0x0600FA00), 0x1E00);
 }
 
-void sub_08000880(u8 bg, void **gfx)
+void CopyFullBitmapToPage(u8 bg, void **gfx)
 {
     void *src = *gfx;
     void *dest = (void *)0x0600A000;
@@ -310,7 +310,7 @@ void sub_08000880(u8 bg, void **gfx)
 #define PAGE_VRAM(page) ((page) == 0 ? 0x06000000 : 0x0600A000)
 
 /* Copies a decoded scene bitmap of `size` bytes to Mode-4 page `page`, in quarters. */
-void sub_080008A4(u8 page, void **gfx, u16 size)
+void CopyBitmapToPage(u8 page, void **gfx, u16 size)
 {
     CpuSet(*gfx, (void *)PAGE_VRAM(page), size >> 3);
     CpuSet((u8 *)*gfx + (size >> 2), (void *)((size >> 2) + PAGE_VRAM(page)), size >> 3);
@@ -318,76 +318,76 @@ void sub_080008A4(u8 page, void **gfx, u16 size)
     CpuSet((u8 *)*gfx + (size >> 2) * 3, (void *)((size >> 2) * 3 + PAGE_VRAM(page)), size >> 3);
 }
 
-void sub_0800093C(struct TextBox *tb)
+void Bustup_MarkBoxDirty(struct TextBox *tb)
 {
     tb->boxDirty = 1;
 }
 
 /* Text-box state init. */
-void sub_08000944(struct TextBox *tb)
+void Bustup_InitTextBox(struct TextBox *tb)
 {
     tb->delay = 2;
     tb->state = 0;
-    if (gUnk_02013DE0.flags137C & 2)
+    if (gBustup.flags137C & 2)
         tb->state = 1;
-    gUnk_02013DE0.flag9A6 = 0;
-    tb->col = gUnk_08087B90[0];
-    tb->row = gUnk_08087B90[1];
+    gBustup.flag9A6 = 0;
+    tb->col = gBustupTextHome[0];
+    tb->row = gBustupTextHome[1];
     tb->textColor = 7;
 }
 
-void sub_0800098C(struct AnimObj *obj)
+void AnimStateStart(struct AnimObj *obj)
 {
     obj->unkE = 1;
 }
 
 /* Steps the blink timer; on expiry loads the next duration from the
- * zero-terminated table gUnk_08080AA8 (wrapping) and flags `obj`. */
-void sub_08000994(struct AnimObj *obj)
+ * zero-terminated table gBlinkIntervals (wrapping) and flags `obj`. */
+void Bustup_TickBlink(struct AnimObj *obj)
 {
-    u16 t = --gUnk_02013DE0.blinkTimer;
+    u16 t = --gBustup.blinkTimer;
 
     if (t == 0xFFFF) {
-        if ((gUnk_02013DE0.blinkTimer = gUnk_08080AA8[gUnk_02013DE0.blinkIndex++]) == 0) {
-            gUnk_02013DE0.blinkIndex = 0;
-            gUnk_02013DE0.blinkTimer = gUnk_08080AA8[gUnk_02013DE0.blinkIndex++];
+        if ((gBustup.blinkTimer = gBlinkIntervals[gBustup.blinkIndex++]) == 0) {
+            gBustup.blinkIndex = 0;
+            gBustup.blinkTimer = gBlinkIntervals[gBustup.blinkIndex++];
         }
         obj->unkE = 1;
     }
 }
 
-void sub_08000A28(void)
+void Bustup_ResetBlink(void)
 {
     u8 i;
 
-    gUnk_02013DE0.blinkTimer = 0;
-    gUnk_02013DE0.blinkIndex = 0;
+    gBustup.blinkTimer = 0;
+    gBustup.blinkIndex = 0;
     for (i = 0; i < 20; i++)
-        gUnk_02013DE0.objs[i].unk12 |= 0xFF;
+        gBustup.objs[i].unk12 |= 0xFF;
 }
 
-void sub_08000A78(void)
+void Bustup_ResetBlinkUnused(void)
 {
     u8 i;
 
-    gUnk_02013DE0.blinkTimer = 0;
-    gUnk_02013DE0.blinkIndex = 0;
+    gBustup.blinkTimer = 0;
+    gBustup.blinkIndex = 0;
     for (i = 0; i < 20; i++)
-        gUnk_02013DE0.objs[i].unk12 |= 0xFF;
+        gBustup.objs[i].unk12 |= 0xFF;
 }
 
-s32 sub_0807B4D0(s16 a, s16 b);
-extern const s16 gUnk_08087BA4[];
-extern const u8 gUnk_08080A5C[];
+s32 MulFix8(s16 a, s16 b);
+extern const s16 gSineTable[];
+extern const u8 gCursorTrailPalettes[];
 
-#define SPARKLE_BASE_X gUnk_02013DE0.textBox.sparkleX
-#define SPARKLE_BASE_Y gUnk_02013DE0.textBox.sparkleY
-#define SPARKLE_HEAD gUnk_02013DE0.textBox.sparkleHead
-#define SPARKLE_HIST gUnk_02013DE0.textBox.sparkleHist
+#define SPARKLE_BASE_X gBustup.textBox.sparkleX
+#define SPARKLE_BASE_Y gBustup.textBox.sparkleY
+#define SPARKLE_HEAD gBustup.textBox.sparkleHead
+#define SPARKLE_HIST gBustup.textBox.sparkleHist
 
 /* Cursor sparkle: 6 sprites orbiting (sparkleX, sparkleY); older ones replay
  * positions from a 30-entry history ring, 3 frames apart. */
-void sub_08000AC8(void)
+void Bustup_DrawCursorTrail(void)
 {
     u8 i;
     int x, y;
@@ -396,19 +396,19 @@ void sub_08000AC8(void)
     int off = 0; u8 gap = 3;
 
     for (i = 5; i != 0xFF; i--) {
-        x = (u8)(SPARKLE_BASE_X + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 2 % 256 + 64], 0x400) >> 8));
-        y = (u8)(SPARKLE_BASE_Y + (sub_0807B4D0(gUnk_08087BA4[(gUnk_02013DE0.blinkTimer + i * 8) * 4 % 256], 0x300) >> 8));
+        x = (u8)(SPARKLE_BASE_X + (MulFix8(gSineTable[(gBustup.blinkTimer + i * 8) * 2 % 256 + 64], 0x400) >> 8));
+        y = (u8)(SPARKLE_BASE_Y + (MulFix8(gSineTable[(gBustup.blinkTimer + i * 8) * 4 % 256], 0x300) >> 8));
         if (i != 5) {
             s32 d = (i + 1) * gap - 30;
             s32 idx = (SPARKLE_HEAD - d) % 30;
             if (SPARKLE_HIST[idx].x != 0xFF) {
-                u32 *obj = sub_0807B6B8(1, 4, SPARKLE_HIST[idx].x, SPARKLE_HIST[idx].y + off, 0x20, 0x10, 4, gUnk_08080A5C[i], 0, 0, 0, gUnk_02013DE0.unkAA8); /* 0x02014888; as a member it gives the base its extra ref (r7, not r8) */
+                u32 *obj = OamListAddSprite(1, 4, SPARKLE_HIST[idx].x, SPARKLE_HIST[idx].y + off, 0x20, 0x10, 4, gCursorTrailPalettes[i], 0, 0, 0, gBustup.unkAA8); /* 0x02014888; as a member it gives the base its extra ref (r7, not r8) */
                 *obj |= 0x400;
                 continue;
             }
         }
         y += off;
-        sub_0807B6B8(0, 4, x, y, 0x20, 0x10, 4, gUnk_08080A5C[5 - i]);
+        OamListAddSprite(0, 4, x, y, 0x20, 0x10, 4, gCursorTrailPalettes[5 - i]);
         SPARKLE_HIST[SPARKLE_HEAD].x = x;
         SPARKLE_HIST[SPARKLE_HEAD].y = y;
         SPARKLE_HEAD = ++SPARKLE_HEAD % 30;
@@ -416,34 +416,34 @@ void sub_08000AC8(void)
 }
 
 /* gMain (0x03000040): canonical layout in include/main.h. */
-#define gMain gUnk_03000040
+#define gMain gMain
 
 struct SaveData {
     u32 unk0;
     u8 flags4;              /* +0x04 bit 7: Shift-JIS text mode */
 };
-extern struct SaveData gUnk_02011C20;
-#define gSaveData gUnk_02011C20
+extern struct SaveData gSaveData;
+#define gSaveData gSaveData
 
-extern const u8 gUnk_08080A20[];
-extern const u8 gUnk_08080A30[];
-extern const u16 gUnk_08623DF4[];
-extern const u8 gUnk_0822C720[][0x40]; /* names, 0x40 bytes each */
-extern struct AnimObj gUnk_02014EB4;
+extern const u8 gStrDebugChangeBg[];
+extern const u8 gStrDebugLineOverflow[];
+extern const u16 gCardNumberToId[];
+extern const u8 gCardNames[][0x40]; /* names, 0x40 bytes each */
+extern struct AnimObj gBustupMouthAnim;
 
-u8 sub_08079ED4(const u8 *s);
-u32 sub_08079F10(const u8 *s, u32 digits);
-u32 sub_08079F40(const u8 *s, u8 col, u32 maxCol);
-void sub_08079E50(const u8 *glyph, u32 x, u32 y, u32 vram, u32 color, u32 a5, u32 a6, u32 a7, u32 a8);
-void sub_080752D0(u8 *dst, const u8 *src);
-void sub_0801A7DC(const u8 *fmt, u32 arg);
-void sub_0801A7E8(void);
+u8 ParseTwoDigits(const u8 *s);
+u32 ParseDigits(const u8 *s, u32 digits);
+u32 NextWordFits(const u8 *s, u8 col, u32 maxCol);
+void BitmapDrawStringShadow(const u8 *glyph, u32 x, u32 y, u32 vram, u32 color, u32 a5, u32 a6, u32 a7, u32 a8);
+void StrCopy(u8 *dst, const u8 *src);
+void DebugPrintf(const u8 *fmt, u32 arg);
+void DebugPrintFlush(void);
 
 #define IS_SJIS() (gSaveData.flags4 & 0x80)
 
 /* Per-frame text processor: prints one glyph of tb->text (or of an inserted
  * name), handling tabs/newlines and `$` control codes. */
-void sub_08000C54(struct TextBox *tb)
+void Bustup_UpdateTextBox(struct TextBox *tb)
 {
     const u8 *p = tb->text;
     s32 state;
@@ -470,8 +470,8 @@ void sub_08000C54(struct TextBox *tb)
         u8 sjis;
 
         if (name[i] != 0) {
-            if (sub_08079F40(&tb->name[tb->nameIdx], tb->col, 30) == 0) {
-                tb->col = gUnk_08087B90[0];
+            if (NextWordFits(&tb->name[tb->nameIdx], tb->col, 30) == 0) {
+                tb->col = gBustupTextHome[0];
                 tb->row++;
             }
             tb->delay = state;
@@ -487,17 +487,17 @@ void sub_08000C54(struct TextBox *tb)
             switch (tb->page) {
             case 0:
             case 1:
-                sub_08079E50(nameGlyph, tb->col * 6 + 30, tb->row * 13 + 102, PAGE_VRAM(tb->page), tb->textColor, 14, 12, 240, 8);
+                BitmapDrawStringShadow(nameGlyph, tb->col * 6 + 30, tb->row * 13 + 102, PAGE_VRAM(tb->page), tb->textColor, 14, 12, 240, 8);
                 break;
             }
             if (IS_SJIS())
                 tb->col += 2;
             else
                 tb->col += 1;
-            sub_0800098C(&gUnk_02014EB4);
+            AnimStateStart(&gBustupMouthAnim);
         } else {
             tb->state = 0;
-            if (gUnk_02013DE0.flags137C & state)
+            if (gBustup.flags137C & state)
                 tb->state = 1;
             tb->textColor = 7;
         }
@@ -506,9 +506,9 @@ void sub_08000C54(struct TextBox *tb)
     case 3:
         tb->state = 1;
         tb->page ^= 1;
-        tb->col = gUnk_08087B90[0];
-        tb->row = gUnk_08087B90[1];
-        sub_0800093C(tb);
+        tb->col = gBustupTextHome[0];
+        tb->row = gBustupTextHome[1];
+        Bustup_MarkBoxDirty(tb);
         return;
     }
 
@@ -522,7 +522,7 @@ void sub_08000C54(struct TextBox *tb)
         switch (c) {
         case 'h': {
             /* FAKEMATCH: preserve the initialized base/offset operands. */
-            u8 *base = (u8 *)&gUnk_02013DE0;
+            u8 *base = (u8 *)&gBustup;
             register u32 offset asm("r2") = 0x9A6;
             asm("" : "+r"(base), "+r"(offset));
             base[offset] = 0;
@@ -530,24 +530,24 @@ void sub_08000C54(struct TextBox *tb)
             break;
         }
         case 'k':
-            gUnk_02013DE0.flag9A6 = 1;
+            gBustup.flag9A6 = 1;
             p++;
             break;
         case 'n':
-            tb->col = gUnk_08087B90[0];
+            tb->col = gBustupTextHome[0];
             tb->row++;
             p++;
             break;
         case 'p':
             tb->page ^= 1;
             tb->delay = 2;
-            tb->col = gUnk_08087B90[0];
-            tb->row = gUnk_08087B90[1];
-            sub_0800093C(tb);
+            tb->col = gBustupTextHome[0];
+            tb->row = gBustupTextHome[1];
+            Bustup_MarkBoxDirty(tb);
             p++;
             break;
         case 'c':
-            if (!(gUnk_02013DE0.flags137C & 2))
+            if (!(gBustup.flags137C & 2))
                 tb->state = -1;
             p++;
             break;
@@ -566,11 +566,11 @@ void sub_08000C54(struct TextBox *tb)
             break;
         case 'b':
             p++;
-            gUnk_02013DE0.speaker = sub_08079ED4(p);
-            sub_0801A7DC(gUnk_08080A20, gUnk_02013DE0.speaker);
-            sub_0801A7E8();
-            if (gUnk_02013DE0.speaker > 39)
-                gUnk_02013DE0.speaker = 0;
+            gBustup.speaker = ParseTwoDigits(p);
+            DebugPrintf(gStrDebugChangeBg, gBustup.speaker);
+            DebugPrintFlush();
+            if (gBustup.speaker > 39)
+                gBustup.speaker = 0;
             p += 2;
             gMain.seqIndex1 += 4;
             break;
@@ -581,14 +581,14 @@ void sub_08000C54(struct TextBox *tb)
             u8 *dst;
             p++;
             dst = tb->name;
-            id = sub_08079F10(p, 4);
+            id = ParseDigits(p, 4);
             if (id == 0xFFFF)
                 n = 0;
             else if (id < 2000)
                 n = ((const u16 *)0x08623DF4)[id & 0x7FF];
             else
                 n = ((const u16 *)0x08623DF4)[(id - 2000) & 0x7FF] + 1;
-            sub_080752D0(dst, (const u8 *)(0x0822C720 + ((u32)(u16)n << 6)));
+            StrCopy(dst, (const u8 *)(0x0822C720 + ((u32)(u16)n << 6)));
             p += 4;
             tb->textColor = 3;
             tb->state = 2;
@@ -599,7 +599,7 @@ void sub_08000C54(struct TextBox *tb)
             u8 *dst;
             p++;
             dst = tb->name;
-            sub_080752D0(dst, sub_08000228(sub_08079F10(p, 2), 1));
+            StrCopy(dst, GetDuelistName(ParseDigits(p, 2), 1));
             p += 2;
             tb->textColor = 5;
             tb->state = 2;
@@ -610,7 +610,7 @@ void sub_08000C54(struct TextBox *tb)
             u8 *dst;
             p++;
             dst = tb->name;
-            sub_080752D0(dst, sub_08000228(sub_08079F10(p, 2), 0));
+            StrCopy(dst, GetDuelistName(ParseDigits(p, 2), 0));
             p += 2;
             tb->textColor = 4;
             tb->state = 2;
@@ -627,20 +627,20 @@ void sub_08000C54(struct TextBox *tb)
         tb->delay = 0;
     if (--tb->delay != 0xFF)
         return;
-    if (sub_08079F40(p, tb->col, 30) == 0) {
-        tb->col = gUnk_08087B90[0];
+    if (NextWordFits(p, tb->col, 30) == 0) {
+        tb->col = gBustupTextHome[0];
         tb->row++;
         if (tb->row > 3) {
-            if (gUnk_02013DE0.flags137C & 2) {
-                sub_0801A7DC(gUnk_08080A30, tb->row);
-                gUnk_02013DE0.flags137C |= 1;
+            if (gBustup.flags137C & 2) {
+                DebugPrintf(gStrDebugLineOverflow, tb->row);
+                gBustup.flags137C |= 1;
             } else {
                 tb->state = -3;
             }
             return;
         }
     }
-    if (tb->col == gUnk_08087B90[0] && (*p == ' ' || *p == '.')) {
+    if (tb->col == gBustupTextHome[0] && (*p == ' ' || *p == '.')) {
         p++;
         tb->text++;
     }
@@ -669,20 +669,20 @@ void sub_08000C54(struct TextBox *tb)
     switch (tb->page) {
     case 0:
     case 1:
-        sub_08079E50(p, tb->col * 6 + 30, tb->row * 13 + 102, PAGE_VRAM(tb->page), tb->textColor, 14, 12, 240, 8);
+        BitmapDrawStringShadow(p, tb->col * 6 + 30, tb->row * 13 + 102, PAGE_VRAM(tb->page), tb->textColor, 14, 12, 240, 8);
         break;
     }
     if (IS_SJIS())
         tb->col += 2;
     else
         tb->col += 1;
-    sub_0800098C(&gUnk_02014EB4);
+    AnimStateStart(&gBustupMouthAnim);
     return;
 
 finished:
     tb->state = -2;
-    if (gUnk_02013DE0.flags137C & 2)
-        gUnk_02013DE0.flags137C |= 1;
+    if (gBustup.flags137C & 2)
+        gBustup.flags137C |= 1;
 }
 
 struct SparkleStart {
@@ -690,20 +690,20 @@ struct SparkleStart {
     u8 y;
     u8 filler2[2];
 };
-extern const struct SparkleStart gUnk_08080A48[];
+extern const struct SparkleStart gBustupSlotPositions[];
 
-void sub_08075278(void *dst, u32 size); /* MemClear16 */
-void sub_0807A2EC(void *p);
-void sub_0807A398(s16 x0, s16 y0, s16 x1, s16 y1, void *line);
-void sub_0807B0C0(void *timer);
+void MemClear16(void *dst, u32 size); /* MemClear16 */
+void OamListClear(void *p);
+void LineInit(s16 x0, s16 y0, s16 x1, s16 y1, void *line);
+void Timer_Reset(void *timer);
 
 /* Dialogue scene init: clears the script state, resets BG scroll/affine registers
  * and the sparkle trail, and copies the speaker/dialogue index from gMain. */
-void sub_080011F0(void)
+void Bustup_InitState(void)
 {
     u8 i;
 
-    sub_08075278(&gUnk_02013DE0, sizeof(struct ScriptState));
+    MemClear16(&gBustup, sizeof(struct ScriptState));
     gMain.vblankFlags = 1;
     *(vu16 *)0x04000000 &= 0xE0FF;
     *(vu16 *)0x04000016 = 0;
@@ -716,27 +716,27 @@ void sub_080011F0(void)
     *(vu16 *)0x0400002A = 0;
     *(vu16 *)0x0400002C = 0;
     *(vu16 *)0x0400002E = 0;
-    gUnk_02013DE0.textBox.page = 0;
-    gUnk_02013DE0.unk12E9 = 0;
-    gUnk_02013DE0.unk12EA = 0;
-    gUnk_02013DE0.unk12E8 = 0;
-    gUnk_02013DE0.dialogueIndex = 0;
-    sub_0807A2EC(gUnk_02013DE0.unkAA8);
-    gUnk_02013DE0.textBox.sparkleHead = 0xFF;
+    gBustup.textBox.page = 0;
+    gBustup.unk12E9 = 0;
+    gBustup.unk12EA = 0;
+    gBustup.unk12E8 = 0;
+    gBustup.dialogueIndex = 0;
+    OamListClear(gBustup.unkAA8);
+    gBustup.textBox.sparkleHead = 0xFF;
     for (i = 0; i < 30; i++)
-        gUnk_02013DE0.textBox.sparkleHist[i].x |= 0xFF;
-    sub_0807A398(gUnk_08080A48[gUnk_02013DE0.unk12E9].x, gUnk_08080A48[gUnk_02013DE0.unk12E9].y,
-                 gUnk_08080A48[gUnk_02013DE0.unk12E9].x, gUnk_08080A48[gUnk_02013DE0.unk12E9].y, &gUnk_02013DE0.textBox.sparkleX);
-    gUnk_02013DE0.unk12FA = 5;
-    gUnk_02013DE0.unk12F9 = 0;
+        gBustup.textBox.sparkleHist[i].x |= 0xFF;
+    LineInit(gBustupSlotPositions[gBustup.unk12E9].x, gBustupSlotPositions[gBustup.unk12E9].y,
+                 gBustupSlotPositions[gBustup.unk12E9].x, gBustupSlotPositions[gBustup.unk12E9].y, &gBustup.textBox.sparkleX);
+    gBustup.unk12FA = 5;
+    gBustup.unk12F9 = 0;
     {
-        u8 *flag = &gUnk_02013DE0.flag136E; /* take the address first; this order is needed to match */
+        u8 *flag = &gBustup.flag136E; /* take the address first; this order is needed to match */
         *flag = gMain.flag4884_3;
     }
-    gUnk_02013DE0.speaker = gMain.speaker;
-    gUnk_02013DE0.dialogueIndex = gMain.dialogueIndex;
-    gUnk_02013DE0.unk136F = 0;
-    gUnk_02013DE0.unk1370 = 0;
-    sub_0807B0C0(gUnk_02013DE0.timer1374);
-    sub_0807B0C0(gUnk_02013DE0.timer1378);
+    gBustup.speaker = gMain.speaker;
+    gBustup.dialogueIndex = gMain.dialogueIndex;
+    gBustup.unk136F = 0;
+    gBustup.unk1370 = 0;
+    Timer_Reset(gBustup.timer1374);
+    Timer_Reset(gBustup.timer1378);
 }

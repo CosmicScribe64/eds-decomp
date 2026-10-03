@@ -4,248 +4,248 @@
 	.section .rodata
 
 @ rodata/strings_and_tables (tables_code_layout)
-	.global gUnk_08080A20
-gUnk_08080A20: @ 0x08080A20
+	.global gStrDebugChangeBg
+gStrDebugChangeBg: @ 0x08080A20
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x0, 0x10
-	.global gUnk_08080A30
-gUnk_08080A30: @ 0x08080A30
+	.global gStrDebugLineOverflow
+gStrDebugLineOverflow: @ 0x08080A30
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x10, 0x18
-	.global gUnk_08080A48
-gUnk_08080A48: @ 0x08080A48
+	.global gBustupSlotPositions
+gBustupSlotPositions: @ 0x08080A48
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x28, 0x14
-	.global gUnk_08080A5C
-gUnk_08080A5C: @ 0x08080A5C
+	.global gCursorTrailPalettes
+gCursorTrailPalettes: @ 0x08080A5C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3C, 0x8
-	.global gUnk_08080A64
-gUnk_08080A64: @ 0x08080A64
+	.global gStrDebugDM5Script
+gStrDebugDM5Script: @ 0x08080A64
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x44, 0x20
-	.global gUnk_08080A84
-gUnk_08080A84: @ 0x08080A84
+	.global gStrDebugMoveToScript
+gStrDebugMoveToScript: @ 0x08080A84
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x64, 0x24
-	.global gUnk_08080AA8
-gUnk_08080AA8: @ 0x08080AA8
+	.global gBlinkIntervals
+gBlinkIntervals: @ 0x08080AA8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x88, 0xE
-	.global gUnk_08080AB6
-gUnk_08080AB6: @ 0x08080AB6
+	.global gBustupBannerTiles
+gBustupBannerTiles: @ 0x08080AB6
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x96, 0xA
-	.global gUnk_08080AC0
-gUnk_08080AC0: @ 0x08080AC0
+	.global gBustupDigitTiles
+gBustupDigitTiles: @ 0x08080AC0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xA0, 0x14
-	.global gUnk_08080AD4
-gUnk_08080AD4: @ 0x08080AD4
+	.global gBustupRecordPos
+gBustupRecordPos: @ 0x08080AD4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB4, 0xC
-	.global gUnk_08080AE0
-gUnk_08080AE0: @ 0x08080AE0
+	.global gBustupOpponentIds
+gBustupOpponentIds: @ 0x08080AE0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xC0, 0x8D8
-	.global gUnk_080813B8
-gUnk_080813B8: @ 0x080813B8
+	.global gUnknownOpponentName
+gUnknownOpponentName: @ 0x080813B8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x998, 0x2C
-	.global gUnk_080813E4
-gUnk_080813E4: @ 0x080813E4
+	.global gStrStarterDeckErrorFmt
+gStrStarterDeckErrorFmt: @ 0x080813E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x9C4, 0xC
-	.global gUnk_080813F0
-gUnk_080813F0: @ 0x080813F0
+	.global gStrLicensedByNintendo
+gStrLicensedByNintendo: @ 0x080813F0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x9D0, 0x18
-	.global gUnk_08081408
-gUnk_08081408: @ 0x08081408
+	.global gStrNewGame
+gStrNewGame: @ 0x08081408
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x9E8, 0xC
-	.global gUnk_08081414
-gUnk_08081414: @ 0x08081414
+	.global gStrContinue
+gStrContinue: @ 0x08081414
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x9F4, 0xEC
-	.global gUnk_08081500
-gUnk_08081500: @ 0x08081500
+	.global gStrRitualSuffix
+gStrRitualSuffix: @ 0x08081500
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xAE0, 0x38
-	.global gUnk_08081538
-gUnk_08081538: @ 0x08081538
+	.global gStrOpenBracket
+gStrOpenBracket: @ 0x08081538
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB18, 0x4
-	.global gUnk_0808153C
-gUnk_0808153C: @ 0x0808153C
+	.global gStrCloseBracket
+gStrCloseBracket: @ 0x0808153C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB1C, 0x4
-	.global gUnk_08081540
-gUnk_08081540: @ 0x08081540
+	.global gStrAtk
+gStrAtk: @ 0x08081540
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB20, 0x4
-	.global gUnk_08081544
-gUnk_08081544: @ 0x08081544
+	.global gStrDef
+gStrDef: @ 0x08081544
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB24, 0x4
-	.global gUnk_08081548
-gUnk_08081548: @ 0x08081548
+	.global gStrNotACard
+gStrNotACard: @ 0x08081548
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB28, 0x14
-	.global gUnk_0808155C
-gUnk_0808155C: @ 0x0808155C
+	.global gStrEffectSuffix
+gStrEffectSuffix: @ 0x0808155C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB3C, 0x8
-	.global gUnk_08081564
-gUnk_08081564: @ 0x08081564
+	.global gStrFusionEffectSuffix
+gStrFusionEffectSuffix: @ 0x08081564
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB44, 0x10
-	.global gUnk_08081574
-gUnk_08081574: @ 0x08081574
+	.global gStrFusionSuffix
+gStrFusionSuffix: @ 0x08081574
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB54, 0x8
-	.global gUnk_0808157C
-gUnk_0808157C: @ 0x0808157C
+	.global gStrRitualEffectSuffix
+gStrRitualEffectSuffix: @ 0x0808157C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB5C, 0x10
-	.global gUnk_0808158C
-gUnk_0808158C: @ 0x0808158C
+	.global gStrNotPlayable
+gStrNotPlayable: @ 0x0808158C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB6C, 0x1C
-	.global gUnk_080815A8
-gUnk_080815A8: @ 0x080815A8
+	.global gFieldTypeBonuses
+gFieldTypeBonuses: @ 0x080815A8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xB88, 0x120
-	.global gUnk_080816C8
-gUnk_080816C8: @ 0x080816C8
+	.global gFieldAttributeBonuses
+gFieldAttributeBonuses: @ 0x080816C8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xCA8, 0x60
-	.global gUnk_08081728
-gUnk_08081728: @ 0x08081728
+	.global gBattleBannerSlideX
+gBattleBannerSlideX: @ 0x08081728
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xD08, 0x40
-	.global gUnk_08081768
-gUnk_08081768: @ 0x08081768
+	.global gScatterScaleCurve
+gScatterScaleCurve: @ 0x08081768
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xD48, 0x60
-	.global gUnk_080817C8
-gUnk_080817C8: @ 0x080817C8
+	.global gStrLink
+gStrLink: @ 0x080817C8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDA8, 0x8
-	.global gUnk_080817D0
-gUnk_080817D0: @ 0x080817D0
+	.global gStrOpposite
+gStrOpposite: @ 0x080817D0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDB0, 0xC
-	.global gUnk_080817DC
-gUnk_080817DC: @ 0x080817DC
+	.global gStrYours
+gStrYours: @ 0x080817DC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDBC, 0x8
-	.global gUnk_080817E4
-gUnk_080817E4: @ 0x080817E4
+	.global gStrDestroyed
+gStrDestroyed: @ 0x080817E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDC4, 0xC
-	.global gUnk_080817F0
-gUnk_080817F0: @ 0x080817F0
+	.global gStrInvalidated
+gStrInvalidated: @ 0x080817F0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDD0, 0xC
-	.global gUnk_080817FC
-gUnk_080817FC: @ 0x080817FC
+	.global gOpponentResultTexts
+gOpponentResultTexts: @ 0x080817FC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xDDC, 0x190
-	.global gUnk_0808198C
-gUnk_0808198C: @ 0x0808198C
+	.global gOpponentNextMatchDuelText
+gOpponentNextMatchDuelText: @ 0x0808198C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xF6C, 0x32
-	.global gUnk_080819BE
-gUnk_080819BE: @ 0x080819BE
+	.global gPackDisplayOrder
+gPackDisplayOrder: @ 0x080819BE
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xF9E, 0x38
-	.global gUnk_080819F6
-gUnk_080819F6: @ 0x080819F6
+	.global gOpponentDialogueBGM
+gOpponentDialogueBGM: @ 0x080819F6
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0xFD6, 0x32
-	.global gUnk_08081A28
-gUnk_08081A28: @ 0x08081A28
+	.global gTournamentOpponents
+gTournamentOpponents: @ 0x08081A28
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1008, 0x28
-	.global gUnk_08081A50
-gUnk_08081A50: @ 0x08081A50
+	.global gGrandpaCupQualifierOpponents
+gGrandpaCupQualifierOpponents: @ 0x08081A50
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1030, 0x8
-	.global gUnk_08081A58
-gUnk_08081A58: @ 0x08081A58
+	.global gGrandpaCupFinalOpponents
+gGrandpaCupFinalOpponents: @ 0x08081A58
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1038, 0xA
-	.global gUnk_08081A62
-gUnk_08081A62: @ 0x08081A62
+	.global gRareHunterOpponents
+gRareHunterOpponents: @ 0x08081A62
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1042, 0xA
-	.global gUnk_08081A6C
-gUnk_08081A6C: @ 0x08081A6C
+	.global gRareCardNumbers
+gRareCardNumbers: @ 0x08081A6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x104C, 0x78
-	.global gUnk_08081AE4
-gUnk_08081AE4: @ 0x08081AE4
+	.global gOpponentFirstMeetingText
+gOpponentFirstMeetingText: @ 0x08081AE4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x10C4, 0x32
-	.global gUnk_08081B16
-gUnk_08081B16: @ 0x08081B16
+	.global gOpponentRematchText
+gOpponentRematchText: @ 0x08081B16
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x10F6, 0x32
-	.global gUnk_08081B48
-gUnk_08081B48: @ 0x08081B48
+	.global gOpponentGreetingText
+gOpponentGreetingText: @ 0x08081B48
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1128, 0x32
-	.global gUnk_08081B7A
-gUnk_08081B7A: @ 0x08081B7A
+	.global gOpponentMatchChallengeText
+gOpponentMatchChallengeText: @ 0x08081B7A
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x115A, 0x34
-	.global gUnk_08081BAE
-gUnk_08081BAE: @ 0x08081BAE
+	.global gOpponentWeekendDuelText
+gOpponentWeekendDuelText: @ 0x08081BAE
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x118E, 0x34
-	.global gUnk_08081BE2
-gUnk_08081BE2: @ 0x08081BE2
+	.global gOpponentChampionshipText
+gOpponentChampionshipText: @ 0x08081BE2
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x11C2, 0x34
-	.global gUnk_08081C16
-gUnk_08081C16: @ 0x08081C16
+	.global gOpponentGrandpaCupText
+gOpponentGrandpaCupText: @ 0x08081C16
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x11F6, 0x2C
-	.global gUnk_08081C42
-gUnk_08081C42: @ 0x08081C42
+	.global gOpponentChristmasText
+gOpponentChristmasText: @ 0x08081C42
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1222, 0x34
-	.global gUnk_08081C76
-gUnk_08081C76: @ 0x08081C76
+	.global gOpponentFieldDuelText
+gOpponentFieldDuelText: @ 0x08081C76
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1256, 0x2E
-	.global gUnk_08081CA4
-gUnk_08081CA4: @ 0x08081CA4
+	.global gStrDoYouSurrender
+gStrDoYouSurrender: @ 0x08081CA4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1284, 0x14
-	.global gUnk_08081CB8
-gUnk_08081CB8: @ 0x08081CB8
+	.global gStrChainPromptEffect
+gStrChainPromptEffect: @ 0x08081CB8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1298, 0x44
-	.global gUnk_08081CFC
-gUnk_08081CFC: @ 0x08081CFC
+	.global gStrChainPromptCard
+gStrChainPromptCard: @ 0x08081CFC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x12DC, 0x38
-	.global gUnk_08081D34
-gUnk_08081D34: @ 0x08081D34
+	.global gStrPromptPayToViewHand
+gStrPromptPayToViewHand: @ 0x08081D34
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1314, 0x3C
-	.global gUnk_08081D70
-gUnk_08081D70: @ 0x08081D70
+	.global gStrPromptChangeOpponentPosition
+gStrPromptChangeOpponentPosition: @ 0x08081D70
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1350, 0x48
-	.global gUnk_08081DB8
-gUnk_08081DB8: @ 0x08081DB8
+	.global gStrPromptDiscardMagic
+gStrPromptDiscardMagic: @ 0x08081DB8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1398, 0x38
-	.global gUnk_08081DF0
-gUnk_08081DF0: @ 0x08081DF0
+	.global gStrPromptSelectMagicToDiscard
+gStrPromptSelectMagicToDiscard: @ 0x08081DF0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x13D0, 0x44
-	.global gUnk_08081E34
-gUnk_08081E34: @ 0x08081E34
+	.global gStrPromptSpecialSummonFmt
+gStrPromptSpecialSummonFmt: @ 0x08081E34
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1414, 0x38
-	.global gUnk_08081E6C
-gUnk_08081E6C: @ 0x08081E6C
+	.global gStrPromptOpponentSpecialSummonedFmt
+gStrPromptOpponentSpecialSummonedFmt: @ 0x08081E6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x144C, 0x74
-	.global gUnk_08081EE0
-gUnk_08081EE0: @ 0x08081EE0
+	.global gStrPromptSelectOwnReplacementTarget
+gStrPromptSelectOwnReplacementTarget: @ 0x08081EE0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x14C0, 0x48
-	.global gUnk_08081F28
-gUnk_08081F28: @ 0x08081F28
+	.global gStrPromptSelectOpponentReplacementTarget
+gStrPromptSelectOpponentReplacementTarget: @ 0x08081F28
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1508, 0x58
-	.global gUnk_08081F80
-gUnk_08081F80: @ 0x08081F80
+	.global gCoinSpinTiles
+gCoinSpinTiles: @ 0x08081F80
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1560, 0x10
-	.global gUnk_08081F90
-gUnk_08081F90: @ 0x08081F90
+	.global gCoinGlintTiles
+gCoinGlintTiles: @ 0x08081F90
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1570, 0x14
-	.global gUnk_08081FA4
-gUnk_08081FA4: @ 0x08081FA4
+	.global gCoinSparkleTiles
+gCoinSparkleTiles: @ 0x08081FA4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1584, 0x30
-	.global gUnk_08081FD4
-gUnk_08081FD4: @ 0x08081FD4
+	.global gDieTumbleFrames
+gDieTumbleFrames: @ 0x08081FD4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x15B4, 0x328
-	.global gUnk_080822FC
-gUnk_080822FC: @ 0x080822FC
+	.global gDieAxisFaces
+gDieAxisFaces: @ 0x080822FC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x18DC, 0xC
-	.global gUnk_08082308
-gUnk_08082308: @ 0x08082308
+	.global gDieFacePaths
+gDieFacePaths: @ 0x08082308
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x18E8, 0xA8
-	.global gUnk_080823B0
-gUnk_080823B0: @ 0x080823B0
+	.global gExodiaPieceStartPos
+gExodiaPieceStartPos: @ 0x080823B0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1990, 0x14
-	.global gUnk_080823C4
-gUnk_080823C4: @ 0x080823C4
+	.global gDestinyBoardWaveTable
+gDestinyBoardWaveTable: @ 0x080823C4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x19A4, 0x40
-	.global gUnk_08082404
-gUnk_08082404: @ 0x08082404
+	.global gFinalLetterLaunchOrder
+gFinalLetterLaunchOrder: @ 0x08082404
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x19E4, 0x2D8
-	.global gUnk_080826DC
-gUnk_080826DC: @ 0x080826DC
+	.global gHandCarouselStops
+gHandCarouselStops: @ 0x080826DC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CBC, 0x4
-	.global gUnk_080826E0
-gUnk_080826E0: @ 0x080826E0
+	.global gHandCardTileNums
+gHandCardTileNums: @ 0x080826E0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CC0, 0x6
-	.global gUnk_080826E6
-gUnk_080826E6: @ 0x080826E6
+	.global gTurnChoiceBannerTileNums
+gTurnChoiceBannerTileNums: @ 0x080826E6
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CC6, 0x4
-	.global gUnk_080826EA
-gUnk_080826EA: @ 0x080826EA
+	.global gTurnOrderBannerTileNums
+gTurnOrderBannerTileNums: @ 0x080826EA
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CCA, 0x14
-	.global gUnk_080826FE
-gUnk_080826FE: @ 0x080826FE
+	.global gTurnOrderBannerPalNums
+gTurnOrderBannerPalNums: @ 0x080826FE
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CDE, 0x5
-	.global gUnk_08082703
-gUnk_08082703: @ 0x08082703
+	.global gHandCardPalNums
+gHandCardPalNums: @ 0x08082703
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CE3, 0x3
-	.global gUnk_08082706
-gUnk_08082706: @ 0x08082706
+	.global gDuelLogoTileNums
+gDuelLogoTileNums: @ 0x08082706
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CE6, 0x6
 	.global gUnk_0808270C
 gUnk_0808270C: @ 0x0808270C
@@ -253,881 +253,881 @@ gUnk_0808270C: @ 0x0808270C
 	.global gUnk_08082710
 gUnk_08082710: @ 0x08082710
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CF0, 0x2
-	.global gUnk_08082712
-gUnk_08082712: @ 0x08082712
+	.global gSquareTable
+gSquareTable: @ 0x08082712
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CF2, 0x4A
-	.global gUnk_0808275C
-gUnk_0808275C: @ 0x0808275C
+	.global gStrCardListViewUnknown
+gStrCardListViewUnknown: @ 0x0808275C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1D3C, 0xC
-	.global gUnk_08082768
-gUnk_08082768: @ 0x08082768
+	.global gStrCardListViewNoCards
+gStrCardListViewNoCards: @ 0x08082768
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1D48, 0x14
-	.global gUnk_0808277C
-gUnk_0808277C: @ 0x0808277C
+	.global gStrCrushCardTributePrompt
+gStrCrushCardTributePrompt: @ 0x0808277C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1D5C, 0x48
-	.global gUnk_080827C4
-gUnk_080827C4: @ 0x080827C4
+	.global gStrSelectTributeMonster
+gStrSelectTributeMonster: @ 0x080827C4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1DA4, 0x28
-	.global gUnk_080827EC
-gUnk_080827EC: @ 0x080827EC
+	.global gStrSelectTributeFmt
+gStrSelectTributeFmt: @ 0x080827EC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1DCC, 0x24
-	.global gUnk_08082810
-gUnk_08082810: @ 0x08082810
+	.global gStrSelectMagicToDiscard
+gStrSelectMagicToDiscard: @ 0x08082810
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1DF0, 0x3C
-	.global gUnk_0808284C
-gUnk_0808284C: @ 0x0808284C
+	.global gStrNoDeckCardsToAdd
+gStrNoDeckCardsToAdd: @ 0x0808284C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1E2C, 0x30
-	.global gUnk_0808287C
-gUnk_0808287C: @ 0x0808287C
+	.global gStrSelectDeckMonsterToAdd
+gStrSelectDeckMonsterToAdd: @ 0x0808287C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1E5C, 0x50
-	.global gUnk_080828CC
-gUnk_080828CC: @ 0x080828CC
+	.global gStrTributeToReturnToDeckPrompt
+gStrTributeToReturnToDeckPrompt: @ 0x080828CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1EAC, 0x60
-	.global gUnk_0808292C
-gUnk_0808292C: @ 0x0808292C
+	.global gStrPayLpToReturnToDeckPrompt
+gStrPayLpToReturnToDeckPrompt: @ 0x0808292C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1F0C, 0x5C
-	.global gUnk_08082988
-gUnk_08082988: @ 0x08082988
+	.global gStrElegantEgotistSelectPrompt
+gStrElegantEgotistSelectPrompt: @ 0x08082988
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1F68, 0x68
-	.global gUnk_080829F0
-gUnk_080829F0: @ 0x080829F0
+	.global gStrCyberSteinSelectPrompt
+gStrCyberSteinSelectPrompt: @ 0x080829F0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1FD0, 0x5C
-	.global gUnk_08082A4C
-gUnk_08082A4C: @ 0x08082A4C
+	.global gStrGaleDograSelectPrompt
+gStrGaleDograSelectPrompt: @ 0x08082A4C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x202C, 0x68
-	.global gUnk_08082AB4
-gUnk_08082AB4: @ 0x08082AB4
+	.global gStrThunderDragonAddPromptFmt
+gStrThunderDragonAddPromptFmt: @ 0x08082AB4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2094, 0x3C
-	.global gUnk_08082AF0
-gUnk_08082AF0: @ 0x08082AF0
+	.global gStrNeedleBallPayLpPrompt
+gStrNeedleBallPayLpPrompt: @ 0x08082AF0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x20D0, 0x20
-	.global gUnk_08082B10
-gUnk_08082B10: @ 0x08082B10
+	.global gStrYadoKaruReturnPrompt
+gStrYadoKaruReturnPrompt: @ 0x08082B10
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x20F0, 0x48
-	.global gUnk_08082B58
-gUnk_08082B58: @ 0x08082B58
+	.global gStrYadoKaruSelectPrompt
+gStrYadoKaruSelectPrompt: @ 0x08082B58
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2138, 0x44
-	.global gUnk_08082B9C
-gUnk_08082B9C: @ 0x08082B9C
+	.global gStrMagicalHatsSelectFirst
+gStrMagicalHatsSelectFirst: @ 0x08082B9C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x217C, 0x34
-	.global gUnk_08082BD0
-gUnk_08082BD0: @ 0x08082BD0
+	.global gStrMagicalHatsSelectSecond
+gStrMagicalHatsSelectSecond: @ 0x08082BD0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x21B0, 0x2C
-	.global gUnk_08082BFC
-gUnk_08082BFC: @ 0x08082BFC
+	.global gStrFluteSpecialSummonQuestion
+gStrFluteSpecialSummonQuestion: @ 0x08082BFC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x21DC, 0x38
-	.global gUnk_08082C34
-gUnk_08082C34: @ 0x08082C34
+	.global gStrDragon
+gStrDragon: @ 0x08082C34
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2214, 0x8
-	.global gUnk_08082C3C
-gUnk_08082C3C: @ 0x08082C3C
+	.global gStrSpecialSummonAnotherQuestion
+gStrSpecialSummonAnotherQuestion: @ 0x08082C3C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x221C, 0x34
-	.global gUnk_08082C70
-gUnk_08082C70: @ 0x08082C70
+	.global gStrFluteSelectFromHand
+gStrFluteSelectFromHand: @ 0x08082C70
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2250, 0x38
-	.global gUnk_08082CA8
-gUnk_08082CA8: @ 0x08082CA8
+	.global gStrSelectGraveyardCardToBanish
+gStrSelectGraveyardCardToBanish: @ 0x08082CA8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2288, 0x38
-	.global gUnk_08082CE0
-gUnk_08082CE0: @ 0x08082CE0
+	.global gStrBanishAnotherGraveyardCardQuestion
+gStrBanishAnotherGraveyardCardQuestion: @ 0x08082CE0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x22C0, 0x44
-	.global gUnk_08082D24
-gUnk_08082D24: @ 0x08082D24
+	.global gStrSelectMonsterToSummonFromHand
+gStrSelectMonsterToSummonFromHand: @ 0x08082D24
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2304, 0x40
-	.global gUnk_08082D64
-gUnk_08082D64: @ 0x08082D64
+	.global gStrCheerfulCoffinDiscardPrompt
+gStrCheerfulCoffinDiscardPrompt: @ 0x08082D64
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2344, 0x50
-	.global gUnk_08082DB4
-gUnk_08082DB4: @ 0x08082DB4
+	.global gStrCheerfulCoffinSelectMonster
+gStrCheerfulCoffinSelectMonster: @ 0x08082DB4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2394, 0x34
-	.global gUnk_08082DE8
-gUnk_08082DE8: @ 0x08082DE8
+	.global gStrWidespreadRuinTiePrompt
+gStrWidespreadRuinTiePrompt: @ 0x08082DE8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x23C8, 0x94
-	.global gUnk_08082E7C
-gUnk_08082E7C: @ 0x08082E7C
+	.global gStrPainfulChoiceSelect5
+gStrPainfulChoiceSelect5: @ 0x08082E7C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x245C, 0x20
-	.global gUnk_08082E9C
-gUnk_08082E9C: @ 0x08082E9C
+	.global gStrPainfulChoiceCardsRemaining
+gStrPainfulChoiceCardsRemaining: @ 0x08082E9C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x247C, 0x24
-	.global gUnk_08082EC0
-gUnk_08082EC0: @ 0x08082EC0
+	.global gStrDustTornadoSetPrompt
+gStrDustTornadoSetPrompt: @ 0x08082EC0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x24A0, 0x34
-	.global gUnk_08082EF4
-gUnk_08082EF4: @ 0x08082EF4
+	.global gStrDustTornadoSelectCards
+gStrDustTornadoSelectCards: @ 0x08082EF4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x24D4, 0x40
-	.global gUnk_08082F34
-gUnk_08082F34: @ 0x08082F34
+	.global gStrRecruiterNoCardsInDeck
+gStrRecruiterNoCardsInDeck: @ 0x08082F34
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2514, 0x30
-	.global gUnk_08082F64
-gUnk_08082F64: @ 0x08082F64
+	.global gStrRecruiterSummonPrompt
+gStrRecruiterSummonPrompt: @ 0x08082F64
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2544, 0x40
-	.global gUnk_08082FA4
-gUnk_08082FA4: @ 0x08082FA4
+	.global gStrRecruiterSelectMonster
+gStrRecruiterSelectMonster: @ 0x08082FA4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2584, 0x7C
-	.global gUnk_08083020
-gUnk_08083020: @ 0x08083020
+	.global gStrSenjuAddRitualMonsterPrompt
+gStrSenjuAddRitualMonsterPrompt: @ 0x08083020
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2600, 0x4C
-	.global gUnk_0808306C
-gUnk_0808306C: @ 0x0808306C
+	.global gStrSonicBirdAddRitualMagicPrompt
+gStrSonicBirdAddRitualMagicPrompt: @ 0x0808306C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x264C, 0x48
-	.global gUnk_080830B4
-gUnk_080830B4: @ 0x080830B4
+	.global gStrRitualSearchSelectCard
+gStrRitualSearchSelectCard: @ 0x080830B4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2694, 0x50
-	.global gUnk_08083104
-gUnk_08083104: @ 0x08083104
+	.global gStrGiantGermSummonPrompt
+gStrGiantGermSummonPrompt: @ 0x08083104
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x26E4, 0x38
-	.global gUnk_0808313C
-gUnk_0808313C: @ 0x0808313C
+	.global gStrSameNameSetPrompt
+gStrSameNameSetPrompt: @ 0x0808313C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x271C, 0x28
-	.global gUnk_08083164
-gUnk_08083164: @ 0x08083164
+	.global gStrPromptAddGraveMonsterToHand
+gStrPromptAddGraveMonsterToHand: @ 0x08083164
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2744, 0x44
-	.global gUnk_080831A8
-gUnk_080831A8: @ 0x080831A8
+	.global gStrSelectMonsterToAddToHand
+gStrSelectMonsterToAddToHand: @ 0x080831A8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2788, 0x3C
-	.global gUnk_080831E4
-gUnk_080831E4: @ 0x080831E4
+	.global gStrCoinTossSelection
+gStrCoinTossSelection: @ 0x080831E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x27C4, 0x30
-	.global gUnk_08083214
-gUnk_08083214: @ 0x08083214
+	.global gStrPromptTributeToSpecialSummonFmt
+gStrPromptTributeToSpecialSummonFmt: @ 0x08083214
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x27F4, 0x3C
-	.global gUnk_08083250
-gUnk_08083250: @ 0x08083250
+	.global gStrPromptSummonFromHandOrDeck
+gStrPromptSummonFromHandOrDeck: @ 0x08083250
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2830, 0x38
-	.global gUnk_08083288
-gUnk_08083288: @ 0x08083288
+	.global gStrTimeWizardSelectTributeFmt
+gStrTimeWizardSelectTributeFmt: @ 0x08083288
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2868, 0x24
-	.global gUnk_080832AC
-gUnk_080832AC: @ 0x080832AC
+	.global gStrSelectMagicFromDeck
+gStrSelectMagicFromDeck: @ 0x080832AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x288C, 0x54
-	.global gUnk_08083300
-gUnk_08083300: @ 0x08083300
+	.global gStrPromptTributeUse
+gStrPromptTributeUse: @ 0x08083300
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x28E0, 0x50
-	.global gUnk_08083350
-gUnk_08083350: @ 0x08083350
+	.global gStrSelectHighLevelMonster
+gStrSelectHighLevelMonster: @ 0x08083350
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2930, 0x4C
-	.global gUnk_0808339C
-gUnk_0808339C: @ 0x0808339C
+	.global gStrSelectSecondTribute
+gStrSelectSecondTribute: @ 0x0808339C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x297C, 0x50
-	.global gUnk_080833EC
-gUnk_080833EC: @ 0x080833EC
+	.global gStrSelectEffectMonster
+gStrSelectEffectMonster: @ 0x080833EC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x29CC, 0x44
-	.global gUnk_08083430
-gUnk_08083430: @ 0x08083430
+	.global gStrAddFromDeckToHandPrompt
+gStrAddFromDeckToHandPrompt: @ 0x08083430
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2A10, 0x38
-	.global gUnk_08083468
-gUnk_08083468: @ 0x08083468
+	.global gStrEquipFromGraveyardPrompt
+gStrEquipFromGraveyardPrompt: @ 0x08083468
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2A48, 0x64
-	.global gUnk_080834CC
-gUnk_080834CC: @ 0x080834CC
+	.global gStrSelectEquipTarget
+gStrSelectEquipTarget: @ 0x080834CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2AAC, 0x3C
-	.global gUnk_08083508
-gUnk_08083508: @ 0x08083508
+	.global gStrSelectStatsSourceMonster
+gStrSelectStatsSourceMonster: @ 0x08083508
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2AE8, 0x50
-	.global gUnk_08083558
-gUnk_08083558: @ 0x08083558
+	.global gStrCoinTossMenu
+gStrCoinTossMenu: @ 0x08083558
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2B38, 0x30
-	.global gUnk_08083588
-gUnk_08083588: @ 0x08083588
+	.global gStrSelectDeckMonsterToSummon
+gStrSelectDeckMonsterToSummon: @ 0x08083588
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2B68, 0x7C
-	.global gUnk_08083604
-gUnk_08083604: @ 0x08083604
+	.global gStrPlaceOnDeckTopPrompt
+gStrPlaceOnDeckTopPrompt: @ 0x08083604
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2BE4, 0x30
-	.global gUnk_08083634
-gUnk_08083634: @ 0x08083634
+	.global gStrPayToReviveNextStandbyPrompt
+gStrPayToReviveNextStandbyPrompt: @ 0x08083634
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2C14, 0x5C
-	.global gUnk_08083690
-gUnk_08083690: @ 0x08083690
+	.global gStrSelectHandMonster
+gStrSelectHandMonster: @ 0x08083690
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2C70, 0x2C
-	.global gUnk_080836BC
-gUnk_080836BC: @ 0x080836BC
+	.global gStrSelectHandMagicTrap
+gStrSelectHandMagicTrap: @ 0x080836BC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2C9C, 0x34
-	.global gUnk_080836F0
-gUnk_080836F0: @ 0x080836F0
+	.global gStrSelectAnotherHandMagicTrap
+gStrSelectAnotherHandMagicTrap: @ 0x080836F0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2CD0, 0x3C
-	.global gUnk_0808372C
-gUnk_0808372C: @ 0x0808372C
+	.global gStrSelectGraveMonsterToDeck
+gStrSelectGraveMonsterToDeck: @ 0x0808372C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2D0C, 0x38
-	.global gUnk_08083764
-gUnk_08083764: @ 0x08083764
+	.global gStrSelectGraveMonsterToHand
+gStrSelectGraveMonsterToHand: @ 0x08083764
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2D44, 0x38
-	.global gUnk_0808379C
-gUnk_0808379C: @ 0x0808379C
+	.global gStrSelectGraveMagicToDeck
+gStrSelectGraveMagicToDeck: @ 0x0808379C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2D7C, 0x38
-	.global gUnk_080837D4
-gUnk_080837D4: @ 0x080837D4
+	.global gStrBanishOpponentGraveMonsterQuestion
+gStrBanishOpponentGraveMonsterQuestion: @ 0x080837D4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2DB4, 0x54
-	.global gUnk_08083828
-gUnk_08083828: @ 0x08083828
+	.global gStrBanishAnotherOpponentGraveMonsterQuestion
+gStrBanishAnotherOpponentGraveMonsterQuestion: @ 0x08083828
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2E08, 0x58
-	.global gUnk_08083880
-gUnk_08083880: @ 0x08083880
+	.global gStrSelectOpponentGraveMonsterToBanish
+gStrSelectOpponentGraveMonsterToBanish: @ 0x08083880
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2E60, 0x54
-	.global gUnk_080838D4
-gUnk_080838D4: @ 0x080838D4
+	.global gStrDesignateOwnMonsterToTribute
+gStrDesignateOwnMonsterToTribute: @ 0x080838D4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2EB4, 0x30
-	.global gUnk_08083904
-gUnk_08083904: @ 0x08083904
+	.global gStrSelectFusionToSummonForTribute
+gStrSelectFusionToSummonForTribute: @ 0x08083904
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2EE4, 0x5C
-	.global gUnk_08083960
-gUnk_08083960: @ 0x08083960
+	.global gStrBanishAnotherGraveCardQuestion
+gStrBanishAnotherGraveCardQuestion: @ 0x08083960
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2F40, 0x44
-	.global gUnk_080839A4
-gUnk_080839A4: @ 0x080839A4
+	.global gStrBanishGraveCardQuestion
+gStrBanishGraveCardQuestion: @ 0x080839A4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2F84, 0x38
-	.global gUnk_080839DC
-gUnk_080839DC: @ 0x080839DC
+	.global gStrSelectGraveCardToBanishForAtk
+gStrSelectGraveCardToBanishForAtk: @ 0x080839DC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2FBC, 0x38
-	.global gUnk_08083A14
-gUnk_08083A14: @ 0x08083A14
+	.global gStrSelectOpponentMonsterToChangePosition
+gStrSelectOpponentMonsterToChangePosition: @ 0x08083A14
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x2FF4, 0x58
-	.global gUnk_08083A6C
-gUnk_08083A6C: @ 0x08083A6C
+	.global gStrSelectFusionMaterialToAddToHand
+gStrSelectFusionMaterialToAddToHand: @ 0x08083A6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x304C, 0x64
-	.global gUnk_08083AD0
-gUnk_08083AD0: @ 0x08083AD0
+	.global gStrSummonFusionMaterialsQuestion
+gStrSummonFusionMaterialsQuestion: @ 0x08083AD0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x30B0, 0x54
-	.global gUnk_08083B24
-gUnk_08083B24: @ 0x08083B24
+	.global gStrSelectBanishedCardToReturnToGrave
+gStrSelectBanishedCardToReturnToGrave: @ 0x08083B24
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3104, 0x54
-	.global gUnk_08083B78
-gUnk_08083B78: @ 0x08083B78
+	.global gStrSelectFusionMonsterToSummon
+gStrSelectFusionMonsterToSummon: @ 0x08083B78
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3158, 0x50
-	.global gUnk_08083BC8
-gUnk_08083BC8: @ 0x08083BC8
+	.global gStrSelectTwoFusionMaterials
+gStrSelectTwoFusionMaterials: @ 0x08083BC8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x31A8, 0x44
-	.global gUnk_08083C0C
-gUnk_08083C0C: @ 0x08083C0C
+	.global gStrSelectThreeFusionMaterials
+gStrSelectThreeFusionMaterials: @ 0x08083C0C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x31EC, 0x44
-	.global gUnk_08083C50
-gUnk_08083C50: @ 0x08083C50
+	.global gStrSelectListTarget
+gStrSelectListTarget: @ 0x08083C50
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3230, 0x44
-	.global gUnk_08083C94
-gUnk_08083C94: @ 0x08083C94
+	.global gStrDesignateTrapToDestroy
+gStrDesignateTrapToDestroy: @ 0x08083C94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3274, 0x34
-	.global gUnk_08083CC8
-gUnk_08083CC8: @ 0x08083CC8
+	.global gStrDesignateOwnTribute
+gStrDesignateOwnTribute: @ 0x08083CC8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x32A8, 0x30
-	.global gUnk_08083CF8
-gUnk_08083CF8: @ 0x08083CF8
+	.global gStrDesignateOpponentMonsterToReturn
+gStrDesignateOpponentMonsterToReturn: @ 0x08083CF8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x32D8, 0x58
-	.global gUnk_08083D50
-gUnk_08083D50: @ 0x08083D50
+	.global gStrDesignateOpponentMonsterCardToDestroy
+gStrDesignateOpponentMonsterCardToDestroy: @ 0x08083D50
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3330, 0x40
-	.global gUnk_08083D90
-gUnk_08083D90: @ 0x08083D90
+	.global gStrDesignateOpponentMonsterToAbsorb
+gStrDesignateOpponentMonsterToAbsorb: @ 0x08083D90
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3370, 0x3C
-	.global gUnk_08083DCC
-gUnk_08083DCC: @ 0x08083DCC
+	.global gStrDesignateOpponentMonsterTarget
+gStrDesignateOpponentMonsterTarget: @ 0x08083DCC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x33AC, 0x48
-	.global gUnk_08083E14
-gUnk_08083E14: @ 0x08083E14
+	.global gStrDesignateMonsterToEquip
+gStrDesignateMonsterToEquip: @ 0x08083E14
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x33F4, 0x30
-	.global gUnk_08083E44
-gUnk_08083E44: @ 0x08083E44
+	.global gStrDesignateMonsterForAttackPosition
+gStrDesignateMonsterForAttackPosition: @ 0x08083E44
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3424, 0x48
-	.global gUnk_08083E8C
-gUnk_08083E8C: @ 0x08083E8C
+	.global gStrAskWhoseLpToRecover
+gStrAskWhoseLpToRecover: @ 0x08083E8C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x346C, 0x44
-	.global gUnk_08083ED0
-gUnk_08083ED0: @ 0x08083ED0
+	.global gStrAskDestroyMonster
+gStrAskDestroyMonster: @ 0x08083ED0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x34B0, 0x24
-	.global gUnk_08083EF4
-gUnk_08083EF4: @ 0x08083EF4
+	.global gStrDesignateAtk1000MonsterToDestroy
+gStrDesignateAtk1000MonsterToDestroy: @ 0x08083EF4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x34D4, 0x44
-	.global gUnk_08083F38
-gUnk_08083F38: @ 0x08083F38
+	.global gStrSelectAnotherMonsterToDestroy
+gStrSelectAnotherMonsterToDestroy: @ 0x08083F38
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3518, 0x28
-	.global gUnk_08083F60
-gUnk_08083F60: @ 0x08083F60
+	.global gStrDesignateMagicToDestroy
+gStrDesignateMagicToDestroy: @ 0x08083F60
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3540, 0x34
-	.global gUnk_08083F94
-gUnk_08083F94: @ 0x08083F94
+	.global gStrDesignateTypeMonsterToDestroyFmt
+gStrDesignateTypeMonsterToDestroyFmt: @ 0x08083F94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3574, 0x34
-	.global gUnk_08083FC8
-gUnk_08083FC8: @ 0x08083FC8
+	.global gStrDragonType
+gStrDragonType: @ 0x08083FC8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x35A8, 0x8
-	.global gUnk_08083FD0
-gUnk_08083FD0: @ 0x08083FD0
+	.global gStrDesignateMonsterToDestroy
+gStrDesignateMonsterToDestroy: @ 0x08083FD0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x35B0, 0x30
-	.global gUnk_08084000
-gUnk_08084000: @ 0x08084000
+	.global gStrDesignateMonsterToHaveReturned
+gStrDesignateMonsterToHaveReturned: @ 0x08084000
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x35E0, 0x44
-	.global gUnk_08084044
-gUnk_08084044: @ 0x08084044
+	.global gStrDesignateOneMonster
+gStrDesignateOneMonster: @ 0x08084044
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3624, 0x18
-	.global gUnk_0808405C
-gUnk_0808405C: @ 0x0808405C
+	.global gStrDesignateOpponentFaceDownCard
+gStrDesignateOpponentFaceDownCard: @ 0x0808405C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x363C, 0x48
-	.global gUnk_080840A4
-gUnk_080840A4: @ 0x080840A4
+	.global gStrDesignateFirstCardToDestroy
+gStrDesignateFirstCardToDestroy: @ 0x080840A4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3684, 0x34
-	.global gUnk_080840D8
-gUnk_080840D8: @ 0x080840D8
+	.global gStrDesignateSecondCardToDestroy
+gStrDesignateSecondCardToDestroy: @ 0x080840D8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x36B8, 0x34
-	.global gUnk_0808410C
-gUnk_0808410C: @ 0x0808410C
+	.global gStrAskReturnMonsterToHand
+gStrAskReturnMonsterToHand: @ 0x0808410C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x36EC, 0x30
-	.global gUnk_0808413C
-gUnk_0808413C: @ 0x0808413C
+	.global gStrDesignateMonsterToReturnToHand
+gStrDesignateMonsterToReturnToHand: @ 0x0808413C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x371C, 0x3C
-	.global gUnk_08084178
-gUnk_08084178: @ 0x08084178
+	.global gStrAskReturnAnotherMonster
+gStrAskReturnAnotherMonster: @ 0x08084178
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3758, 0x34
-	.global gUnk_080841AC
-gUnk_080841AC: @ 0x080841AC
+	.global gStrDesignateMonsterToSwitchControl
+gStrDesignateMonsterToSwitchControl: @ 0x080841AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x378C, 0x54
-	.global gUnk_08084200
-gUnk_08084200: @ 0x08084200
+	.global gStrDesignateMonsterToControl
+gStrDesignateMonsterToControl: @ 0x08084200
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x37E0, 0x44
-	.global gUnk_08084244
-gUnk_08084244: @ 0x08084244
+	.global gStrDesignateFaceUpMonsterToControl
+gStrDesignateFaceUpMonsterToControl: @ 0x08084244
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3824, 0x4C
-	.global gUnk_08084290
-gUnk_08084290: @ 0x08084290
+	.global gStrDesignateOwnMonsterToEquip
+gStrDesignateOwnMonsterToEquip: @ 0x08084290
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3870, 0x3C
-	.global gUnk_080842CC
-gUnk_080842CC: @ 0x080842CC
+	.global gStrDesignateFaceDownDefenseMonster
+gStrDesignateFaceDownDefenseMonster: @ 0x080842CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x38AC, 0x4C
-	.global gUnk_08084318
-gUnk_08084318: @ 0x08084318
+	.global gStrDesignateOneMonsterToDestroy
+gStrDesignateOneMonsterToDestroy: @ 0x08084318
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x38F8, 0x30
-	.global gUnk_08084348
-gUnk_08084348: @ 0x08084348
+	.global gStrDesignateOneOwnMonster
+gStrDesignateOneOwnMonster: @ 0x08084348
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3928, 0x20
-	.global gUnk_08084368
-gUnk_08084368: @ 0x08084368
+	.global gStrDesignateOwnMonsterToRecall
+gStrDesignateOwnMonsterToRecall: @ 0x08084368
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3948, 0x38
-	.global gUnk_080843A0
-gUnk_080843A0: @ 0x080843A0
+	.global gStrDesignateOwnMonsterToBanish
+gStrDesignateOwnMonsterToBanish: @ 0x080843A0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3980, 0x44
-	.global gUnk_080843E4
-gUnk_080843E4: @ 0x080843E4
+	.global gStrAskSevenCompletedStat
+gStrAskSevenCompletedStat: @ 0x080843E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x39C4, 0x3C
-	.global gUnk_08084420
-gUnk_08084420: @ 0x08084420
+	.global gStrSelectNewAttackTarget
+gStrSelectNewAttackTarget: @ 0x08084420
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3A00, 0x50
-	.global gUnk_08084470
-gUnk_08084470: @ 0x08084470
+	.global gStrSelectFaceUpTrapToDestroy
+gStrSelectFaceUpTrapToDestroy: @ 0x08084470
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3A50, 0x2C
-	.global gUnk_0808449C
-gUnk_0808449C: @ 0x0808449C
+	.global gStrDesignateFirstOwnMonster
+gStrDesignateFirstOwnMonster: @ 0x0808449C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3A7C, 0x24
-	.global gUnk_080844C0
-gUnk_080844C0: @ 0x080844C0
+	.global gStrDesignateSecondOwnMonster
+gStrDesignateSecondOwnMonster: @ 0x080844C0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3AA0, 0x24
-	.global gUnk_080844E4
-gUnk_080844E4: @ 0x080844E4
+	.global gStrDesignateOpponentMonsterToDestroy
+gStrDesignateOpponentMonsterToDestroy: @ 0x080844E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3AC4, 0x3C
-	.global gUnk_08084520
-gUnk_08084520: @ 0x08084520
+	.global gStrDesignateMonsterToIncreaseAtk
+gStrDesignateMonsterToIncreaseAtk: @ 0x08084520
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3B00, 0x38
-	.global gUnk_08084558
-gUnk_08084558: @ 0x08084558
+	.global gStrDesignateMonsterToIncreaseDef
+gStrDesignateMonsterToIncreaseDef: @ 0x08084558
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3B38, 0x38
-	.global gUnk_08084590
-gUnk_08084590: @ 0x08084590
+	.global gStrDesignateMonsterToDecreaseDef
+gStrDesignateMonsterToDecreaseDef: @ 0x08084590
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3B70, 0x38
-	.global gUnk_080845C8
-gUnk_080845C8: @ 0x080845C8
+	.global gStrDesignateMonsterForDefensePosition
+gStrDesignateMonsterForDefensePosition: @ 0x080845C8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3BA8, 0x58
-	.global gUnk_08084620
-gUnk_08084620: @ 0x08084620
+	.global gStrDesignateMonsterToSetFaceDown
+gStrDesignateMonsterToSetFaceDown: @ 0x08084620
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3C00, 0x38
-	.global gUnk_08084658
-gUnk_08084658: @ 0x08084658
+	.global gStrDesignateNewTargetFmt
+gStrDesignateNewTargetFmt: @ 0x08084658
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3C38, 0x3C
-	.global gUnk_08084694
-gUnk_08084694: @ 0x08084694
+	.global gStrDesignateEquipToSwitch
+gStrDesignateEquipToSwitch: @ 0x08084694
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3C74, 0x38
-	.global gUnk_080846CC
-gUnk_080846CC: @ 0x080846CC
+	.global gStrDesignateMonsterToSwitchEquipFmt
+gStrDesignateMonsterToSwitchEquipFmt: @ 0x080846CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3CAC, 0x38
-	.global gUnk_08084704
-gUnk_08084704: @ 0x08084704
+	.global gStrDesignateSpellTrapToDestroy
+gStrDesignateSpellTrapToDestroy: @ 0x08084704
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3CE4, 0x3C
-	.global gUnk_08084740
-gUnk_08084740: @ 0x08084740
+	.global gStrDesignateOpponentSpellTrapToDestroy
+gStrDesignateOpponentSpellTrapToDestroy: @ 0x08084740
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3D20, 0x48
-	.global gUnk_08084788
-gUnk_08084788: @ 0x08084788
+	.global gStrDesignateFaceDownMonsterToBanish
+gStrDesignateFaceDownMonsterToBanish: @ 0x08084788
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3D68, 0x40
-	.global gUnk_080847C8
-gUnk_080847C8: @ 0x080847C8
+	.global gStrDesignateFaceDownSpellTrapToBanish
+gStrDesignateFaceDownSpellTrapToBanish: @ 0x080847C8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3DA8, 0x4C
-	.global gUnk_08084814
-gUnk_08084814: @ 0x08084814
+	.global gStrDesignateCardToProhibit
+gStrDesignateCardToProhibit: @ 0x08084814
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3DF4, 0x38
-	.global gUnk_0808484C
-gUnk_0808484C: @ 0x0808484C
+	.global gStrDesignateMonsterToHalveAtk
+gStrDesignateMonsterToHalveAtk: @ 0x0808484C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3E2C, 0x3C
-	.global gUnk_08084888
-gUnk_08084888: @ 0x08084888
+	.global gStrDesignateMonsterToGiveControl
+gStrDesignateMonsterToGiveControl: @ 0x08084888
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3E68, 0x5C
-	.global gUnk_080848E4
-gUnk_080848E4: @ 0x080848E4
+	.global gStrDesignateOpponentMonsterToTribute
+gStrDesignateOpponentMonsterToTribute: @ 0x080848E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3EC4, 0x4C
-	.global gUnk_08084930
-gUnk_08084930: @ 0x08084930
+	.global gStrDesignateFaceUpMonsterOfTwoFmt
+gStrDesignateFaceUpMonsterOfTwoFmt: @ 0x08084930
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3F10, 0x38
-	.global gUnk_08084968
-gUnk_08084968: @ 0x08084968
+	.global gStrThunderType
+gStrThunderType: @ 0x08084968
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3F48, 0x8
-	.global gUnk_08084970
-gUnk_08084970: @ 0x08084970
+	.global gStrSelectOpponentMonsterToControlFmt
+gStrSelectOpponentMonsterToControlFmt: @ 0x08084970
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3F50, 0x3C
-	.global gUnk_080849AC
-gUnk_080849AC: @ 0x080849AC
+	.global gStrMachineType
+gStrMachineType: @ 0x080849AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3F8C, 0x8
-	.global gUnk_080849B4
-gUnk_080849B4: @ 0x080849B4
+	.global gStrSelectAttackTargetFmt
+gStrSelectAttackTargetFmt: @ 0x080849B4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3F94, 0x40
-	.global gUnk_080849F4
-gUnk_080849F4: @ 0x080849F4
+	.global gStrDesignateMonsterYouWishToTribute
+gStrDesignateMonsterYouWishToTribute: @ 0x080849F4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x3FD4, 0x3C
-	.global gUnk_08084A30
-gUnk_08084A30: @ 0x08084A30
+	.global gStrSelectZoneToBlock
+gStrSelectZoneToBlock: @ 0x08084A30
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4010, 0x38
-	.global gUnk_08084A68
-gUnk_08084A68: @ 0x08084A68
+	.global gStrSelectAnotherZoneToBlock
+gStrSelectAnotherZoneToBlock: @ 0x08084A68
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4048, 0x40
-	.global gUnk_08084AA8
-gUnk_08084AA8: @ 0x08084AA8
+	.global gStrDesignateOpponentMonsterToFlip
+gStrDesignateOpponentMonsterToFlip: @ 0x08084AA8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4088, 0x50
-	.global gUnk_08084AF8
-gUnk_08084AF8: @ 0x08084AF8
+	.global gStrDesignateMagicForMask
+gStrDesignateMagicForMask: @ 0x08084AF8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x40D8, 0x40
-	.global gUnk_08084B38
-gUnk_08084B38: @ 0x08084B38
+	.global gStrDesignateAnotherMonsterToTribute
+gStrDesignateAnotherMonsterToTribute: @ 0x08084B38
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4118, 0x34
-	.global gUnk_08084B6C
-gUnk_08084B6C: @ 0x08084B6C
+	.global gStrDesignateFirstCardToReturn
+gStrDesignateFirstCardToReturn: @ 0x08084B6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x414C, 0x34
-	.global gUnk_08084BA0
-gUnk_08084BA0: @ 0x08084BA0
+	.global gStrDesignateSecondCardToReturn
+gStrDesignateSecondCardToReturn: @ 0x08084BA0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4180, 0x34
-	.global gUnk_08084BD4
-gUnk_08084BD4: @ 0x08084BD4
+	.global gStrSelectReplacementAttacker
+gStrSelectReplacementAttacker: @ 0x08084BD4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x41B4, 0x68
-	.global gUnk_08084C3C
-gUnk_08084C3C: @ 0x08084C3C
+	.global gStrSelectGraveMonstersToBanishFmt
+gStrSelectGraveMonstersToBanishFmt: @ 0x08084C3C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x421C, 0x48
-	.global gUnk_08084C84
-gUnk_08084C84: @ 0x08084C84
+	.global gStrRemainingCountFmt
+gStrRemainingCountFmt: @ 0x08084C84
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4264, 0x14
-	.global gUnk_08084C98
-gUnk_08084C98: @ 0x08084C98
+	.global gStrDesignateOpponentSpellTrapToReturn
+gStrDesignateOpponentSpellTrapToReturn: @ 0x08084C98
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4278, 0x54
-	.global gUnk_08084CEC
-gUnk_08084CEC: @ 0x08084CEC
+	.global gStrSelectTrapToForceActivate
+gStrSelectTrapToForceActivate: @ 0x08084CEC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x42CC, 0x34
-	.global gUnk_08084D20
-gUnk_08084D20: @ 0x08084D20
+	.global gStrDesignateFusionToReturnToDeck
+gStrDesignateFusionToReturnToDeck: @ 0x08084D20
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4300, 0x4C
-	.global gUnk_08084D6C
-gUnk_08084D6C: @ 0x08084D6C
+	.global gStrEventYouSummoned
+gStrEventYouSummoned: @ 0x08084D6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x434C, 0x1C
-	.global gUnk_08084D88
-gUnk_08084D88: @ 0x08084D88
+	.global gStrEventOpponentSummoned
+gStrEventOpponentSummoned: @ 0x08084D88
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4368, 0x28
-	.global gUnk_08084DB0
-gUnk_08084DB0: @ 0x08084DB0
+	.global gStrEventYouFlipSummoned
+gStrEventYouFlipSummoned: @ 0x08084DB0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4390, 0x24
-	.global gUnk_08084DD4
-gUnk_08084DD4: @ 0x08084DD4
+	.global gStrEventOpponentFlipSummoned
+gStrEventOpponentFlipSummoned: @ 0x08084DD4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x43B4, 0x2C
-	.global gUnk_08084E00
-gUnk_08084E00: @ 0x08084E00
+	.global gStrEventYouSpecialSummoned
+gStrEventYouSpecialSummoned: @ 0x08084E00
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x43E0, 0x24
-	.global gUnk_08084E24
-gUnk_08084E24: @ 0x08084E24
+	.global gStrEventOpponentSpecialSummoned
+gStrEventOpponentSpecialSummoned: @ 0x08084E24
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4404, 0x30
-	.global gUnk_08084E54
-gUnk_08084E54: @ 0x08084E54
+	.global gStrEventYouSet
+gStrEventYouSet: @ 0x08084E54
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4434, 0x18
-	.global gUnk_08084E6C
-gUnk_08084E6C: @ 0x08084E6C
+	.global gStrEventOpponentSet
+gStrEventOpponentSet: @ 0x08084E6C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x444C, 0x24
-	.global gUnk_08084E90
-gUnk_08084E90: @ 0x08084E90
+	.global gStrEventAttackTargetFmt
+gStrEventAttackTargetFmt: @ 0x08084E90
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4470, 0x3C
-	.global gUnk_08084ECC
-gUnk_08084ECC: @ 0x08084ECC
+	.global gStrEventPositionChanged
+gStrEventPositionChanged: @ 0x08084ECC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x44AC, 0x28
-	.global gUnk_08084EF4
-gUnk_08084EF4: @ 0x08084EF4
+	.global gStrEventFlippedFaceUp
+gStrEventFlippedFaceUp: @ 0x08084EF4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x44D4, 0x24
-	.global gUnk_08084F18
-gUnk_08084F18: @ 0x08084F18
+	.global gStrEventControlSwitched
+gStrEventControlSwitched: @ 0x08084F18
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x44F8, 0x2C
-	.global gUnk_08084F44
-gUnk_08084F44: @ 0x08084F44
+	.global gStrEventBattleFlipEffect
+gStrEventBattleFlipEffect: @ 0x08084F44
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4524, 0x34
-	.global gUnk_08084F78
-gUnk_08084F78: @ 0x08084F78
+	.global gStrEventYouDeclaredBattle
+gStrEventYouDeclaredBattle: @ 0x08084F78
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4558, 0x1C
-	.global gUnk_08084F94
-gUnk_08084F94: @ 0x08084F94
+	.global gStrEventOpponentDeclaredBattle
+gStrEventOpponentDeclaredBattle: @ 0x08084F94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4574, 0x24
-	.global gUnk_08084FB8
-gUnk_08084FB8: @ 0x08084FB8
+	.global gStrEventBattleDestroyed
+gStrEventBattleDestroyed: @ 0x08084FB8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4598, 0x2C
-	.global gUnk_08084FE4
-gUnk_08084FE4: @ 0x08084FE4
+	.global gStrEventYouTookBattleDamage
+gStrEventYouTookBattleDamage: @ 0x08084FE4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x45C4, 0x30
-	.global gUnk_08085014
-gUnk_08085014: @ 0x08085014
+	.global gStrEventYouDealtBattleDamage
+gStrEventYouDealtBattleDamage: @ 0x08085014
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x45F4, 0x44
-	.global gUnk_08085058
-gUnk_08085058: @ 0x08085058
+	.global gStrEventYouTookDeflectedDamage
+gStrEventYouTookDeflectedDamage: @ 0x08085058
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4638, 0x3C
-	.global gUnk_08085094
-gUnk_08085094: @ 0x08085094
+	.global gStrEventOpponentTookDeflectedDamage
+gStrEventOpponentTookDeflectedDamage: @ 0x08085094
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4674, 0x44
-	.global gUnk_080850D8
-gUnk_080850D8: @ 0x080850D8
+	.global gStrEventYouTookDamage
+gStrEventYouTookDamage: @ 0x080850D8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x46B8, 0x1C
-	.global gUnk_080850F4
-gUnk_080850F4: @ 0x080850F4
+	.global gStrEventYouDealtDamage
+gStrEventYouDealtDamage: @ 0x080850F4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x46D4, 0x20
-	.global gUnk_08085114
-gUnk_08085114: @ 0x08085114
+	.global gStrEventMagicDestroyed
+gStrEventMagicDestroyed: @ 0x08085114
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x46F4, 0x18
-	.global gUnk_0808512C
-gUnk_0808512C: @ 0x0808512C
+	.global gStrEventTrapDestroyed
+gStrEventTrapDestroyed: @ 0x0808512C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x470C, 0x18
-	.global gUnk_08085144
-gUnk_08085144: @ 0x08085144
+	.global gStrEventContinuousTrapPlayed
+gStrEventContinuousTrapPlayed: @ 0x08085144
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4724, 0x28
-	.global gUnk_0808516C
-gUnk_0808516C: @ 0x0808516C
+	.global gStrEventContinuousMagicPlayed
+gStrEventContinuousMagicPlayed: @ 0x0808516C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x474C, 0x2C
-	.global gUnk_08085198
-gUnk_08085198: @ 0x08085198
+	.global gStrEventFieldMagicPlayed
+gStrEventFieldMagicPlayed: @ 0x08085198
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4778, 0x20
-	.global gUnk_080851B8
-gUnk_080851B8: @ 0x080851B8
+	.global gStrEventEquipped
+gStrEventEquipped: @ 0x080851B8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4798, 0x30
-	.global gUnk_080851E8
-gUnk_080851E8: @ 0x080851E8
+	.global gStrEventCardDrawn
+gStrEventCardDrawn: @ 0x080851E8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x47C8, 0x18
-	.global gUnk_08085200
-gUnk_08085200: @ 0x08085200
+	.global gStrEventMonsterReturnedToHand
+gStrEventMonsterReturnedToHand: @ 0x08085200
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x47E0, 0x38
-	.global gUnk_08085238
-gUnk_08085238: @ 0x08085238
+	.global gStrEventDeckToGraveyard
+gStrEventDeckToGraveyard: @ 0x08085238
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4818, 0x40
-	.global gUnk_08085278
-gUnk_08085278: @ 0x08085278
+	.global gStrEventYouDiscarded
+gStrEventYouDiscarded: @ 0x08085278
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4858, 0x14
-	.global gUnk_0808528C
-gUnk_0808528C: @ 0x0808528C
+	.global gStrEventOpponentDiscarded
+gStrEventOpponentDiscarded: @ 0x0808528C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x486C, 0x20
-	.global gUnk_080852AC
-gUnk_080852AC: @ 0x080852AC
+	.global gStrEventMonsterSentToGraveyard
+gStrEventMonsterSentToGraveyard: @ 0x080852AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x488C, 0x38
-	.global gUnk_080852E4
-gUnk_080852E4: @ 0x080852E4
+	.global gStrEventSeparator
+gStrEventSeparator: @ 0x080852E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x48C4, 0x4
-	.global gUnk_080852E8
-gUnk_080852E8: @ 0x080852E8
+	.global gStrAskActivateQuickPlayOrTrap
+gStrAskActivateQuickPlayOrTrap: @ 0x080852E8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x48C8, 0x48
-	.global gUnk_08085330
-gUnk_08085330: @ 0x08085330
+	.global gStrLinkChainPromptEffect
+gStrLinkChainPromptEffect: @ 0x08085330
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4910, 0x44
-	.global gUnk_08085374
-gUnk_08085374: @ 0x08085374
+	.global gStrLinkChainPromptCard
+gStrLinkChainPromptCard: @ 0x08085374
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4954, 0x38
-	.global gUnk_080853AC
-gUnk_080853AC: @ 0x080853AC
+	.global gStrSelectSpellTrapForChain
+gStrSelectSpellTrapForChain: @ 0x080853AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x498C, 0x4C
-	.global gUnk_080853F8
-gUnk_080853F8: @ 0x080853F8
+	.global gStrSelectSpellTrapToActivate
+gStrSelectSpellTrapToActivate: @ 0x080853F8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x49D8, 0x3C
-	.global gUnk_08085434
-gUnk_08085434: @ 0x08085434
+	.global gStrDebugSpellTrapEnabled
+gStrDebugSpellTrapEnabled: @ 0x08085434
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4A14, 0x14
-	.global gUnk_08085448
-gUnk_08085448: @ 0x08085448
+	.global gStrDebugSpellTrapDisabled
+gStrDebugSpellTrapDisabled: @ 0x08085448
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4A28, 0x14
-	.global gUnk_0808545C
-gUnk_0808545C: @ 0x0808545C
+	.global gStrRitualTributePrompt
+gStrRitualTributePrompt: @ 0x0808545C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4A3C, 0x50
-	.global gUnk_080854AC
-gUnk_080854AC: @ 0x080854AC
+	.global gStrSinisterSerpentPrompt
+gStrSinisterSerpentPrompt: @ 0x080854AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4A8C, 0x158
-	.global gUnk_08085604
-gUnk_08085604: @ 0x08085604
+	.global gStrSpecialSummonSelectTribute
+gStrSpecialSummonSelectTribute: @ 0x08085604
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4BE4, 0x38
-	.global gUnk_0808563C
-gUnk_0808563C: @ 0x0808563C
+	.global gStrTributeFromField
+gStrTributeFromField: @ 0x0808563C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4C1C, 0x24
-	.global gUnk_08085660
-gUnk_08085660: @ 0x08085660
+	.global gStrTributeFromFieldOrHand
+gStrTributeFromFieldOrHand: @ 0x08085660
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4C40, 0x38
-	.global gUnk_08085698
-gUnk_08085698: @ 0x08085698
+	.global gStrTributeFromHand
+gStrTributeFromHand: @ 0x08085698
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4C78, 0x24
-	.global gUnk_080856BC
-gUnk_080856BC: @ 0x080856BC
+	.global gStrBanishFieldMonstersCount
+gStrBanishFieldMonstersCount: @ 0x080856BC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4C9C, 0x4C
-	.global gUnk_08085708
-gUnk_08085708: @ 0x08085708
+	.global gStrFiend
+gStrFiend: @ 0x08085708
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4CE8, 0x8
-	.global gUnk_08085710
-gUnk_08085710: @ 0x08085710
+	.global gStrBanishGraveyardMonstersCount
+gStrBanishGraveyardMonstersCount: @ 0x08085710
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4CF0, 0x48
-	.global gUnk_08085758
-gUnk_08085758: @ 0x08085758
+	.global gStrCardsRemaining
+gStrCardsRemaining: @ 0x08085758
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4D38, 0x24
-	.global gUnk_0808577C
-gUnk_0808577C: @ 0x0808577C
+	.global gStrLight
+gStrLight: @ 0x0808577C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4D5C, 0x8
-	.global gUnk_08085784
-gUnk_08085784: @ 0x08085784
+	.global gStrBanishFieldMonster
+gStrBanishFieldMonster: @ 0x08085784
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4D64, 0x40
-	.global gUnk_080857C4
-gUnk_080857C4: @ 0x080857C4
+	.global gStrFire
+gStrFire: @ 0x080857C4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DA4, 0x8
-	.global gUnk_080857CC
-gUnk_080857CC: @ 0x080857CC
+	.global gStrBanishGraveyardMonster
+gStrBanishGraveyardMonster: @ 0x080857CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DAC, 0x38
-	.global gUnk_08085804
-gUnk_08085804: @ 0x08085804
+	.global gStrWater
+gStrWater: @ 0x08085804
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DE4, 0x8
-	.global gUnk_0808580C
-gUnk_0808580C: @ 0x0808580C
+	.global gStrEarth
+gStrEarth: @ 0x0808580C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DEC, 0x8
-	.global gUnk_08085814
-gUnk_08085814: @ 0x08085814
+	.global gStrWind
+gStrWind: @ 0x08085814
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DF4, 0x8
-	.global gUnk_0808581C
-gUnk_0808581C: @ 0x0808581C
+	.global gStrTributeEitherFromField
+gStrTributeEitherFromField: @ 0x0808581C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4DFC, 0x34
-	.global gUnk_08085850
-gUnk_08085850: @ 0x08085850
+	.global gStrTributeOneFromField
+gStrTributeOneFromField: @ 0x08085850
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4E30, 0x28
-	.global gUnk_08085878
-gUnk_08085878: @ 0x08085878
+	.global gStrEndBattlePhaseMenuExtra
+gStrEndBattlePhaseMenuExtra: @ 0x08085878
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4E58, 0x6C
-	.global gUnk_080858E4
-gUnk_080858E4: @ 0x080858E4
+	.global gStrEndBattlePhaseMenu
+gStrEndBattlePhaseMenu: @ 0x080858E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4EC4, 0x74
-	.global gUnk_08085958
-gUnk_08085958: @ 0x08085958
+	.global gStrSelectAttackTarget
+gStrSelectAttackTarget: @ 0x08085958
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4F38, 0x34
-	.global gUnk_0808598C
-gUnk_0808598C: @ 0x0808598C
+	.global gStrAskDirectAttack
+gStrAskDirectAttack: @ 0x0808598C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4F6C, 0x54
-	.global gUnk_080859E0
-gUnk_080859E0: @ 0x080859E0
+	.global gStrSelectTributeToAttack
+gStrSelectTributeToAttack: @ 0x080859E0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4FC0, 0x38
-	.global gUnk_08085A18
-gUnk_08085A18: @ 0x08085A18
+	.global gStrCoinTossCall
+gStrCoinTossCall: @ 0x08085A18
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x4FF8, 0x30
-	.global gUnk_08085A48
-gUnk_08085A48: @ 0x08085A48
+	.global gStrAskZeroAttackerAtkFmt
+gStrAskZeroAttackerAtkFmt: @ 0x08085A48
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5028, 0x94
-	.global gUnk_08085ADC
-gUnk_08085ADC: @ 0x08085ADC
+	.global gStrAskSubstituteTargetFmt
+gStrAskSubstituteTargetFmt: @ 0x08085ADC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x50BC, 0xA0
-	.global gUnk_08085B7C
-gUnk_08085B7C: @ 0x08085B7C
+	.global gStrAskKuribohFmt
+gStrAskKuribohFmt: @ 0x08085B7C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x515C, 0x5C
-	.global gUnk_08085BD8
-gUnk_08085BD8: @ 0x08085BD8
+	.global gStrAskTransferControlFmt
+gStrAskTransferControlFmt: @ 0x08085BD8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x51B8, 0x50
-	.global gUnk_08085C28
-gUnk_08085C28: @ 0x08085C28
+	.global gStrEndMainPhaseMenu
+gStrEndMainPhaseMenu: @ 0x08085C28
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5208, 0x64
-	.global gUnk_08085C8C
-gUnk_08085C8C: @ 0x08085C8C
+	.global gStrEndYourTurn
+gStrEndYourTurn: @ 0x08085C8C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x526C, 0x10
-	.global gUnk_08085C9C
-gUnk_08085C9C: @ 0x08085C9C
+	.global gStrCompleteStandbyPhase
+gStrCompleteStandbyPhase: @ 0x08085C9C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x527C, 0x18
-	.global gUnk_08085CB4
-gUnk_08085CB4: @ 0x08085CB4
+	.global gStrMaintainLpCostFmt
+gStrMaintainLpCostFmt: @ 0x08085CB4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5294, 0x54
-	.global gUnk_08085D08
-gUnk_08085D08: @ 0x08085D08
+	.global gStrMaintainTributeFmt
+gStrMaintainTributeFmt: @ 0x08085D08
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x52E8, 0x68
-	.global gUnk_08085D70
-gUnk_08085D70: @ 0x08085D70
+	.global gStrSelectMonsterAsTribute
+gStrSelectMonsterAsTribute: @ 0x08085D70
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5350, 0x24
-	.global gUnk_08085D94
-gUnk_08085D94: @ 0x08085D94
+	.global gStrTurnsUntilDestroyedFmt
+gStrTurnsUntilDestroyedFmt: @ 0x08085D94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5374, 0x38
-	.global gUnk_08085DCC
-gUnk_08085DCC: @ 0x08085DCC
+	.global gStrAttackTargetZeroAtkFmt
+gStrAttackTargetZeroAtkFmt: @ 0x08085DCC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x53AC, 0x94
-	.global gUnk_08085E60
-gUnk_08085E60: @ 0x08085E60
+	.global gStrKuribohDiscardFmt
+gStrKuribohDiscardFmt: @ 0x08085E60
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5440, 0x5C
-	.global gUnk_08085EBC
-gUnk_08085EBC: @ 0x08085EBC
+	.global gStrAttackTargetSubstituteFmt
+gStrAttackTargetSubstituteFmt: @ 0x08085EBC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x549C, 0xA0
-	.global gUnk_08085F5C
-gUnk_08085F5C: @ 0x08085F5C
+	.global gStrAttackTargetRedirectFmt
+gStrAttackTargetRedirectFmt: @ 0x08085F5C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x553C, 0x80
-	.global gUnk_08085FDC
-gUnk_08085FDC: @ 0x08085FDC
+	.global gStrDiscardFromHand
+gStrDiscardFromHand: @ 0x08085FDC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x55BC, 0x18
-	.global gUnk_08085FF4
-gUnk_08085FF4: @ 0x08085FF4
+	.global gStrPromptSelectTribute
+gStrPromptSelectTribute: @ 0x08085FF4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x55D4, 0x24
-	.global gUnk_08086018
-gUnk_08086018: @ 0x08086018
+	.global gStrPromptSelectMonsterToSet
+gStrPromptSelectMonsterToSet: @ 0x08086018
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x55F8, 0x40
-	.global gUnk_08086058
-gUnk_08086058: @ 0x08086058
+	.global gStrPromptGraveMonsterToPlay
+gStrPromptGraveMonsterToPlay: @ 0x08086058
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5638, 0x4C
-	.global gUnk_080860A4
-gUnk_080860A4: @ 0x080860A4
+	.global gStrPromptGraveMonsterToSet
+gStrPromptGraveMonsterToSet: @ 0x080860A4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5684, 0x58
-	.global gUnk_080860FC
-gUnk_080860FC: @ 0x080860FC
+	.global gStrPromptGraveMonsterToSpecialSummon
+gStrPromptGraveMonsterToSpecialSummon: @ 0x080860FC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x56DC, 0x114
-	.global gUnk_08086210
-gUnk_08086210: @ 0x08086210
+	.global gStrPromptSelectType
+gStrPromptSelectType: @ 0x08086210
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x57F0, 0x44
-	.global gUnk_08086254
-gUnk_08086254: @ 0x08086254
+	.global gStrPromptSelectAttribute
+gStrPromptSelectAttribute: @ 0x08086254
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5834, 0x18
-	.global gUnk_0808626C
-gUnk_0808626C: @ 0x0808626C
+	.global gStrPromptSelectAnotherAttribute
+gStrPromptSelectAnotherAttribute: @ 0x0808626C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x584C, 0x20
-	.global gUnk_0808628C
-gUnk_0808628C: @ 0x0808628C
+	.global gStrNewline
+gStrNewline: @ 0x0808628C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x586C, 0x4
-	.global gUnk_08086290
-gUnk_08086290: @ 0x08086290
+	.global gStrMenuIndent
+gStrMenuIndent: @ 0x08086290
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5870, 0x8
-	.global gUnk_08086298
-gUnk_08086298: @ 0x08086298
+	.global gStrPromptSelectOpponentHandCard
+gStrPromptSelectOpponentHandCard: @ 0x08086298
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5878, 0x2C
-	.global gUnk_080862C4
-gUnk_080862C4: @ 0x080862C4
+	.global gStrPromptReorderCards
+gStrPromptReorderCards: @ 0x080862C4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x58A4, 0x8C
-	.global gUnk_08086350
-gUnk_08086350: @ 0x08086350
+	.global gStrPromptSelectOneOfFive
+gStrPromptSelectOneOfFive: @ 0x08086350
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5930, 0x20
-	.global gUnk_08086370
-gUnk_08086370: @ 0x08086370
+	.global gStrSelectDisplayPosition
+gStrSelectDisplayPosition: @ 0x08086370
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5950, 0x24
-	.global gUnk_08086394
-gUnk_08086394: @ 0x08086394
+	.global gAiGenericSpells
+gAiGenericSpells: @ 0x08086394
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5974, 0x6C
-	.global gUnk_08086400
-gUnk_08086400: @ 0x08086400
+	.global gAiEquipSpells
+gAiEquipSpells: @ 0x08086400
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x59E0, 0x48
-	.global gUnk_08086448
-gUnk_08086448: @ 0x08086448
+	.global gAiSimpleSpells
+gAiSimpleSpells: @ 0x08086448
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A28, 0x28
-	.global gUnk_08086470
-gUnk_08086470: @ 0x08086470
+	.global gInfoAtkLabelJp
+gInfoAtkLabelJp: @ 0x08086470
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A50, 0x8
-	.global gUnk_08086478
-gUnk_08086478: @ 0x08086478
+	.global gInfoDefLabelJp
+gInfoDefLabelJp: @ 0x08086478
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A58, 0x8
-	.global gUnk_08086480
-gUnk_08086480: @ 0x08086480
+	.global gInfoAtkLabel
+gInfoAtkLabel: @ 0x08086480
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A60, 0x8
-	.global gUnk_08086488
-gUnk_08086488: @ 0x08086488
+	.global gInfoDefLabel
+gInfoDefLabel: @ 0x08086488
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A68, 0x8
-	.global gUnk_08086490
-gUnk_08086490: @ 0x08086490
+	.global gTurnCounterLabel
+gTurnCounterLabel: @ 0x08086490
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A70, 0xC
-	.global gUnk_0808649C
-gUnk_0808649C: @ 0x0808649C
+	.global gMonsterInfoAtkLabelJp
+gMonsterInfoAtkLabelJp: @ 0x0808649C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A7C, 0x8
-	.global gUnk_080864A4
-gUnk_080864A4: @ 0x080864A4
+	.global gMonsterInfoDefLabelJp
+gMonsterInfoDefLabelJp: @ 0x080864A4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A84, 0x8
-	.global gUnk_080864AC
-gUnk_080864AC: @ 0x080864AC
+	.global gMonsterInfoAtkLabel
+gMonsterInfoAtkLabel: @ 0x080864AC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A8C, 0x8
-	.global gUnk_080864B4
-gUnk_080864B4: @ 0x080864B4
+	.global gMonsterInfoDefLabel
+gMonsterInfoDefLabel: @ 0x080864B4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A94, 0x8
-	.global gUnk_080864BC
-gUnk_080864BC: @ 0x080864BC
+	.global gStrMyFusionDeck
+gStrMyFusionDeck: @ 0x080864BC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5A9C, 0x10
-	.global gUnk_080864CC
-gUnk_080864CC: @ 0x080864CC
+	.global gStrOpponentFusionDeck
+gStrOpponentFusionDeck: @ 0x080864CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5AAC, 0x18
-	.global gUnk_080864E4
-gUnk_080864E4: @ 0x080864E4
+	.global gStrMyDeck
+gStrMyDeck: @ 0x080864E4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5AC4, 0xC
-	.global gUnk_080864F0
-gUnk_080864F0: @ 0x080864F0
+	.global gStrOpponentDeck
+gStrOpponentDeck: @ 0x080864F0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5AD0, 0x10
-	.global gUnk_08086500
-gUnk_08086500: @ 0x08086500
+	.global gStrMyGraveyard
+gStrMyGraveyard: @ 0x08086500
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5AE0, 0x10
-	.global gUnk_08086510
-gUnk_08086510: @ 0x08086510
+	.global gStrOpponentGraveyard
+gStrOpponentGraveyard: @ 0x08086510
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5AF0, 0x14
-	.global gUnk_08086524
-gUnk_08086524: @ 0x08086524
+	.global gStrMyRemovedCards
+gStrMyRemovedCards: @ 0x08086524
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5B04, 0x14
-	.global gUnk_08086538
-gUnk_08086538: @ 0x08086538
+	.global gStrOpponentRemovedCards
+gStrOpponentRemovedCards: @ 0x08086538
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5B18, 0x18
-	.global gUnk_08086550
-gUnk_08086550: @ 0x08086550
+	.global gFieldBackgroundImages
+gFieldBackgroundImages: @ 0x08086550
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5B30, 0x3C
-	.global gUnk_0808658C
-gUnk_0808658C: @ 0x0808658C
+	.global gPackCursorSlideOffsets
+gPackCursorSlideOffsets: @ 0x0808658C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5B6C, 0x10
-	.global gUnk_0808659C
-gUnk_0808659C: @ 0x0808659C
+	.global gCardFlipAnimTiles
+gCardFlipAnimTiles: @ 0x0808659C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5B7C, 0x30
-	.global gUnk_080865CC
-gUnk_080865CC: @ 0x080865CC
+	.global gPackListSlideEase
+gPackListSlideEase: @ 0x080865CC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5BAC, 0x10
-	.global gUnk_080865DC
-gUnk_080865DC: @ 0x080865DC
+	.global gPackInfo
+gPackInfo: @ 0x080865DC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x5BBC, 0xD60
-	.global gUnk_0808733C
-gUnk_0808733C: @ 0x0808733C
+	.global gAttributeIconTiles
+gAttributeIconTiles: @ 0x0808733C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x691C, 0x16
-	.global gUnk_08087352
-gUnk_08087352: @ 0x08087352
+	.global gTypeIconTiles
+gTypeIconTiles: @ 0x08087352
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6932, 0x2A
-	.global gUnk_0808737C
-gUnk_0808737C: @ 0x0808737C
+	.global gSpellSubtypeIconTiles
+gSpellSubtypeIconTiles: @ 0x0808737C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x695C, 0xE
-	.global gUnk_0808738A
-gUnk_0808738A: @ 0x0808738A
+	.global gCardKindIconTiles
+gCardKindIconTiles: @ 0x0808738A
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x696A, 0xA
-	.global gUnk_08087394
-gUnk_08087394: @ 0x08087394
+	.global gAttributeIconPals
+gAttributeIconPals: @ 0x08087394
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6974, 0x2C
-	.global gUnk_080873C0
-gUnk_080873C0: @ 0x080873C0
+	.global gTypeIconPals
+gTypeIconPals: @ 0x080873C0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x69A0, 0x64
-	.global gUnk_08087424
-gUnk_08087424: @ 0x08087424
+	.global gSpellSubtypeIconPals
+gSpellSubtypeIconPals: @ 0x08087424
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A04, 0x1C
-	.global gUnk_08087440
-gUnk_08087440: @ 0x08087440
+	.global gCardKindIconPals
+gCardKindIconPals: @ 0x08087440
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A20, 0x10
-	.global gUnk_08087450
-gUnk_08087450: @ 0x08087450
+	.global gScrollArrowTiles
+gScrollArrowTiles: @ 0x08087450
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A30, 0x14
-	.global gUnk_08087464
-gUnk_08087464: @ 0x08087464
+	.global gFrameSlotY
+gFrameSlotY: @ 0x08087464
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A44, 0xE
-	.global gUnk_08087472
-gUnk_08087472: @ 0x08087472
+	.global gFrameSlotScale
+gFrameSlotScale: @ 0x08087472
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A52, 0xE
-	.global gUnk_08087480
-gUnk_08087480: @ 0x08087480
+	.global gCardFrameAnimIds
+gCardFrameAnimIds: @ 0x08087480
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A60, 0x8
-	.global gUnk_08087488
-gUnk_08087488: @ 0x08087488
+	.global gCardMoveTargets
+gCardMoveTargets: @ 0x08087488
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A68, 0xC
 	.global gUnk_08087494
 gUnk_08087494: @ 0x08087494
@@ -1135,117 +1135,117 @@ gUnk_08087494: @ 0x08087494
 	.global gUnk_0808749C
 gUnk_0808749C: @ 0x0808749C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A7C, 0x4
-	.global gUnk_080874A0
-gUnk_080874A0: @ 0x080874A0
+	.global gNameIndexLettersSprite
+gNameIndexLettersSprite: @ 0x080874A0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A80, 0xB4
-	.global gUnk_08087554
-gUnk_08087554: @ 0x08087554
+	.global gStrDeckEditNoCards
+gStrDeckEditNoCards: @ 0x08087554
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B34, 0x14
-	.global gUnk_08087568
-gUnk_08087568: @ 0x08087568
+	.global gRaStatDigits
+gRaStatDigits: @ 0x08087568
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B48, 0x4
-	.global gUnk_0808756C
-gUnk_0808756C: @ 0x0808756C
+	.global gListFilterNav
+gListFilterNav: @ 0x0808756C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B4C, 0x1C
-	.global gUnk_08087588
-gUnk_08087588: @ 0x08087588
+	.global gListFilterNavNoFusion
+gListFilterNavNoFusion: @ 0x08087588
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B68, 0x1C
-	.global gUnk_080875A4
-gUnk_080875A4: @ 0x080875A4
+	.global gListSortNav
+gListSortNav: @ 0x080875A4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B84, 0x18
-	.global gUnk_080875BC
-gUnk_080875BC: @ 0x080875BC
+	.global gListSortOptionAnims
+gListSortOptionAnims: @ 0x080875BC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6B9C, 0x16
-	.global gUnk_080875D2
-gUnk_080875D2: @ 0x080875D2
+	.global gDeckEditEaseCurve
+gDeckEditEaseCurve: @ 0x080875D2
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6BB2, 0x1A
-	.global gUnk_080875EC
-gUnk_080875EC: @ 0x080875EC
+	.global gStrDebugSwapSelectorChangedFmt
+gStrDebugSwapSelectorChangedFmt: @ 0x080875EC
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6BCC, 0x14
-	.global gUnk_08087600
-gUnk_08087600: @ 0x08087600
+	.global gLinkPartnerSlot
+gLinkPartnerSlot: @ 0x08087600
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6BE0, 0x4
-	.global gUnk_08087604
-gUnk_08087604: @ 0x08087604
+	.global gStrDebugLinkReceiveRetry
+gStrDebugLinkReceiveRetry: @ 0x08087604
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6BE4, 0x10
-	.global gUnk_08087614
-gUnk_08087614: @ 0x08087614
+	.global gStrDebugLinkRecvTimeout
+gStrDebugLinkRecvTimeout: @ 0x08087614
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6BF4, 0x20
-	.global gUnk_08087634
-gUnk_08087634: @ 0x08087634
+	.global gDecimalDigitChars
+gDecimalDigitChars: @ 0x08087634
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6C14, 0x28
-	.global gUnk_0808765C
-gUnk_0808765C: @ 0x0808765C
+	.global gHexDigitChars
+gHexDigitChars: @ 0x0808765C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6C3C, 0x58
-	.global gUnk_080876B4
-gUnk_080876B4: @ 0x080876B4
+	.global gStrLinkDbgBufferStoredBoth
+gStrLinkDbgBufferStoredBoth: @ 0x080876B4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6C94, 0x20
-	.global gUnk_080876D4
-gUnk_080876D4: @ 0x080876D4
+	.global gStrLinkDbgBufferOutput
+gStrLinkDbgBufferOutput: @ 0x080876D4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6CB4, 0x24
-	.global gUnk_080876F8
-gUnk_080876F8: @ 0x080876F8
+	.global gStrLinkDbgBufferStored
+gStrLinkDbgBufferStored: @ 0x080876F8
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6CD8, 0x28
-	.global gUnk_08087720
-gUnk_08087720: @ 0x08087720
+	.global gCalendarEventNames
+gCalendarEventNames: @ 0x08087720
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6D00, 0x414
-	.global gUnk_08087B34
-gUnk_08087B34: @ 0x08087B34
+	.global gStrDebugDateTemplate
+gStrDebugDateTemplate: @ 0x08087B34
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7114, 0xC
-	.global gUnk_08087B40
-gUnk_08087B40: @ 0x08087B40
+	.global gStrRareHunterComing
+gStrRareHunterComing: @ 0x08087B40
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7120, 0x18
-	.global gUnk_08087B58
-gUnk_08087B58: @ 0x08087B58
+	.global gStrLangEnglish
+gStrLangEnglish: @ 0x08087B58
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7138, 0x8
-	.global gUnk_08087B60
-gUnk_08087B60: @ 0x08087B60
+	.global gStrLangJapanese
+gStrLangJapanese: @ 0x08087B60
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7140, 0x8
-	.global gUnk_08087B68
-gUnk_08087B68: @ 0x08087B68
+	.global gStrLangGerman
+gStrLangGerman: @ 0x08087B68
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7148, 0x8
-	.global gUnk_08087B70
-gUnk_08087B70: @ 0x08087B70
+	.global gStrLangFrench
+gStrLangFrench: @ 0x08087B70
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7150, 0x8
-	.global gUnk_08087B78
-gUnk_08087B78: @ 0x08087B78
+	.global gStrLangItalian
+gStrLangItalian: @ 0x08087B78
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7158, 0x8
-	.global gUnk_08087B80
-gUnk_08087B80: @ 0x08087B80
+	.global gStrErrorIdFmt
+gStrErrorIdFmt: @ 0x08087B80
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7160, 0x10
-	.global gUnk_08087B90
-gUnk_08087B90: @ 0x08087B90
+	.global gBustupTextHome
+gBustupTextHome: @ 0x08087B90
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7170, 0x4
-	.global gUnk_08087B94
-gUnk_08087B94: @ 0x08087B94
+	.global gDigitTileChars
+gDigitTileChars: @ 0x08087B94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7174, 0x10
-	.global gUnk_08087BA4
-gUnk_08087BA4: @ 0x08087BA4
+	.global gSineTable
+gSineTable: @ 0x08087BA4
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7184, 0x1E8
 	.global gUnk_08087D8C
 gUnk_08087D8C: @ 0x08087D8C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x736C, 0x98
-	.global gUnk_08087E24
-gUnk_08087E24: @ 0x08087E24
+	.global gPasswordKeypad
+gPasswordKeypad: @ 0x08087E24
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7404, 0x58
-	.global gUnk_08087E7C
-gUnk_08087E7C: @ 0x08087E7C
+	.global gPasswordSlotCursorFrames
+gPasswordSlotCursorFrames: @ 0x08087E7C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x745C, 0xC
-	.global gUnk_08087E88
-gUnk_08087E88: @ 0x08087E88
+	.global gPasswordCardSlideHofs
+gPasswordCardSlideHofs: @ 0x08087E88
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7468, 0x80
-	.global gUnk_08087F08
-gUnk_08087F08: @ 0x08087F08
+	.global gPasswordArrowFrames
+gPasswordArrowFrames: @ 0x08087F08
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x74E8, 0x80
-	.global gUnk_08087F88
-gUnk_08087F88: @ 0x08087F88
+	.global gStrDebugPassword
+gStrDebugPassword: @ 0x08087F88
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7568, 0xC
-	.global gUnk_08087F94
-gUnk_08087F94: @ 0x08087F94
+	.global gStrDebugPasswordDigit
+gStrDebugPasswordDigit: @ 0x08087F94
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7574, 0x4
-	.global gUnk_08087F98
-gUnk_08087F98: @ 0x08087F98
+	.global gStrDebugPasswordCard
+gStrDebugPasswordCard: @ 0x08087F98
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7578, 0x8
-	.global gUnk_08087FA0
-gUnk_08087FA0: @ 0x08087FA0
+	.global gStrDebugThrowItInNow
+gStrDebugThrowItInNow: @ 0x08087FA0
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x7580, 0x14

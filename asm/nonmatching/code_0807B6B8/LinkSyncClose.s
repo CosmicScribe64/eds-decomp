@@ -1,0 +1,14 @@
+	thumb_func_start LinkSyncClose
+LinkSyncClose: @ 0x0807BE60
+	push {lr}
+	bl LinkSioStop
+	ldr r0, _0807BE74 @ =0x03005B60
+	ldr r1, _0807BE78 @ =0x00000B38
+	bl MemClear16
+	mov r0, #1
+	pop {r1}
+	bx r1
+_0807BE74: .4byte 0x03005B60
+_0807BE78: .4byte 0x00000B38
+	thumb_func_end LinkSyncClose
+

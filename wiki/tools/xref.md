@@ -54,7 +54,7 @@ One example of each:
 python3 tools/xref.py func MainLoop                     # AgbMain's main loop (proposed name)
 python3 tools/xref.py global gMain --offset 0x4859      # who uses the sequencer byte seqIndex1
 python3 tools/xref.py strings 'rare card'               # who starts this dialogue line or prints this string
-python3 tools/xref.py graph sub_0807A1A8 --up --depth 3 # how the LZSS decoder is reached
+python3 tools/xref.py graph LZSSDecompress --up --depth 3 # how the LZSS decoder is reached
 python3 tools/xref.py unit code_08006878
 python3 tools/xref.py subsystems -v | less
 python3 tools/xref.py what 0x020192E4                   # players[0].lifePoints and its 226 users
@@ -123,7 +123,7 @@ python3 tools/xref.py selftest
 - **Globals against the C sources:** xref finds every `gUnk_` or address-suffixed global named in a matched C
   function body (2940 of 2940 references).
 - **Parameter counts against C signatures:** 1936 of 1960 are equal. The 23 functions with fewer parameters
-  are handlers that ignore an argument of a shared signature. The one with more is `sub_080750E0`, which
+  are handlers that ignore an argument of a shared signature. The one with more is `TextDrawNumber`, which
   forwards r3 to callees that read it.
 - **Reachability:** 137 code functions have no caller, reference or data reference, and their addresses
   appear nowhere in the image. They are dead code (the [[debug-menu]], `SaveAndResetSceneState`) or are

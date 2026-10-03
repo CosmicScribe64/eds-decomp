@@ -6,7 +6,7 @@ confidence: medium
 sources: [rom-analysis]
 updated: 2026-10-01
 ---
-# CB_Title `sub_080057BC`
+# CB_Title `CB_Title`
 
 | Function | Address | Size | Proposed name | Unit |
 |---|---|---|---|---|
@@ -24,12 +24,12 @@ Mode: Thumb. Match: nonmatching. Runner table `0x081988B0`, index `gMain+0x4878`
 
 ## Purpose
 Verified from the code:
-- **Init:** clears `gTitleState` (`0x0201527C`, 4 bytes). `bit0 = IsSaveChecksumValid()` (save present), and `bit1 = bit0`, so the cursor starts on **Continue** when a save exists. Then `DISPCNT = 0`, `SetBrightnessBlack`, `ResetVideo`, `ResetBgScroll`, default BGxCNT (`sub_08004FA4`), `vblankFlags = 3`.
+- **Init:** clears `gTitleState` (`0x0201527C`, 4 bytes). `bit0 = IsSaveChecksumValid()` (save present), and `bit1 = bit0`, so the cursor starts on **Continue** when a save exists. Then `DISPCNT = 0`, `SetBrightnessBlack`, `ResetVideo`, `ResetBgScroll`, default BGxCNT (`Title_InitBgCnt`), `vblankFlags = 3`.
 - **Setup:** repeats the video reset, then `Title_Draw` (`0x08004FD8`, which has the strings "New Game"/"Continue", installs the HBlank handler `0x08004ABD` and the VBlank callback `0x08004F09`), then `PlayBGMNoTrack(0)`. **The title BGM is song 0.**
 - **Intro** (step 2): uses `FadeFromBlack`, `FadeToWhite`, `LoadBgImage(…, 0x087C056C)` and `FadeFromWhite`. It sets and clears the HBlank IRQ (hypothesis: the title logo flash/reveal).
 - **HandleInput:** Left/Right (`newKeys & 0x30`) toggles between New Game and Continue, but only when a save exists (`PlaySE(0)`); otherwise it plays `PlaySE(3)` (error). A plays `PlaySE(1)`, calls `FadeOutBGM()` and advances to the next step.
 - **FadeOut:** `FadeToBlack(1)`, clears the VBlank callback.
-- **StartGame:** if **Continue** (bit1), it returns 1 immediately, so `CB_Title` returns 1 and `MainLoop` enters `CB_MainMenu`. For **New Game**: `StartDialogue(100)` (`0x08001C10`), `PlayBGM(1)`, runs the text-box runner `0x08001AE4` until it finishes, then `sub_08064604` (new-game setup: it calls `InitSaveData` and `SaveGame`), then `StartDialogue(101)` and runs it. Dialogue events 100/101 are Tea's intro ("Nice to meet you! I am $q02, a friend of …"); see [[text-system]]. Only then does it return 1, and the game goes to the main menu.
+- **StartGame:** if **Continue** (bit1), it returns 1 immediately, so `CB_Title` returns 1 and `MainLoop` enters `CB_MainMenu`. For **New Game**: `StartDialogue(100)` (`0x08001C10`), `PlayBGM(1)`, runs the text-box runner `0x08001AE4` until it finishes, then `StarterDeckSelect_Run` (new-game setup: it calls `InitSaveData` and `SaveGame`), then `StartDialogue(101)` and runs it. Dialogue events 100/101 are Tea's intro ("Nice to meet you! I am $q02, a friend of …"); see [[text-system]]. Only then does it return 1, and the game goes to the main menu.
 
 Hypothesis: step 5 (`0x0800553C`) is the attract/intro animation that plays between the title fade-out and the game start (it loads OBJ graphics `0x087CC1D4`/`0x087CBFD4` and BG `0x087C29D4`). It hasn't been traced case by case.
 

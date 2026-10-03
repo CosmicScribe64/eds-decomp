@@ -22,8 +22,8 @@ In the V/H column, V means verified and H means hypothesis.
 |---|---|---|---|---|
 | LZSS blob `{u32 packedSize; stream}` | `0x0870C640`–`0x087BDAA8`, `0x0874C650`, `0x0874D5B0` | 59: 31 scene bitmaps, 26 OBJ sheets, the dialogue box and its header strip | [[lzss-decompress]] `0x0807A1A8` | V |
 | Scene set (Mode 4) | descriptors `0x081976A0` (31 × 0x14) | 31 | `0x08000420`, `0x08000570`, `0x08000708`; see [[scene-sets]] | V |
-| Image pack (palette + tiles + sparse map) | card frames, graphics banks A and B | 133 (7 + 85 + 41) | 8bpp: `sub_08072EB0`, `sub_08072FAC`; 4bpp: `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C`, `sub_080733F4` | V |
-| Sprite animation stream | bank A | 6 | `sub_0807695C`, `sub_080769DC`, `sub_08076A20` | V |
+| Image pack (palette + tiles + sparse map) | card frames, graphics banks A and B | 133 (7 + 85 + 41) | 8bpp: `LoadBgImageMap1`, `LoadBgImage`; 4bpp: `LoadBgImage4bppMap4Rel`, `LoadBgImage4bppGfx`, `LoadBgImage4bppMap1`, `LoadBgImage4bpp`, `LoadBgImage4bppToMap`, `LoadBgImage4bppMap1Rel` | V |
+| Sprite animation stream | bank A | 6 | `SprAnimLoad`, `SprAnimRewind`, `SprAnimDrawFrame` | V |
 | Mode-4 bitmap (240×160 8bpp + 256-colour palette) | `0x0871CE50`…, `0x086A12EC`, `0x086B8568`, `0x087C29D4`, `0x087EA718` | 9 | via tables such as `0x08198440` | V |
 | Card art (6bpp, 72×80, 64 colours) | `0x082A6500` | 820 | see [[card-art]] | V |
 | 1bpp fonts | `0x081C0000`–`0x0822C300` | 8 fonts | see [[font]] | V |
@@ -68,13 +68,13 @@ u8  tiles[nTiles][64];                // 8bpp 8x8; the 4bpp variant has [32]
 u16 nCells,  nCells,  nCells,  nCells;
 struct { u16 pos; u16 tile; } cell[nCells];   // pos = x | (y << 8), on a 32-wide map
 ```
-The 8bpp loaders `sub_08072EB0` (6 callers) and `sub_08072FAC` (4 callers, `LoadBgImage` on [[video-helpers]]) are identical except for the map buffer (`0x03000C5C` versus `0x0300045C`). Each one:
+The 8bpp loaders `LoadBgImageMap1` (6 callers) and `LoadBgImage` (4 callers, `LoadBgImage` on [[video-helpers]]) are identical except for the map buffer (`0x03000C5C` versus `0x0300045C`). Each one:
 - copies the palette to `0x05000000 + palIdx*2`;
 - copies the tiles to `0x06004000 + tileBase*32`, adding `palIdx` to every non-zero pixel byte (so colour 0 stays transparent);
 - writes `mapBuffer[mapBase + (pos & 0x3F) + (pos >> 8)*32] = tile + tileBase/2` for each cell;
 - returns `nTiles`.
 
-The 4bpp packs share the format with 32-byte tiles. Their loaders are `sub_080730A8`, `sub_08073184`, `sub_080731D0`, `sub_0807326C`, `sub_0807332C` and `sub_080733F4` (gfx_banks plugin, 2026-10-02). That answers the open question about the 4bpp loader.
+The 4bpp packs share the format with 32-byte tiles. Their loaders are `LoadBgImage4bppMap4Rel`, `LoadBgImage4bppGfx`, `LoadBgImage4bppMap1`, `LoadBgImage4bpp`, `LoadBgImage4bppToMap` and `LoadBgImage4bppMap1Rel` (gfx_banks plugin, 2026-10-02). That answers the open question about the 4bpp loader.
 
 **Packs follow exactly from their picture (verified on all 133).** The original converter:
 - cut the picture into 8×8 blocks in row-major order, and gave an all-zero (transparent) block no cell;
@@ -93,7 +93,7 @@ Examples (all rendered): the 7 card frames `0x08625460`… (8bpp 104×144, 13×1
 - Its hit at `0x087F4480` is a false positive inside tile data, as are a few hits in the font bank.
 
 ## Sprite animation stream
-Six streams in bank A, read by `sub_0807695C`, `sub_080769DC` and `sub_08076A20`:
+Six streams in bank A, read by `SprAnimLoad`, `SprAnimRewind` and `SprAnimDrawFrame`:
 ```
 u16 palette[16]                         // to OBJ palette 15
 u16 n
@@ -114,12 +114,12 @@ Each parses exactly up to the next label, with 2 alignment bytes after `0x08694E
 ## Mode-4 bitmaps
 Raw 240×160 8bpp (0x9600 bytes), each paired with a raw 256-colour palette.
 - The table at `0x08198440` holds 5 × `{u16 *pal; u8 *bitmap}` for the 5 duelist-select screens at `0x0871CE50`…`0x08742E50`.
-- Bank A: `0x086A12EC`, a corridor (palette `0x086AA8EC`, `sub_08028AEC`), and `0x086B8568`, the Millennium eye (palette `0x086C1B68`, `sub_080263C8`).
-- Bank B: `0x087C29D4`, the stone frame of the delete-save prompt (palette `0x087CBFD4`, `sub_0800553C`). Its text is the OBJ sheet `0x087CC1D4`.
-- Bank B: `0x087EA718`, the calendar (palette `0x087F3D18`, `sub_0800257C`). The label `0x087F1798` is its rows 120–159, which the code also reads on their own.
+- Bank A: `0x086A12EC`, a corridor (palette `0x086AA8EC`, `TurnOrder_Load`), and `0x086B8568`, the Millennium eye (palette `0x086C1B68`, `ExodiaScene_LoadEye`).
+- Bank B: `0x087C29D4`, the stone frame of the delete-save prompt (palette `0x087CBFD4`, `Title_ConfirmDeleteSave`). Its text is the OBJ sheet `0x087CC1D4`.
+- Bank B: `0x087EA718`, the calendar (palette `0x087F3D18`, `Calendar_Init`). The label `0x087F1798` is its rows 120–159, which the code also reads on their own.
 
 ## Tiles, maps and OBJ mapping (bank findings, verified by rendering)
-- **2D OBJ mapping.** Many screens use 2D OBJ mapping, with rows of 32 4bpp tiles. Blocks copied as one piece into OBJ VRAM look right at 32 tiles wide: `0x08639E1C`, `0x08698C9C`, `0x0869AD3C`, `0x087CC1D4`, `0x087DE878`, `0x087F4118`, `0x087F5DF8`, `0x087F7E18`. `sub_08077CEC` and `sub_08028AB8`/`sub_0807CC78` copy rows of 16 or `width` tiles into 2D VRAM, so their sources are that wide. Screens that set DISPCNT bit 6 use 1D 32×32, 32×16 or 32×64 sprites.
+- **2D OBJ mapping.** Many screens use 2D OBJ mapping, with rows of 32 4bpp tiles. Blocks copied as one piece into OBJ VRAM look right at 32 tiles wide: `0x08639E1C`, `0x08698C9C`, `0x0869AD3C`, `0x087CC1D4`, `0x087DE878`, `0x087F4118`, `0x087F5DF8`, `0x087F7E18`. `CopyTileSheetTo2D` and `TurnOrder_LoadObjTiles`/`CardTrading_LoadObjTiles` copy rows of 16 or `width` tiles into 2D VRAM, so their sources are that wide. Screens that set DISPCNT bit 6 use 1D 32×32, 32×16 or 32×64 sprites.
 - **8bpp OBJ tiles.** `0x0871B850` (opponent select) and `0x087F4DD8` (calendar icons).
 - **Labels inside items.**
   - `0x08637374` is `0x08637394 − 0x20`, for 1-based indexing of 6 small icons, and it falls inside the pack `0x086372D8`.

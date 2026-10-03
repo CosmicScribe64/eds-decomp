@@ -25,14 +25,14 @@ Right after the fonts is a 16-colour system palette at `0x0822C300` (index 0 = `
 
 ## Glyph indexing
 - **CP1252 fonts:** the glyph index is the byte value. 0x00–0x1F are blank. 0x20–0x7E are ASCII. 0x80–0xFF follow Windows-1252: `0x80` = €, `0xC0` = À, `0xC7` = Ç, `0xE0` = à, and so on. The 8×8 font has 207 non-blank glyphs, the 8×12 has 215, and the bold has 222. The game text never uses 0x80 and above (see [[text-system]]), so the accented glyphs are unused in this USA build.
-- **SJIS fonts:** the glyph index is `row × 192 + (trail − 0x40)`, where `row = lead − 0x80` for lead bytes 0x81–0x9F and `lead − 0xC0` for 0xE0–0xEA. That gives 43 rows × 192 = 8256 glyphs. Row 0 (indices 0–191) is blank. Index 192 is SJIS `0x8140` (ideographic space) and 193 is `、`. `sub_08072584` implements this.
-- **ASCII to full-width:** `sub_08074A90` uses the table at `0x081A76A0` (95 × u16) to map 0x20–0x7E to SJIS full-width forms (`'A'` becomes `0x8260`).
+- **SJIS fonts:** the glyph index is `row × 192 + (trail − 0x40)`, where `row = lead − 0x80` for lead bytes 0x81–0x9F and `lead − 0xC0` for 0xE0–0xEA. That gives 43 rows × 192 = 8256 glyphs. Row 0 (indices 0–191) is blank. Index 192 is SJIS `0x8140` (ideographic space) and 193 is `、`. `SjisToGlyphIndex` implements this.
+- **ASCII to full-width:** `AsciiToFullwidthSjis` uses the table at `0x081A76A0` (95 × u16) to map 0x20–0x7E to SJIS full-width forms (`'A'` becomes `0x8260`).
 
 ## Renderers (code)
-- `sub_08074D48`: CP1252. It picks the font by size (8/10/12/16), reads two rows per `ldrh`, and plots with `sub_08074B74` (8-px row).
-- `sub_08074C80`: SJIS. It picks the font by size (8/10/12). The 10 and 12 px fonts are drawn with `sub_08074BF8` (16-px row, byte-swapped first).
-- `sub_08078ED4` / `sub_08078FD4`: 8×8 ASCII and 8×8 SJIS into tiles.
-- `sub_08079FDC`: expands the bold 8×8 font into 4bpp or 8bpp tiles (literal `0x0822BB00` at `0x0807A0AC`).
+- `TextDrawLatinGlyph`: CP1252. It picks the font by size (8/10/12/16), reads two rows per `ldrh`, and plots with `TextPlotRow8` (8-px row).
+- `TextDrawSjisGlyph`: SJIS. It picks the font by size (8/10/12). The 10 and 12 px fonts are drawn with `TextPlotRow16` (16-px row, byte-swapped first).
+- `RenderHalfWidthGlyph` / `RenderFullWidthGlyph`: 8×8 ASCII and 8×8 SJIS into tiles.
+- `OverlayBoldGlyphTile`: expands the bold 8×8 font into 4bpp or 8bpp tiles (literal `0x0822BB00` at `0x0807A0AC`).
 
 ## Method
 - **Sizes:** each font's byte size divided by 256 (Latin) or 8256 (SJIS) gives an integer glyph size. For every Latin font, the first non-blank glyph is 0x21 `!` (checked in `tools/verify_rom_map.py`).

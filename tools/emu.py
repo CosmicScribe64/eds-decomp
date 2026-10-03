@@ -973,7 +973,7 @@ def cmd_selftest(args):
     modes = {
         "run": ["run"], "run-again": ["run"], "trace": ["trace", "--calls"],
         "watch": ["watch", "0x020192E4:2", "0x03000040:0x488C:rw", "--max", "1000"],
-        "break": ["break", "DuelMainStep", "sub_08007418", "--deref", "r0:4"],
+        "break": ["break", "DuelMainStep", "SubtractLifePoints", "--deref", "r0:4"],
         "lua": ["lua", str(lua)],
     }
     ok = True
@@ -996,16 +996,16 @@ def cmd_selftest(args):
         ok &= not bad
     tr = read_tsv(dirs["trace"] / "functions.tsv") if (dirs["trace"] / "functions.tsv").exists() else []
     hit = {r["name"] for r in tr}
-    need = {"sub_08021A48", "sub_08007418"}
+    need = {"DuelMainStep", "SubtractLifePoints"}
     print(f"{'PASS' if need <= hit else 'FAIL'} trace     saw {len(tr)} functions incl. DuelMainStep and the LP "
-          "setter sub_08007418")
+          "setter SubtractLifePoints")
     ok &= need <= hit
     sp = dirs["watch"] / "watch_summary.tsv"
     w = read_tsv(sp) if sp.exists() else []
-    lp = [e for e in w if e["function"].startswith("sub_08007418") and e["access"] == "w16"]
-    good = len(lp) == 1 and lp[0]["last_value"] == "0x1EDC" and "sub_08013888" in lp[0]["first_backtrace"]
-    print(f"{'PASS' if good else 'FAIL'} watch     LP 8000 -> 7900 written by sub_08007418, backtrace through "
-          "sub_08013888")
+    lp = [e for e in w if e["function"].startswith("SubtractLifePoints") and e["access"] == "w16"]
+    good = len(lp) == 1 and lp[0]["last_value"] == "0x1EDC" and "DuelCmd_ChangeLifePoints" in lp[0]["first_backtrace"]
+    print(f"{'PASS' if good else 'FAIL'} watch     LP 8000 -> 7900 written by SubtractLifePoints, backtrace through "
+          "DuelCmd_ChangeLifePoints")
     ok &= good
     r = subprocess.run(me + ["gdb", "--state", "duel_start", "--rom", args.rom, "--out", f"{tag}-gdb",
                              "--ex", "break *0x0804E420", "--ex", "continue", "--ex", "info registers pc"],

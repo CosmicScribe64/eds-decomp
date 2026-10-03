@@ -48,12 +48,12 @@ The driver starts right after the Card Trading scene code (which ends at `0x0807
 | SE table | `0x08087FD0` | exactly 48 × 0x1C: `const u8 *track[6]` (sq2, noise, pcm5, pcm4, pcm3, pcm2; NULL = unused), then `u8 priority; u8 slotMask; u16 lockTicks`. It immediately follows the AgbSram rodata (see [[save-type]]). Track bytecode: [[sound-sequence-format]] |
 | Song table | `0x080E09D0` | 58 × 0x18: `u32 songData; u16 trackOffset[10]` (offsets relative to `songData`; the first is 0). The tracks are `sq1`, `sq2`, `wave`, `noise`, `pcm0`–`pcm5`, in that order. The table ends where the first song's data starts (`0x080E0F40`) |
 | PCM sample tables | `0x0811B420` (bank 0: id bit 15 clear, index = id; 36 entries), `0x08088A20` (bank 1: id bit 15 set, index = `id & 0x3FFF` in Thumb, `id & 0x7FFF` in the ARM loop reload; 28 entries, the last two NULL) | pointers to `struct SoundSample {s32 rate; u32 length; s32 loopStart (−1 = none); s8 data[length]}`, each 16-byte aligned with zero padding between |
-| PCM pitch table | `0x081A8A0C`–`0x081AA20C`, used from its middle `gUnk_081A960C` (= 0x1000) | 3,072 u16, one per **1/32 semitone** (−48..+48 semitones). PCM step = `rate * pitch >> 12` (20.12 fixed point in the mixer) |
+| PCM pitch table | `0x081A8A0C`–`0x081AA20C`, used from its middle `gSoundPitchTable` (= 0x1000) | 3,072 u16, one per **1/32 semitone** (−48..+48 semitones). PCM step = `rate * pitch >> 12` (20.12 fixed point in the mixer) |
 | Wave patterns | `0x08139550` | 10 waves × 16 levels × 16 bytes of PSG channel-3 wave-RAM images (below) |
 | Noise presets | `0x08139F50` | 6 × u16 `SOUND4CNT_H` values (below) |
 | Other lookup tables | `0x081A7A0C`–`0x081ABC4C` | nibble volume scale, PSG frequency per 1/32 semitone, vibrato steps ([[sound-sequence-format#Driver lookup tables]]) |
 | Vibrato sine | `0x081ABC4C` | 256 × s16, 4.12 fixed point, `int(4096 * sin(2πi/256))` truncated |
-| Channel maps | `0x081A79E8`, `0x081A79F4` | `u8[12]` read by the SE decoder `sub_0807D6B4`; `u8[4][6]` PCM channel order per SE variant, addressed through `gUnk_081A79F9` (= `&row[0][5]`) |
+| Channel maps | `0x081A79E8`, `0x081A79F4` | `u8[12]` read by the SE decoder `SoundSeTrackTick`; `u8[4][6]` PCM channel order per SE variant, addressed through `gSeVariantTrackMap` (= `&row[0][5]`) |
 
 > [!warning] Contradiction
 > This page said the pitch table at `0x081A960C` holds a "u16 per note", and [[rom-map]] placed its start at `0x081A8D48`. Decoding the whole range against `round(4096 * 2^((i - 1536) / 384))` (sound_seq plugin; re-checked on 2026-10-02, all 3,072 values match) shows 384 steps per octave, so one entry per 1/32 semitone. The table starts at `0x081A8A0C`, and `0x081A960C` is its index 1536. Resolved in favour of the decoding.
@@ -64,7 +64,7 @@ The driver starts right after the Card Trading scene code (which ends at `0x0807
 ### PCM samples
 - **Sample rate.** The mixer runs at 2²⁴/839 ≈ 19,997 Hz and advances a voice by `pitch * rate >> 12`. At pitch index 0 (`0x1000`), a sample therefore plays at `rate * 4096 / 839` Hz. Every sample in the game has rate 2048, which is 9,998 Hz and a mixer step of 0x800: the case the mixer handles by writing each sample twice ([[sound-mixer]]).
 - **Bank 1** (ids `0x8000`–`0x801B`, SE material): 26 samples in `0x08088A90`–`0x080E09D0`, 359,763 frames (about 36 s), all one-shot, 0.07–2.9 s each. Entries 26 and 27 (`0x801A`, `0x801B`) are NULL. Hypothesis from the lengths: voices or long sound effects.
-- **Bank 0** (ids `0x0000`–`0x0023`, BGM instruments): 36 samples in `0x0811B4B0`–`0x08139542`, 122,359 frames. Three loop: 31 (from 386), 33 (from 211) and 34 (from 2659). On a loop the mixer reloads `data + loopStart` with `length − loopStart` samples (verified in `sub_0807EC1C`).
+- **Bank 0** (ids `0x0000`–`0x0023`, BGM instruments): 36 samples in `0x0811B4B0`–`0x08139542`, 122,359 frames. Three loop: 31 (from 386), 33 (from 211) and 34 (from 2659). On a loop the mixer reloads `data + loopStart` with `length − loopStart` samples (verified in `SoundMixChannel`).
 - **Amplitude.** Every sample lies within −42..+42, and 54 of the 62 reach ±42. The mixer adds `(s * (vol+1)) >> 4` for three voices per FIFO without saturation, and 3 × 42 = 126 still fits in an s8. The numbers are verified; that the samples were normalised for this headroom is a hypothesis.
 - Only the two table labels are referenced from code. A ROM-wide pointer scan found no other pointers into the banks.
 

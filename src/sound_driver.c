@@ -8,16 +8,16 @@
 #define REG_WAVE_RAM1 (*(vu32 *)0x04000094)
 #define REG_WAVE_RAM2 (*(vu32 *)0x04000098)
 #define REG_WAVE_RAM3 (*(vu32 *)0x0400009C)
-extern const u32 gUnk_08139550[][4];
-void sub_0807D3D0(void);
-void sub_0807E324(void);
-void sub_0807DB58(struct SoundDriver *p);
+extern const u32 gWaveRamPatterns[][4];
+void SoundDmaInit(void);
+void SoundDma1Intr(void);
+void SoundSequencerTick(struct SoundDriver *p);
 void __sub_0807EAD0_from_thumb(void);
-void sub_0807E3D8(void);
-void sub_0807E554(void);
-void sub_0807E674(s32 id);
-void sub_0807E814(s32 id);
-void sub_0807E9C8(s32 id, s32 ticks);
+void SoundStartPendingSE(void);
+void SoundMain(void);
+void SoundRequestBGM(s32 id);
+void SoundRequestSE(s32 id);
+void SoundSeekBGM(s32 id, s32 ticks);
 
 struct SoundSample {
     s32 rate;
@@ -25,17 +25,17 @@ struct SoundSample {
     s32 loopStart;
     s8 data[1];
 };
-extern const struct SoundSample *const gUnk_08088A20[];
-extern const struct SoundSample *const gUnk_0811B420[];
-extern const u16 gUnk_081A960C[];
+extern const struct SoundSample *const gPcmSampleTable2[];
+extern const struct SoundSample *const gPcmSampleTable[];
+extern const u16 gSoundPitchTable[];
 struct SoundDmaState {
     u16 position;
     u16 unk2;
     u16 previousPosition;
     u16 unk6;
 };
-extern struct SoundDmaState gUnk_0300540C;
-extern s8 gUnk_03005414[0x640];
+extern struct SoundDmaState gSoundDmaPos;
+extern s8 gSoundPcmBuffer[0x640];
 struct SoundDmaRegs {
     volatile u32 source;
     volatile u32 destination;
@@ -47,19 +47,19 @@ struct SoundSong {
     u16 dataHi;
     u16 offset[10];
 };
-extern const struct SoundSong gUnk_080E09D0[];
-extern u32 gUnk_03005A54[];
-void sub_0807EC1C(void);
+extern const struct SoundSong gSongTable[];
+extern u32 gSoundMixCodeRam[];
+void SoundMixChannel(void);
 struct SoundEffect {
     const u8 *tracks[6];
     u8 priority;
     u8 slots;
     u16 lock;
 };
-extern const struct SoundEffect gUnk_08087FD0[];
-extern const u8 gUnk_081A79F9[];
+extern const struct SoundEffect gSeTable[];
+extern const u8 gSeVariantTrackMap[];
 
-void sub_0807D3D0(void)
+void SoundDmaInit(void)
 {
   struct SoundPcmVoice *voice;
   struct SoundDmaState *state;
@@ -82,8 +82,8 @@ void sub_0807D3D0(void)
   *((vu32 *) 0x040000D0) = 0;
   {
     vu32 *dma = (vu32 *) 0x040000D4;
-    dma[0] = (u32) sub_0807EC1C;
-    dma[1] = (u32) gUnk_03005A54;
+    dma[0] = (u32) SoundMixChannel;
+    dma[1] = (u32) gSoundMixCodeRam;
     dma[2] = 0x84000038;
     dma[2];
   }
@@ -95,9 +95,9 @@ void sub_0807D3D0(void)
     }
 
   }
-  voice = gUnk_030053AC;
-  state = &gUnk_0300540C;
-  buffer = gUnk_03005414;
+  voice = gSoundPcmChannels;
+  state = &gSoundDmaPos;
+  buffer = gSoundPcmBuffer;
   {
     struct SoundPcmVoice *iter = voice;
     i = 6;
@@ -155,9 +155,9 @@ void sub_0807D3D0(void)
   *((vu16 *) 0x04000200) |= 0x208;
   *((vu32 *) 0x04000100) = 0x0080FCB9;
 }
-void sub_0807D518(struct SoundDriver *p, u32 a, u32 b)
+void SoundLoadWaveRam(struct SoundDriver *p, u32 a, u32 b)
 {
-    const u32 *src = gUnk_08139550[a * 16 + b];
+    const u32 *src = gWaveRamPatterns[a * 16 + b];
     u16 bank;
     REG_WAVE_RAM0 = src[0];
     REG_WAVE_RAM1 = src[1];
@@ -170,7 +170,7 @@ void sub_0807D518(struct SoundDriver *p, u32 a, u32 b)
     REG_SOUND3CNT_L = bank | 0x80;
 }
 
-void sub_0807D578(void (**dma1Slot)(void))
+void SoundInit(void (**dma1Slot)(void))
 {
     struct SoundDriver *p;
     struct SoundTrack *track;
@@ -192,8 +192,8 @@ void sub_0807D578(void (**dma1Slot)(void))
     *(vu16 *)0x04000082 = 0xE;
     *(vu16 *)0x04000088 = (*(vu16 *)0x04000088 & 0x3FFF) | 0x4000;
     if (dma1Slot != 0)
-        *dma1Slot = sub_0807E324;
-    p = &gUnk_03005210;
+        *dma1Slot = SoundDma1Intr;
+    p = &gSoundDriver;
     p->flags = 0;
     p->pendingBgm = 0xFFFF;
     p->pendingSe = -1;
@@ -217,9 +217,9 @@ void sub_0807D578(void (**dma1Slot)(void))
         track->data = 0;
         track--;
     } while (--i >= 0);
-    sub_0807D518(p, 0, 0);
+    SoundLoadWaveRam(p, 0, 0);
     *(vu16 *)0x04000074 = 0x8000;
-    sub_0807D3D0();
+    SoundDmaInit();
 }
 
 union SoundSeChannelState {
@@ -255,7 +255,7 @@ struct SoundChannelParams {
     u8 command;
     s16 sampleId;
 };
-extern const u8 gUnk_081A79E8[];
+extern const u8 gSeTrackPcmChannel[];
 typedef char se_track_size_check[sizeof(struct SoundSeTrack) == 0x18 ? 1 : -1];
 typedef char channel_params_size_check[sizeof(struct SoundChannelParams) == 8 ? 1 : -1];
 typedef char se_channel_state_size_check[sizeof(union SoundSeChannelState) == 2 ? 1 : -1];
@@ -265,8 +265,8 @@ typedef char se_delay_offset_check[(u32)&((struct SoundSeTrack *)0)->delay == 0x
 /* Advances SE track `idx` by one tick and decodes its bytecode into `out`.
  * The bytecode cursor `p` and the shared stream value `data` follow the
  * original register use; commands 0x00-0x1F re-dispatch the same command. */
-void sub_0807D6B4(s32 idx, struct SoundChannelParams *out) {
-    struct SoundDriver *driver = &gUnk_03005210;
+void SoundSeTrackTick(s32 idx, struct SoundChannelParams *out) {
+    struct SoundDriver *driver = &gSoundDriver;
     struct SoundSeTrack *track = (struct SoundSeTrack *)&driver->seTracks[idx];
     const u8 *p;
     s32 data;
@@ -302,8 +302,8 @@ void sub_0807D6B4(s32 idx, struct SoundChannelParams *out) {
     out->volume = track->channel.bytes.volume;
     if (track->flags & 1) {
         if (idx > 1) {
-            idx = gUnk_081A79E8[idx];
-            if (gUnk_030053AC[idx].flags & 0x80)
+            idx = gSeTrackPcmChannel[idx];
+            if (gSoundPcmChannels[idx].flags & 0x80)
                 goto scale;
         }
         track->flags &= 0xFE;
@@ -566,11 +566,11 @@ struct SoundTickOut {
     u8 command;
     u16 sampleId;
 };
-extern const u16 gUnk_08139F50[];
-extern const u16 gUnk_081AA20C[];
-extern const s16 gUnk_081ABC4C[];
-void sub_0807D6B4(s32 index, struct SoundChannelParams *output);
-void sub_0807E918(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note);
+extern const u16 gNoiseTable[];
+extern const u16 gPsgFreqTable[];
+extern const s16 gVibratoSineTable[];
+void SoundSeTrackTick(s32 index, struct SoundChannelParams *output);
+void SoundPcmStart(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note);
 /* The driver keeps the NR51 routing byte right after struct SoundDriver. */
 struct SoundDriverTick {
     struct SoundDriver base;
@@ -584,7 +584,7 @@ typedef char tick_routing_offset_check[(u32)&((struct SoundDriverTick *)0)->rout
  * merges the six SE tracks, then programs the PSG registers and PCM voices.
  * a and b are generic int temporaries reused throughout (r4/r5 in the ROM). */
 
-void sub_0807DB58(struct SoundDriver *p)
+void SoundSequencerTick(struct SoundDriver *p)
 {
     struct SoundTickOut out[10];
     struct SoundTickOut *o;
@@ -679,7 +679,7 @@ void sub_0807DB58(struct SoundDriver *p)
                 ((struct SoundBgmTrack *)p->bgmTracks)[1].instrument = 0x80;
                 ((struct SoundBgmTrack *)p->bgmTracks)[0].instrument = 0x80;
                 *(vu16 *)0x04000072 = (u32)o;
-                sub_0807D518(p, 0, 0);
+                SoundLoadWaveRam(p, 0, 0);
             }
             p->status++;
             o = &out[9];
@@ -785,7 +785,7 @@ void sub_0807DB58(struct SoundDriver *p)
                                 b = p->currentBgm * 12 + i + 2;
                                 {
                                     /* FAKEMATCH: pointer local loads the table base before scaling b */
-                                    const u16 *tbl = (const u16 *)gUnk_080E09D0;
+                                    const u16 *tbl = (const u16 *)gSongTable;
                                     track->songOffset = tbl[b];
                                 }
                                 count = cmdp[3];
@@ -801,7 +801,7 @@ void sub_0807DB58(struct SoundDriver *p)
                             wave:
                                 if (a > 3) {
                                     a -= 4;
-                                    sub_0807D518(p, a, track->channelVolume);
+                                    SoundLoadWaveRam(p, a, track->channelVolume);
                                 }
                                 o->envelope = a;
                                 track->instrument = a;
@@ -854,7 +854,7 @@ void sub_0807DB58(struct SoundDriver *p)
                             a = 0;
                         } else {
                             track->vibratoPhase += 0x18;
-                            a = (gUnk_081ABC4C[track->vibratoPhase] * track->vibratoDepth) >> 12;
+                            a = (gVibratoSineTable[track->vibratoPhase] * track->vibratoDepth) >> 12;
                         }
                         o->pitch = track->pitch + a;
                         *(u16 *)&o->envelope = *(u16 *)&track->instrument;
@@ -881,12 +881,12 @@ void sub_0807DB58(struct SoundDriver *p)
         if ((s8)--p->sePriority < 0)
             p->sePriority = 0;
         se = p->seTracks;
-        sub_0807D6B4(0, (struct SoundChannelParams *)&out[1]);
-        sub_0807D6B4(1, (struct SoundChannelParams *)&out[3]);
-        sub_0807D6B4(2, (struct SoundChannelParams *)&out[9]);
-        sub_0807D6B4(3, (struct SoundChannelParams *)&out[8]);
-        sub_0807D6B4(4, (struct SoundChannelParams *)&out[7]);
-        sub_0807D6B4(5, (struct SoundChannelParams *)&out[6]);
+        SoundSeTrackTick(0, (struct SoundChannelParams *)&out[1]);
+        SoundSeTrackTick(1, (struct SoundChannelParams *)&out[3]);
+        SoundSeTrackTick(2, (struct SoundChannelParams *)&out[9]);
+        SoundSeTrackTick(3, (struct SoundChannelParams *)&out[8]);
+        SoundSeTrackTick(4, (struct SoundChannelParams *)&out[7]);
+        SoundSeTrackTick(5, (struct SoundChannelParams *)&out[6]);
         b = 0;
         for (i = 5; i >= 0; i--) {
             b |= se->flags;
@@ -903,7 +903,7 @@ void sub_0807DB58(struct SoundDriver *p)
 
     o = out;
     if (*(u16 *)&o[0].dirty != 0) {
-        b = gUnk_081AA20C[o[0].pitch];
+        b = gPsgFreqTable[o[0].pitch];
         if (o[0].dirty != 0) {
             {
                 /* FAKEMATCH: value computed before the MMIO address is loaded */
@@ -918,7 +918,7 @@ void sub_0807DB58(struct SoundDriver *p)
     if ((b = *(u16 *)&o[1].dirty) != 0) {
         b = o[1].pitch;
         if (b < 0 || !(b & 0x4000))
-            b = gUnk_081AA20C[b];
+            b = gPsgFreqTable[b];
         else
             b = (b & ~0x4000) | 0x8000;
         if (o[1].dirty != 0) {
@@ -932,11 +932,11 @@ void sub_0807DB58(struct SoundDriver *p)
         }
     }
     if (*(u16 *)&o[2].dirty != 0) {
-        b = gUnk_081AA20C[o[2].pitch] & 0x7FF;
+        b = gPsgFreqTable[o[2].pitch] & 0x7FF;
         if (o[2].volume == 0) {
             *(vu16 *)0x04000072 = 0;
         } else {
-            sub_0807D518(p, o[2].envelope, o[2].volume);
+            SoundLoadWaveRam(p, o[2].envelope, o[2].volume);
             *(vu16 *)0x04000072 = 0x2000;
         }
         *(vu16 *)0x04000074 = b;
@@ -945,7 +945,7 @@ void sub_0807DB58(struct SoundDriver *p)
         a = o[3].volume << 12;
         if (!(b & 0x202)) {
             *(vu16 *)0x04000078 = a;
-            *(vu16 *)0x0400007C = gUnk_08139F50[o[3].pitch];
+            *(vu16 *)0x0400007C = gNoiseTable[o[3].pitch];
         } else {
             *(vu16 *)0x04000078 = a;
             *(vu16 *)0x0400007C = o[3].pitch;
@@ -955,21 +955,21 @@ void sub_0807DB58(struct SoundDriver *p)
     {
         struct SoundPcmVoice *voice;
         o += 9;
-        voice = &gUnk_030053AC[5];
+        voice = &gSoundPcmChannels[5];
         for (i = 5; i >= 0; i--) {
             b = o->command;
             if (b != 0) {
                 if (b & 0x80) {
-                    sub_0807E918(voice, o->sampleId, o->volume, o->pitch);
+                    SoundPcmStart(voice, o->sampleId, o->volume, o->pitch);
                 } else if (b & 0x40) {
                     voice->flags = 0;
                 } else {
                     const struct SoundSample *s;
                     if (o->sampleId & 0x8000)
-                        s = gUnk_08088A20[o->sampleId & 0x3FFF];
+                        s = gPcmSampleTable2[o->sampleId & 0x3FFF];
                     else
-                        s = gUnk_0811B420[o->sampleId];
-                    *(u16 *)&voice->stepAndFraction = (*(gUnk_081A960C + o->pitch) * s->rate) >> 12;
+                        s = gPcmSampleTable[o->sampleId];
+                    *(u16 *)&voice->stepAndFraction = (*(gSoundPitchTable + o->pitch) * s->rate) >> 12;
                 }
             }
             if (o->dirty != 0)
@@ -980,9 +980,9 @@ void sub_0807DB58(struct SoundDriver *p)
     }
 }
 
-void sub_0807E324(void)
+void SoundDma1Intr(void)
 {
-    struct SoundDmaState *state = &gUnk_0300540C;
+    struct SoundDmaState *state = &gSoundDmaPos;
     int position = state->position + 0x10;
     if (position > 0x2BF) {
         struct SoundDmaRegs *dma1 = (struct SoundDmaRegs *)0x040000BC;
@@ -994,11 +994,11 @@ void sub_0807E324(void)
         *(vu16 *)((u8 *)dma2 + 10) &= 0xC5FF;
         *(vu16 *)((u8 *)dma2 + 10) &= 0x7FFF;
         *(vu16 *)((u8 *)dma2 + 10);
-        dma1->source = (u32)gUnk_03005414;
+        dma1->source = (u32)gSoundPcmBuffer;
         dma1->destination = 0x040000A0;
         *(vu32 *)&dma1->count = 0xF6000004;
         *(vu32 *)&dma1->count;
-        dma2->source = (u32)(gUnk_03005414 + 0x320);
+        dma2->source = (u32)(gSoundPcmBuffer + 0x320);
         dma2->destination = 0x040000A4;
         *(vu32 *)&dma2->count = 0xF6000004;
         *(vu32 *)&dma2->count;
@@ -1008,18 +1008,18 @@ void sub_0807E324(void)
     state->position = position;
 }
 
-void sub_0807E3B0(void)
+void SoundVBlank(void)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     if (!(p->flags & 0x2000)) {
-        sub_0807DB58(p);
+        SoundSequencerTick(p);
         __sub_0807EAD0_from_thumb();
     }
 }
 
-void sub_0807E3D8(void)
+void SoundStartPendingSE(void)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     const struct SoundEffect *effect;
     s32 metadata;
     int priority;
@@ -1036,7 +1036,7 @@ void sub_0807E3D8(void)
     request = p->pendingSe;
     if (request < 0)
         return;
-    effect = &gUnk_08087FD0[request & 0xFFF];
+    effect = &gSeTable[request & 0xFFF];
     metadata = *(const s32 *)&effect->priority;
     /* These empty constraints emit no instructions and preserve initialized
      * values. Keep the first request through metadata loading, the variant
@@ -1048,7 +1048,7 @@ void sub_0807E3D8(void)
         goto done;
     slots = (metadata >> 8) & 0xFF;
     variant = p->seVariant;
-    map = &gUnk_081A79F9[variant * 6];
+    map = &gSeVariantTrackMap[variant * 6];
     if (variant != 0) {
         bits = slots >> variant;
         slots &= 0x30;
@@ -1106,12 +1106,12 @@ done:
     p->pendingSe = 0xFFFF;
 }
 
-void sub_0807E554(void)
+void SoundMain(void)
 {
     struct SoundDriver *p;
     int song;
-    sub_0807E3D8();
-    p = &gUnk_03005210;
+    SoundStartPendingSE();
+    p = &gSoundDriver;
     song = p->pendingBgm;
     if (song >= 0) {
         struct SoundTrack *track;
@@ -1136,7 +1136,7 @@ void sub_0807E554(void)
         p->currentBgm = p->pendingBgm;
         p->pendingBgm = 0xFFFF;
         track = p->bgmTracks;
-        header = (const u16 *)&gUnk_080E09D0[song];
+        header = (const u16 *)&gSongTable[song];
         p->songData = (const u8 *)(header[0] | header[1] << 16);
         header += 2;
         song = 10;
@@ -1152,40 +1152,40 @@ void sub_0807E554(void)
     }
 }
 
-void sub_0807E674(s32 id)
+void SoundRequestBGM(s32 id)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     p->pendingBgm = id;
     p->bgmFadeSpeed = 0;
 }
 
-void sub_0807E690(s32 id, s32 b)
+void SoundRequestBGMFadeIn(s32 id, s32 b)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     p->pendingBgm = id;
     p->bgmFadeSpeed = b;
 }
 
-int sub_0807E6B0(s32 id)
+int SoundIsBGMPlaying(s32 id)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     if (p->flags & 0x80)
         return p->currentBgm == id;
     return 0;
 }
 
-void sub_0807E6E8(s32 id)
+void SoundRequestBGMIfNotPlaying(s32 id)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     if (!(p->flags & 0x80) || p->currentBgm != id) {
         p->pendingBgm = id;
         p->bgmFadeSpeed = 0;
     }
 }
 
-int sub_0807E724(s32 volume)
+int SoundSetBGMVolume(s32 volume)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     if (p->flags & 0x80) {
         p->targetVolume = volume;
         p->fadeSpeed = 0x40;
@@ -1195,38 +1195,38 @@ int sub_0807E724(s32 volume)
     }
 }
 
-void sub_0807E764(s32 vol)
+void SoundFadeOutBGM(s32 vol)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     p->targetVolume = 0;
     p->fadeSpeed = vol;
 }
 
-void sub_0807E780(s32 vol)
+void SoundPauseBGM(s32 vol)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     p->flags |= 0x100;
     p->targetVolume = 0;
     p->fadeSpeed = vol;
 }
 
-void sub_0807E7B8(s32 vol)
+void SoundResumeBGM(s32 vol)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     p->flags &= ~0x100;
     p->targetVolume = 0x10;
     p->fadeSpeed = vol;
 }
 
-int sub_0807E7E8(void)
+int SoundIsBGMFadeDone(void)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     return p->volume == p->targetVolume;
 }
 
-void sub_0807E814(s32 id)
+void SoundRequestSE(s32 id)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     if (id & 0x8000) {
         struct SoundTrack *track = p->seTracks;
         int i = 6;
@@ -1241,16 +1241,16 @@ void sub_0807E814(s32 id)
     p->seVariant = 0;
 }
 
-void sub_0807E870(s32 id, s32 variant)
+void SoundStartSEVariant(s32 id, s32 variant)
 {
-    sub_0807E814(id);
-    gUnk_03005210.seVariant = variant & 3;
-    sub_0807E3D8();
+    SoundRequestSE(id);
+    gSoundDriver.seVariant = variant & 3;
+    SoundStartPendingSE();
 }
 
-void sub_0807E898(s32 id)
+void SoundReleaseSE(s32 id)
 {
-    struct SoundTrack *track = gUnk_03005308;
+    struct SoundTrack *track = gSoundSeTracks;
     int i = 6;
     do {
         if ((track->flags & 0x80) && track->soundId == id) {
@@ -1264,9 +1264,9 @@ void sub_0807E898(s32 id)
     } while (--i != 0);
 }
 
-void sub_0807E8DC(void)
+void SoundReleaseAllSE(void)
 {
-    struct SoundTrack *track = gUnk_03005308;
+    struct SoundTrack *track = gSoundSeTracks;
     int i = 6;
     do {
         if (track->flags & 0x80) {
@@ -1280,16 +1280,16 @@ void sub_0807E8DC(void)
     } while (--i != 0);
 }
 
-void sub_0807E918(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note)
+void SoundPcmStart(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note)
 {
     const struct SoundSample *sample;
     const u16 *pitch;
     id &= 0xCFFF;
     if (id & 0x8000)
-        sample = gUnk_08088A20[id & 0x3FFF];
+        sample = gPcmSampleTable2[id & 0x3FFF];
     else
-        sample = gUnk_0811B420[id];
-    pitch = &gUnk_081A960C[note];
+        sample = gPcmSampleTable[id];
+    pitch = &gSoundPitchTable[note];
     note = *pitch * sample->rate >> 12;
     voice->stepAndFraction = note;
     voice->remaining = sample->length;
@@ -1301,9 +1301,9 @@ void sub_0807E918(struct SoundPcmVoice *voice, s32 id, s32 volume, s32 note)
         voice->flags = 0xC0;
 }
 
-int sub_0807E990(void)
+int SoundCountActivePcm(void)
 {
-    struct SoundPcmVoice *voice = gUnk_030053AC;
+    struct SoundPcmVoice *voice = gSoundPcmChannels;
     int count = 0;
     int i;
     for (i = 0; i < 6; i++) {
@@ -1314,51 +1314,51 @@ int sub_0807E990(void)
     return count;
 }
 
-u32 sub_0807E9BC(void)
+u32 SoundGetBGMTick(void)
 {
-    return gUnk_03005210.status;
+    return gSoundDriver.status;
 }
 
-void sub_0807E9C8(s32 a, s32 b)
+void SoundSeekBGM(s32 a, s32 b)
 {
-    struct SoundDriver *p = &gUnk_03005210;
+    struct SoundDriver *p = &gSoundDriver;
     u8 v;
     p->flags |= 0x2000;
     v = p->targetVolume;
     if (a >= 0) {
-        sub_0807E674(a);
-        sub_0807E554();
+        SoundRequestBGM(a);
+        SoundMain();
         p->targetVolume = 0;
         *(u16 *)&p->fadeTimer = 0;
         v = 0x10;
     }
     while (--b >= 0)
-        sub_0807DB58(p);
+        SoundSequencerTick(p);
     p->targetVolume = v;
     p->flags &= ~0x2000;
 }
 
-void sub_0807EA4C(s32 a, s32 b, s32 c)
+void SoundSeekBGMFadeIn(s32 a, s32 b, s32 c)
 {
-    struct SoundDriver *p = &gUnk_03005210;
-    sub_0807E9C8(a, b);
+    struct SoundDriver *p = &gSoundDriver;
+    SoundSeekBGM(a, b);
     p->fadeSpeed = c;
     p->targetVolume = 0x10;
     p->volume = 0;
     p->fadeTimer = 0;
 }
 
-void sub_0807EA88(void)
+void SoundStopAllSE(void)
 {
-    gUnk_03005210.flags |= 4;
+    gSoundDriver.flags |= 4;
 }
 
-void sub_0807EAA0(void)
+void SoundStopBGM(void)
 {
-    gUnk_03005210.flags |= 1;
+    gSoundDriver.flags |= 1;
 }
 
-void sub_0807EAB8(void)
+void SoundStopAll(void)
 {
-    gUnk_03005210.flags |= 5;
+    gSoundDriver.flags |= 5;
 }

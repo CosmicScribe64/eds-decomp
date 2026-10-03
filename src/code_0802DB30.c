@@ -9,7 +9,7 @@
  */
 
 /*
- * Canonical struct DuelZone (duel.h) declares +0x07 as a plain `u8 unk7`, but sub_0802DBA8
+ * Canonical struct DuelZone (duel.h) declares +0x07 as a plain `u8 unk7`, but EffectOncePerTurnPrepare
  * reads its bit 5 as a 0/1 bitfield (ROM: ldrb [+7]; lsls #26; lsrs #31). Keep a one-byte
  * local view for that function.
  */
@@ -24,7 +24,7 @@ struct DuelZoneFlag7 {
 #define ZFLAGS(z) (((u8 *)(z))[6])
 
 /* Zone pointer by byte arithmetic, zone term first (the ROM's address order); p is player & 1. */
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 /* Card reference (0x14 bytes, see code_08009A68 / code_0800C894). */
 struct CardRef {
@@ -35,7 +35,7 @@ struct CardRef {
     u16 kind : 6;       /* +0x02 bits 10-15 (hypothesis: effect kind) */
     u16 unk4;
     u16 pos;            /* +0x06: player (low byte) | zone << 8 of a target */
-    u16 unk8;           /* +0x08: high byte = a zone/count limit checked by sub_0802E784 (hypothesis) */
+    u16 unk8;           /* +0x08: high byte = a zone/count limit checked by EffectAttackResponsePrepare (hypothesis) */
     u8 fillerA[0x14 - 0xA];
 };
 
@@ -47,45 +47,45 @@ struct CardRef {
 #define CARD_SUBTYPE(id) ((CARD_STATS(id) & 0xE0000) >> 17)
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 
-extern const u32 gUnk_08621DE0[];   /* card stats, indexed by card ID */
-extern const u16 gUnk_08622AB4[];   /* card ID to card number */
+extern const u32 gCardStats[];   /* card stats, indexed by card ID */
+extern const u16 gCardIdToNumber[];   /* card ID to card number */
 /* Card ID as an 11-bit field (lsl #21; lsr #21). */
 #define CARD_ID11(w) (((w) << 21) >> 21)
 
-int sub_08008860(int player);
-int sub_08008A1C(int player);
-int sub_08008524(int player, u16 number);
-int sub_080086CC(int player, u16 number);
-int sub_08009CAC(int player, u16 number);
-int sub_08047170(int player);
-int sub_0800756C(u16 number);
-int sub_0800C894(int player, int zone);   /* ATK of the card in a zone */
-int sub_0800C8A8(int player, int zone);
-int sub_0803D0E8(int player, u16 id, void *buf);
-int sub_080090C8(int player, u16 number);
-int sub_08044224(int player, int number, int b);
-int sub_08047114(int player);
-int sub_08054398(int player, u16 id);
-int sub_08007834(u16 id);
-int sub_08008AF8(int player, int zone);
-int sub_080088A4(int player, int a, int b);
-int sub_0802F808(int a, int player, struct CardRef *ref);
-int sub_08008668(int player);
+int CountMonsters(int player);
+int CountFreeMonsterZones(int player);
+int CountActiveCardsOnField(int player, u16 number);
+int CountFaceUpMonstersByNumber(int player, u16 number);
+int CountGraveyardCardsByNumber(int player, u16 number);
+int CanSpecialSummon(int player);
+int IsToonMonster(u16 number);
+int GetZoneCardAtk(int player, int zone);   /* ATK of the card in a zone */
+int GetZoneCardDef(int player, int zone);
+int FindFusionMaterials(int player, u16 id, void *buf);
+int CountActiveCardsOnField2(int player, u16 number);
+int CollectEffectTargets(int player, int number, int b);
+int CanNormalSummon(int player);
+int CanSummonFromHand(int player, u16 id);
+int IsSpecialSummonOnly(u16 id);
+int CountTributableMonsters(int player, int zone);
+int CountMonstersFiltered(int player, int a, int b);
+int CountRedirectTargets(int a, int player, struct CardRef *ref);
+int HasFaceUpToonWorld(int player);
 
 
-int sub_0802DB30(struct CardRef *ref, int a, u16 flag)
+int EffectJigenBakudanPrepare(struct CardRef *ref, int a, u16 flag)
 {
-    if (flag == 0 && ref->kind == 2 && sub_08008860(ref->player) > 1) {
+    if (flag == 0 && ref->kind == 2 && CountMonsters(ref->player) > 1) {
         int p = ref->player;
         struct DuelZone *z = ZB(p, ref->zone);
 
-        if (!(((u8 *)z)[7] & 0x20) && sub_08008524(0, 0x58A) <= 0 && sub_08008524(1, 0x58A) <= 0)
+        if (!(((u8 *)z)[7] & 0x20) && CountActiveCardsOnField(0, 0x58A) <= 0 && CountActiveCardsOnField(1, 0x58A) <= 0)
             return 1;
     }
     return 0;
 }
 
-int sub_0802DBA8(struct CardRef *ref, int a, u16 flag)
+int EffectOncePerTurnPrepare(struct CardRef *ref, int a, u16 flag)
 {
     if (flag != 0)
         return 0;
@@ -97,58 +97,58 @@ int sub_0802DBA8(struct CardRef *ref, int a, u16 flag)
     }
 }
 
-int sub_0802DBDC(struct CardRef *ref, int a, u16 flag)
+int EffectValkyrionTheMagnaWarriorPrepare(struct CardRef *ref, int a, u16 flag)
 {
-    if (flag == 0 && sub_08008A1C(ref->player) > 1 && sub_08008524(0, 0x58A) <= 0
-        && sub_08008524(1, 0x58A) <= 0 && sub_08009CAC(ref->player, 0x2E1) != 0
-        && sub_08009CAC(ref->player, 0x2F4) != 0 && sub_08009CAC(ref->player, 0x320) != 0)
+    if (flag == 0 && CountFreeMonsterZones(ref->player) > 1 && CountActiveCardsOnField(0, 0x58A) <= 0
+        && CountActiveCardsOnField(1, 0x58A) <= 0 && CountGraveyardCardsByNumber(ref->player, 0x2E1) != 0
+        && CountGraveyardCardsByNumber(ref->player, 0x2F4) != 0 && CountGraveyardCardsByNumber(ref->player, 0x320) != 0)
         return 1;
     return 0;
 }
 
-int sub_0802DC58(struct CardRef *ref, int a, u16 flag)
+int EffectTimeMachinePrepare(struct CardRef *ref, int a, u16 flag)
 {
     if (flag == 0 && ref->kind == 0x13)
         return 1;
     return 0;
 }
 
-int sub_0802DC74(struct CardRef *ref, int a)
+int EffectToonWorldPrepare(struct CardRef *ref, int a)
 {
     int ret = 0;
 
-    if (gUnk_020192E4[ref->player].lifePoints > 999)
+    if (gDuelPlayers[ref->player].lifePoints > 999)
         ret = 1;
     return ret;
 }
 
-int sub_0802DCA0(struct CardRef *ref)
+int EffectOpponentHasHandPrepare(struct CardRef *ref)
 {
-    struct DuelPlayer *pl = gUnk_020192E4;
+    struct DuelPlayer *pl = gDuelPlayers;
     int p = ref->player;
 
     p ^= 1;
     return pl[p].handCount != 0;
 }
 
-int sub_0802DCC4(struct CardRef *ref)
+int EffectTheFluteOfSummoningDragonPrepare(struct CardRef *ref)
 {
     int i;
 
-    if (sub_08008A1C(ref->player) != 0 && sub_08047170(ref->player) != 0
-        && (sub_080086CC(0, 0x2E4) > 0 || sub_080086CC(1, 0x2E4) > 0)) {
-        for (i = 0; i < gUnk_020192E4[ref->player].handCount; i++) {
-            u32 id = CARD_ID11(CARD_WORD(gUnk_020192E4[ref->player].hand[i]));
+    if (CountFreeMonsterZones(ref->player) != 0 && CanSpecialSummon(ref->player) != 0
+        && (CountFaceUpMonstersByNumber(0, 0x2E4) > 0 || CountFaceUpMonstersByNumber(1, 0x2E4) > 0)) {
+        for (i = 0; i < gDuelPlayers[ref->player].handCount; i++) {
+            u32 id = CARD_ID11(CARD_WORD(gDuelPlayers[ref->player].hand[i]));
 
             if (CARD_TYPE(id) == 1
-                && (sub_0800756C(CARD_NUMBER(id)) == 0 || sub_08008668(ref->player) != 0))
+                && (IsToonMonster(CARD_NUMBER(id)) == 0 || HasFaceUpToonWorld(ref->player) != 0))
                 return 1;
         }
     }
     return 0;
 }
 
-int sub_0802DD98(struct CardRef *ref)
+int EffectChainDestructionPrepare(struct CardRef *ref)
 {
     int player = (u8)ref->pos;
     int zone = ref->pos >> 8;
@@ -167,11 +167,11 @@ int sub_0802DD98(struct CardRef *ref)
     z = ZB(p, zone);
     if (!CARD_ID(CARD_WORD(z->card)) || !(ZFLAGS(z) & 2))
         return 0;
-    return sub_0800C894(player, zone) <= 2000;
+    return GetZoneCardAtk(player, zone) <= 2000;
 }
 
 
-int sub_0802DDFC(struct CardRef *ref)
+int EffectTrapHolePrepare(struct CardRef *ref)
 {
     int player = (u8)ref->pos;
     int zone = ref->pos >> 8;
@@ -183,72 +183,72 @@ int sub_0802DDFC(struct CardRef *ref)
         if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2) && player != ref->player) {
             switch (CARD_NUMBER(ref->id)) {
             case 0x3EA:
-                return sub_0800C894(player, zone) > 999;
+                return GetZoneCardAtk(player, zone) > 999;
             case 0x2A8:
-                return sub_0800C8A8(player, zone) <= 500;
+                return GetZoneCardDef(player, zone) <= 500;
             case 0x2A9:
-                return sub_0800C894(player, zone) <= 500;
+                return GetZoneCardAtk(player, zone) <= 500;
             }
         }
     }
     return 0;
 }
 
-int sub_0802DEC4(struct CardRef *ref)
+int EffectPolymerizationPrepare(struct CardRef *ref)
 {
     u8 buf[8];
     int i;
 
-    if (sub_08047170(ref->player) == 0)
+    if (CanSpecialSummon(ref->player) == 0)
         return 0;
-    for (i = 0; i < gUnk_020192E4[1 & ref->player].fusionCount; i++) {
+    for (i = 0; i < gDuelPlayers[1 & ref->player].fusionCount; i++) {
         int p = ref->player;
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ref->player].fusionDeck[i]));
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & ref->player].fusionDeck[i]));
 
-        if (sub_0803D0E8(p, id, buf) != 0)
+        if (FindFusionMaterials(p, id, buf) != 0)
             return 1;
     }
     return 0;
 }
 
-int sub_0802DF5C(struct CardRef *ref)
+int EffectTwoProngedAttackPrepare(struct CardRef *ref)
 {
-    if (sub_08008860(ref->player) > 1 && sub_08008860(1 - ref->player) > 0)
+    if (CountMonsters(ref->player) > 1 && CountMonsters(1 - ref->player) > 0)
         return 1;
     return 0;
 }
 
 /* The AI uses the three-argument usability interface; this test needs only ref. */
-int sub_0802DF8C(struct CardRef *ref, int action, int flags)
+int EffectMonsterRebornPrepare(struct CardRef *ref, int action, int flags)
 {
-    if (sub_08008A1C(ref->player) == 0 || sub_08047170(ref->player) == 0 || sub_080090C8(0, 0x402) > 0
-        || sub_080090C8(1, 0x402) > 0)
+    if (CountFreeMonsterZones(ref->player) == 0 || CanSpecialSummon(ref->player) == 0 || CountActiveCardsOnField2(0, 0x402) > 0
+        || CountActiveCardsOnField2(1, 0x402) > 0)
         return 0;
-    return sub_08044224(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
 }
 
-int sub_0802E004(struct CardRef *ref)
+int EffectGravediggerGhoulPrepare(struct CardRef *ref)
 {
-    if (sub_08008524(1 - ref->player, 0x5E7) > 0)
+    if (CountActiveCardsOnField(1 - ref->player, 0x5E7) > 0)
         return 0;
-    return sub_08044224(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
 }
 
-int sub_0802E058(struct CardRef *ref, int a, u16 flag)
+int EffectUltimateOfferingPrepare(struct CardRef *ref, int a, u16 flag)
 {
     int i;
 
-    if (flag != 0 || gUnk_020192E4[1 & ref->player].lifePoints <= 499 || sub_08047114(ref->player) == 0)
+    if (flag != 0 || gDuelPlayers[1 & ref->player].lifePoints <= 499 || CanNormalSummon(ref->player) == 0)
         return 0;
-    for (i = 0; i < gUnk_020192E4[1 & ref->player].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & ref->player].hand[i]));
+    for (i = 0; i < gDuelPlayers[1 & ref->player].handCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & ref->player].hand[i]));
 
-        if (sub_08054398(ref->player, id) != 0 && sub_08007834(id) == 0)
+        if (CanSummonFromHand(ref->player, id) != 0 && IsSpecialSummonOnly(id) == 0)
             return 1;
     }
     return 0;
 }
-int sub_0802E114(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+int EffectSpellResponsePrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
 {
     if (flag != 0)
         return 0;
@@ -364,28 +364,28 @@ int sub_0802E114(struct CardRef *ref, struct CardRef *tgt, u16 flag)
     return 0;
 }
 
-int sub_0802E3C8(struct CardRef *ref)
+int EffectTributeToTheDoomedPrepare(struct CardRef *ref)
 {
-    if (gUnk_020192E4[ref->player].handCount == 0)
+    if (gDuelPlayers[ref->player].handCount == 0)
         return 0;
     return 1;
 }
 
-int sub_0802E3EC(struct CardRef *ref)
+int EffectSoulReleasePrepare(struct CardRef *ref)
 {
-    if (sub_08008524(1 - ref->player, 0x5E7) > 0)
+    if (CountActiveCardsOnField(1 - ref->player, 0x5E7) > 0)
         return 0;
-    if (gUnk_020192E4[0].graveCount == 0 && gUnk_020192E4[1].graveCount == 0)
+    if (gDuelPlayers[0].graveCount == 0 && gDuelPlayers[1].graveCount == 0)
         return 0;
     return 1;
 }
 
-int sub_0802E42C(struct CardRef *ref)
+int EffectTheCheerfulCoffinPrepare(struct CardRef *ref)
 {
     int i;
 
-    for (i = 0; i < gUnk_020192E4[1 & (int)ref->player].handCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[1 & (int)ref->player].hand[i]));
+    for (i = 0; i < gDuelPlayers[1 & (int)ref->player].handCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[1 & (int)ref->player].hand[i]));
 
         if (CARD_TYPE(id) <= 0x14)
             return 1;
@@ -393,14 +393,14 @@ int sub_0802E42C(struct CardRef *ref)
     return 0;
 }
 
-int sub_0802E4B0(struct CardRef *ref)
+int EffectChangeOfHeartPrepare(struct CardRef *ref)
 {
-    if (sub_08008860(1 - ref->player) != 0 && sub_08008A1C(ref->player) != 0)
+    if (CountMonsters(1 - ref->player) != 0 && CountFreeMonsterZones(ref->player) != 0)
         return 1;
     return 0;
 }
 
-int sub_0802E4E0(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+int EffectSolemnJudgmentPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
 {
     if (flag == 0) {
         if (tgt == 0) {
@@ -430,25 +430,25 @@ int sub_0802E4E0(struct CardRef *ref, struct CardRef *tgt, u16 flag)
     return 0;
 }
 
-int sub_0802E564(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+int EffectMagicJammerPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
 {
     if (flag == 0 && tgt != 0) {
         u32 id = tgt->id & 0x7FF;
 
-        if (CARD_TYPE(id) == 0x16 && gUnk_020192E4[ref->player].handCount != 0 && CARD_NUMBER(id) != 0x603)
+        if (CARD_TYPE(id) == 0x16 && gDuelPlayers[ref->player].handCount != 0 && CARD_NUMBER(id) != 0x603)
             return 1;
     }
     return 0;
 }
 
-int sub_0802E5D4(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+int EffectSevenToolsOfTheBanditPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
 {
-    if (flag == 0 && tgt != 0 && CARD_TYPE(tgt->id) == 0x15 && gUnk_020192E4[ref->player].lifePoints > 999)
+    if (flag == 0 && tgt != 0 && CARD_TYPE(tgt->id) == 0x15 && gDuelPlayers[ref->player].lifePoints > 999)
         return 1;
     return 0;
 }
 
-int sub_0802E62C(struct CardRef *ref, int a, u16 flag)
+int EffectHornOfHeavenPrepare(struct CardRef *ref, int a, u16 flag)
 {
     int player = (u8)ref->pos;
     int zone = ref->pos >> 8;
@@ -458,9 +458,9 @@ int sub_0802E62C(struct CardRef *ref, int a, u16 flag)
         struct DuelZone *z = ZB(p, zone);
 
         if (CARD_ID(CARD_WORD(z->card)) != 0) {
-            if (player == ref->player && sub_08008AF8(ref->player, zone) == 0)
+            if (player == ref->player && CountTributableMonsters(ref->player, zone) == 0)
                 return 0;
-            if (player != ref->player && sub_08008AF8(ref->player, -1) == 0)
+            if (player != ref->player && CountTributableMonsters(ref->player, -1) == 0)
                 return 0;
             switch (ref->kind) {
             case 5:
@@ -473,50 +473,50 @@ int sub_0802E62C(struct CardRef *ref, int a, u16 flag)
     return 0;
 }
 
-int sub_0802E6A0(struct CardRef *ref)
+int EffectRestructerRevolutionPrepare(struct CardRef *ref)
 {
-    struct DuelPlayer *pl = gUnk_020192E4;
+    struct DuelPlayer *pl = gDuelPlayers;
     int p = ref->player;
 
     p ^= 1;
     return pl[p].handCount != 0;
 }
 
-int sub_0802E6C4(struct CardRef *ref)
+int EffectFusionSagePrepare(struct CardRef *ref)
 {
-    return sub_08044224(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
 }
 
-int sub_0802E6F8(struct CardRef *ref)
+int EffectLastWillPrepare(struct CardRef *ref)
 {
-    if (sub_08047170(ref->player) != 0) {
-        struct DuelPlayer *players = gUnk_020192E4;
+    if (CanSpecialSummon(ref->player) != 0) {
+        struct DuelPlayer *players = gDuelPlayers;
         u32 shifted = (u32)((u8 *)ref)[2] << 31;
 
         if ((s32)((u32)((u8 *)&players[shifted >> 31])[0xB] << 28) < 0) {
             /* FAKEMATCH: re-extract the player bit for the call as the ROM does. */
             __asm__("" : "+r"(shifted));
-            if (sub_08008A1C(shifted >> 31) != 0 && sub_08044224(ref->player, 0x41E, 0) != 0)
+            if (CountFreeMonsterZones(shifted >> 31) != 0 && CollectEffectTargets(ref->player, 0x41E, 0) != 0)
                 return 1;
         }
     }
     return 0;
 }
 
-int sub_0802E754(struct CardRef *ref, int a, u16 flag)
+int EffectWabokuPrepare(struct CardRef *ref, int a, u16 flag)
 {
-    if (flag == 0 && gUnk_020192E0.linkSkip != ref->player)
+    if (flag == 0 && gDuel.linkSkip != ref->player)
         return 1;
     return 0;
 }
 
-int sub_0802E784(struct CardRef *ref, int a, u16 flag)
+int EffectAttackResponsePrepare(struct CardRef *ref, int a, u16 flag)
 {
     u16 number;
     int k;
 
-    sub_08008860(ref->player);
-    sub_08008860(1 - ref->player);
+    CountMonsters(ref->player);
+    CountMonsters(1 - ref->player);
     if (flag != 0)
         return 0;
     if ((u8)ref->pos == ref->player)
@@ -549,85 +549,85 @@ int sub_0802E784(struct CardRef *ref, int a, u16 flag)
     case 0x3B1:
         if ((ref->unk8 >> 8) > 4)
             return 0;
-        if (sub_08008860(ref->player) == 0)
+        if (CountMonsters(ref->player) == 0)
             return 0;
-        if (sub_08008A1C(ref->player) <= 1)
+        if (CountFreeMonsterZones(ref->player) <= 1)
             return 0;
-        if (sub_08044224(ref->player, number, 0) <= 1)
+        if (CollectEffectTargets(ref->player, number, 0) <= 1)
             return 0;
         return 1;
     case 0x3DE:
         if ((ref->unk8 >> 8) > 4)
             return 0;
-        if (sub_08008860(ref->player) == 0)
+        if (CountMonsters(ref->player) == 0)
             return 0;
-        if (sub_08008A1C(ref->player) == 0)
+        if (CountFreeMonsterZones(ref->player) == 0)
             return 0;
-        if (sub_080088A4(1 - ref->player, 1, 0) <= 1)
+        if (CountMonstersFiltered(1 - ref->player, 1, 0) <= 1)
             return 0;
         return 1;
     }
     return 0;
 }
 
-int sub_0802E900(struct CardRef *ref)
+int EffectShareThePainPrepare(struct CardRef *ref)
 {
-    if (sub_08008AF8(ref->player, -1) != 0 && sub_08008AF8(1 - ref->player, -1) != 0)
+    if (CountTributableMonsters(ref->player, -1) != 0 && CountTributableMonsters(1 - ref->player, -1) != 0)
         return 1;
     return 0;
 }
 
-int sub_0802E938(struct CardRef *ref)
+int EffectCurseOfFiendPrepare(struct CardRef *ref)
 {
-    if (gUnk_020192E0.phase1B12 != 1 || (sub_08008860(ref->player) <= 0 && sub_08008860(1 - ref->player) <= 0))
+    if (gDuel.phase1B12 != 1 || (CountMonsters(ref->player) <= 0 && CountMonsters(1 - ref->player) <= 0))
         return 0;
     return 1;
 }
 
-int sub_0802E980(struct CardRef *ref, int a, u16 n)
+int EffectFinalDestinyPrepare(struct CardRef *ref, int a, u16 n)
 {
     int i, j;
 
-    if (gUnk_020192E4[ref->player].handCount - n <= 4)
+    if (gDuelPlayers[ref->player].handCount - n <= 4)
         return 0;
     for (i = 0; i < 2; i++) {
         for (j = 0; j <= 10; j++) {
-            if (CARD_ID(CARD_WORD(gUnk_020192E4[i & 1].zones[j].card)) != 0)
+            if (CARD_ID(CARD_WORD(gDuelPlayers[i & 1].zones[j].card)) != 0)
                 return 1;
         }
     }
     return 0;
 }
 
-int sub_0802E9E0(struct CardRef *ref, int a, u16 n)
+int EffectDarknessApproachesPrepare(struct CardRef *ref, int a, u16 n)
 {
-    if (gUnk_020192E4[ref->player].handCount - n <= 1)
+    if (gDuelPlayers[ref->player].handCount - n <= 1)
         return 0;
     return 1;
 }
 
-int sub_0802EA0C(struct CardRef *ref, struct CardRef *tgt, u16 flag)
+int EffectFairysHandMirrorPrepare(struct CardRef *ref, struct CardRef *tgt, u16 flag)
 {
     if (flag != 0 || tgt == 0 || (((u8 *)tgt)[2] & 1) == (((u8 *)ref)[2] & 1))
         return 0;
-    return sub_0802F808(0x431, ref->player, tgt) > 0;
+    return CountRedirectTargets(0x431, ref->player, tgt) > 0;
 }
 
-int sub_0802EA50(struct CardRef *ref)
+int EffectPainfulChoicePrepare(struct CardRef *ref)
 {
     int ret = 0;
 
-    if (gUnk_020192E4[ref->player].deckCount > 4)
+    if (gDuelPlayers[ref->player].deckCount > 4)
         ret = 1;
     return ret;
 }
 
-int sub_0802EA74(struct CardRef *ref)
+int EffectGraverobberPrepare(struct CardRef *ref)
 {
     int i;
 
-    for (i = 0; i < gUnk_020192E4[(1 - ref->player) & 1].graveCount; i++) {
-        u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[(1 - ref->player) & 1].graveyard[i]));
+    for (i = 0; i < gDuelPlayers[(1 - ref->player) & 1].graveCount; i++) {
+        u16 id = CARD_ID(CARD_WORD(gDuelPlayers[(1 - ref->player) & 1].graveyard[i]));
 
         if (CARD_TYPE(id) == 0x16)
             return 1;
@@ -635,9 +635,9 @@ int sub_0802EA74(struct CardRef *ref)
     return 0;
 }
 
-int sub_0802EB00(struct CardRef *ref)
+int EffectCallOfTheHauntedPrepare(struct CardRef *ref)
 {
-    if (sub_08047170(ref->player) == 0 || sub_08008A1C(ref->player) == 0)
+    if (CanSpecialSummon(ref->player) == 0 || CountFreeMonsterZones(ref->player) == 0)
         return 0;
-    return sub_08044224(ref->player, CARD_NUMBER(ref->id), 0) > 0;
+    return CollectEffectTargets(ref->player, CARD_NUMBER(ref->id), 0) > 0;
 }

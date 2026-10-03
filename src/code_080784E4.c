@@ -20,24 +20,24 @@ struct AnimState {          /* 0x14 bytes */
     u8 pad[3];
 };
 
-extern void sub_08077ED4(void *p, u8 a, u8 b, u8 c, u32 d);
-extern void sub_080786D0(struct AnimState *st);
-extern void sub_0807B4C0(u32 v);
-extern void sub_08074E20(u16 ch, s32 x, s32 y, u16 sc);
-extern int sub_08072584(u16 sjis);
-extern u16 sub_080725B0(u32 nib, u16 a, u16 b);
-extern void sub_08074B08(u8 a, u8 b);
-extern void sub_0807501C(s32 x, s32 y, u16 attr, const u8 *str);
-extern void sub_08075114(void *dest, u16 b);
-extern void sub_08079FDC(u8 *dst, u8 *src, u8 pal, u8 n);
+extern void OamListAddTemplate(void *p, u8 a, u8 b, u8 c, u32 d);
+extern void AnimStateTick(struct AnimState *st);
+extern void SetBldY(u32 v);
+extern void TextDrawGlyph(u16 ch, s32 x, s32 y, u16 sc);
+extern int SjisToGlyphIndex(u16 sjis);
+extern u16 ExpandGlyphNibble(u32 nib, u16 a, u16 b);
+extern void TextCanvasInit(u8 a, u8 b);
+extern void TextDrawString(s32 x, s32 y, u16 attr, const u8 *str);
+extern void TextCanvasToTiles(void *dest, u16 b);
+extern void OverlayBoldGlyphTile(u8 *dst, u8 *src, u8 pal, u8 n);
 extern void *memcpy(void *dst, const void *src, unsigned int n);
-extern void sub_08078FD4(u16 ch, u16 *dst, u16 a, u16 b);
-extern void sub_08078ED4(u8 ch, u16 *dst, u16 a, u16 b, u16 mode);
-extern void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
-extern void sub_08077EF4(u32 data, u8 a, u8 c1, u16 d8, u16 dA, u8 mode, u8 b, u8 c, u8 d, u8 e, u8 zero, u32 last);
-extern u8 gUnk_02000000[];
-extern u8 gUnk_02011C20[];
-extern u8 gUnk_08087B94[];
+extern void RenderFullWidthGlyph(u16 ch, u16 *dst, u16 a, u16 b);
+extern void RenderHalfWidthGlyph(u8 ch, u16 *dst, u16 a, u16 b, u16 mode);
+extern void PutMapTileRun(u16 start, u16 *dst, u8 pal, u8 mode, u8 count);
+extern void OamListAddSpriteGroup(u32 data, u8 a, u8 c1, u16 d8, u16 dA, u8 mode, u8 b, u8 c, u8 d, u8 e, u8 zero, u32 last);
+extern u8 gTextCanvas[];
+extern u8 gSaveData[];
+extern u8 gDigitTileChars[];
 
 struct Fade {
     u8 kind;            /* +0 */
@@ -54,15 +54,15 @@ struct SpriteList {
     u8 pad8[4];
     u8 count;               /* +C */
 };
-void sub_080784E4(struct SpriteList *l, u8 a, u32 unused, u8 c, u8 d, u32 e)
+void AnimStateDrawRaw(struct SpriteList *l, u8 a, u32 unused, u8 c, u8 d, u32 e)
 {
     u8 i;
 
     for (i = 0; i < l->count; i++)
-        sub_08077ED4(l->items + i * 8, a, c, d, e);
+        OamListAddTemplate(l->items + i * 8, a, c, d, e);
 }
 /* Draw/update every active animation state of a block; returns int (callers ignore it, but the ROM epilogue pops r1). */
-int sub_08078534(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h, u32 last)
+int AnimBlockDraw(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h, u32 last)
 {
     u8 i;
     struct AnimState *st;
@@ -78,7 +78,7 @@ int sub_08078534(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h, 
             if ((s8)st->active != -1) {
                 st->unk8 = g;
                 st->unkA = h;
-                sub_08077EF4(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, zero, last);
+                OamListAddSpriteGroup(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, zero, last);
             }
         }
         break;
@@ -87,13 +87,13 @@ int sub_08078534(u8 *list, u8 a, u8 b, u8 c, u8 d, u8 e, u8 mode, u16 g, u16 h, 
         for (i = 0; i < *(u16 *)(list + 0x190); i++) {
             st = (struct AnimState *)(list + i * 0x14);
             if ((s8)st->active != -1) {
-                sub_08077EF4(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, 0, last);
+                OamListAddSpriteGroup(st->data, a, st->unkC, st->unk8, st->unkA, mode, b, c, d, e, 0, last);
             }
         }
         break;
     }
 }
-u8 sub_08078670(struct AnimSeq **list, u8 *base)
+u8 AnimBlockInit(struct AnimSeq **list, u8 *base)
 {
     u8 i = 0;
     struct AnimState *st;
@@ -116,7 +116,7 @@ u8 sub_08078670(struct AnimSeq **list, u8 *base)
     *(u16 *)(base + 0x190) = i;
     return i;
 }
-void sub_080786D0(struct AnimState *arg)
+void AnimStateTick(struct AnimState *arg)
 {
     /* FAKEMATCH: retain the ROM's state/index registers and separate byte mask. */
     register struct AnimState *st __asm__("r1") = arg;
@@ -150,15 +150,15 @@ void sub_080786D0(struct AnimState *arg)
     }
 }
 
-void sub_0807871C(u8 *base)
+void AnimBlockTick(u8 *base)
 {
     u8 i;
 
     for (i = 0; i < *(u16 *)(base + 0x190); i++)
-        sub_080786D0((struct AnimState *)(base + i * 0x14));
+        AnimStateTick((struct AnimState *)(base + i * 0x14));
 }
 
-void sub_08078748(u8 *src, u8 *dst, u16 mode, u8 n, u8 rows)
+void CopyTileRows(u8 *src, u8 *dst, u16 mode, u8 n, u8 rows)
 {
     u16 i;
 
@@ -179,7 +179,7 @@ void sub_08078748(u8 *src, u8 *dst, u16 mode, u8 n, u8 rows)
     }
 }
 
-void sub_080787F4(u8 kind, s16 step, u8 c, struct Fade *f)
+void FadeStart(u8 kind, s16 step, u8 c, struct Fade *f)
 {
     u16 level;
     u32 bld;
@@ -198,7 +198,7 @@ void sub_080787F4(u8 kind, s16 step, u8 c, struct Fade *f)
         bld = 0xFF;
     *(vu16 *)0x04000050 = bld;
 }
-u32 sub_0807883C(struct Fade *f)
+u32 FadeTick(struct Fade *f)
 {
     if (f->state == 1 && f->step != 0) {
         f->level += f->step;
@@ -207,7 +207,7 @@ u32 sub_0807883C(struct Fade *f)
                 f->level = 0x1000;
                 f->step = 0;
                 f->state = 2;
-                sub_0807B4C0(0x10);
+                SetBldY(0x10);
                 return 1;
             }
         } else {
@@ -215,26 +215,26 @@ u32 sub_0807883C(struct Fade *f)
                 f->level = 0;
                 f->step = 0;
                 f->state = 3;
-                sub_0807B4C0(0);
+                SetBldY(0);
                 return 1;
             }
         }
-        sub_0807B4C0(f->level >> 8);
+        SetBldY(f->level >> 8);
     }
     return 0;
 }
-void sub_080788A0(u8 *p)
+void ClearKatakanaFlag(u8 *p)
 {
     s32 m = ~1;
 
     *p = *p & m;
 }
-extern u8 gUnk_0822BB00[];
+extern u8 gFontLatin8x8Bold[];
 /* Render one 8x8 glyph (font 0x0822BB00, 8 bytes each) into 8 4bpp words with a drop shadow:
  * glyph bits get colour a and mark buf[row + 1]; buf[row] bits left unset get colour b.
  * The loop bound lives in a variable (n = 8): reload substitutes its constant, which keeps the
  * ROM's unfolded `cmp #8; bcc` (a literal 8 is canonicalised to `cmp #7; bls`). */
-void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
+void RenderShadowedGlyph(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
 {
     u8 buf[12];
     u32 zero;
@@ -254,7 +254,7 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
     c28 = (u32)a << 28;
     zero = 0;
     CpuSet(&zero, buf, 0x05000003);
-    g = gUnk_0822BB00;
+    g = gFontLatin8x8Bold;
     if (ch > 0x9F) {
         ch -= 0x20;
         if (!(*flags & one))
@@ -292,7 +292,7 @@ void sub_080788AC(u32 *dst, u8 ch, u8 a, u8 b, u8 *flags)
         *dst++ = w;
     }
 }
-s16 sub_08078C48(u8 **pp)
+s16 ParseSignedDecimal(u8 **pp)
 {
     u16 val = 0;
     u8 *p = *pp;
@@ -335,19 +335,19 @@ void sub_08078CA8(u32 a, u8 *q)
     q[0x1D] = z;
 }
 /* Composite a nibble-per-pixel glyph buffer (EWRAM 0x02000000, width byte at +0x10000) onto solid colour `color`, writing 4bpp tile data. */
-void sub_08078CC8(u16 *dst, u16 color, u8 x)
+void TextCanvasRowsToTiles(u16 *dst, u16 color, u8 x)
 {
     s32 i, next;
     s32 w;
     u8 *buf;
 
-    /* FAKEMATCH: do-while(0) raises the loop depth of these refs so fill gets r2 (same trick as sub_08075114) */
+    /* FAKEMATCH: do-while(0) raises the loop depth of these refs so fill gets r2 (same trick as TextCanvasToTiles) */
     do {
         color &= 0xF;
         color |= color << 4;
         color |= color << 8;
     } while (0);
-    w = gUnk_02000000[0x10000];
+    w = gTextCanvas[0x10000];
     /* FAKEMATCH: do-while(0) weights x's refs so x is allocated (r5) before the block-0 base pointer (r6) */
     do {
         dst += (x << 4) * w;
@@ -356,7 +356,7 @@ void sub_08078CC8(u16 *dst, u16 color, u8 x)
     i = 0;
     if (i < w * 3) {
         /* FAKEMATCH: assigning the base in the preheader keeps the block-0 base live into it (allocated r6) */
-        buf = gUnk_02000000;
+        buf = gTextCanvas;
         do {
             /* FAKEMATCH: (w & 0xFF) is a loop-invariant no-op that loop.c hoists to the [sp+4] copy the ROM spills
                (and drags w*x out with it); the u32 sum puts the tile offset before the base in the add */
@@ -389,12 +389,12 @@ void sub_08078CC8(u16 *dst, u16 color, u8 x)
         } while (i < (w & 0xFF) * 3);
     }
 }
-void sub_08078DC4(u8 *p, u8 a, u8 b, u8 c, u8 d, u8 e)
+void TextDrawGlyphShadowed(u8 *p, u8 a, u8 b, u8 c, u8 d, u8 e)
 {
-    sub_08074E20((p[0] << 8) | p[1], a + 1, b + 1, d | (e << 8));
-    sub_08074E20((p[0] << 8) | p[1], a, b, c | (e << 8));
+    TextDrawGlyph((p[0] << 8) | p[1], a + 1, b + 1, d | (e << 8));
+    TextDrawGlyph((p[0] << 8) | p[1], a, b, c | (e << 8));
 }
-u16 sub_08078E2C(u8 **pp)
+u16 ParseDecimal(u8 **pp)
 {
     u16 val = 0;
     u8 n = 0;
@@ -415,7 +415,7 @@ u16 sub_08078E2C(u8 **pp)
     }
     return val;
 }
-void sub_08078E80(u16 *dst, u8 c, u16 x, u16 y, u8 pal, u16 base, u8 *flags)
+void PutMapChar(u16 *dst, u8 c, u16 x, u16 y, u8 pal, u16 base, u8 *flags)
 {
     if (c > 0x9F) {
         c -= 0x20;
@@ -425,7 +425,7 @@ void sub_08078E80(u16 *dst, u8 c, u16 x, u16 y, u8 pal, u16 base, u8 *flags)
     dst[x + (y << 5)] = c | base | (pal << 12);
 }
 /* Expand one 8x8 ASCII glyph (font at 0x08228D00, 8 bytes each) to tile halfwords. mode != 0 ORs into the existing data. */
-void sub_08078ED4(u8 ch, u16 *dst, u16 a, u16 b, u16 mode)
+void RenderHalfWidthGlyph(u8 ch, u16 *dst, u16 a, u16 b, u16 mode)
 {
     u16 *src = (u16 *)(0x08228D00 + ch * 8);
     s32 i;
@@ -433,43 +433,43 @@ void sub_08078ED4(u8 ch, u16 *dst, u16 a, u16 b, u16 mode)
 
     for (i = 3; i >= 0; i--) {
         if (mode == 0) {
-            *dst++ = sub_080725B0((*src >> 4) & m, a, b);
-            *dst++ = sub_080725B0(*src & 0xF, a, b);
-            *dst++ = sub_080725B0((*src >> 12) & m, a, b);
-            *dst = sub_080725B0((*src >> 8) & m, a, b);
+            *dst++ = ExpandGlyphNibble((*src >> 4) & m, a, b);
+            *dst++ = ExpandGlyphNibble(*src & 0xF, a, b);
+            *dst++ = ExpandGlyphNibble((*src >> 12) & m, a, b);
+            *dst = ExpandGlyphNibble((*src >> 8) & m, a, b);
         } else {
-            *dst++ |= sub_080725B0(*src & 0xF, a, b);
-            *dst++ |= sub_080725B0((*src >> 4) & m, a, b);
-            *dst++ |= sub_080725B0((*src >> 8) & m, a, b);
-            *dst |= sub_080725B0((*src >> 12) & m, a, b);
+            *dst++ |= ExpandGlyphNibble(*src & 0xF, a, b);
+            *dst++ |= ExpandGlyphNibble((*src >> 4) & m, a, b);
+            *dst++ |= ExpandGlyphNibble((*src >> 8) & m, a, b);
+            *dst |= ExpandGlyphNibble((*src >> 12) & m, a, b);
         }
         dst++;
         src++;
     }
 }
 /* Expand one Shift-JIS glyph (8 bytes at 0x081C0000) to 16 tile halfwords. */
-void sub_08078FD4(u16 ch, u16 *dst, u16 a, u16 b)
+void RenderFullWidthGlyph(u16 ch, u16 *dst, u16 a, u16 b)
 {
-    u16 *src = (u16 *)(0x081C0000 + sub_08072584(ch) * 8);
+    u16 *src = (u16 *)(0x081C0000 + SjisToGlyphIndex(ch) * 8);
     s32 i;
     u16 m = 0xF;
 
     for (i = 3; i >= 0; i--) {
-        *dst++ = sub_080725B0((*src >> 4) & m, a, b);
-        *dst++ = sub_080725B0(*src & 0xF, a, b);
-        *dst++ = sub_080725B0((*src >> 12) & m, a, b);
-        *dst++ = sub_080725B0((*src >> 8) & m, a, b);
+        *dst++ = ExpandGlyphNibble((*src >> 4) & m, a, b);
+        *dst++ = ExpandGlyphNibble(*src & 0xF, a, b);
+        *dst++ = ExpandGlyphNibble((*src >> 12) & m, a, b);
+        *dst++ = ExpandGlyphNibble((*src >> 8) & m, a, b);
         src++;
     }
 }
-/* Render one 10-row glyph (0x14 bytes per glyph at 0x081D0200, index from sub_08072584) as two 4bpp tile
+/* Render one 10-row glyph (0x14 bytes per glyph at 0x081D0200, index from SjisToGlyphIndex) as two 4bpp tile
  * columns: bit i of each row goes to nibble (a + 7 - i) of the word at dst, and bit (a + 8 - i) of the
  * byte-swapped row to nibble i of the word at dst + 0x10. Set bits take colour c, clear bits colour
  * `color`; with 0x02011C20[4] bit 7 the words start as solid `color`, otherwise they keep the existing
  * tile data. Rows run 8 per block, two blocks 0x150 halfwords apart, stopping after 10 rows. */
-void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
+void RenderKanji10x10Glyph(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 {
-    u16 *src = (u16 *)(0x081D0200 + sub_08072584(ch) * 20);
+    u16 *src = (u16 *)(0x081D0200 + SjisToGlyphIndex(ch) * 20);
     u16 *dst2 = dst + 0x10;
     u8 i, row, blk;
     u8 n = 10;
@@ -480,7 +480,7 @@ void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
 
     for (blk = 0; blk < 2; blk++) {
         for (row = 0; row < 8; row++) {
-            if (gUnk_02011C20[4] & 0x80) {
+            if (gSaveData[4] & 0x80) {
                 w[0] = w[1] = color | (color << 4) | (color << 8) | (color << 12) | (color << 16) | (color << 20) | (color << 24) | (color << 28);
             } else {
                 w[0] = dst[0] | (dst[1] << 16);
@@ -516,7 +516,7 @@ void sub_08079068(u16 ch, u16 *dst, u8 a, u16 c, u16 color)
     }
 }
 /* Render a string as glyph tiles into `dst` (0x20 bytes per tile); ASCII glyphs are half width so two share a tile. */
-void sub_080791F4(u8 *str, u8 *dst, u8 a, u8 b)
+void RenderStringToTiles(u8 *str, u8 *dst, u8 a, u8 b)
 {
     u8 half = 0;
     u16 col = 0;
@@ -526,14 +526,14 @@ void sub_080791F4(u8 *str, u8 *dst, u8 a, u8 b)
 
     p = str;
     while (*p != 0) {
-        if (gUnk_02011C20[4] & 0x80) {
+        if (gSaveData[4] & 0x80) {
             ch = (p[0] << 8) | p[1];
             if (ch > 0x813F) {
-                sub_08078FD4(ch, (u16 *)(dst + ((col++ + row * 32) << 5)), a, b);
+                RenderFullWidthGlyph(ch, (u16 *)(dst + ((col++ + row * 32) << 5)), a, b);
             }
             p += 2;
         } else {
-            sub_08078ED4(p[0], (u16 *)(dst + ((col + row * 32) << 5)), a, b, half);
+            RenderHalfWidthGlyph(p[0], (u16 *)(dst + ((col + row * 32) << 5)), a, b, half);
             if (half != 0) {
                 half = 0;
                 col++;
@@ -545,7 +545,7 @@ void sub_080791F4(u8 *str, u8 *dst, u8 a, u8 b)
     }
 }
 /* Write `count` consecutive tile indices starting at `start` into a tilemap: mode 0 = one map cell each, mode 1 = 2x2 cells (tile*4 + 0..3). */
-void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count)
+void PutMapTileRun(u16 start, u16 *dst, u8 pal, u8 mode, u8 count)
 {
     u8 i;
     u8 col;
@@ -575,7 +575,7 @@ void sub_080792A0(u16 start, u16 *dst, u8 pal, u8 mode, u8 count)
     }
 }
 /* Draw a string as text on a 2-row tilemap strip (upper and lower half of each glyph). */
-void sub_08079340(u8 *str, u8 *dst, u32 p2, u16 x, u8 q0, u8 q1, u8 q2, u8 q3)
+void DrawTextStrip(u8 *str, u8 *dst, u32 p2, u16 x, u8 q0, u8 q1, u8 q2, u8 q3)
 {
     u8 n;
     u8 *q;
@@ -586,17 +586,17 @@ void sub_08079340(u8 *str, u8 *dst, u32 p2, u16 x, u8 q0, u8 q1, u8 q2, u8 q3)
     while (*q++ != 0)
         n++;
     len = (n * 5 + 7) >> 3;
-    sub_08074B08(len, 2);
-    sub_0807501C(0, 0, q1 | 0xA00, str);
-    sub_08075114((void *)p2, q2);
-    sub_080792A0(x, (u16 *)dst, q0, q3, len);
+    TextCanvasInit(len, 2);
+    TextDrawString(0, 0, q1 | 0xA00, str);
+    TextCanvasToTiles((void *)p2, q2);
+    PutMapTileRun(x, (u16 *)dst, q0, q3, len);
     if (dst == (u8 *)0x0600C7C8)
         dst = (u8 *)0x0600BFC8;
-    sub_080792A0(x + len, (u16 *)(dst + 0x40), q0, q3, len);
+    PutMapTileRun(x + len, (u16 *)(dst + 0x40), q0, q3, len);
 }
-extern void sub_080791F4_5(u8 *str, u8 *dst, u8 a, u8 b, u8 extra) asm("sub_080791F4");
+extern void sub_080791F4_5(u8 *str, u8 *dst, u8 a, u8 b, u8 extra) asm("RenderStringToTiles");
 
-void sub_08079404(u8 *s, u32 p1, u32 p2, u16 p3, u8 q0, u8 q1, u8 q2, u8 q3)
+void DrawStringTiles(u8 *s, u32 p1, u32 p2, u16 p3, u8 q0, u8 q1, u8 q2, u8 q3)
 {
     u8 n;
 
@@ -604,9 +604,9 @@ void sub_08079404(u8 *s, u32 p1, u32 p2, u16 p3, u8 q0, u8 q1, u8 q2, u8 q3)
     n = 0;
     while (*s++ != 0)
         n++;
-    sub_080792A0(p3, (u16 *)p1, q0, q3, (n + 1) >> 1);
+    PutMapTileRun(p3, (u16 *)p1, q0, q3, (n + 1) >> 1);
 }
-void sub_08079474(u8 *dst, u8 unused, u8 pal)
+void LoadDigitTiles(u8 *dst, u8 unused, u8 pal)
 {
     u8 buf[0x10];
     vu16 zero;
@@ -614,7 +614,7 @@ void sub_08079474(u8 *dst, u8 unused, u8 pal)
     vu32 *d2;
     u8 i;
 
-    memcpy(buf, gUnk_08087B94, 13);
+    memcpy(buf, gDigitTileChars, 13);
     zero = 0;
     dma = (vu32 *)0x040000D4;
     dma[0] = (u32)&zero;
@@ -625,10 +625,10 @@ void sub_08079474(u8 *dst, u8 unused, u8 pal)
     while (d2[2] & 0x80000000)
         ;
     for (i = 0; i < 13; i++)
-        sub_08079FDC(dst + i * 32, buf + i, pal, 4);
+        OverlayBoldGlyphTile(dst + i * 32, buf + i, pal, 4);
 }
 /* Print `val` as decimal digits right to left starting at (col, row) of a tilemap; mode 0 = zero padded to n digits, mode 1 = no leading zeros. */
-void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2)
+void DrawNumberTiles(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 base, u8 m2)
 {
     u8 i;
     u16 d;
@@ -638,12 +638,12 @@ void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 
         for (i = 0; i < n; i++) {
             d = val % 10;
             val = val / 10;
-            sub_080792A0(base + d, dst + (col-- + row * 32), pal, m2, 1);
+            PutMapTileRun(base + d, dst + (col-- + row * 32), pal, m2, 1);
         }
         break;
     case 1:
         if (val == 0) {
-            sub_080792A0(base, dst + (col-- + row * 32), pal, m2, 1);
+            PutMapTileRun(base, dst + (col-- + row * 32), pal, m2, 1);
             return;
         }
         for (i = 0; i < n; i++) {
@@ -651,7 +651,7 @@ void sub_080794E0(u16 val, u8 n, u8 mode, u16 *dst, u8 col, u8 row, u8 pal, u16 
             val = val / 10;
             if (d == 0 && val == 0)
                 return;
-            sub_080792A0(base + d, dst + (col-- + row * 32), pal, m2, 1);
+            PutMapTileRun(base + d, dst + (col-- + row * 32), pal, m2, 1);
         }
         break;
     }

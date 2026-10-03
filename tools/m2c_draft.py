@@ -14,7 +14,7 @@ Preparation of the asm (in a temp copy):
     which is how m2c finds jump tables;
   - divided-syntax `ldsh`/`ldsb` are renamed to `ldrsh`/`ldrsb` (m2c does not know the old spellings);
   - literal-pool words holding RAM / ROM-data addresses are replaced by symbol names (a real name from
-    build/eds.elf when there is one, else gUnk_XXXXXXXX), so the draft reads `gUnk_02015EF0.unkA` instead of
+    build/eds.elf when there is one, else gUnk_XXXXXXXX), so the draft reads `gAiState.unkA` instead of
     `((void *)0x02015EF0)->unkA`.
 The unit's own C (types, structs, prototypes) is passed to m2c as context when it parses; otherwise the
 draft is made without context.

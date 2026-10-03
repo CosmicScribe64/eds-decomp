@@ -3,12 +3,12 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0805C508/sub_0805C508.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805C938.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805CB2C.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805CDA4.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805CEAC.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805D080.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805D254.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805D4B4.s"
-	.include "asm/nonmatching/code_0805C508/sub_0805D4D0.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyValkyrion.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyFourTokensCannonSoldier.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyElegantEgotist.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyDoubleMachineAtk.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyBanishThreeSummon.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyBanishTwoSummon.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyToonWorld.s"
+	.include "asm/nonmatching/code_0805C508/AiStrategyNone.s"
+	.include "asm/nonmatching/code_0805C508/AiStepRunStrategy.s"

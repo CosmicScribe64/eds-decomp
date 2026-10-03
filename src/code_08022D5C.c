@@ -16,14 +16,14 @@ struct LinkState {
     u8 pad308[0x484 - 0x308];
     u16 remoteCommand, remoteArg1, remoteArg2, remoteArg3;
 };
-extern struct LinkState gUnk_02017FB0;
+extern struct LinkState gLinkState;
 
-void sub_08022D5C(void)
+void DuelLink_MirrorCommand(void)
 {
-    u16 command = gUnk_02017FB0.command;
-    u16 arg1 = gUnk_02017FB0.arg1;
-    u16 arg2 = gUnk_02017FB0.arg2;
-    u16 arg3 = gUnk_02017FB0.arg3;
+    u16 command = gLinkState.command;
+    u16 arg1 = gLinkState.arg1;
+    u16 arg2 = gLinkState.arg2;
+    u16 arg3 = gLinkState.arg3;
     struct CardWord card1, card2;
 
     if (command & 0x8000)
@@ -46,13 +46,13 @@ void sub_08022D5C(void)
         }
         break;
     case 0x30:
-        arg1 = gUnk_02017FB0.arg2;
-        arg2 = gUnk_02017FB0.arg1;
+        arg1 = gLinkState.arg2;
+        arg2 = gLinkState.arg1;
         break;
     case 0x31:
-        arg1 = gUnk_02017FB0.arg2;
-        arg2 = gUnk_02017FB0.arg1;
-        arg3 = (gUnk_02017FB0.arg3 >> 8) | ((u8)gUnk_02017FB0.arg3 << 8);
+        arg1 = gLinkState.arg2;
+        arg2 = gLinkState.arg1;
+        arg3 = (gLinkState.arg3 >> 8) | ((u8)gLinkState.arg3 << 8);
         break;
     case 0x64: case 0x65: case 0x66: case 0x67: case 0x68:
     case 0x6A: case 0x7C: case 0x7D: case 0xC2: case 0xCB:
@@ -73,15 +73,15 @@ void sub_08022D5C(void)
         arg1 = (u8)(1 - arg1) | ((arg1 >> 8) << 8);
         break;
     case 4:
-        if (gUnk_02017FB0.arg1 <= 1)
-            arg1 = 1 - gUnk_02017FB0.arg1;
-        gUnk_02017FB0.resultReceived = 1;
+        if (gLinkState.arg1 <= 1)
+            arg1 = 1 - gLinkState.arg1;
+        gLinkState.resultReceived = 1;
         break;
     }
-    gUnk_02017FB0.remoteCommand = command;
-    gUnk_02017FB0.remoteArg1 = arg1;
-    gUnk_02017FB0.remoteArg2 = arg2;
-    gUnk_02017FB0.remoteArg3 = arg3;
+    gLinkState.remoteCommand = command;
+    gLinkState.remoteArg1 = arg1;
+    gLinkState.remoteArg2 = arg2;
+    gLinkState.remoteArg3 = arg3;
 }
 /* Byte and halfword views retain the original access widths for packet fields. */
 struct LinkReceive {
@@ -112,11 +112,11 @@ struct LinkReceive {
     u8 pad473[0x48C - 0x473];
     u8 b0x48C, pad48D, b0x48E;
 };
-#define LINK_RX (*(struct LinkReceive *)&gUnk_02017FB0)
+#define LINK_RX (*(struct LinkReceive *)&gLinkState)
 #define LB(off) (LINK_RX.b##off)
 #define LW(off) (LINK_RX.w##off)
-#define LP(off) ((u8 *)&gUnk_02017FB0 + (off))
-#define AB(off) (gUnk_02017A40[(off)])
+#define LP(off) ((u8 *)&gLinkState + (off))
+#define AB(off) (gChain[(off)])
 struct ActionState {
     u8 pad0[0x491];
     u32 rest491:7, appended:1;
@@ -125,7 +125,7 @@ struct ActionState {
     u8 pad494[0x4C2 - 0x494];
     u16 w0x4C2, w0x4C4;
 };
-#define ACTION_STATE (*(struct ActionState *)gUnk_02017A40)
+#define ACTION_STATE (*(struct ActionState *)gChain)
 #define AW(off) (ACTION_STATE.w##off)
 struct DuelReceiveFlags {
     u8 pad0[0x1B12];
@@ -135,13 +135,13 @@ struct DuelReceiveFlags {
     u8 pad16[0x1B50 - 0x1B16];
     u32 messageSent:1, rest50:31;
 };
-extern struct DuelReceiveFlags gUnk_020192E0;
-extern u8 gUnk_02017A40[], gUnk_0201CFB0[];
+extern struct DuelReceiveFlags gDuel;
+extern u8 gChain[], gDuelScreen[];
 struct DuelUiReceive { u32 fast:1, rest:31; u8 pad4[4]; };
-#define DUEL_UI_RX (*(struct DuelUiReceive *)gUnk_0201CFB0)
-extern u8 gUnk_0201CF90[], gUnk_0201AE44[], gUnk_0201840C[];
+#define DUEL_UI_RX (*(struct DuelUiReceive *)gDuelScreen)
+extern u8 gSummonAction[], gUnk_0201AE44[], gLinkRemoteEntries[];
 struct SioState { u8 pad0[0x522]; u16 error; };
-extern struct SioState gUnk_030049D0;
+extern struct SioState gLinkBuf;
 struct ReceivePlayer {
     u16 life;
     u8 handCount, deckCount, graveCount, fusionCount, banishCount;
@@ -149,9 +149,9 @@ struct ReceivePlayer {
     struct CardWord hand[80], deck[80], grave[80], fusion[80], banish[80];
     u8 padCC4[0xD64 - 0xCC4];
 };
-extern struct ReceivePlayer gUnk_020192E4[2];
-extern struct CardWord gUnk_02019968[], gUnk_02019AA8[], gUnk_02019BE8[];
-extern struct CardWord gUnk_02019D28[], gUnk_02019E68[], gUnk_02017FB4[];
+extern struct ReceivePlayer gDuelPlayers[2];
+extern struct CardWord gDuelHands[], gDuelDecks[], gDuelGraveyards[];
+extern struct CardWord gDuelFusionDecks[], gDuelBanished[], gLinkRxCards[];
 
 struct Action {
     u16 card;
@@ -171,33 +171,33 @@ struct IndexedReceiveAction {
     u8 pad0[0x30E];
     u32 player:1, rest:7;
 };
-#define PAIR_RX (*(struct PairReceive *)gUnk_0201840C)
-extern struct Action gUnk_02017EFC, gUnk_02017F10;
-#define gUnk_02017EFC (*(struct Action *)&gUnk_02017A40[0x4BC])
-#define gUnk_02017F10 (*(struct Action *)&gUnk_02017A40[0x4D0])
-#define gUnk_0201840C LP(0x45C)
-int sub_080722B0(void *dest);
-void sub_08077BCC(void);
-void sub_080617F4(void);
-void sub_08024134(int player, int zone, int index);
-void sub_08075294(void *dest, const void *src, u32 size);
-void sub_08055AB4(void);
-void sub_08042AB0(int player, int kind, u32 arg);
-void sub_0801FBF4(int toB, const void *src);
-void sub_0801FBCC(u32 arg);
-void sub_080226CC(int player, u16 kind, const void *src, int size);
-void sub_0801FA90(u16 toB, u32 a, u32 b);
-void sub_0801A7B4(void *state, int player);
-void sub_080229EC(int player);
-void sub_08022A9C(int player);
-void sub_08022B4C(int player);
-void sub_08022BFC(int player);
-void sub_08022CAC(int player);
-void sub_08007558(struct CardWord *dest, const struct CardWord *src);
-void sub_080611AC(void);
-u16 sub_0802297C(u16 a, u16 b, u16 c, u16 d);
+#define PAIR_RX (*(struct PairReceive *)gLinkRemoteEntries)
+extern struct Action gChainQueryEntry, gChainQueryEntryRaw;
+#define gChainQueryEntry (*(struct Action *)&gChain[0x4BC])
+#define gChainQueryEntryRaw (*(struct Action *)&gChain[0x4D0])
+#define gLinkRemoteEntries LP(0x45C)
+int LinkRecvMessage(void *dest);
+void FadeOutBGM(void);
+void LinkWaitEnd_Nop(void);
+void DuelCursor_Select(int player, int zone, int index);
+void MemCopy16(void *dest, const void *src, u32 size);
+void SummonAction_StartFromLink(void);
+void EventResponse_Request(int player, int kind, u32 arg);
+void Chain_AddPartnerEntry(int toB, const void *src);
+void Chain_AddPending(u32 arg);
+void DuelPrompt_PostData(int player, u16 kind, const void *src, int size);
+void Chain_Add(u16 toB, u32 a, u32 b);
+void ChainListScreen_Start(void *state, int player);
+void DuelLink_SendHand(int player);
+void DuelLink_SendDeck(int player);
+void DuelLink_SendGraveyard(int player);
+void DuelLink_SendFusionDeck(int player);
+void DuelLink_SendBanished(int player);
+void CopyDuelCard(struct CardWord *dest, const struct CardWord *src);
+void DrawAllAreaTiles(void);
+u16 DuelLink_SendMessage(u16 a, u16 b, u16 c, u16 d);
 
-u16 sub_08023228(void)
+u16 DuelLink_PollMessage(void)
 {
     int received;
     int player, count, i;
@@ -205,18 +205,18 @@ u16 sub_08023228(void)
     {
         u32 message;
         /* FAKEMATCH: schedule the shared receive-buffer address before the seed. */
-        asm("" : : "r"(&gUnk_02017FB0));
+        asm("" : : "r"(&gLinkState));
         message = 0xF000;
         /* FAKEMATCH: rematerialize the switch constant after the receive call. */
         asm("" : "+r"(message));
         LW(0) = message;
     }
-    received = sub_080722B0(&gUnk_02017FB0);
-    if (gUnk_030049D0.error) {
+    received = LinkRecvMessage(&gLinkState);
+    if (gLinkBuf.error) {
         /* FAKEMATCH: duplicate the error tail to retain the target register allocation. */
-        sub_0802297C(0xEE00, 0, 0, 0);
-        sub_08077BCC();
-        gUnk_020192E0.linkError = 1;
+        DuelLink_SendMessage(0xEE00, 0, 0, 0);
+        FadeOutBGM();
+        gDuel.linkError = 1;
         return 0;
     }
     if (!received)
@@ -230,22 +230,22 @@ u16 sub_08023228(void)
     case 0xF002: LINK_RX.f306_2 = 1; return 1;
     case 0xF003:
         LINK_RX.f306_3 = 1;
-        gUnk_020192E0.result = (u8)LW(2);
+        gDuel.result = (u8)LW(2);
         return 1;
     case 0xF004: LINK_RX.f306_6 = 1; return 1;
     case 0xF005:
-        gUnk_020192E0.surrender = 1;
+        gDuel.surrender = 1;
         goto selectSurrender;
     case 0xF006:
-        gUnk_020192E0.surrender = 0;
+        gDuel.surrender = 0;
         LINK_RX.f306_6 = 0;
-        sub_080617F4();
+        LinkWaitEnd_Nop();
     selectSurrender:
-        sub_08024134(0, 5, 0);
+        DuelCursor_Select(0, 5, 0);
         return 1;
     case 0xF05A:
-        sub_08075294(gUnk_0201CF90, LP(2), 0x14);
-        sub_08055AB4();
+        MemCopy16(gSummonAction, LP(2), 0x14);
+        SummonAction_StartFromLink();
         return 1;
     case 0xF05B: LINK_RX.f306_7 = 1; return 1;
     case 0xF057:
@@ -266,9 +266,9 @@ u16 sub_08023228(void)
         LW(0x45A) = LW(2);
         return 1;
     case 0xF051:
-        sub_08075294(&gUnk_02017EFC, LP(2), 0x14);
-        gUnk_02017EFC.player = 1 - gUnk_02017EFC.player;
-        switch (gUnk_02017EFC.kind) {
+        MemCopy16(&gChainQueryEntry, LP(2), 0x14);
+        gChainQueryEntry.player = 1 - gChainQueryEntry.player;
+        switch (gChainQueryEntry.kind) {
         case 5: case 6: case 7: case 8: case 16: case 17:
         case 20: case 21: case 25: case 26: case 27: case 29: case 30:
             AW(0x4C2) = (u8)(1 - AW(0x4C2)) | ((AW(0x4C2) >> 8) << 8);
@@ -311,28 +311,28 @@ u16 sub_08023228(void)
             }
             {
                 u32 packed = from | (to << 16);
-                sub_08042AB0(who, kind, packed);
+                EventResponse_Request(who, kind, packed);
             }
         }
         return 1;
     case 0xF054:
-        sub_08075294(&gUnk_02017F10, LP(2), 0x14);
-        gUnk_02017F10.player = 1 - gUnk_02017F10.player;
-        gUnk_02017F10.from = (u8)(1 - gUnk_02017F10.from) | ((gUnk_02017F10.from >> 8) << 8);
-        gUnk_02017F10.to = (u8)(1 - gUnk_02017F10.to) | ((gUnk_02017F10.to >> 8) << 8);
-        sub_08075294(&gUnk_02017EFC, &gUnk_02017F10, 0x14);
+        MemCopy16(&gChainQueryEntryRaw, LP(2), 0x14);
+        gChainQueryEntryRaw.player = 1 - gChainQueryEntryRaw.player;
+        gChainQueryEntryRaw.from = (u8)(1 - gChainQueryEntryRaw.from) | ((gChainQueryEntryRaw.from >> 8) << 8);
+        gChainQueryEntryRaw.to = (u8)(1 - gChainQueryEntryRaw.to) | ((gChainQueryEntryRaw.to >> 8) << 8);
+        MemCopy16(&gChainQueryEntry, &gChainQueryEntryRaw, 0x14);
         ACTION_STATE.clear492 = 0;
         ACTION_STATE.fromPair = 1;
         LINK_RX.f307_2 = 1;
         return 1;
     case 0xF055: LINK_RX.f307_3 = 1; return 1;
     case 0xF053:
-        sub_0801FBF4(0, LP(2));
+        Chain_AddPartnerEntry(0, LP(2));
         ACTION_STATE.appended = 1;
         LINK_RX.f307_3 = 1;
         return 1;
     case 0xF056:
-        sub_0801FBF4(1, LP(2));
+        Chain_AddPartnerEntry(1, LP(2));
         ACTION_STATE.appended = 1;
         LINK_RX.f307_3 = 1;
         return 1;
@@ -341,20 +341,20 @@ u16 sub_08023228(void)
             /* FAKEMATCH: retain the source and packed-argument registers. */
             register struct LinkReceive *rx asm("r0") = &LINK_RX;
             register u32 packed asm("r1") = rx->w2 | (rx->w4 << 16);
-            sub_0801FBCC(packed);
+            Chain_AddPending(packed);
         }
         return 1;
     case 0xF0A1:
-        sub_080226CC(0, LW(2), LP(4), 8);
-        gUnk_020192E0.messageSent = 1;
+        DuelPrompt_PostData(0, LW(2), LP(4), 8);
+        gDuel.messageSent = 1;
         return 1;
     case 0xF0A2:
-        sub_08075294(gUnk_0201AE44, LP(2), 0x10);
+        MemCopy16(gUnk_0201AE44, LP(2), 0x10);
         LINK_RX.f307_7 = 1;
         LINK_RX.f306_6 = 0;
         return 1;
     case 0xF091:
-        sub_08075294(gUnk_0201840C, LP(2), 0x28);
+        MemCopy16(gLinkRemoteEntries, LP(2), 0x28);
         PAIR_RX.first.player = 0;
         PAIR_RX.second.player = 1 - PAIR_RX.second.player;
         PAIR_RX.step31 = 0;
@@ -363,10 +363,10 @@ u16 sub_08023228(void)
     case 0xF092:
         LINK_RX.f308_3 = 1;
         LINK_RX.f306_6 = 0;
-        sub_08075294(&gUnk_02017A40[0x280 + AB(0x3D1) * 0x14], LP(2), 0x14);
+        MemCopy16(&gChain[0x280 + AB(0x3D1) * 0x14], LP(2), 0x14);
         return 1;
     case 0xF081:
-        sub_08075294(LP(0x45C), LP(2), 0x28);
+        MemCopy16(LP(0x45C), LP(2), 0x28);
         LINK_RX.player45E = 0;
         LINK_RX.player472 = 1 - LINK_RX.player472;
         LB(0x48E) = 0;
@@ -375,10 +375,10 @@ u16 sub_08023228(void)
     case 0xF082:
         LINK_RX.f308_1 = 1;
         LINK_RX.f306_6 = 0;
-        sub_08075294(&gUnk_02017A40[0x280 + AB(0x3D1) * 0x14], LP(2), 0x14);
+        MemCopy16(&gChain[0x280 + AB(0x3D1) * 0x14], LP(2), 0x14);
         return 1;
     case 0xF071:
-        sub_08075294(gUnk_0201840C, LP(6), 0x28);
+        MemCopy16(gLinkRemoteEntries, LP(6), 0x28);
         {
             struct LinkReceive *rx = &LINK_RX;
             u8 *dest = &PAIR_RX.selector34;
@@ -389,53 +389,53 @@ u16 sub_08023228(void)
         LINK_RX.f308_4 = 1;
         return 1;
     case 0xF072:
-        sub_0801FA90(LW(2), LW(4) | (LW(6) << 16), LW(8) | (LW(0xA) << 16));
+        Chain_Add(LW(2), LW(4) | (LW(6) << 16), LW(8) | (LW(0xA) << 16));
         return 1;
     case 0xF073: LINK_RX.f308_5 = 1; return 1;
     case 0xF061: LW(0x44C) = LW(2); return 1;
     case 0xF062:
-        sub_08075294(LP(0x30C + LW(2) * 0x14), LP(4), 0x14);
+        MemCopy16(LP(0x30C + LW(2) * 0x14), LP(4), 0x14);
         { struct IndexedReceiveAction *a = (struct IndexedReceiveAction *)LP(LW(2) * 0x14); a->player = 1 - a->player; }
         return 1;
     case 0xF063:
-        sub_0801A7B4(LP(0x30C), 0);
+        ChainListScreen_Start(LP(0x30C), 0);
         LINK_RX.f308_6 = 1;
         return 1;
     case 0xF064:
-        sub_0801A7B4(LP(0x30C), 1);
+        ChainListScreen_Start(LP(0x30C), 1);
         LINK_RX.f308_6 = 1;
         return 1;
     case 0xF065: LINK_RX.f308_7 = 1; return 1;
-    case 0xF011: sub_080229EC(0); return 1;
-    case 0xF012: sub_08022A9C(0); return 1;
-    case 0xF013: sub_08022B4C(0); return 1;
-    case 0xF014: sub_08022BFC(0); return 1;
-    case 0xF015: sub_08022CAC(0); return 1;
+    case 0xF011: DuelLink_SendHand(0); return 1;
+    case 0xF012: DuelLink_SendDeck(0); return 1;
+    case 0xF013: DuelLink_SendGraveyard(0); return 1;
+    case 0xF014: DuelLink_SendFusionDeck(0); return 1;
+    case 0xF015: DuelLink_SendBanished(0); return 1;
     case 0xF021:
         player = LW(2) >> 8; count = (u8)LW(2);
         player = 1 - player;
         i = 0;
         if (i < count) do {
-            const struct CardWord *src = &gUnk_02017FB4[i];
-            struct CardWord *card = &gUnk_020192E4[player & 1].hand[i];
-            sub_08007558(&gUnk_020192E4[player & 1].hand[i], src);
+            const struct CardWord *src = &gLinkRxCards[i];
+            struct CardWord *card = &gDuelPlayers[player & 1].hand[i];
+            CopyDuelCard(&gDuelPlayers[player & 1].hand[i], src);
             card->player = 1 - card->player;
         } while (++i < count);
-        gUnk_020192E4[player & 1].handCount = count;
-        sub_0802297C(0xF031, 0, 0, 0);
+        gDuelPlayers[player & 1].handCount = count;
+        DuelLink_SendMessage(0xF031, 0, 0, 0);
         LINK_RX.f305_5 = 1;
         return 1;
     case 0xF022:
         player = LW(2) >> 8; count = (u8)LW(2);
         player = 1 - player;
         for (i = 0; i < count; i++) {
-            const struct CardWord *src = &gUnk_02017FB4[i];
-            struct CardWord *card = &gUnk_020192E4[player & 1].deck[i];
-            sub_08007558(card, src);
+            const struct CardWord *src = &gLinkRxCards[i];
+            struct CardWord *card = &gDuelPlayers[player & 1].deck[i];
+            CopyDuelCard(card, src);
             card->player = 1 - card->player;
         }
-        gUnk_020192E4[player & 1].deckCount = count;
-        sub_0802297C(0xF032, 0, 0, 0);
+        gDuelPlayers[player & 1].deckCount = count;
+        DuelLink_SendMessage(0xF032, 0, 0, 0);
         LINK_RX.f305_6 = 1;
         return 1;
     case 0xF023:
@@ -443,14 +443,14 @@ u16 sub_08023228(void)
         player = 1 - player;
         i = 0;
         if (i < count) do {
-            const struct CardWord *src = &gUnk_02017FB4[i];
-            struct CardWord *card = &gUnk_020192E4[player & 1].grave[i];
-            sub_08007558(&gUnk_020192E4[player & 1].grave[i], src);
+            const struct CardWord *src = &gLinkRxCards[i];
+            struct CardWord *card = &gDuelPlayers[player & 1].grave[i];
+            CopyDuelCard(&gDuelPlayers[player & 1].grave[i], src);
             card->player = 1 - card->player;
         } while (++i < count);
-        gUnk_020192E4[player & 1].graveCount = count;
-        sub_080611AC();
-        sub_0802297C(0xF033, 0, 0, 0);
+        gDuelPlayers[player & 1].graveCount = count;
+        DrawAllAreaTiles();
+        DuelLink_SendMessage(0xF033, 0, 0, 0);
         LINK_RX.f305_7 = 1;
         return 1;
     case 0xF024:
@@ -458,14 +458,14 @@ u16 sub_08023228(void)
         player = 1 - player;
         i = 0;
         if (i < count) do {
-            const struct CardWord *src = &gUnk_02017FB4[i];
-            struct CardWord *card = &gUnk_020192E4[player & 1].fusion[i];
-            sub_08007558(&gUnk_020192E4[player & 1].fusion[i], src);
+            const struct CardWord *src = &gLinkRxCards[i];
+            struct CardWord *card = &gDuelPlayers[player & 1].fusion[i];
+            CopyDuelCard(&gDuelPlayers[player & 1].fusion[i], src);
             card->player = 1 - card->player;
         } while (++i < count);
-        gUnk_020192E4[player & 1].fusionCount = count;
-        sub_080611AC();
-        sub_0802297C(0xF034, 0, 0, 0);
+        gDuelPlayers[player & 1].fusionCount = count;
+        DrawAllAreaTiles();
+        DuelLink_SendMessage(0xF034, 0, 0, 0);
         LINK_RX.f306_0 = 1;
         return 1;
     case 0xF025:
@@ -473,14 +473,14 @@ u16 sub_08023228(void)
         player = 1 - player;
         i = 0;
         if (i < count) do {
-            const struct CardWord *src = &gUnk_02017FB4[i];
-            struct CardWord *card = &gUnk_020192E4[player & 1].banish[i];
-            sub_08007558(&gUnk_020192E4[player & 1].banish[i], src);
+            const struct CardWord *src = &gLinkRxCards[i];
+            struct CardWord *card = &gDuelPlayers[player & 1].banish[i];
+            CopyDuelCard(&gDuelPlayers[player & 1].banish[i], src);
             card->player = 1 - card->player;
         } while (++i < count);
         /* The ROM does not update the banished-list count here. */
-        sub_080611AC();
-        sub_0802297C(0xF035, 0, 0, 0);
+        DrawAllAreaTiles();
+        DuelLink_SendMessage(0xF035, 0, 0, 0);
         LINK_RX.f306_0 = 1;
         return 1;
     case 0xF031: LINK_RX.f305_0 = 1; return 1;
@@ -489,21 +489,21 @@ u16 sub_08023228(void)
     case 0xF034: LINK_RX.f305_3 = 1; return 1;
     case 0xF035: LINK_RX.f305_4 = 1; return 1;
     case 0xF041:
-        sub_08022D5C();
+        DuelLink_MirrorCommand();
         LINK_RX.f307_0 = 1;
         LB(0x48C) = 0;
         return 1;
     case 0xF042: LW(0x202) = 0; return 1;
     case 0xF043: LINK_RX.f307_1 = 1; return 1;
     case 0xEE00:
-        sub_08077BCC();
-        gUnk_020192E0.linkError = 1;
+        FadeOutBGM();
+        gDuel.linkError = 1;
         goto idle;
     default:
     error:
-        sub_0802297C(0xEE00, 0, 0, 0);
-        sub_08077BCC();
-        gUnk_020192E0.linkError = 1;
+        DuelLink_SendMessage(0xEE00, 0, 0, 0);
+        FadeOutBGM();
+        gDuel.linkError = 1;
         goto idle;
     }
     return 1;

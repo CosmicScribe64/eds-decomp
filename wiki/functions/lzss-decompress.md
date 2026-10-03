@@ -1,12 +1,12 @@
 ---
-title: LZSS decompressor (sub_0807A1A8)
+title: LZSS decompressor (LZSSDecompress)
 type: function
 status: draft
 confidence: high
 sources: [rom-analysis]
 updated: 2026-10-02
 ---
-# LZSS decompressor (`sub_0807A1A8`)
+# LZSS decompressor (`LZSSDecompress`)
 
 | Field | Value |
 |---|---|
@@ -68,4 +68,4 @@ The only `0xFEE` literal in `.text` is at `0x0807A220`. Disassembled with `tools
 Related: [[graphics-formats]], [[scene-sets]], [[rom-map]].
 
 ## Matching source (2026-10-01)
-`sub_0807A1A8` is byte-matching C; see [[code-0807960c]] for the three details that mattered: `u16` ring/position/byte locals, declaration order, and the match length kept in the loop condition. The "Equivalent C (sketch)" above is behaviourally the same as the matched source.
+`LZSSDecompress` is byte-matching C; see [[code-0807960c]] for the three details that mattered: `u16` ring/position/byte locals, declaration order, and the match length kept in the loop condition. The "Equivalent C (sketch)" above is behaviourally the same as the matched source.

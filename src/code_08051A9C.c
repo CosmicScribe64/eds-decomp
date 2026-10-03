@@ -13,9 +13,9 @@ struct Ui {
     u8 state;       /* +0x22 */
     u8 timer;       /* +0x23 */
 };
-extern struct Ui gUnk_0201AE60;
+extern struct Ui gTextBox;
 struct MainKeys { u8 u0[4]; u16 keysHeld; u16 keys; };
-extern struct MainKeys gUnk_03000040;
+extern struct MainKeys gMain;
 /* Duel global 0x020192E0 */
 struct Duel {
     u8 u0[0x1B50];
@@ -28,21 +28,21 @@ struct Duel {
     u16 sel;            /* +0x1B64 */
     u16 sel2;           /* +0x1B66 */
 };
-extern struct Duel gUnk_020192E0;
+extern struct Duel gDuel;
 extern u16 gUnk_0201AE44;
-extern const u8 gUnk_0808628C[], gUnk_08086290[];
-extern const char *const gUnk_0819D264[];
-void sub_080752D0(char *dst, const void *src);
-void sub_080752E8(char *dst, const void *src);
-int sub_08076F9C(void);
-void sub_0805FBA4(void);
-int sub_08052668(void);
+extern const u8 gStrNewline[], gStrMenuIndent[];
+extern const char *const gAttributeNames[];
+void StrCopy(char *dst, const void *src);
+void StrCat(char *dst, const void *src);
+int Random(void);
+void TextBoxDrawChoiceCursor(void);
+int TextBoxHandleChoiceInputCpu(void);
 struct Player { u8 unk0[2]; u8 handCount; u8 pad[0x684 - 3]; u32 hand[80]; u8 pad2[0xD64 - 0x684 - 0x140]; };
 struct DuelP { u8 pad[4]; struct Player players[2]; };
 struct Q1 { u8 pad[9]; u8 f0 : 1; u8 rest : 7; };
 struct DuelQ { u8 pad[0xD68]; struct Q1 q1; };
-extern const u32 gUnk_08621DE0[];
-#define CARD_STATS(id) (*(gUnk_08621DE0 + ((id) & 0x7FF)))
+extern const u32 gCardStats[];
+#define CARD_STATS(id) (*(gCardStats + ((id) & 0x7FF)))
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 #define CARD_ID(w) (((w) << 20) >> 20)
 #define CARD_LEVEL(id, r)                                     \
@@ -59,42 +59,42 @@ extern const u32 gUnk_08621DE0[];
         r = (CARD_STATS(id) & 0x1E000000) >> 25;              \
         break;                                                \
     }
-int sub_08052F38(u32 mask);
-int sub_080578F4(void);
-int sub_08008AF8(int player, int a);
-int sub_080563B8(int a, int b);
-void sub_08017FF4(int a, int b);
-int sub_08054398(int player, int id);
-int sub_08007834(int id);
-int sub_08008A44(int player);
-void sub_08077AEC(u16 se);
-void sub_080761F0(u32 yx, u16 shapeSize, u16 attr2);
-void sub_08075294(u32 dst, const void *src, u32 n);
-void sub_08074B08(u32 a, u32 b);
-void sub_0807501C(u32 a, u32 b, u32 c, const char *s);
-void sub_08075114(u32 a, u32 b);
-extern const u8 gUnk_0822C300[];
-extern const char *const gUnk_0819D214[];
-extern struct Player gUnk_020192E4[];
+int DuelCursor_PickTarget(u32 mask);
+int AiPickOpponentHandCard(void);
+int CountTributableMonsters(int player, int a);
+int AiPickTributeMonster(int a, int b);
+void TributeMonster(int a, int b);
+int CanSummonFromHand(int player, int id);
+int IsSpecialSummonOnly(int id);
+int FindFreeMonsterZone(int player);
+void PlaySE(u16 se);
+void AddSprite(u32 yx, u16 shapeSize, u16 attr2);
+void MemCopy16(u32 dst, const void *src, u32 n);
+void TextCanvasInit(u32 a, u32 b);
+void TextDrawString(u32 a, u32 b, u32 c, const char *s);
+void TextCanvasToTiles(u32 a, u32 b);
+extern const u8 gSystemFontPal[];
+extern const char *const gMonsterTypeNames[];
+extern struct Player gDuelPlayers[];
 extern u8 gUnk_0201AE42;
 struct ActBlk { u8 u0[0x4FC]; u8 b4FC; u8 count; };
-extern struct ActBlk gUnk_02017A40;
+extern struct ActBlk gChain;
 struct DuelScreen { u8 unk0[0x808]; u8 b808; u8 pad[0x824 - 0x809]; u32 w824; u32 w828; u32 w82C; };
-extern struct DuelScreen gUnk_0201CFB0;
-void sub_080240A8(int player, int a);
-void sub_08024134(u32 player, u32 a, u32 b);
-void sub_0801EC58(u16 msg, u16 a, u16 b, u16 c);
-void sub_080193D4(int player, int idx, int a, int b);
-extern const u8 gUnk_08086298[];
-extern const u8 gUnk_08086210[], gUnk_08086254[], gUnk_0808626C[], gUnk_08086018[], gUnk_08085FF4[];
-void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
-void sub_08060308(u32 a, void (*b)(void), int (*c)(void));
-int sub_080522C0(void);
-void sub_08052390(void);
-void sub_08052190(void);
-int sub_0805243C(void);
+extern struct DuelScreen gDuelScreen;
+void DuelScreen_ScrollToZone(int player, int a);
+void DuelCursor_Select(u32 player, u32 a, u32 b);
+void DuelCmd_Push(u16 msg, u16 a, u16 b, u16 c);
+void DiscardHandCard(int player, int idx, int a, int b);
+extern const u8 gStrPromptSelectOpponentHandCard[];
+extern const u8 gStrPromptSelectType[], gStrPromptSelectAttribute[], gStrPromptSelectAnotherAttribute[], gStrPromptSelectMonsterToSet[], gStrPromptSelectTribute[];
+void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
+void TextBoxSetMenu(u32 a, void (*b)(void), int (*c)(void));
+int TypeMenu_HandleInput(void);
+void AttributeMenu_Draw(void);
+void TypeMenu_Draw(void);
+int AttributeMenu_HandleInput(void);
 
-extern struct { u8 pad[0x82C]; u8 b82C; } gScr1A9C asm("gUnk_0201CFB0");
+extern struct { u8 pad[0x82C]; u8 b82C; } gScr1A9C asm("gDuelScreen");
 struct Scr1A9C {
     u8 pad[0x808];
     u16 lo808:3;
@@ -103,33 +103,33 @@ struct Scr1A9C {
     u8 pad80A[0x82C - 0x80A];
     u32 cursor;
 };
-#define gScr1A9Cb (*(struct Scr1A9C *)&gUnk_0201CFB0)
-int sub_08051A9C(int player, u16 x, int count)
+#define gScr1A9Cb (*(struct Scr1A9C *)&gDuelScreen)
+int DuelPrompt_DiscardRandom(int player, u16 x, int count)
 {
     u8 *step;
-    if (gUnk_020192E4[player & 1].handCount != 0) {
-        step = (u8 *)gUnk_020192E4 + 0x1B5E;
+    if (gDuelPlayers[player & 1].handCount != 0) {
+        step = (u8 *)gDuelPlayers + 0x1B5E;
         if (*step == 0) {
-            sub_080240A8(player, 0xB);
-            gUnk_02017A40.b4FC = 0;
-            gUnk_02017A40.count = count;
+            DuelScreen_ScrollToZone(player, 0xB);
+            gChain.b4FC = 0;
+            gChain.count = count;
             (*step)++;
             return 0;
         }
-        if (gUnk_02017A40.count != 0) {
-            u8 *bp = &gUnk_02017A40.b4FC;
+        if (gChain.count != 0) {
+            u8 *bp = &gChain.b4FC;
             if (*bp <= 9) {
                 gScr1A9Cb.busy = 1;
-                sub_08024134(player, 0xB, sub_08076F9C() % gUnk_020192E4[player & 1].handCount);
+                DuelCursor_Select(player, 0xB, Random() % gDuelPlayers[player & 1].handCount);
                 (*bp)++;
                 return 0;
             } else {
                 u16 msg = 8;
                 if (player != 0)
                     msg = 0x8008;
-                sub_0801EC58(msg, (u16)player, ((u8)gScr1A9Cb.cursor << 8) | 0xB, 0);
-                sub_080193D4(player, gScr1A9Cb.cursor, x, 1);
-                gUnk_02017A40.count--;
+                DuelCmd_Push(msg, (u16)player, ((u8)gScr1A9Cb.cursor << 8) | 0xB, 0);
+                DiscardHandCard(player, gScr1A9Cb.cursor, x, 1);
+                gChain.count--;
                 *bp = 0;
                 return 0;
             }
@@ -145,27 +145,27 @@ struct Scr1BBC {
     u8 pad80A[0x82C - 0x80A];
     u32 cursor;
 };
-#define gScr1BBC (*(struct Scr1BBC *)&gUnk_0201CFB0)
-#define MSG1BBC ((void (*)(u16, u16, int, int))sub_0801EC58)
-int sub_08051BBC(int player, int unused, int count)
+#define gScr1BBC (*(struct Scr1BBC *)&gDuelScreen)
+#define MSG1BBC ((void (*)(u16, u16, int, int))DuelCmd_Push)
+int DuelPrompt_BanishRandom(int player, int unused, int count)
 {
-    u8 *base = (u8 *)gUnk_020192E4;
+    u8 *base = (u8 *)gDuelPlayers;
     struct Player *ps = (struct Player *)(base + (player & 1) * 0xD64);
     u8 *step;
     if (ps->handCount != 0) {
         step = base + 0x1B5E;
         if (*step == 0) {
-            sub_080240A8(player, 0xB);
-            gUnk_02017A40.b4FC = 0;
-            gUnk_02017A40.count = count;
+            DuelScreen_ScrollToZone(player, 0xB);
+            gChain.b4FC = 0;
+            gChain.count = count;
             (*step)++;
             return 0;
         }
-        if (gUnk_02017A40.count != 0) {
-            u8 *bp = &gUnk_02017A40.b4FC;
+        if (gChain.count != 0) {
+            u8 *bp = &gChain.b4FC;
             if (*bp <= 9) {
                 gScr1BBC.busy = 1;
-                sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
+                DuelCursor_Select(player, 0xB, Random() % ps->handCount);
                 (*bp)++;
                 return 0;
             } else {
@@ -174,7 +174,7 @@ int sub_08051BBC(int player, int unused, int count)
                     msg = 0x8008;
                 MSG1BBC(msg, (u16)player, ((u8)gScr1BBC.cursor << 8) | 0xB, 0);
                 MSG1BBC(player != 0 ? 0x80C1 : 0xC1, (u16)gScr1BBC.cursor, 1, 0);
-                gUnk_02017A40.count--;
+                gChain.count--;
                 *bp = 0;
                 return 0;
             }
@@ -190,27 +190,27 @@ struct Scr1CD8 {
     u8 pad80A[0x82C - 0x80A];
     u32 cursor;
 };
-#define gScr1CD8 (*(struct Scr1CD8 *)&gUnk_0201CFB0)
-#define MSG1CD8 ((void (*)(u16, u16, int, int))sub_0801EC58)
-int sub_08051CD8(int player, int unused, int count)
+#define gScr1CD8 (*(struct Scr1CD8 *)&gDuelScreen)
+#define MSG1CD8 ((void (*)(u16, u16, int, int))DuelCmd_Push)
+int DuelPrompt_BanishRandomFaceDown(int player, int unused, int count)
 {
-    u8 *base = (u8 *)gUnk_020192E4;
+    u8 *base = (u8 *)gDuelPlayers;
     struct Player *ps = (struct Player *)(base + (player & 1) * 0xD64);
     u8 *step;
     if (ps->handCount != 0) {
         step = base + 0x1B5E;
         if (*step == 0) {
-            sub_080240A8(player, 0xB);
-            gUnk_02017A40.b4FC = 0;
-            gUnk_02017A40.count = count;
+            DuelScreen_ScrollToZone(player, 0xB);
+            gChain.b4FC = 0;
+            gChain.count = count;
             (*step)++;
             return 0;
         }
-        if (gUnk_02017A40.count != 0) {
-            u8 *bp = &gUnk_02017A40.b4FC;
+        if (gChain.count != 0) {
+            u8 *bp = &gChain.b4FC;
             if (*bp <= 9) {
                 gScr1CD8.busy = 1;
-                sub_08024134(player, 0xB, sub_08076F9C() % ps->handCount);
+                DuelCursor_Select(player, 0xB, Random() % ps->handCount);
                 (*bp)++;
                 return 0;
             } else {
@@ -219,7 +219,7 @@ int sub_08051CD8(int player, int unused, int count)
                     msg = 0x8008;
                 MSG1CD8(msg, (u16)player, ((u8)gScr1CD8.cursor << 8) | 0xB, 0);
                 MSG1CD8(player != 0 ? 0x80CE : 0xCE, (u16)gScr1CD8.cursor, 1, 0);
-                gUnk_02017A40.count--;
+                gChain.count--;
                 *bp = 0;
                 return 0;
             }
@@ -227,49 +227,49 @@ int sub_08051CD8(int player, int unused, int count)
     }
     return 1;
 }
-int sub_08051DF4(int player)
+int DuelPrompt_Tribute(int player)
 {
-    struct Duel *d = &gUnk_020192E0;
+    struct Duel *d = &gDuel;
     u8 *step = &d->step;
     if (*step == 0) {
         int m = -1;
-        if (sub_08008AF8(player, m) == 0)
+        if (CountTributableMonsters(player, m) == 0)
             return 1;
         if (player != 0) {
-            int r = sub_080563B8(m, 1);
+            int r = AiPickTributeMonster(m, 1);
             if (r > m)
-                sub_08017FF4(player, r);
+                TributeMonster(player, r);
             return 1;
         }
-        sub_080602A4(0x206, 0x712, 0xB, gUnk_08085FF4);
+        TextBoxOpen(0x206, 0x712, 0xB, gStrPromptSelectTribute);
         (*step)++;
         return 0;
     }
-    if (sub_08052F38(0xF0)) {
-        u32 a = gUnk_0201CFB0.w824;
-        u32 b = gUnk_0201CFB0.w828 + gUnk_0201CFB0.w82C;
-        sub_08077AEC(1);
-        sub_0801EC58(player != 0 ? 0x8008 : 8, (u16)gUnk_0201CFB0.w824, (u8)gUnk_0201CFB0.w828 | (((u8)gUnk_0201CFB0.w82C) << 8), 0);
-        sub_08017FF4(a, b);
+    if (DuelCursor_PickTarget(0xF0)) {
+        u32 a = gDuelScreen.w824;
+        u32 b = gDuelScreen.w828 + gDuelScreen.w82C;
+        PlaySE(1);
+        DuelCmd_Push(player != 0 ? 0x8008 : 8, (u16)gDuelScreen.w824, (u8)gDuelScreen.w828 | (((u8)gDuelScreen.w82C) << 8), 0);
+        TributeMonster(a, b);
         return 1;
     }
     return 0;
 }
-int sub_08051ED0(int player)
+int DuelPrompt_SetMonsterFromHand(int player)
 {
-    struct Duel *d = &gUnk_020192E0;
+    struct Duel *d = &gDuel;
     u8 *step = &d->step;
     u8 st = *step;
     switch (st) {
     case 0:
-        sub_080602A4(0x206, 0x712, 0xB, gUnk_08086018);
+        TextBoxOpen(0x206, 0x712, 0xB, gStrPromptSelectMonsterToSet);
         (*step)++;
         return 0;
     case 1:
-        if (sub_08052F38(1)) {
+        if (DuelCursor_PickTarget(1)) {
             int p = 1 & player;
-            u16 id = CARD_ID(((struct DuelP *)d)->players[p].hand[gUnk_0201CFB0.w82C]);
-            if (sub_08054398(player, id) != 0 && sub_08007834(id) == 0) {
+            u16 id = CARD_ID(((struct DuelP *)d)->players[p].hand[gDuelScreen.w82C]);
+            if (CanSummonFromHand(player, id) != 0 && IsSpecialSummonOnly(id) == 0) {
                 u32 lvl;
                 switch ((int)((((const u32 *)0x08621DE0)[id & 0x7FF] & 0x1F00000) >> 20)) {
                 case 0x15:
@@ -285,13 +285,13 @@ int sub_08051ED0(int player)
                     break;
                 }
                 if (lvl <= 4) {
-                    sub_0801EC58(player != 0 ? 0x80C4 : 0xC4, id,
-                                 ((gUnk_0201CFB0.w82C & 0xF) << 4) | (sub_08008A44(player) & 0xF) | 0x200, 0);
-                    gUnk_020192E0.step++;
+                    DuelCmd_Push(player != 0 ? 0x80C4 : 0xC4, id,
+                                 ((gDuelScreen.w82C & 0xF) << 4) | (FindFreeMonsterZone(player) & 0xF) | 0x200, 0);
+                    gDuel.step++;
                     return 0;
                 }
             }
-            sub_08077AEC(3);
+            PlaySE(3);
         }
         return 0;
     default:
@@ -300,53 +300,53 @@ int sub_08051ED0(int player)
 }
 struct PickCard { u32 id : 12; u32 flag12 : 1; u32 rest : 19; };
 struct PickCursor { u8 pad0[5]; u8 sub : 2; u8 flags : 6; u16 index; u8 pad8[4]; struct PickCard cards[80]; };
-extern struct PickCursor gUnk_0201D810;
-extern struct PickCard gUnk_0201D81C[];
-extern const u8 gUnk_08086058[], gUnk_080860A4[], gUnk_080860FC[];
-int sub_08056ECC(u16 id);
-void sub_0802AF34(s32 player, s32 skip, u16 number, u16 mode);
-int sub_08052018(s32 player, u16 id, u16 mode)
+extern struct PickCursor gCardListView;
+extern struct PickCard gCardListViewCards[];
+extern const u8 gStrPromptGraveMonsterToPlay[], gStrPromptGraveMonsterToSet[], gStrPromptGraveMonsterToSpecialSummon[];
+int AiPickCardListEntry(u16 id);
+void CardListView_Open(s32 player, s32 skip, u16 number, u16 mode);
+int DuelPrompt_SelectGraveyardMonster(s32 player, u16 id, u16 mode)
 {
     struct Duel *d;
     struct PickCard *chosen;
     u8 st;
     /* Reading the step before taking d gives the ROM's `ldr r0; ...; ldrb; adds r7,r0,#0` copy. */
-    st = gUnk_020192E0.step;
-    d = &gUnk_020192E0;
+    st = gDuel.step;
+    d = &gDuel;
     switch (st) {
     case 0:
         if (player != 0) {
-            chosen = &gUnk_0201D81C[sub_08056ECC(id)];
+            chosen = &gCardListViewCards[AiPickCardListEntry(id)];
             break;
         }
         switch (((const u16 *)0x08622AB4)[id & 0x7FF]) {
-        case 0x45C: sub_080602A4(0x206, 0x712, 0xB, gUnk_08086058); break;
-        case 0x487: sub_080602A4(0x206, 0x712, 0xB, gUnk_080860A4); break;
-        case 0x5F0: sub_080602A4(0x206, 0x712, 0xB, gUnk_080860FC); break;
+        case 0x45C: TextBoxOpen(0x206, 0x712, 0xB, gStrPromptGraveMonsterToPlay); break;
+        case 0x487: TextBoxOpen(0x206, 0x712, 0xB, gStrPromptGraveMonsterToSet); break;
+        case 0x5F0: TextBoxOpen(0x206, 0x712, 0xB, gStrPromptGraveMonsterToSpecialSummon); break;
         default: return 1;
         }
-        gUnk_020192E0.step++;
+        gDuel.step++;
         return 0;
     case 1:
-        sub_0802AF34(player, -1, ((const u16 *)0x08622AB4)[id & 0x7FF], mode);
-        gUnk_020192E0.step++;
+        CardListView_Open(player, -1, ((const u16 *)0x08622AB4)[id & 0x7FF], mode);
+        gDuel.step++;
         return 0;
     default:
-        chosen = &gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index];
+        chosen = &gCardListView.cards[gCardListView.sub + gCardListView.index];
         if (d->u0[0x1B12] & 2)
             /* FAKEMATCH: `(&...)[0]` keeps the byte store relative to the cards base ([r2,#1])
                instead of folding +0xC+1 into one offset off the cursor ([r2,#13]). */
-            (&gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index])[0].flag12 =
-                1 - ((*(u32 *)&gUnk_0201D810.cards[gUnk_0201D810.sub + gUnk_0201D810.index] << 19) >> 31);
+            (&gCardListView.cards[gCardListView.sub + gCardListView.index])[0].flag12 =
+                1 - ((*(u32 *)&gCardListView.cards[gCardListView.sub + gCardListView.index] << 19) >> 31);
         break;
     }
     d->sel = *(u32 *)chosen;
     d->sel2 = ((u16 *)chosen)[1];
     return 1;
 }
-void sub_08052190(void)
+void TypeMenu_Draw(void)
 {
-    struct Ui *u = &gUnk_0201AE60;
+    struct Ui *u = &gTextBox;
     u32 x = (u->x + 1) << 3;
     u32 y = (u->b21 - u->h) << 3;
     u8 *t;
@@ -354,29 +354,29 @@ void sub_08052190(void)
     asm("" : "+r"(y)); /* FAKEMATCH: keep combine from folding y<<16 into D<<19 */
     t = &u->timer;
     if (*t == 0) {
-        sub_08075294(0x050003E0, gUnk_0822C300, 0x20);
-        sub_08074B08(0xC, 2);
-        sub_0807501C(1, 1, 0xA0F, gUnk_0819D214[u->sel]);
-        sub_0807501C(0, 0, 0xA02, gUnk_0819D214[u->sel]);
-        sub_08075114(0x06016C80, 0);
+        MemCopy16(0x050003E0, gSystemFontPal, 0x20);
+        TextCanvasInit(0xC, 2);
+        TextDrawString(1, 1, 0xA0F, gMonsterTypeNames[u->sel]);
+        TextDrawString(0, 0, 0xA02, gMonsterTypeNames[u->sel]);
+        TextCanvasToTiles(0x06016C80, 0);
         (*t)++;
     }
     attr = 0x364;
-    sub_080761F0(x | (y << 16), 0x4040, attr | 0xF000);
+    AddSprite(x | (y << 16), 0x4040, attr | 0xF000);
     attr += 4;
-    sub_080761F0((x + 0x20) | (y << 16), 0x4040, attr | 0xF000);
+    AddSprite((x + 0x20) | (y << 16), 0x4040, attr | 0xF000);
     attr += 4;
-    sub_080761F0((y << 16) | (x + 0x40), 0x4040, attr | 0xF000);
+    AddSprite((y << 16) | (x + 0x40), 0x4040, attr | 0xF000);
     attr += 4;
-    sub_080761F0(x | ((y + 8) << 16), 0x4040, attr | 0xF000);
+    AddSprite(x | ((y + 8) << 16), 0x4040, attr | 0xF000);
     attr += 4;
-    sub_080761F0((x + 0x20) | ((y + 8) << 16), 0x4040, attr | 0xF000);
+    AddSprite((x + 0x20) | ((y + 8) << 16), 0x4040, attr | 0xF000);
     attr += 4;
-    sub_080761F0((x + 0x40) | ((y + 8) << 16), 0x4040, attr | 0xF000);
+    AddSprite((x + 0x40) | ((y + 8) << 16), 0x4040, attr | 0xF000);
 }
-int sub_080522C0(void)
+int TypeMenu_HandleInput(void)
 {
-    struct Ui *u = &gUnk_0201AE60;
+    struct Ui *u = &gTextBox;
     u8 *t = &u->timer;
     if (*t == 0)
         return 0;
@@ -384,56 +384,56 @@ int sub_080522C0(void)
         u->state++;
         return 0;
     }
-    /* gUnk_03000040.keys must be read in every test (no local): a local makes the
+    /* gMain.keys must be read in every test (no local): a local makes the
      * final `& 1` compile with the and's result in the key register. */
-    if (gUnk_03000040.keys & 0x20) {
+    if (gMain.keys & 0x20) {
         u->sel += 0x13;
         u->sel = u->sel % 0x14;
         *t = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 0x10) {
+    if (gMain.keys & 0x10) {
         u->sel += 1;
         u->sel = u->sel % 0x14;
         *t = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 1)
+    if (gMain.keys & 1)
         return 1;
     return 0;
 }
-int sub_0805232C(void)
+int DuelPrompt_SelectType(void)
 {
-    struct Duel *d = &gUnk_020192E0;
+    struct Duel *d = &gDuel;
     u8 *s = &d->step;
     if (*s == 0) {
-        sub_080602A4(0x206, 0x40F, 0xB, gUnk_08086210);
-        sub_08060308(5, (void (*)(void))sub_08052190, sub_080522C0);
+        TextBoxOpen(0x206, 0x40F, 0xB, gStrPromptSelectType);
+        TextBoxSetMenu(5, (void (*)(void))TypeMenu_Draw, TypeMenu_HandleInput);
         (*s)++;
         return 0;
     }
-    d->sel = gUnk_0201AE60.sel;
+    d->sel = gTextBox.sel;
     return 1;
 }
-void sub_08052390(void)
+void AttributeMenu_Draw(void)
 {
-    struct Ui *u = &gUnk_0201AE60;
+    struct Ui *u = &gTextBox;
     u32 x = (u->x + 1) << 3;
     int y = (u->b21 - u->h) << 3;
     u8 *t = &u->timer;
     if (*t == 0) {
-        sub_08075294(0x050003E0, gUnk_0822C300, 0x20);
-        sub_08074B08(8, 4);
-        sub_0807501C(4, 0x12, 0xC0F, gUnk_0819D264[u->sel]);
-        sub_0807501C(3, 0x11, 0xC01, gUnk_0819D264[u->sel]);
-        sub_08075114(0x06016C80, 0);
+        MemCopy16(0x050003E0, gSystemFontPal, 0x20);
+        TextCanvasInit(8, 4);
+        TextDrawString(4, 0x12, 0xC0F, gAttributeNames[u->sel]);
+        TextDrawString(3, 0x11, 0xC01, gAttributeNames[u->sel]);
+        TextCanvasToTiles(0x06016C80, 0);
         (*t)++;
     }
-    sub_080761F0(x | ((y - 0x10) << 16), 0x40C0, 0xF364);
+    AddSprite(x | ((y - 0x10) << 16), 0x40C0, 0xF364);
 }
-int sub_0805243C(void)
+int AttributeMenu_HandleInput(void)
 {
-    struct Ui *u = &gUnk_0201AE60;
+    struct Ui *u = &gTextBox;
     u8 *t = &u->timer;
     if (*t == 0)
         return 0;
@@ -441,94 +441,94 @@ int sub_0805243C(void)
         u->state++;
         return 0;
     }
-    if (gUnk_03000040.keys & 0x20) {
+    if (gMain.keys & 0x20) {
         u->sel += 5;
         u->sel = u->sel % 6;
         *t = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 0x10) {
+    if (gMain.keys & 0x10) {
         u->sel += 1;
         u->sel = u->sel % 6;
         *t = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 1)
+    if (gMain.keys & 1)
         return 1;
     return 0;
 }
-int sub_080524A8(void)
+int AttributeMenu_HandleInputExcludeFirst(void)
 {
     u16 prev;
-    if (gUnk_0201AE60.timer == 0)
+    if (gTextBox.timer == 0)
         return 0;
-    if (gUnk_0201AE60.state == 0) {
-        gUnk_0201AE60.state++;
+    if (gTextBox.state == 0) {
+        gTextBox.state++;
         return 0;
     }
-    if (gUnk_03000040.keys & 0x20) {
-        struct Ui *p = &gUnk_0201AE60;
+    if (gMain.keys & 0x20) {
+        struct Ui *p = &gTextBox;
         prev = gUnk_0201AE44;
         do {
             p->sel += 5;
             p->sel = p->sel % 6;
         } while (p->sel == prev);
-        gUnk_0201AE60.timer = 0;
+        gTextBox.timer = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 0x10) {
-        struct Ui *p = &gUnk_0201AE60;
+    if (gMain.keys & 0x10) {
+        struct Ui *p = &gTextBox;
         prev = gUnk_0201AE44;
         do {
             p->sel += 1;
             p->sel = p->sel % 6;
         } while (p->sel == prev);
-        gUnk_0201AE60.timer = 0;
+        gTextBox.timer = 0;
         return 0;
     }
-    if (gUnk_03000040.keys & 1) {
-        if (gUnk_0201AE60.sel != gUnk_020192E0.sel)
+    if (gMain.keys & 1) {
+        if (gTextBox.sel != gDuel.sel)
             return 1;
     }
     return 0;
 }
-int sub_08052560(void)
+int DuelPrompt_SelectAttribute(void)
 {
-    struct Duel *d = &gUnk_020192E0;
+    struct Duel *d = &gDuel;
     u8 *s = &d->step;
     if (*s == 0) {
-        sub_080602A4(0x206, 0x40F, 0xB, gUnk_08086254);
-        sub_08060308(5, (void (*)(void))sub_08052390, sub_0805243C);
+        TextBoxOpen(0x206, 0x40F, 0xB, gStrPromptSelectAttribute);
+        TextBoxSetMenu(5, (void (*)(void))AttributeMenu_Draw, AttributeMenu_HandleInput);
         (*s)++;
         return 0;
     }
-    d->sel = gUnk_0201AE60.sel;
+    d->sel = gTextBox.sel;
     return 1;
 }
-int sub_080525C4(void)
+int DuelPrompt_SelectTwoAttributes(void)
 {
-    struct Duel *d = &gUnk_020192E0;
+    struct Duel *d = &gDuel;
     u8 *step = &d->step;
     /* A switch rather than an if/else chain keeps both step blocks out of line. */
     switch (*step) {
     case 0:
-        sub_080602A4(0x206, 0x40F, 0xB, gUnk_08086254);
-        sub_08060308(5, (void (*)(void))sub_08052390, sub_0805243C);
+        TextBoxOpen(0x206, 0x40F, 0xB, gStrPromptSelectAttribute);
+        TextBoxSetMenu(5, (void (*)(void))AttributeMenu_Draw, AttributeMenu_HandleInput);
         (*step)++;
         return 0;
     case 1:
-        d->sel = gUnk_0201AE60.sel;
-        sub_080602A4(0x206, 0x411, 0xB, gUnk_0808626C);
-        sub_08060308(5, (void (*)(void))sub_08052390, sub_080524A8);
+        d->sel = gTextBox.sel;
+        TextBoxOpen(0x206, 0x411, 0xB, gStrPromptSelectAnotherAttribute);
+        TextBoxSetMenu(5, (void (*)(void))AttributeMenu_Draw, AttributeMenu_HandleInputExcludeFirst);
         (*step)++;
         return 0;
     }
-    d->sel2 = gUnk_0201AE60.sel;
+    d->sel2 = gTextBox.sel;
     return 1;
 }
-int sub_08052668(void)
+int TextBoxHandleChoiceInputCpu(void)
 {
-    struct Ui *u = &gUnk_0201AE60;
+    struct Ui *u = &gTextBox;
     u8 *s = &u->state;
     int st = *s; /* the (u8) switch index is a separate pseudo, so CSE does not fold st == 1 into the case 1 increment */
     switch ((u8)st) {
@@ -536,7 +536,7 @@ int sub_08052668(void)
         if (u->timer <= 0x3F)
             u->sel = (u->timer >> 2) & 1;
         if (u->timer == 0x40)
-            u->sel = sub_08076F9C() & 1;
+            u->sel = Random() & 1;
         if (u->timer > 0xC0) {
             u->timer = 0;
             (*s)++;
@@ -547,7 +547,7 @@ int sub_08052668(void)
         u8 v = u->timer;
         if (v <= 0x3B) {
             u->timer = v + 1;
-            if ((gUnk_03000040.keysHeld & 2) || (*(u8 *)&gUnk_0201CFB0 & 1)) {
+            if ((gMain.keysHeld & 2) || (*(u8 *)&gDuelScreen & 1)) {
                 if (u->timer <= 0x33)
                     u->timer = v + 8;
             }
@@ -560,49 +560,49 @@ int sub_08052668(void)
     }
     return 0;
 }
-int sub_08052714(void)
+int DuelPrompt_PickOneOfTwoAttributes(void)
 {
     char buf[0x80];
-    if (gUnk_020192E0.step == 0) {
+    if (gDuel.step == 0) {
         const char *const *tbl;
         u16 *p;
         int i;
-        sub_080752D0(buf, gUnk_08086254);
-        sub_080752E8(buf, gUnk_0808628C);
-        tbl = gUnk_0819D264;
-        p = gUnk_020192E0.h1B52;
+        StrCopy(buf, gStrPromptSelectAttribute);
+        StrCat(buf, gStrNewline);
+        tbl = gAttributeNames;
+        p = gDuel.h1B52;
         for (i = 1; i >= 0; i--) {
-            sub_080752E8(buf, gUnk_08086290);
-            sub_080752E8(buf, tbl[*p]);
-            sub_080752E8(buf, gUnk_0808628C);
+            StrCat(buf, gStrMenuIndent);
+            StrCat(buf, tbl[*p]);
+            StrCat(buf, gStrNewline);
             p++;
         }
-        sub_080602A4(0x206, 0x50F, 0xB, buf);
-        if (gUnk_020192E0.b1B50 & 4) {
-            sub_08060308(5, sub_0805FBA4, sub_08052668);
+        TextBoxOpen(0x206, 0x50F, 0xB, buf);
+        if (gDuel.b1B50 & 4) {
+            TextBoxSetMenu(5, TextBoxDrawChoiceCursor, TextBoxHandleChoiceInputCpu);
         } else {
-            sub_08060308(2, 0, 0);
-            gUnk_020192E0.step++;
+            TextBoxSetMenu(2, 0, 0);
+            gDuel.step++;
         }
-        gUnk_020192E0.step++;
+        gDuel.step++;
         return 0;
     }
-    gUnk_020192E0.sel = gUnk_020192E0.h1B52[gUnk_0201AE60.sel];
+    gDuel.sel = gDuel.h1B52[gTextBox.sel];
     return 1;
 }
-int sub_08052810(int a)
+int DuelPrompt_PickOpponentHandCard(int a)
 {
     if (a != 0) {
-        int r = sub_080578F4();
-        gUnk_020192E0.sel = r;
-        sub_0801EC58(0x8008, 0, (u8)r << 8 | 0xB, 0);
+        int r = AiPickOpponentHandCard();
+        gDuel.sel = r;
+        DuelCmd_Push(0x8008, 0, (u8)r << 8 | 0xB, 0);
         return 1;
     } else {
-        struct Duel *d = &gUnk_020192E0;
+        struct Duel *d = &gDuel;
         u8 *step = &d->step;
         switch (*step) {
         case 0:
-            sub_080602A4(0x206, 0x712, 0xB, gUnk_08086298);
+            TextBoxOpen(0x206, 0x712, 0xB, gStrPromptSelectOpponentHandCard);
             (*step)++;
             return 0;
         case 1:
@@ -610,9 +610,9 @@ int sub_08052810(int a)
                 struct Q1 *q = &((struct DuelQ *)d)->q1;
                 q->f0 = 1;
             }
-            if (sub_08052F38(0x10000)) {
-                sub_08077AEC(1);
-                sub_0801EC58(8, (u16)gUnk_0201CFB0.w824, (u8)gUnk_0201CFB0.w828 | (((u8)gUnk_0201CFB0.w82C) << 8), 0);
+            if (DuelCursor_PickTarget(0x10000)) {
+                PlaySE(1);
+                DuelCmd_Push(8, (u16)gDuelScreen.w824, (u8)gDuelScreen.w828 | (((u8)gDuelScreen.w82C) << 8), 0);
                 (*step)++;
             }
             return 0;
@@ -621,7 +621,7 @@ int sub_08052810(int a)
                 struct Q1 *q = &((struct DuelQ *)d)->q1;
                 q->f0 = 0;
             }
-            d->sel = gUnk_0201CFB0.w82C;
+            d->sel = gDuelScreen.w82C;
             return 1;
         }
     }
@@ -644,7 +644,7 @@ struct Z908Player {
     u8 rest[0xD64 - 0x28 - 11 * 0x94];
 };
 /* The duel players at 0x020192E4 (declared above as struct Player) in this layout. */
-#define gZ908Players ((struct Z908Player *)gUnk_020192E4)
+#define gZ908Players ((struct Z908Player *)gDuelPlayers)
 /* Card ID test on a card word (lsl #20, compared with 0). */
 #define Z908_ID(w) (((w) << 20) >> 20)
 /* Zone pointer as base + zone * 0x94 + player * 0xD64 (the link scan's address order). */
@@ -656,7 +656,7 @@ struct Z908Player {
  * 5 = magic/trap zones (types 0x15/0x16, else a kind-1/5/6 link from a
  * face-up monster zone of either player), 10 = field zone.
  */
-int sub_08052908(int player, int kind, int slot, u32 mask)
+int DuelCursor_IsValidTarget(int player, int kind, int slot, u32 mask)
 {
     struct Z908Zone *zone = &gZ908Players[player & 1].zones[kind + slot];
     /* The signed shift keeps the id extraction apart from the later `id != 0`

@@ -1,6 +1,6 @@
 #include "global.h"
 
-/* Output of sub_0800ABC8 (card-in-zone info). */
+/* Output of GetZoneCardStats (card-in-zone info). */
 struct ZoneCardInfo {
     u32 unk0;
     u32 unk4;
@@ -46,7 +46,7 @@ struct ZoneWord {
     u32 unk0_12 : 20;
 };
 
-/* Card reference passed to sub_0802B558 (0x14 bytes on the stack; layout beyond +2 unknown). */
+/* Card reference passed to EffectEquipTargetCheck (0x14 bytes on the stack; layout beyond +2 unknown). */
 struct CardRef {
     u16 id;           /* +0x00 card id */
     u8 player : 1;    /* +0x02 bit 0 */
@@ -91,39 +91,39 @@ struct Unk02018450 {
     u16 unk0_12 : 4;
 };
 
-extern struct DuelCmd gUnk_020185C0;
-extern struct Unk02018450 gUnk_02018450;
-extern struct DuelGlobal gUnk_020192E0;
-extern struct DuelPlayers gUnk_020192E4;
-extern struct Unk02015EE8 gUnk_02015EE8;
-extern u8 gUnk_0201930C[];
-extern u16 gUnk_08622AB4[];
+extern struct DuelCmd gDuelCmd;
+extern struct Unk02018450 gBattle;
+extern struct DuelGlobal gDuel;
+extern struct DuelPlayers gDuelPlayers;
+extern struct Unk02015EE8 gDuelCtrl;
+extern u8 gDuelZones[];
+extern u16 gCardIdToNumber[];
 
-#define gCmd gUnk_020185C0
+#define gCmd gDuelCmd
 #define CMD_PLAYER() (gCmd.hdr >> 15)
 #define CMD_DONE() (gCmd.running = 0)
-#define ZONE(p, s) ((struct ZoneWord *)(gUnk_0201930C + (s) * 0x94 + (p) * 0xD64))
+#define ZONE(p, s) ((struct ZoneWord *)(gDuelZones + (s) * 0x94 + (p) * 0xD64))
 
 /* True unless this is a link duel whose flag 0x1B12 bit 1 is set (hypothesis: "not the slave side"). */
-#define LINK_SKIP() ((gUnk_02015EE8.flags1 & 1) && (gUnk_020192E0.flags1B12 & 2))
+#define LINK_SKIP() ((gDuelCtrl.flags1 & 1) && (gDuel.flags1B12 & 2))
 
-void sub_0800ABC8(u32 player, u32 slot, struct ZoneCardInfo *out);
-void sub_0804A39C(u32, u32);
-u32 sub_08060B4C(void);
-void sub_0805E3B8(u32, u32);
-u32 sub_0805E788(u32, u32, u32);
-void sub_080096F4(void *);
-void sub_08009768(void *);
-void sub_080611AC(void);
-u16 sub_0802B558(struct CardRef *card, u16 pos);
-void sub_08007A4C(u32 player, u32 slot, void *data, u16 a3, u16 a4);
-s32 sub_0800AA40(s32, s32, u16);
-s32 sub_08008524(s32, s32);
-extern u32 gUnk_08621DE0[];
+void GetZoneCardStats(u32 player, u32 slot, struct ZoneCardInfo *out);
+void MarkMonsterAttacked(u32, u32);
+u32 DuelScreen_FadeOutStep(void);
+void BattleScene_Init(u32, u32);
+u32 BattleScene_Update(u32, u32, u32);
+void AddCardToGraveyard(void *);
+void AddCardToBanished(void *);
+void DrawAllAreaTiles(void);
+u16 EffectEquipTargetCheck(struct CardRef *card, u16 pos);
+void PlaceMonsterCard(u32 player, u32 slot, void *data, u16 a3, u16 a4);
+s32 FindZoneLinkFromCard(s32, s32, u16);
+s32 CountActiveCardsOnField(s32, s32);
+extern u32 gCardStats[];
 extern u8 gUnk_0201ADAD;
-void sub_08024134(u32, s32, u16);
-void sub_080752B0(u32, void *, u32);
-void sub_08076714(u32, u32, u32, u32);
+void DuelCursor_Select(u32, s32, u16);
+void CopyDoubleWords(u32, void *, u32);
+void AddAffineSprite(u32, u32, u32, u32);
 /* Duel screen / animation state at 0x0201CFB0 (fields used here). */
 struct DuelScreen {
     u8 fast : 1;        /* +0x000 bit 0: fast-forward animations */
@@ -133,28 +133,28 @@ struct DuelScreen {
     u8 busy : 1;        /* +0x808 bit 3 */
     u8 unk808_4 : 4;
 };
-extern struct DuelScreen gUnk_0201CFB0;
-extern u16 gUnk_081A43E4[];
-extern u8 gUnk_08687B9C[];
-extern u8 gUnk_086883BC[];
-extern u16 gUnk_03000040[];
-extern u8 gUnk_020195F0[];
+extern struct DuelScreen gDuelScreen;
+extern u16 gBounceScaleCurve[];
+extern u8 gDuelBannerPal[];
+extern u8 gDirectAttackBannerGfx[];
+extern u16 gMain[];
+extern u8 gDuelSpellTrapZones[];
 
-u32 sub_0800C894(u32 player, u32 slot)
+u32 GetZoneCardAtk(u32 player, u32 slot)
 {
     struct ZoneCardInfo info;
-    sub_0800ABC8(player, slot, &info);
+    GetZoneCardStats(player, slot, &info);
     return info.unk4;
 }
 
-u32 sub_0800C8A8(u32 player, u32 slot)
+u32 GetZoneCardDef(u32 player, u32 slot)
 {
     struct ZoneCardInfo info;
-    sub_0800ABC8(player, slot, &info);
+    GetZoneCardStats(player, slot, &info);
     return info.unk8;
 }
 
-/* Field zone (0x94 bytes) as read by sub_0800C8BC. */
+/* Field zone (0x94 bytes) as read by GetZoneCardType. */
 struct C8BCZone {
     u32 card;               /* +0x00: bits 0-11 card id, bit 17 tested */
     u16 unk4;               /* +0x04: compared value (hypothesis: current ATK-like stat) */
@@ -172,15 +172,15 @@ struct C8BCZoneB {
     u8 linkBytes[64];       /* +0x0A */
 };
 /* Loop 1 order: slot term first (fold keeps it). */
-#define C8BC_ZONE(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define C8BC_ZONE(p, s) ((struct C8BCZone *)(gDuelZones + ((s) * 0x94 + ((p) & 1) * 0xD64)))
 /*
  * Loop 3 order: player term written first, which fold swaps, so the 0x94/slot chain is loop.c's
  * first movable and the threshold runs out before the 0xD64 multiply (ROM keeps it in the loop).
  */
-#define C8BC_ZONE2(p, s) ((struct C8BCZone *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
-#define C8BC_ZONEB2(p, s) ((struct C8BCZoneB *)(gUnk_0201930C + (((p) & 1) * 0xD64 + (s) * 0x94)))
+#define C8BC_ZONE2(p, s) ((struct C8BCZone *)(gDuelZones + (((p) & 1) * 0xD64 + (s) * 0x94)))
+#define C8BC_ZONEB2(p, s) ((struct C8BCZoneB *)(gDuelZones + (((p) & 1) * 0xD64 + (s) * 0x94)))
 /* Linked zone; the caller passes the already-masked player bit. */
-#define C8BC_LINKED(p, s) ((struct C8BCZone *)(gUnk_0201930C + ((s) * 0x94 + (p) * 0xD64)))
+#define C8BC_LINKED(p, s) ((struct C8BCZone *)(gDuelZones + ((s) * 0x94 + (p) * 0xD64)))
 #define C8BC_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define C8BC_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 /*
@@ -190,7 +190,7 @@ struct C8BCZoneB {
  * player's spell/trap zones (gives its +0x90 bits 13-17), and a kind-1 link to card number 0x60E
  * (no 0x601 on either side, gUnk_0201ADAD bits 0-1 clear; gives 1) replaces it.
  */
-u32 sub_0800C8BC(s32 player, s32 slot)
+u32 GetZoneCardType(s32 player, s32 slot)
 {
     u32 off;
     u32 id;
@@ -203,7 +203,7 @@ u32 sub_0800C8BC(s32 player, s32 slot)
 
     /* Player offset, zone base and slot offset staged in ROM order before best = 0. */
     off = (player & 1) * 0xD64;
-    zones = gUnk_0201930C;
+    zones = gDuelZones;
     so = slot * 0x94;
     best = 0;
     z = (struct C8BCZone *)(zones + (so + off));
@@ -229,8 +229,8 @@ u32 sub_0800C8BC(s32 player, s32 slot)
             result = 10;
         }
         for (j = 0; j <= 1; j++) {
-            /* gUnk_020195F0 = gUnk_0201930C + 5 * 0x94: zone (j, 5 + i). */
-            z = (struct C8BCZone *)(gUnk_020195F0 + ((j & 1) * 0xD64 + i * 0x94));
+            /* gDuelSpellTrapZones = gDuelZones + 5 * 0x94: zone (j, 5 + i). */
+            z = (struct C8BCZone *)(gDuelSpellTrapZones + ((j & 1) * 0xD64 + i * 0x94));
             cid = (z->card << 20) >> 20;
             if (cid != 0 && C8BC_NUMBER(cid) == 0x479 && (z->flags6 & 2)
                 && !(((u8 *)z)[0x91] & 8) && z->unk4 > best) {
@@ -253,7 +253,7 @@ u32 sub_0800C8BC(s32 player, s32 slot)
 
             /* FAKEMATCH: the links[] read goes through a local copy of the zone base, which
              * changes the guard's allocation priorities (slot * 0x94 in r1, base in r4). */
-            zb = gUnk_0201930C;
+            zb = gDuelZones;
             link = ((struct C8BCZone *)(zb + ((player & 1) * 0xD64 + slot * 0x94)))->links[i];
             kind = C8BC_ZONE2(player, slot)->linkKinds[i];
             lz = link >> 8;
@@ -262,8 +262,8 @@ u32 sub_0800C8BC(s32 player, s32 slot)
             tid = (t->card << 20) >> 20;
             if (kind == 1 && tid != 0
                 && !(((u8 *)t)[0x91] & 8)
-                && sub_08008524(0, 0x601) == 0
-                && sub_08008524(1, 0x601) == 0
+                && CountActiveCardsOnField(0, 0x601) == 0
+                && CountActiveCardsOnField(1, 0x601) == 0
                 && !(*flags & 3)
                 && C8BC_NUMBER(tid) == 0x60E
                 && t->unk4 > best)
@@ -272,7 +272,7 @@ u32 sub_0800C8BC(s32 player, s32 slot)
     }
     return result;
 }
-/* Field zone (0x94 bytes) as read by sub_0800CAF0. */
+/* Field zone (0x94 bytes) as read by GetZoneCardAttribute. */
 struct CAF0Zone {
     u32 card;               /* +0x00: bits 0-11 card id */
     u8 filler4[2];
@@ -289,10 +289,10 @@ struct CAF0ZoneB {
     u8 filler0[0xA];
     u8 linkBytes[64];       /* +0x0A */
 };
-#define CAF0_ZONE(p, s) ((struct CAF0Zone *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
-#define CAF0_ZONEB(p, s) ((struct CAF0ZoneB *)(gUnk_0201930C + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define CAF0_ZONE(p, s) ((struct CAF0Zone *)(gDuelZones + ((s) * 0x94 + ((p) & 1) * 0xD64)))
+#define CAF0_ZONEB(p, s) ((struct CAF0ZoneB *)(gDuelZones + ((s) * 0x94 + ((p) & 1) * 0xD64)))
 /* Linked zone; the caller passes the already-masked player bit. */
-#define CAF0_LINKED(p, s) ((struct CAF0Zone *)(gUnk_0201930C + ((s) * 0x94 + (p) * 0xD64)))
+#define CAF0_LINKED(p, s) ((struct CAF0Zone *)(gDuelZones + ((s) * 0x94 + (p) * 0xD64)))
 #define CAF0_STATS(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
 #define CAF0_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 /*
@@ -301,7 +301,7 @@ struct CAF0ZoneB {
  * no 0x601 on either side, gUnk_0201ADAD bits 0-1 clear) replaces it with that zone's +0x90
  * bits 13-17.
  */
-u32 sub_0800CAF0(s32 player, s32 slot)
+u32 GetZoneCardAttribute(s32 player, s32 slot)
 {
     u32 id;
     u32 result;
@@ -311,7 +311,7 @@ u32 sub_0800CAF0(s32 player, s32 slot)
 
     /* The player offset and the zone base are staged before the slot offset (ROM order). */
     off = (player & 1) * 0xD64;
-    zones = gUnk_0201930C;
+    zones = gDuelZones;
     id = (((struct CAF0Zone *)(zones + (slot * 0x94 + off)))->card << 20) >> 20;
     if (id == 0)
         return 0;
@@ -331,7 +331,7 @@ u32 sub_0800CAF0(s32 player, s32 slot)
 
             /* FAKEMATCH: an extra use of the zone base the loop hoists, so global alloc keeps it
              * in r9 and spills the hoisted linkKinds pointer to [sp] instead. */
-            asm("" :: "r"(gUnk_0201930C));
+            asm("" :: "r"(gDuelZones));
             link = CAF0_ZONE(player, slot)->links[i];
             kind = CAF0_ZONE(player, slot)->linkKinds[i];
             lz = link >> 8;
@@ -340,8 +340,8 @@ u32 sub_0800CAF0(s32 player, s32 slot)
             tid = (t->card << 20) >> 20;
             if (kind == 1 && tid != 0
                 && !(((u8 *)t)[0x91] & 8)
-                && sub_08008524(0, 0x601) == 0
-                && sub_08008524(1, 0x601) == 0
+                && CountActiveCardsOnField(0, 0x601) == 0
+                && CountActiveCardsOnField(1, 0x601) == 0
                 && !(*flags & 3)
                 && CAF0_NUMBER(tid) == 0x5A8)
                 result = (t->unk90 << 14) >> 27;
@@ -349,80 +349,80 @@ u32 sub_0800CAF0(s32 player, s32 slot)
     }
     return result;
 }
-s32 sub_0800CC18(s32 player, s32 slot)
+s32 IsCardLinkedToMonster(s32 player, s32 slot)
 {
-    u16 *tab = gUnk_08622AB4;
+    u16 *tab = gCardIdToNumber;
     u16 cardId;
     s32 p, s;
-    cardId = *(u32 *)&gUnk_0201930C[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
+    cardId = *(u32 *)&gDuelZones[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
     if (cardId == 0) {
         return 0;
     }
     for (p = 0; p <= 1; p++) {
         for (s = 0; s <= 4; s++) {
-            u8 *zone = &gUnk_0201930C[s * 0x94 + (p & 1) * 0xD64];
+            u8 *zone = &gDuelZones[s * 0x94 + (p & 1) * 0xD64];
             if ((*(u32 *)zone << 20) == 0) {
                 continue;
             }
             if (!(zone[6] & 2)) {
                 continue;
             }
-            if (sub_0800AA40(p, s, tab[cardId & 0x7FF]) != -1) {
+            if (FindZoneLinkFromCard(p, s, tab[cardId & 0x7FF]) != -1) {
                 return 1;
             }
         }
     }
     return 0;
 }
-/* Evaluates the card in (player, slot) against zone pos (targetPlayer, targetSlot) via sub_0802B558. */
-u16 sub_0800CCCC(u32 player, u32 slot, u32 targetPlayer, u32 targetSlot)
+/* Evaluates the card in (player, slot) against zone pos (targetPlayer, targetSlot) via EffectEquipTargetCheck. */
+u16 IsValidEquipTarget(u32 player, u32 slot, u32 targetPlayer, u32 targetSlot)
 {
     struct CardRef ref;
     ref.id = ZONE(player & 1, slot)->cardId;
     ref.player = player;
-    return sub_0802B558(&ref, (u8)targetPlayer | ((u8)targetSlot << 8));
+    return EffectEquipTargetCheck(&ref, (u8)targetPlayer | ((u8)targetSlot << 8));
 }
-/* Counts the zones (both players, slots 0-4) for which sub_0800CCCC returns nonzero. */
-int sub_0800CD24(u32 player, u32 slot)
+/* Counts the zones (both players, slots 0-4) for which IsValidEquipTarget returns nonzero. */
+int CountValidEquipTargets(u32 player, u32 slot)
 {
     int count = 0;
     int p, s;
     for (p = 0; p <= 1; p++)
         for (s = 0; s <= 4; s++)
-            if (sub_0800CCCC(player, slot, p, s))
+            if (IsValidEquipTarget(player, slot, p, s))
                 count++;
     return count;
 }
-u16 sub_0800CD68(s32 player, s32 slot)
+u16 FindMonsterLinkedToCard(s32 player, s32 slot)
 {
-    u16 *tab = gUnk_08622AB4;
+    u16 *tab = gCardIdToNumber;
     u16 cardId;
     s32 p, s;
-    cardId = *(u32 *)&gUnk_0201930C[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
+    cardId = *(u32 *)&gDuelZones[(player & 1) * 0xD64 + slot * 0x94] << 20 >> 20;
     if (cardId == 0) {
         return 0;
     }
     for (p = 0; p <= 1; p++) {
         for (s = 0; s <= 4; s++) {
-            u8 *zone = &gUnk_0201930C[s * 0x94 + (p & 1) * 0xD64];
+            u8 *zone = &gDuelZones[s * 0x94 + (p & 1) * 0xD64];
             if ((*(u32 *)zone << 20) == 0) {
                 continue;
             }
             if (!(zone[6] & 2)) {
                 continue;
             }
-            if (sub_0800AA40(p, s, tab[cardId & 0x7FF]) != -1) {
+            if (FindZoneLinkFromCard(p, s, tab[cardId & 0x7FF]) != -1) {
                 return (u8)p | ((u8)s << 8);
             }
         }
     }
     return 0xFFFF;
 }
-s32 sub_080623AC(u32, s32, u16);
-s32 sub_080623EC(u32, s32, u16);
-extern u8 gUnk_08687FBC[];
+s32 GetAreaX(u32, s32, u16);
+s32 GetAreaY(u32, s32, u16);
+extern u8 gAttackBannerGfx[];
 
-void sub_0800CE28(void)
+void DuelCmd_Attack(void)
 {
     u32 player = gCmd.hdr >> 15;
     u16 slot = gCmd.arg1;
@@ -431,31 +431,31 @@ void sub_0800CE28(void)
 
     switch (step) {
     case 0:
-        gUnk_0201CFB0.busy = 1;
-        sub_08024134(player, 0, slot);
+        gDuelScreen.busy = 1;
+        DuelCursor_Select(player, 0, slot);
         gCmd.step++;
         break;
     case 1:
-        gUnk_0201CFB0.busy = 1;
-        sub_08024134(1 - player, 0, otherSlot);
+        gDuelScreen.busy = 1;
+        DuelCursor_Select(1 - player, 0, otherSlot);
         gCmd.step++;
         break;
     case 2:
-        gUnk_0201CFB0.busy = 0;
+        gDuelScreen.busy = 0;
         gCmd.timer = 0;
         gCmd.step++;
         break;
     case 3: {
-        s32 x = sub_080623AC(player, 0, slot);
-        s32 y = sub_080623EC(player, 0, slot);
+        s32 x = GetAreaX(player, 0, slot);
+        s32 y = GetAreaY(player, 0, slot);
         u32 packed = (u32)(x + 8) | ((u32)(y + 8) << 16);
         s32 t;
 
-        sub_08076714(packed, 0x40, 0x5200, (gCmd.timer * 4 + (player ? 0x40 : 0)) | 0x1000000);
+        AddAffineSprite(packed, 0x40, 0x5200, (gCmd.timer * 4 + (player ? 0x40 : 0)) | 0x1000000);
         gCmd.timer++;
         t = gCmd.timer;
         if (t <= 31) {
-            if ((gUnk_03000040[2] & 2) || gUnk_0201CFB0.fast)
+            if ((gMain[2] & 2) || gDuelScreen.fast)
                 if (t <= 23)
                     gCmd.timer += 7;
         } else {
@@ -466,24 +466,24 @@ void sub_0800CE28(void)
     }
     case 4: {
         u32 other = 1 - player;
-        s32 dx = sub_080623AC(other, 0, otherSlot);
-        s32 dy = sub_080623EC(other, 0, otherSlot);
+        s32 dx = GetAreaX(other, 0, otherSlot);
+        s32 dy = GetAreaY(other, 0, otherSlot);
         s32 t;
 
-        dx -= sub_080623AC(player, 0, slot);
-        dy -= sub_080623EC(player, 0, slot);
+        dx -= GetAreaX(player, 0, slot);
+        dy -= GetAreaY(player, 0, slot);
         dx *= gCmd.timer;
         dy *= gCmd.timer;
         dx /= 32;
         dy /= 32;
-        dx += sub_080623AC(player, 0, slot) + 8;
-        dy += sub_080623EC(player, 0, slot) + 8;
+        dx += GetAreaX(player, 0, slot) + 8;
+        dy += GetAreaY(player, 0, slot) + 8;
         dy = (dy << 16) | dx;
-        sub_08076714(dy, 0x40, 0x5200, ((u32)gUnk_081A43E4[gCmd.timer] << 16) | (player ? 0x40 : 0));
+        AddAffineSprite(dy, 0x40, 0x5200, ((u32)gBounceScaleCurve[gCmd.timer] << 16) | (player ? 0x40 : 0));
         gCmd.timer++;
         t = gCmd.timer;
         if (t <= 31) {
-            if ((gUnk_03000040[2] & 2) || gUnk_0201CFB0.fast)
+            if ((gMain[2] & 2) || gDuelScreen.fast)
                 if (t <= 23)
                     gCmd.timer += 7;
         } else {
@@ -493,17 +493,17 @@ void sub_0800CE28(void)
         break;
     }
     case 5:
-        sub_080752B0(0x050003E0, gUnk_08687B9C, 0x20);
-        sub_080752B0(0x06016C80, gUnk_08687FBC, 0x400);
+        CopyDoubleWords(0x050003E0, gDuelBannerPal, 0x20);
+        CopyDoubleWords(0x06016C80, gAttackBannerGfx, 0x400);
         gCmd.timer = 0;
         gCmd.step++;
         break;
     case 6: {
         s32 t = gCmd.timer;
         if (t <= 95) {
-            sub_08076714(0x300058, 0x40C0, 0xF364, (u32)gUnk_081A43E4[t & 31] << 16);
+            AddAffineSprite(0x300058, 0x40C0, 0xF364, (u32)gBounceScaleCurve[t & 31] << 16);
             gCmd.timer++;
-            if ((gUnk_03000040[2] & 2) || gUnk_0201CFB0.fast)
+            if ((gMain[2] & 2) || gDuelScreen.fast)
                 if (gCmd.timer <= 87)
                     gCmd.timer += 3;
             break;
@@ -514,33 +514,33 @@ void sub_0800CE28(void)
         break;
     }
 }
-void sub_0800D234(void)
+void DuelCmd_DirectAttack(void)
 {
     u32 player = CMD_PLAYER();
-    u16 arg = gUnk_020185C0.arg1;
-    s32 step = gUnk_020185C0.step;
+    u16 arg = gDuelCmd.arg1;
+    s32 step = gDuelCmd.step;
 
     switch (step) {
     case 0:
-        gUnk_0201CFB0.busy = 1;
-        sub_08024134(player, 0, arg);
-        gUnk_020185C0.step++;
+        gDuelScreen.busy = 1;
+        DuelCursor_Select(player, 0, arg);
+        gDuelCmd.step++;
         break;
     case 1:
-        gUnk_0201CFB0.busy = 0;
-        sub_080752B0(0x050003E0, gUnk_08687B9C, 0x20);
-        sub_080752B0(0x06016C80, gUnk_086883BC, 0x400);
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        gDuelScreen.busy = 0;
+        CopyDoubleWords(0x050003E0, gDuelBannerPal, 0x20);
+        CopyDoubleWords(0x06016C80, gDirectAttackBannerGfx, 0x400);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 2: {
-        s32 t = gUnk_020185C0.timer;
+        s32 t = gDuelCmd.timer;
         if (t <= 0x5F) {
-            sub_08076714(0x00300058, 0x40C0, 0xF364, gUnk_081A43E4[t & 0x1F] << 16);
-            gUnk_020185C0.timer++;
-            if ((step & gUnk_03000040[2]) || gUnk_0201CFB0.fast) {
-                if (gUnk_020185C0.timer <= 0x57) {
-                    gUnk_020185C0.timer += 7;
+            AddAffineSprite(0x00300058, 0x40C0, 0xF364, gBounceScaleCurve[t & 0x1F] << 16);
+            gDuelCmd.timer++;
+            if ((step & gMain[2]) || gDuelScreen.fast) {
+                if (gDuelCmd.timer <= 0x57) {
+                    gDuelCmd.timer += 7;
                 }
             }
             return;
@@ -562,9 +562,9 @@ struct ZoneFlags8C {
     u8 rest : 3;
 };
 
-void sub_0800D398(void)
+void DuelCmd_PrepareBattlePhase(void)
 {
-    struct DuelCmd *t = &gUnk_020185C0;
+    struct DuelCmd *t = &gDuelCmd;
     s32 i = 0;
     struct DuelCmd *cmd;
     u32 off;
@@ -576,7 +576,7 @@ void sub_0800D398(void)
     asm volatile("" ::: "memory");
     cmd = t;
     off = (cmd->hdr >> 15) * 0xD64;
-    gBase = gUnk_0201930C;
+    gBase = gDuelZones;
     pb = gBase + off;
 
     do {
@@ -602,85 +602,85 @@ void sub_0800D398(void)
 }
 
 
-void sub_0800D43C(void)
+void DuelCmd_MarkAttacked(void)
 {
-    sub_0804A39C(CMD_PLAYER(), gUnk_020185C0.arg1);
+    MarkMonsterAttacked(CMD_PLAYER(), gDuelCmd.arg1);
     CMD_DONE();
 }
 
-void sub_0800D468(void)
+void DuelCmd_StartBattleScene(void)
 {
-    if (sub_08060B4C()) {
-        sub_0805E3B8(gUnk_020185C0.arg1, gUnk_020185C0.arg2);
+    if (DuelScreen_FadeOutStep()) {
+        BattleScene_Init(gDuelCmd.arg1, gDuelCmd.arg2);
         CMD_DONE();
     }
 }
 
-void sub_0800D498(void)
+void DuelCmd_PlayBattleScene(void)
 {
-    if (sub_0805E788(gUnk_020185C0.arg1, gUnk_020185C0.arg2, gUnk_020185C0.arg3))
+    if (BattleScene_Update(gDuelCmd.arg1, gDuelCmd.arg2, gDuelCmd.arg3))
         CMD_DONE();
 }
 
-void sub_0800D4C8(void)
+void DuelCmd_SetBattleProtection(void)
 {
     u8 player = CMD_PLAYER();
     if (gCmd.arg1)
-        gUnk_020192E4.p[player].flag8_0 = 1;
+        gDuelPlayers.p[player].flag8_0 = 1;
     if (gCmd.arg2)
-        gUnk_020192E4.p[player].flag8_1 = 1;
+        gDuelPlayers.p[player].flag8_1 = 1;
     CMD_DONE();
 }
-void sub_0800D524(void)
+void DuelCmd_EndBattlePhase(void)
 {
     if (!LINK_SKIP()) {
-        gUnk_020192E4.p[0].unk24 = 0;
-        gUnk_020192E4.p[1].unk24 = 0;
-        gUnk_020192E4.phaseWord.phase = 12;
+        gDuelPlayers.p[0].unk24 = 0;
+        gDuelPlayers.p[1].unk24 = 0;
+        gDuelPlayers.phaseWord.phase = 12;
     }
     CMD_DONE();
 }
-void sub_0800D594(void)
+void DuelCmd_SetAttackTarget(void)
 {
     if (!LINK_SKIP()) {
-        gUnk_02018450.unk0_9 = (u8)(gCmd.arg1 >> 8);
+        gBattle.unk0_9 = (u8)(gCmd.arg1 >> 8);
         if (gCmd.arg2) {
-            gUnk_020192E0.phaseWord.phase = 6;
-            gUnk_020192E0.phaseWord.unk17 = 0;
+            gDuel.phaseWord.phase = 6;
+            gDuel.phaseWord.unk17 = 0;
         }
     }
     CMD_DONE();
 }
-void sub_0800D634(void)
+void DuelCmd_SetAttacker(void)
 {
     if (!LINK_SKIP()) {
-        gUnk_02018450.unk0_6 = gCmd.arg1 >> 8;
+        gBattle.unk0_6 = gCmd.arg1 >> 8;
         if (gCmd.arg2) {
-            gUnk_020192E0.phaseWord.phase = 6;
-            gUnk_020192E0.phaseWord.unk17 = 0;
+            gDuel.phaseWord.phase = 6;
+            gDuel.phaseWord.unk17 = 0;
         }
     }
     CMD_DONE();
 }
 
-void sub_0800D6D4(void)
+void DuelCmd_ZeroAttackerAtk(void)
 {
-    gUnk_02018450.unk0_5 = 1;
+    gBattle.unk0_5 = 1;
     CMD_DONE();
 }
 
-void sub_0800D6FC(void)
+void DuelCmd_NegateAttack(void)
 {
     u32 player = CMD_PLAYER();
     u16 arg = gCmd.arg1;
     if (!LINK_SKIP()) {
-        gUnk_020192E0.phaseWord.phase = 11;
-        gUnk_020192E0.phaseWord.unk17 = 0;
+        gDuel.phaseWord.phase = 11;
+        gDuel.phaseWord.unk17 = 0;
     }
-    sub_0804A39C(player, arg);
+    MarkMonsterAttacked(player, arg);
     CMD_DONE();
 }
-void sub_0800D784(void)
+void DuelCmd_PlaceCard(void)
 {
     u32 player = CMD_PLAYER();
     u8 slot = gCmd.arg1;
@@ -688,31 +688,31 @@ void sub_0800D784(void)
     u16 flag0 = flags & 1;
     u16 flag1 = (u8)(flags & 2) >> 1;
     u32 data = (gCmd.arg3 << 16) | gCmd.arg2;
-    sub_08007A4C(player, slot, &data, flag1, flag0);
-    sub_080611AC();
+    PlaceMonsterCard(player, slot, &data, flag1, flag0);
+    DrawAllAreaTiles();
     CMD_DONE();
 }
-void sub_0800D7D4(void)
+void DuelCmd_ClearZoneCard(void)
 {
     ZONE(CMD_PLAYER(), gCmd.arg1)->cardId = 0;
-    sub_080611AC();
+    DrawAllAreaTiles();
     CMD_DONE();
 }
 
-void sub_0800D824(void)
+void DuelCmd_AddCardToGraveyard(void)
 {
-    u32 w = (gUnk_020185C0.arg2 << 16) | gUnk_020185C0.arg1;
+    u32 w = (gDuelCmd.arg2 << 16) | gDuelCmd.arg1;
     if (w << 20)
-        sub_080096F4(&w);
-    sub_080611AC();
+        AddCardToGraveyard(&w);
+    DrawAllAreaTiles();
     CMD_DONE();
 }
 
-void sub_0800D864(void)
+void DuelCmd_AddCardToBanished(void)
 {
-    u32 w = (gUnk_020185C0.arg2 << 16) | gUnk_020185C0.arg1;
+    u32 w = (gDuelCmd.arg2 << 16) | gDuelCmd.arg1;
     if (w << 20)
-        sub_08009768(&w);
-    sub_080611AC();
+        AddCardToBanished(&w);
+    DrawAllAreaTiles();
     CMD_DONE();
 }

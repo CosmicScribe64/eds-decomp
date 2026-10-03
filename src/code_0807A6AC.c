@@ -12,7 +12,7 @@
 /* Fills a w x h rectangle of BG screenblock `bg` (at column x, row y) with
  * ascending tile numbers. Columns 0x20-0x3F continue in the next screenblock
  * (64-wide maps), columns >= 0x40 wrap back. */
-void sub_0807A6AC(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
+void FillVramMapRectSeq(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u16 *p = (u16 *)(VRAM + bg * 0x800 + x * 2 + y * 64);
     u8 i;
@@ -42,7 +42,7 @@ void sub_0807A6AC(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
     }
 }
 /* Fills a w x h rectangle (w even) with one tile using 32-bit stores. */
-void sub_0807A754(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
+void FillVramMapRect32(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u32 *p = (u32 *)(VRAM + bg * 0x800 + x * 2 + y * 64);
     u8 i;
@@ -65,8 +65,8 @@ void sub_0807A754(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
         p += 0x10 - w / 2;
     }
 }
-/* Same as sub_0807A6AC but every entry gets the same tile. */
-void sub_0807A808(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
+/* Same as FillVramMapRectSeq but every entry gets the same tile. */
+void FillVramMapRect(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 {
     u16 *p = (u16 *) (((0x06000000 + (bg * 0x800)) + (x * 2)) + (y * 64));
     u8 i;
@@ -106,7 +106,7 @@ void sub_0807A808(u16 tile, u8 bg, u8 x, u8 y, u8 w, u8 h)
 } /* 0x0807A808 size 0x90 */
 /* Fills a w x h rectangle at dst (32-entry rows) with ascending tile
  * numbers (10 bits) combined with a palette nibble. */
-void sub_0807A898(u16 *dst, u16 tile, u8 pal, u8 w, u8 h)
+void FillMapRectSeqPal(u16 *dst, u16 tile, u8 pal, u8 w, u8 h)
 {
     u8 i;
     u8 j;
@@ -122,7 +122,7 @@ void sub_0807A898(u16 *dst, u16 tile, u8 pal, u8 w, u8 h)
     }
 }
 /* Copies h rows of w halfwords from a packed source to a 32-entry-wide map. */
-void sub_0807A908(void *src, void *dst, u8 w, u8 h)
+void CopyMapRect(void *src, void *dst, u8 w, u8 h)
 {
     u8 i;
 
@@ -135,7 +135,7 @@ void sub_0807A908(void *src, void *dst, u8 w, u8 h)
     }
 }
 /* Same with an explicit destination row stride (in halfwords). */
-void sub_0807A960(void *src, void *dst, u8 w, u8 h, u8 stride)
+void CopyMapRectStride(void *src, void *dst, u8 w, u8 h, u8 stride)
 {
     u8 i;
 
@@ -149,7 +149,7 @@ void sub_0807A960(void *src, void *dst, u8 w, u8 h, u8 stride)
 }
 /* Copies a w x h rectangle between maps, adding a palette nibble and a
  * high tile-number offset to every entry. */
-void sub_0807A9C0(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
+void CopyMapRectAddOffset(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
 {
     u8 i;
     u8 j;
@@ -164,8 +164,8 @@ void sub_0807A9C0(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
         dst += 0x20 - w;
     }
 }
-/* Like sub_0807A9C0 but keeps only the low 10 bits of the source tile. */
-void sub_0807AA4C(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
+/* Like CopyMapRectAddOffset but keeps only the low 10 bits of the source tile. */
+void CopyMapRectSetPalette(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
 {
     u8 i;
     u8 j;
@@ -182,7 +182,7 @@ void sub_0807AA4C(u16 *src, u16 *dst, u8 w, u8 h, u8 srcW, u8 pal, u8 hi)
 }
 /* Copies h rows of w entries from a wide map to a 32-wide map, taking the
  * column modulo 32 and wrapping the destination every 32 rows. */
-void sub_0807AAE4(u16 *src, u16 *dst, u8 w, u8 h, u16 srcX, u16 dstRow, u8 srcStride)
+void CopyMapRectWrapped(u16 *src, u16 *dst, u8 w, u8 h, u16 srcX, u16 dstRow, u8 srcStride)
 {
     u16 i;
     u16 j;
@@ -201,7 +201,7 @@ void sub_0807AAE4(u16 *src, u16 *dst, u8 w, u8 h, u16 srcX, u16 dstRow, u8 srcSt
         }
     }
 }
-void sub_0807AB8C(u16 *src, u16 *dst, u8 w, u8 h)
+void CopyMapRectRemapTiles16To32(u16 *src, u16 *dst, u8 w, u8 h)
 {
     u8 i;
     u8 j;
@@ -216,7 +216,7 @@ void sub_0807AB8C(u16 *src, u16 *dst, u8 w, u8 h)
     }
 }
 /* Sets the palette nibble of every entry in a w x h rectangle. */
-void sub_0807AC00(u16 *dst, u8 w, u8 h, u8 pal)
+void SetMapRectPalette(u16 *dst, u8 w, u8 h, u8 pal)
 {
     u8 i;
     u8 j;
@@ -230,7 +230,7 @@ void sub_0807AC00(u16 *dst, u8 w, u8 h, u8 pal)
         dst += 0x20 - w;
     }
 }
-void sub_0807AC5C(u8 bg, u8 x, u8 y, u8 tile)
+void SetVramMapTile(u8 bg, u8 x, u8 y, u8 tile)
 {
     u16 *p = (u16 *)((x + y * 32) * 2 + bg * 0x800 + VRAM);
 
@@ -238,7 +238,7 @@ void sub_0807AC5C(u8 bg, u8 x, u8 y, u8 tile)
 }
 /* Draws a 3-digit decimal number right to left starting at (x, y).
  * mode 0: always draws 3 digits; mode 1: skips zero digits. */
-void sub_0807AC88(u8 bg, u16 base, u8 x, u8 y, u16 num, u8 pal, u32 unused, u8 mode)
+void DrawVramMapNumber3(u8 bg, u16 base, u8 x, u8 y, u16 num, u8 pal, u32 unused, u8 mode)
 {
     u16 *p = (u16 *)((x + y * 32) * 2 + bg * 0x800 + VRAM);
     u32 ten = 10;
@@ -271,15 +271,15 @@ void sub_0807AC88(u8 bg, u16 base, u8 x, u8 y, u16 num, u8 pal, u32 unused, u8 m
     }
     }
 }
-u16 sub_0807A490(u16 x, u16 y, u8 shift);
+u16 GetTilemapOffset(u16 x, u16 y, u8 shift);
 
 /* Copies a w x h block of halfword rows between two bitmaps; the byte offset
- * of a (x, y) position comes from sub_0807A490(x, y, shift). The u32 return
+ * of a (x, y) position comes from GetTilemapOffset(x, y, shift). The u32 return
  * type (no value) gives the `pop {r1}` epilogue. */
-u32 sub_0807AD40(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
+u32 CopyMapBlock(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
 {
-    u16 *src = srcBase + sub_0807A490(sx, sy, shift) / 2;
-    u16 *dst = dstBase + sub_0807A490(dx, dy, shift) / 2;
+    u16 *src = srcBase + GetTilemapOffset(sx, sy, shift) / 2;
+    u16 *dst = dstBase + GetTilemapOffset(dx, dy, shift) / 2;
     u8 i;
 
     for (i = 0; i < h; i++) {
@@ -290,10 +290,10 @@ u32 sub_0807AD40(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u
     }
 }
 /* Same for a source that is a plain srcW-wide halfword array. */
-u32 sub_0807ADE8(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
+u32 CropMapBlock(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u16 dy, u8 w, u8 h, u8 shift)
 {
     u16 *src = srcBase + sx + sy * srcW;
-    u16 *dst = dstBase + sub_0807A490(dx, dy, shift) / 2;
+    u16 *dst = dstBase + GetTilemapOffset(dx, dy, shift) / 2;
     u8 i;
 
     for (i = 0; i < h; i++) {
@@ -304,7 +304,7 @@ u32 sub_0807ADE8(u16 *srcBase, u16 sx, u16 sy, u16 srcW, u16 *dstBase, u16 dx, u
     }
 }
 /* Packs pairs of halfwords into bytes: dst[i] = lo | hi << 8. */
-void sub_0807AE88(u16 *src, u16 *dst, u8 w, u8 h)
+void PackMapRectBytes(u16 *src, u16 *dst, u8 w, u8 h)
 {
     u8 i;
     u8 j;
@@ -317,18 +317,18 @@ void sub_0807AE88(u16 *src, u16 *dst, u8 w, u8 h)
         dst += 0x20 - w;
     }
 }
-extern const u8 gUnk_08608360[];
-extern const u16 gUnk_082A6500[];
+extern const u8 gCardArtPalettes[];
+extern const u16 gCardArtGfx[];
 
 /* Unpacks a 6-bit-per-pixel image (idx-th 0x10E0-byte record at 0x082A6500)
  * into 8-bit pixels at dst and loads its 64 colour palette to OBJ/BG palette
  * bank `bank`; the top two pixel bits select the sub-palette. */
-void sub_08075294(u32 dst, const void *src, u32 n);
-/* Twin of sub_0805DF34 (portrait loader): palette idx -> PLTT + (pal >> 4) * 32 with
+void MemCopy16(u32 dst, const void *src, u32 n);
+/* Twin of BattleScene_LoadCardArt (portrait loader): palette idx -> PLTT + (pal >> 4) * 32 with
  * pal = bank * 64 + 0x80, unpacks record idx's 720 x 3 halfwords of packed 6-bit pixels to one
  * pixel per byte at dst, then adds (pal & 0xFF) to all 0xB40 halfwords. The ROM tables are
- * integer addresses so that both bases are rematerialized by reload (as in sub_0805DF34). */
-void sub_0807AEF0(u16 idx, u32 dst, u16 bank)
+ * integer addresses so that both bases are rematerialized by reload (as in BattleScene_LoadCardArt). */
+void UnpackCardArt8bpp(u16 idx, u32 dst, u16 bank)
 {
     u16 pal = bank * 64 + 0x80;
     const u16 *src;
@@ -342,7 +342,7 @@ void sub_0807AEF0(u16 idx, u32 dst, u16 bank)
     u32 lim;
     u16 m6, m12;
 
-    sub_08075294(0x05000000 + (pal >> 4) * 0x20, (const void *)(0x08608360 + idx * 0x80), 0x80);
+    MemCopy16(0x05000000 + (pal >> 4) * 0x20, (const void *)(0x08608360 + idx * 0x80), 0x80);
     src = (const u16 *)(0x082A6500 + idx * 0x10E0);
     out = (u16 *)dst;
     m6 = 0x3F;
@@ -369,11 +369,11 @@ void sub_0807AEF0(u16 idx, u32 dst, u16 bank)
         i++;
     } while (i <= lim);
 }
-void sub_0807AEF0(u16 a, u32 b, u16 c);
+void UnpackCardArt8bpp(u16 a, u32 b, u16 c);
 
-void sub_0807AFFC(u16 a, u32 b, u16 c)
+void LoadCardArt8bpp(u16 a, u32 b, u16 c)
 {
-    sub_0807AEF0(a, b, c);
+    UnpackCardArt8bpp(a, b, c);
 }
 /* 4-slot callback queue: slot[i] is a function returning non-zero when done. */
 struct CallbackQueue {
@@ -382,7 +382,7 @@ struct CallbackQueue {
     u16 (*slot[4])(void);           /* +0x04 */
 };
 
-void sub_0807B010(struct CallbackQueue *q)
+void CallbackQueue_Init(struct CallbackQueue *q)
 {
     u8 i;
 
@@ -390,7 +390,7 @@ void sub_0807B010(struct CallbackQueue *q)
         q->slot[i] = NULL;
     }
 }
-u8 sub_0807B028(u16 (*fn)(void), struct CallbackQueue *q)
+u8 CallbackQueue_Add(u16 (*fn)(void), struct CallbackQueue *q)
 {
     u8 head = q->head;
     u8 ret;
@@ -403,7 +403,7 @@ u8 sub_0807B028(u16 (*fn)(void), struct CallbackQueue *q)
     }
     return ret;
 }
-void sub_0807B058(struct CallbackQueue *q)
+void CallbackQueue_Run(struct CallbackQueue *q)
 {
     u8 i;
 
@@ -421,12 +421,12 @@ struct CallbackList {
     u16 (**table)(void);            /* +0x04 */
 };
 
-void sub_0807B088(u16 (**table)(void), struct CallbackList *l)
+void StepList_Init(u16 (**table)(void), struct CallbackList *l)
 {
     l->idx = 0;
     l->table = table;
 }
-u32 sub_0807B090(struct CallbackList *l)
+u32 StepList_Run(struct CallbackList *l)
 {
     if (l->table[l->idx] != NULL) {
         if (l->table[l->idx]()) {
@@ -442,17 +442,17 @@ struct Timer {
     u16 count;                      /* +0x02 */
 };
 
-void sub_0807B0C0(struct Timer *t)
+void Timer_Reset(struct Timer *t)
 {
     t->state = 0;
     t->count = 0;
 }
-void sub_0807B0C8(struct Timer *t, u16 count)
+void Timer_Start(struct Timer *t, u16 count)
 {
     t->state = 1;
     t->count = count;
 }
-void sub_0807B0D0(struct Timer *t)
+void Timer_Tick(struct Timer *t)
 {
     if (t->state == 1) {
         t->count--;
@@ -469,21 +469,21 @@ struct Ease {
     s16 step;                       /* +0x06 */
 };
 
-void sub_0807B0EC(u16 cur, u16 end, s16 step, struct Ease *e)
+void Ease_Init(u16 cur, u16 end, s16 step, struct Ease *e)
 {
     e->state = 0;
     e->cur = cur;
     e->end = end;
     e->step = step;
 }
-void sub_0807B100(u16 cur, u16 end, s16 step, struct Ease *e)
+void Ease_Start(u16 cur, u16 end, s16 step, struct Ease *e)
 {
     e->state = 1;
     e->cur = cur;
     e->end = end;
     e->step = step;
 }
-void sub_0807B114(struct Ease *e)
+void Ease_Tick(struct Ease *e)
 {
     if (e->state != 1) {
         return;
@@ -519,7 +519,7 @@ struct PalFade {
     u16 state;                      /* +0xC08 1 running, 2 done */
 };
 
-void sub_0807B150(u16 *pal, u16 count, u16 color, struct PalFade *f)
+void PalFade_Start(u16 *pal, u16 count, u16 color, struct PalFade *f)
 {
     u16 i;
 
@@ -535,7 +535,7 @@ void sub_0807B150(u16 *pal, u16 count, u16 color, struct PalFade *f)
     f->count = count;
     f->step = 0;
 }
-void sub_0807B224(struct PalFade *f)
+void PalFade_Apply(struct PalFade *f)
 {
     u16 *dst = f->dst;
 
@@ -566,7 +566,7 @@ struct PalFadeSmall {
     u16 state;                      /* +0x3A 1 running, 2 done */
 };
 
-void sub_0807B31C(u16 *pal, u16 count, u8 stride, u16 color, struct PalFadeSmall *f)
+void PalFadeStrided_Start(u16 *pal, u16 count, u8 stride, u16 color, struct PalFadeSmall *f)
 {
     u16 j = 0;
     u16 i;
@@ -584,7 +584,7 @@ void sub_0807B31C(u16 *pal, u16 count, u8 stride, u16 color, struct PalFadeSmall
     f->step = 0;
     f->stride = stride;
 }
-void sub_0807B3DC(struct PalFadeSmall *f)
+void PalFadeStrided_Apply(struct PalFadeSmall *f)
 {
     u16 *dst = f->dst;
     u16 idx = 0;
@@ -604,19 +604,19 @@ void sub_0807B3DC(struct PalFadeSmall *f)
         }
     }
 }
-void sub_0807B4A8(u16 a)
+void SetBldAlpha(u16 a)
 {
     REG_BLDALPHA = (a << 8) | (0x10 - a);
 }
-void sub_0807B4C0(u16 a)
+void SetBldY(u16 a)
 {
     REG_BLDY = a;
 }
-s16 sub_0807B4D0(s16 a, s16 b)
+s16 MulFix8(s16 a, s16 b)
 {
     return a * b >> 8;
 }
-s32 sub_0807B4E0(s32 a, s32 b)
+s32 MulFix8Wide(s32 a, s32 b)
 {
     long long p = (long long)a * b;
 
@@ -624,13 +624,13 @@ s32 sub_0807B4E0(s32 a, s32 b)
 }
 /* Callers supply words; the original explicitly decodes signed halfwords
  * and sign-extends the narrowed quotient on return. */
-int sub_0807B504(int aWord, int bWord)
+int DivFix8(int aWord, int bWord)
 {
     s16 a = aWord;
     s16 b = bWord;
     return (s16)Div(a * 256, b);
 }
-s16 sub_0807B51C(s16 a)
+s16 ReciprocalFix8(s16 a)
 {
     return Div(0x10000, a);
 }
@@ -644,7 +644,7 @@ struct ObjAffine {
     s16 *param[4];                  /* +0x08 */
 };
 
-void sub_0807B534(struct ObjAffine *a)
+void ObjAffineInit(struct ObjAffine *a)
 {
     u8 i;
     u8 j;
@@ -661,27 +661,27 @@ void sub_0807B534(struct ObjAffine *a)
         a[i].angle = 0;
     }
 }
-extern const s16 gUnk_08087BA4[];   /* sine table, 256 steps per turn, 8.8 fixed point */
+extern const s16 gSineTable[];   /* sine table, 256 steps per turn, 8.8 fixed point */
 
 /* The originals are called through int-typed declarations (no s16
  * re-extension at the call site); asm labels reproduce that. */
-extern int Reciprocal(int) asm("sub_0807B51C");
-extern int MulFix(int, int) asm("sub_0807B4D0");
+extern int Reciprocal(int) asm("ReciprocalFix8");
+extern int MulFix(int, int) asm("MulFix8");
 
-void sub_0807B5A0(struct ObjAffine *a)
+void ObjAffineApply(struct ObjAffine *a)
 {
-    *a->param[0] = MulFix(Reciprocal(a->scaleX), gUnk_08087BA4[(a->angle >> 8) + 0x40]);
-    *a->param[1] = MulFix(Reciprocal(a->scaleX), gUnk_08087BA4[a->angle >> 8]);
-    *a->param[2] = MulFix(Reciprocal(a->scaleY), -gUnk_08087BA4[a->angle >> 8]);
-    *a->param[3] = MulFix(Reciprocal(a->scaleY), gUnk_08087BA4[(a->angle >> 8) + 0x40]);
+    *a->param[0] = MulFix(Reciprocal(a->scaleX), gSineTable[(a->angle >> 8) + 0x40]);
+    *a->param[1] = MulFix(Reciprocal(a->scaleX), gSineTable[a->angle >> 8]);
+    *a->param[2] = MulFix(Reciprocal(a->scaleY), -gSineTable[a->angle >> 8]);
+    *a->param[3] = MulFix(Reciprocal(a->scaleY), gSineTable[(a->angle >> 8) + 0x40]);
 }
-void sub_0807B628(u8 bg, s32 x, s32 y, s32 cx, s32 cy, struct ObjAffine *a)
+void SetBgAffineRefPoint(u8 bg, s32 x, s32 y, s32 cx, s32 cy, struct ObjAffine *a)
 {
     s32 sx;
     s32 sy;
 
-    sx = sub_0807B4E0(*a->param[0], x -= cx) + sub_0807B4E0(*a->param[1], y -= cy) + cx;
-    sy = sub_0807B4E0(*a->param[2], x) + sub_0807B4E0(*a->param[3], y) + cy;
+    sx = MulFix8Wide(*a->param[0], x -= cx) + MulFix8Wide(*a->param[1], y -= cy) + cx;
+    sy = MulFix8Wide(*a->param[2], x) + MulFix8Wide(*a->param[3], y) + cy;
     switch (bg) {
     case 2:
         *(vu32 *)0x04000028 = sx;

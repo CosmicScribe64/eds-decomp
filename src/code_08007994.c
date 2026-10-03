@@ -6,7 +6,7 @@
  * "is card X on my field" queries. See wiki/functions/code-08007994.md.
  *
  * The card/zone/player structures (struct DuelCard / DuelZone / DuelPlayer /
- * DuelState / DuelZonesPlayer) and gUnk_020192E0 / gUnk_020192E4 / gUnk_0201930C
+ * DuelState / DuelZonesPlayer) and gDuel / gDuelPlayers / gDuelZones
  * come from include/duel.h (canonical layouts and field names).
  */
 
@@ -15,10 +15,10 @@
  * this unit needs to match (duel.h is shared, so it is not changed here):
  *
  * - struct DuelCardBit18 (below): canonical struct DuelCard has unk13:7 spanning
- *   bits 13-19 and flag20 at bit 20, so the bit-18 flag that sub_08007C58 clears
+ *   bits 13-19 and flag20 at bit 20, so the bit-18 flag that AddCardToDeckTop clears
  *   has no canonical field name.
  * - struct DuelZone90 (below): canonical struct DuelZone stops at +0x8C, but
- *   sub_08007B24 clears the u32 bitfield at +0x90 bit 18 (the ROM's `+0x92 &= 0xFC03`).
+ *   PlaceSpellTrapCard clears the u32 bitfield at +0x90 bit 18 (the ROM's `+0x92 &= 0xFC03`).
  * - struct DuelZoneFlags (below): canonical struct DuelZone declares +0x06 as the
  *   bitfields flag6_0/flag6_1, but the zone searches test those bits as plain byte
  *   masks (mov #2; ldrb; and).
@@ -61,20 +61,20 @@ struct SaveData {
     u8 filler20CA[2];
     u16 fusionDeckSize;     /* +0x20CC */
 };
-extern struct SaveData gUnk_02011C20;
+extern struct SaveData gSaveData;
 
 /* Local view of the placement serial as a u16 at +0x00 (see the list at the top of the
- * file). sub_08007A4C writes it as a raw u16 too. */
+ * file). PlaceMonsterCard writes it as a raw u16 too. */
 struct DuelSerial {
     u16 serial;                     /* 0x020192E0 */
     u8 filler2[2];
     struct DuelPlayer players[2];   /* 0x020192E4 */
 };
-extern struct DuelSerial gUnk_020192E0_serial asm("gUnk_020192E0");
+extern struct DuelSerial gUnk_020192E0_serial asm("gDuel");
 
 /* The same zones addressed from their own base (player + 0x28); struct DuelZonesPlayer
  * comes from duel.h. */
-#define ZONE(p, z) (gUnk_0201930C[(p) & 1].zones[z])
+#define ZONE(p, z) (gDuelZones[(p) & 1].zones[z])
 /* ID of the card word at ptr (a zone or a list entry), read as a whole u32 (ldr + shifts)
  * through a struct DuelCard pointer; a plain .id member access would use ldrh. */
 #define CARD_ID(zone) (((struct DuelCard *)(zone))->id)
@@ -84,17 +84,17 @@ extern struct DuelSerial gUnk_020192E0_serial asm("gUnk_020192E0");
 #define ZONE_FACEUP(zone) (ZONE_FLAGS(zone) & 2)
 #define ZONE_FLAG90_11(zone) (((u8 *)(zone))[0x91] & 8)    /* unk90_11 */
 /* Zone address as the ROM computes it: base + (zone * 0x94 + (player & 1) * 0xD64). */
-#define ZONE_PTR(p, z) ((struct DuelZone *)((u8 *)gUnk_0201930C + ((z) * 0x94 + ((p) & 1) * 0xD64)))
+#define ZONE_PTR(p, z) ((struct DuelZone *)((u8 *)gDuelZones + ((z) * 0x94 + ((p) & 1) * 0xD64)))
 /* Same with the two offsets added the other way round (the add order shows in the code). */
-#define ZONE_PTR2(p, z) ((struct DuelZone *)((u8 *)gUnk_0201930C + (((p) & 1) * 0xD64 + (z) * 0x94)))
-#define PLAYER(p) (gUnk_020192E4[(p) & 1])
+#define ZONE_PTR2(p, z) ((struct DuelZone *)((u8 *)gDuelZones + (((p) & 1) * 0xD64 + (z) * 0x94)))
+#define PLAYER(p) (gDuelPlayers[(p) & 1])
 
-extern const u32 gUnk_08621DE0[];   /* card stats, indexed by card ID */
-extern const u16 gUnk_08622AB4[];   /* card ID to card number */
+extern const u32 gCardStats[];   /* card stats, indexed by card ID */
+extern const u16 gCardIdToNumber[];   /* card ID to card number */
 
 /* A zone's card word, read through a struct DuelCard pointer (this is what the original code does). */
 #define ZONE_CARD(p, z) ((struct DuelCard *)&PLAYER(p).zones[z])
-#define CARD_NUMBER(id) (gUnk_08622AB4[(id) & 0x7FF])
+#define CARD_NUMBER(id) (gCardIdToNumber[(id) & 0x7FF])
 /* The same table through a constant address: GCC then keeps the 0x7FF mask, not the table, in a register. */
 #define CARD_NUMBER_C(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 #define CARD_STATS_C(id) (((const u32 *)0x08621DE0)[(id) & 0x7FF])
@@ -123,45 +123,45 @@ static inline int GetCardSubtype(u16 id)
     }
 }
 
-void sub_08007558(struct DuelCard *dst, struct DuelCard *src);
-void sub_08007560(struct DuelCard *a, struct DuelCard *b);
-u16 sub_0800756C(u16 cardNo);
-void sub_08075278(void *dst, int size);
-u16 sub_08007ED0(int player, int idx, struct DuelCard *out);
-void sub_08009EAC(int player, struct DuelCard *card);
-int sub_0800849C(int player, u16 cardNo, int skipZone);
-int sub_08008524(int player, u16 cardNo);
-int sub_08076F9C(void);                /* Random */
-int sub_0800C8BC(int player, int zone);
-int sub_0800CAF0(int player, int zone);
+void CopyDuelCard(struct DuelCard *dst, struct DuelCard *src);
+void SwapDuelCards(struct DuelCard *a, struct DuelCard *b);
+u16 IsToonMonster(u16 cardNo);
+void MemClear16(void *dst, int size);
+u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out);
+void AddCardToHand(int player, struct DuelCard *card);
+int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone);
+int CountActiveCardsOnField(int player, u16 cardNo);
+int Random(void);                /* Random */
+int GetZoneCardType(int player, int zone);
+int GetZoneCardAttribute(int player, int zone);
 
 /* Monster (type <= 20) with subtype 2. */
-u32 sub_08007994(u16 id)
+u32 IsFusionMonster(u16 id)
 {
     if (CARD_TYPE(id) <= 20 && GetCardSubtype(id) == 2)
         return 1;
     return 0;
 }
 /* Put a card into a field zone: clear the zone, copy the card word, stamp the serial and flags. */
-void sub_08007A4C(int player, int zone, struct DuelCard *card, u16 flag0, u16 faceUp)
+void PlaceMonsterCard(int player, int zone, struct DuelCard *card, u16 flag0, u16 faceUp)
 {
-    u8 *zbase = (u8 *)gUnk_0201930C + (player & 1) * 0xD64;
+    u8 *zbase = (u8 *)gDuelZones + (player & 1) * 0xD64;
     struct DuelZone *z = (struct DuelZone *)(zbase + zone * 0x94);
     u16 number;
-    const u16 *tab = gUnk_08622AB4;
+    const u16 *tab = gCardIdToNumber;
 
-    sub_08075278(z, 0x94);
-    sub_08007558(&z->card, card);
-    z->serial = (*(u16 *)((u8 *)gUnk_0201930C - 0x2C))++;
+    MemClear16(z, 0x94);
+    CopyDuelCard(&z->card, card);
+    z->serial = (*(u16 *)((u8 *)gDuelZones - 0x2C))++;
     z->flag6_0 = flag0;
     z->flag6_1 = faceUp;
     ((u8 *)z)[7] |= 0x20;
     ((u8 *)z)[7] |= 0x04;
     if (flag0 == 0 && faceUp != 0)
-        ((struct DuelPlayer *)((u8 *)gUnk_0201930C - 0x28 + (player & 1) * 0xD64))->zoneMask
+        ((struct DuelPlayer *)((u8 *)gDuelZones - 0x28 + (player & 1) * 0xD64))->zoneMask
             &= ~(1 << zone);
     number = tab[CARD_ID(card) & 0x7FF];
-    if (sub_0800756C(number)) {
+    if (IsToonMonster(number)) {
         u8 *flag = (u8 *)z + 0x8C;
 
         *flag |= 0x10;
@@ -169,16 +169,16 @@ void sub_08007A4C(int player, int zone, struct DuelCard *card, u16 flag0, u16 fa
 }
 /* Place a card in field zone 5+zone, or the field zone (10) if it is a kind-2 type-22 card;
  * clears/initialises the +0x90 flag bits and stamps the serial. */
-void sub_08007B24(int player, int zone, struct DuelCard *card, u16 flag)
+void PlaceSpellTrapCard(int player, int zone, struct DuelCard *card, u16 flag)
 {
-    u8 *zp = (u8 *)gUnk_0201930C + (player & 1) * 0xD64;
+    u8 *zp = (u8 *)gDuelZones + (player & 1) * 0xD64;
     struct DuelZone *z = (struct DuelZone *)(zp + (zone * 0x94 + 0x2E4));
     u32 id = CARD_ID(card);
     u32 stats = CARD_STATS_C(id);
 
     if (((stats & 0x1F00000) >> 20) == 22 && ((stats & 0xE0000) >> 17) == 2)
         z = (struct DuelZone *)(zp + 0x5C8);
-    sub_08007558(&z->card, card);
+    CopyDuelCard(&z->card, card);
     z->serial = gUnk_020192E0_serial.serial++;
     z->flag6_0 = 0;
     z->flag6_1 = flag & 1;
@@ -192,42 +192,42 @@ void sub_08007B24(int player, int zone, struct DuelCard *card, u16 flag)
     if (flag == 0) {
         stats = CARD_STATS_C(id);
         if (((stats & 0x1F00000) >> 20) == 22 && ((stats & 0xE0000) >> 17) != 5
-            && sub_08008524(0, 0x49C) == 0 && sub_08008524(1, 0x49C) == 0)
+            && CountActiveCardsOnField(0, 0x49C) == 0 && CountActiveCardsOnField(1, 0x49C) == 0)
             ((s8 *)z)[0x91] |= 4;
     }
 }
 /* Put a card on top of the deck (deck[0]), shifting the others down. */
-void sub_08007C58(int player, struct DuelCard *card)
+void AddCardToDeckTop(int player, struct DuelCard *card)
 {
     int i;
 
     for (i = PLAYER(player).deckCount; i > 0; i--)
-        sub_08007558(&PLAYER(player).deck[i], &PLAYER(player).deck[i - 1]);
+        CopyDuelCard(&PLAYER(player).deck[i], &PLAYER(player).deck[i - 1]);
     PLAYER(player).deckCount++;
     ((struct DuelCardBit18 *)card)->bit18 = 0;
-    sub_08007558(&PLAYER(player).deck[0], card);
+    CopyDuelCard(&PLAYER(player).deck[0], card);
 }
 /* Append a card to the bottom of the deck. */
-void sub_08007CE0(int player, struct DuelCard *card)
+void AddCardToDeckBottom(int player, struct DuelCard *card)
 {
-    sub_08007558(&PLAYER(player).deck[PLAYER(player).deckCount], card);
+    CopyDuelCard(&PLAYER(player).deck[PLAYER(player).deckCount], card);
     PLAYER(player).deckCount++;
 }
 /* Append a card to the fusion deck (hypothesis). */
-void sub_08007D18(int player, struct DuelCard *card)
+void AddCardToFusionDeck(int player, struct DuelCard *card)
 {
     int n = PLAYER(player).fusionCount;
 
-    sub_08007558(&PLAYER(player).fusionDeck[n], card);
+    CopyDuelCard(&PLAYER(player).fusionDeck[n], card);
     PLAYER(player).fusionCount++;
 }
-/* sub_08007558 called without a prototype so a struct DuelCard can be passed by value. */
+/* CopyDuelCard called without a prototype so a struct DuelCard can be passed by value. */
 typedef void (*CopyByValFn_D50)();
 /* Move a card with number cardNo to the top of the deck: skip the run of such cards already on
  * top, then bring the next one up. Original bugs reproduced: the loop bounds use PLAYER(i) (the
- * loop index) instead of PLAYER(player), and both sub_08007558 calls pass a card word by value
+ * loop index) instead of PLAYER(player), and both CopyDuelCard calls pass a card word by value
  * where a pointer is expected (the source card, and the top card as the destination). */
-void sub_08007D50(int player, u16 cardNo)
+void MoveDeckCardNumberToTop(int player, u16 cardNo)
 {
     struct DuelCard tmp;
     int i, j;
@@ -241,22 +241,22 @@ void sub_08007D50(int player, u16 cardNo)
          * short-lived, so loop.c hoists the deck-base loads in the ROM's order. */
         u16 id = CARD_ID(&PLAYER(player).deck[i]);
         u32 mask = 0x7FF;
-        if (gUnk_08622AB4[id & mask] != cardNo)
+        if (gCardIdToNumber[id & mask] != cardNo)
             break;
     }
     for (; i < PLAYER(i).deckCount; i++) {
         struct DuelCard c = *&PLAYER(player).deck[i];
         if (CARD_NUMBER(c.id) == cardNo) {
-            ((CopyByValFn_D50)sub_08007558)(&tmp, c);
+            ((CopyByValFn_D50)CopyDuelCard)(&tmp, c);
             for (j = i; j > 0; j--)
-                sub_08007560(&PLAYER(player).deck[j], &PLAYER(player).deck[j - 1]);
-            ((CopyByValFn_D50)sub_08007558)(PLAYER(player).deck[0], &tmp);
+                SwapDuelCards(&PLAYER(player).deck[j], &PLAYER(player).deck[j - 1]);
+            ((CopyByValFn_D50)CopyDuelCard)(PLAYER(player).deck[0], &tmp);
             return;
         }
     }
 }
 /* Shuffle the deck: n * deckCount random swaps. */
-void sub_08007E68(int player, int n)
+void ShuffleDeck(int player, int n)
 {
     int i;
 
@@ -264,9 +264,9 @@ void sub_08007E68(int player, int n)
         return;
     n *= PLAYER(player).deckCount;
     for (i = 0; i < n; i++) {
-        int a = sub_08076F9C() % PLAYER(player).deckCount;
-        int b = sub_08076F9C() % PLAYER(player).deckCount;
-        sub_08007560(&PLAYER(player).deck[a], &PLAYER(player).deck[b]);
+        int a = Random() % PLAYER(player).deckCount;
+        int b = Random() % PLAYER(player).deckCount;
+        SwapDuelCards(&PLAYER(player).deck[a], &PLAYER(player).deck[b]);
     }
 }
 /* Remove deck[idx], closing the gap (inlined into several callers). */
@@ -276,21 +276,21 @@ static inline void DeckRemoveAt(int player, int idx)
 
     PLAYER(player).deckCount--;
     for (i = idx; i < PLAYER(player).deckCount; i++)
-        sub_08007558(&PLAYER(player).deck[i], &PLAYER(player).deck[i + 1]);
+        CopyDuelCard(&PLAYER(player).deck[i], &PLAYER(player).deck[i + 1]);
 }
 
 /* Take card idx out of the deck into *out. Returns 0 if idx is out of range. */
-u16 sub_08007ED0(int player, int idx, struct DuelCard *out)
+u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out)
 {
     if (idx < PLAYER(player).deckCount) {
-        sub_08007558(out, &PLAYER(player).deck[idx]);
+        CopyDuelCard(out, &PLAYER(player).deck[idx]);
         DeckRemoveAt(player, idx);
         return 1;
     }
     return 0;
 }
 /* Remove the first deck card equal to *card (whole word). Returns 1 if found. */
-int sub_08007F48(int player, struct DuelCard *card)
+int RemoveCardFromDeck(int player, struct DuelCard *card)
 {
     int i;
 
@@ -306,13 +306,13 @@ int sub_08007F48(int player, struct DuelCard *card)
 }
 /* 0x08007F48 size 0xA4 */
 /* Take the first deck card with number cardNo into *out. Returns 1 if found. */
-u16 sub_08007FEC(int player, u16 cardNo, struct DuelCard *out)
+u16 TakeDeckCardByNumber(int player, u16 cardNo, struct DuelCard *out)
 {
     int i;
 
     for (i = 0; i < PLAYER(player).deckCount; i++) {
         if (CARD_NUMBER_C(CARD_ID(&PLAYER(player).deck[i])) == cardNo) {
-            sub_08007558(out, &PLAYER(player).deck[i]);
+            CopyDuelCard(out, &PLAYER(player).deck[i]);
             DeckRemoveAt(player, i);
             return 1;
         }
@@ -320,12 +320,12 @@ u16 sub_08007FEC(int player, u16 cardNo, struct DuelCard *out)
     return 0;
 }
 /* Draw: take the top card of the deck and add it to the hand. */
-void sub_080080B4(int player)
+void DuelDrawCard(int player)
 {
     struct DuelCard card;
 
-    if (sub_08007ED0(player, 0, &card))
-        sub_08009EAC(player, &card);
+    if (TakeDeckCardAt(player, 0, &card))
+        AddCardToHand(player, &card);
 }
 /* Remove fusionDeck[idx], closing the gap (inlined into its callers). */
 static inline void FusionRemoveAt(int player, int idx)
@@ -334,10 +334,10 @@ static inline void FusionRemoveAt(int player, int idx)
 
     PLAYER(player).fusionCount--;
     for (i = idx; i < PLAYER(player).fusionCount; i++)
-        sub_08007558(&PLAYER(player).fusionDeck[i], &PLAYER(player).fusionDeck[i + 1]);
+        CopyDuelCard(&PLAYER(player).fusionDeck[i], &PLAYER(player).fusionDeck[i + 1]);
 }
 /* Remove the first fusion-deck card equal to *card (whole word). Returns 1 if found. */
-int sub_080080D8(int player, struct DuelCard *card)
+int RemoveCardFromFusionDeck(int player, struct DuelCard *card)
 {
     int i;
 
@@ -352,33 +352,33 @@ int sub_080080D8(int player, struct DuelCard *card)
     return 0;
 }
 /* Load player 0's deck and fusion deck from the save image. */
-void sub_0800817C(void)
+void LoadPlayerDeckFromSave(void)
 {
     int i;
 
-    sub_08075278(gUnk_020192E4[0].deck, sizeof(gUnk_020192E4[0].deck));
-    gUnk_020192E4[0].deckCount = 0;
-    for (i = 0; i < gUnk_02011C20.deckSize; i++) {
-        struct DuelCard *c = &gUnk_020192E4[0].deck[i];
-        c->id = gUnk_02011C20.deck[i];
+    MemClear16(gDuelPlayers[0].deck, sizeof(gDuelPlayers[0].deck));
+    gDuelPlayers[0].deckCount = 0;
+    for (i = 0; i < gSaveData.deckSize; i++) {
+        struct DuelCard *c = &gDuelPlayers[0].deck[i];
+        c->id = gSaveData.deck[i];
         c->owner = 0;
-        gUnk_020192E4[0].deckCount++;
+        gDuelPlayers[0].deckCount++;
     }
-    gUnk_020192E4[0].fusionCount = 0;
-    for (i = 0; i < gUnk_02011C20.fusionDeckSize; i++) {
-        struct DuelCard *c = &gUnk_020192E4[0].fusionDeck[i];
-        c->id = gUnk_02011C20.fusionDeck[i];
+    gDuelPlayers[0].fusionCount = 0;
+    for (i = 0; i < gSaveData.fusionDeckSize; i++) {
+        struct DuelCard *c = &gDuelPlayers[0].fusionDeck[i];
+        c->id = gSaveData.fusionDeck[i];
         c->owner = 0;
-        gUnk_020192E4[0].fusionCount++;
+        gDuelPlayers[0].fusionCount++;
     }
 }
 /* Clear one field zone. */
-void sub_08008278(int player, int zone)
+void ClearZone(int player, int zone)
 {
-    sub_08075278(&PLAYER(player).zones[zone], 0x94);
+    MemClear16(&PLAYER(player).zones[zone], 0x94);
 }
 /* Remove link idx from a zone's link list. */
-void sub_080082A0(int player, int zone, int idx)
+void RemoveZoneLinkAt(int player, int zone, int idx)
 {
     struct DuelZone *z = &PLAYER(player).zones[zone];
 
@@ -391,7 +391,7 @@ void sub_080082A0(int player, int zone, int idx)
     }
 }
 /* Index 1-14 of a card number in a fixed list (329-334, 1069, 1125-1130, 1547), else 0. */
-u32 sub_08008300(u16 cardNo)
+u32 GetFieldMagicIndex(u16 cardNo)
 {
     switch (cardNo) {
     case 329:
@@ -426,7 +426,7 @@ u32 sub_08008300(u16 cardNo)
     return 0;
 }
 /* First face-up zone (0-10, except skipZone) with number cardNo, or -1. */
-int sub_080083BC(int player, u16 cardNo, int skipZone)
+int FindFaceUpCardOnField(int player, u16 cardNo, int skipZone)
 {
     int i;
 
@@ -438,8 +438,8 @@ int sub_080083BC(int player, u16 cardNo, int skipZone)
     }
     return -1;
 }
-/* Identical copy of sub_080083BC. */
-int sub_0800842C(int player, u16 cardNo, int skipZone)
+/* Identical copy of FindFaceUpCardOnField. */
+int FindFaceUpCardOnField2(int player, u16 cardNo, int skipZone)
 {
     int i;
 
@@ -452,7 +452,7 @@ int sub_0800842C(int player, u16 cardNo, int skipZone)
     return -1;
 }
 /* Number of face-up zones (0-10, except skipZone, not flagged unk91_3) with number cardNo. */
-int sub_0800849C(int player, u16 cardNo, int skipZone)
+int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone)
 {
     int count = 0;
     int i;
@@ -467,17 +467,17 @@ int sub_0800849C(int player, u16 cardNo, int skipZone)
     return count;
 }
 /* Count cards with number cardNo on player's field (all zones). */
-int sub_08008524(int player, u16 cardNo)
+int CountActiveCardsOnField(int player, u16 cardNo)
 {
-    return sub_0800849C(player, cardNo, -1);
+    return CountActiveCardsOnFieldExcept(player, cardNo, -1);
 }
 /* Count magic/trap zones with this card number and flag 0x91 bit 3 clear. */
-int sub_08008538(int player, u16 cardNo)
+int CountEnabledSpellTrapCards(int player, u16 cardNo)
 {
     int count = 0;
     int i = 5;
     u32 offset = (player & 1) * 0xD64;
-    u8 *zoneBase = (u8 *)gUnk_0201930C;
+    u8 *zoneBase = (u8 *)gDuelZones;
     struct DuelZone *zones = (struct DuelZone *)(zoneBase + offset);
     u32 mask = 0x7FF;
 
@@ -491,32 +491,32 @@ int sub_08008538(int player, u16 cardNo)
     }
     return count;
 }
-/* Number of face-up monsters (zones 0-4) for which sub_0800C8BC(player, zone) == value. */
-int sub_080085B0(int player, u16 value)
+/* Number of face-up monsters (zones 0-4) for which GetZoneCardType(player, zone) == value. */
+int CountFaceUpMonstersOfType(int player, u16 value)
 {
     int count = 0;
     int i;
 
     for (i = 0; i <= 4; i++) {
-        if (ZONE_FACEUP(ZONE_PTR2(player, i)) && sub_0800C8BC(player, i) == value)
+        if (ZONE_FACEUP(ZONE_PTR2(player, i)) && GetZoneCardType(player, i) == value)
             count++;
     }
     return count;
 }
-/* Number of face-up monsters (zones 0-4) for which sub_0800CAF0(player, zone) == value. */
-int sub_0800860C(int player, u16 value)
+/* Number of face-up monsters (zones 0-4) for which GetZoneCardAttribute(player, zone) == value. */
+int CountFaceUpMonstersOfAttribute(int player, u16 value)
 {
     int count = 0;
     int i;
 
     for (i = 0; i <= 4; i++) {
-        if (sub_0800CAF0(player, i) == value && ZONE_FACEUP(ZONE_PTR2(player, i)))
+        if (GetZoneCardAttribute(player, i) == value && ZONE_FACEUP(ZONE_PTR2(player, i)))
             count++;
     }
     return count;
 }
 /* True if card number 954 is face up in one of the magic/trap zones (5-9). */
-int sub_08008668(int player)
+int HasFaceUpToonWorld(int player)
 {
     int i;
 
@@ -529,7 +529,7 @@ int sub_08008668(int player)
     return 0;
 }
 /* Number of face-up monsters (zones 0-4) with number cardNo. */
-int sub_080086CC(int player, u16 cardNo)
+int CountFaceUpMonstersByNumber(int player, u16 cardNo)
 {
     int count = 0;
     int i;
@@ -543,7 +543,7 @@ int sub_080086CC(int player, u16 cardNo)
     return count;
 }
 /* First face-up monster zone (0-4) with number cardNo, or -1. */
-int sub_08008730(int player, u16 cardNo)
+int FindFaceUpMonsterByNumber(int player, u16 cardNo)
 {
     int i;
 
@@ -556,7 +556,7 @@ int sub_08008730(int player, u16 cardNo)
     return -1;
 }
 /* Number of monster zones (0-4) holding a card with number cardNo. */
-int sub_08008794(int player, u16 cardNo)
+int CountMonstersByNumber(int player, u16 cardNo)
 {
     int count = 0;
     int i;
@@ -569,7 +569,7 @@ int sub_08008794(int player, u16 cardNo)
     return count;
 }
 /* Number of face-up monsters (zones 0-4) with number cardNo and unk6_0 == flag. */
-int sub_080087EC(int player, u16 cardNo, u16 flag)
+int CountFaceUpMonstersByNumberInPosition(int player, u16 cardNo, u16 flag)
 {
     int count = 0;
     int i;
@@ -590,7 +590,7 @@ int sub_080087EC(int player, u16 cardNo, u16 flag)
 }
 /* Count occupied monster zones. */
 /* Return the zero-extended halfword as a word, as the ROM callers consume it. */
-int sub_08008860(int player)
+int CountMonsters(int player)
 {
     u16 count = 0;
     u16 i;
@@ -603,7 +603,7 @@ int sub_08008860(int player)
 }
 /* Count occupied monster zones, optionally only face-up ones and/or only those with flags6 bit 0 clear. */
 /* The count remains zero-extended while word consumers compare it directly. */
-int sub_080088A4(int player, u16 needFaceUp, u16 needBit0Clear)
+int CountMonstersFiltered(int player, u16 needFaceUp, u16 needBit0Clear)
 {
     u16 count = 0;
     u16 i;
@@ -623,7 +623,7 @@ int sub_080088A4(int player, u16 needFaceUp, u16 needBit0Clear)
     }
     return (u16)count;
 }
-/* sub_08008940's view of a player's header (it is addressed from gUnk_0201930C - 0x28): a
+/* IsMonsterZoneFree's view of a player's header (it is addressed from gDuelZones - 0x28): a
  * 5-bit zone mask that straddles +0x0B bits 4-7 and +0x0C bit 0. The packed bitfield gives the
  * ROM's split read (ldrb +0x0B >> 4, then (ldrb +0x0C & 1) << 4 ORed in that operand order). */
 struct PlayerMask8940 {
@@ -634,19 +634,19 @@ struct PlayerMask8940 {
 /* Zone address with the offsets summed first (the ROM's add order). */
 static inline struct DuelZone *ZoneAt8940(int p, int z)
 {
-    return (struct DuelZone *)((u8 *)gUnk_0201930C + (z * 0x94 + p * 0xD64));
+    return (struct DuelZone *)((u8 *)gDuelZones + (z * 0x94 + p * 0xD64));
 }
 /* The same address with the base loaded into a local first. FAKEMATCH: the early base load
  * lets loop.c hoist the whole linkKinds address in its first pass, so strength reduction
  * walks linkKinds with a pointer started at ((p * 0xD64 + 0x4A) + z * 0x94) + base. */
 static inline struct DuelZone *ZoneAtB8940(int p, int z)
 {
-    u8 *base = (u8 *)gUnk_0201930C;
+    u8 *base = (u8 *)gDuelZones;
     return (struct DuelZone *)(base + (z * 0x94 + p * 0xD64));
 }
 /* Whether a zone is free for use (hypothesis): empty, its bit in the player's 5-bit zone mask
  * clear, and no kind-2 link to a zone holding card number 1320. */
-u32 sub_08008940(int player, int zone)
+u32 IsMonsterZoneFree(int player, int zone)
 {
     struct DuelZone *z = ZoneAt8940(player & 1, zone);
     struct PlayerMask8940 *pl;
@@ -654,7 +654,7 @@ u32 sub_08008940(int player, int zone)
 
     if (CARD_ID(z))
         return 0;
-    pl = (struct PlayerMask8940 *)((u8 *)gUnk_0201930C - 0x28 + (player & 1) * 0xD64);
+    pl = (struct PlayerMask8940 *)((u8 *)gDuelZones - 0x28 + (player & 1) * 0xD64);
     if ((pl->zoneMask >> zone) & 1)
         return 0;
     /* FAKEMATCH: the loop test recomputes the zone address instead of using z; its movables

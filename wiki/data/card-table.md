@@ -61,7 +61,7 @@ The masks and shifts the code applies to words loaded from this table (counted i
 
 **attr** (bits 29-31, monsters): 1 LIGHT, 2 DARK, 3 WATER, 4 FIRE, 5 EARTH, 6 WIND. The name array at `0x0819D264` holds these six strings in that order (index = attr - 1). Non-monsters carry fixed raw values here: Magic 0, Trap 1, Divine 2, Ticket 0. Treat those as card-class markers, not as attributes (hypothesis).
 
-**kind** (bits 18-19, monsters): 0 normal, 1 effect, 2 fusion, 3 ritual. The card-info screen `sub_08005A70` appends `/Effect`, `/Fusion`, or `/Ritual`. It special-cases a few monsters by **card number** (see [[card-id-map]]):
+**kind** (bits 18-19, monsters): 0 normal, 1 effect, 2 fusion, 3 ritual. The card-info screen `CardDetail_DrawInfo` appends `/Effect`, `/Fusion`, or `/Ritual`. It special-cases a few monsters by **card number** (see [[card-id-map]]):
 - Card number 812, *Alligator's Sword Dragon*, displays as `/Fusion/Effect`. The code also checks numbers 1241, 1334, and 1526, which don't exist in EDS (they're probably left over from a larger shared card database).
 - Card number 730, *Relinquished*, displays as `/Ritual/Effect`.
 - Card numbers 1910–1912 (the Gods) take special paths.
@@ -113,12 +113,12 @@ All per-card tables form one contiguous block, and each is indexed by card ID wi
 | `0x08625460` | (graphics follow) | | |
 
 ## Used by (sample)
-- `sub_08005A70` (`0x08005A70`–`0x080063D0`): card info/detail text. It reads the name (`0x0822C720 + id*0x40`), the description (`0x082461A0 + id*0x1E0`), the stats, the type/suffix name arrays, and the ID-to-number table.
-- `sub_0800ABC8`: duel code. It reads the card ID from the low 12 bits of a zone word in per-player duel state at `0x0201930C + (player&1)*0xD64 + slot*0x94`, then extracts type and attr into an output struct. The duel-state layout has not been mapped yet. See [[card-data-functions]].
-- `sub_08062AF4`: pack generation. Its random Magic/Trap packs filter on `type`. See [[booster-packs]].
+- `CardDetail_DrawInfo` (`0x08005A70`–`0x080063D0`): card info/detail text. It reads the name (`0x0822C720 + id*0x40`), the description (`0x082461A0 + id*0x1E0`), the stats, the type/suffix name arrays, and the ID-to-number table.
+- `GetZoneCardStats`: duel code. It reads the card ID from the low 12 bits of a zone word in per-player duel state at `0x0201930C + (player&1)*0xD64 + slot*0x94`, then extracts type and attr into an output struct. The duel-state layout has not been mapped yet. See [[card-data-functions]].
+- `GeneratePackCards`: pack generation. Its random Magic/Trap packs filter on `type`. See [[booster-packs]].
 
 ## Method
-1. **Code path.** Literal pools in the code hold `0x0822C720` (names − 0x40) 58 times and `0x082461A0` (descriptions − 0x1E0) once. The function that uses them (`sub_08005A70`) also loads `0x7FF` and `0x08621DE0`, then indexes `(id & 0x7FF) * 4`.
+1. **Code path.** Literal pools in the code hold `0x0822C720` (names − 0x40) 58 times and `0x082461A0` (descriptions − 0x1E0) once. The function that uses them (`CardDetail_DrawInfo`) also loads `0x7FF` and `0x08621DE0`, then indexes `(id & 0x7FF) * 4`.
 2. **Correlation.** The low 9 bits of Blue-Eyes White Dragon's word are `0xFA` = 250 (DEF/10), and bits 9-17 are `0x12C` = 300 (ATK/10). Checking the other fields against about 30 well-known cards pinned down level, type, attribute, and kind.
 3. **Script.** `python3 tools/extract_cards.py --verify` checks 13 monsters (ATK, DEF, level, type, attribute, kind, and 4 passwords), 8 spell/trap subtypes, and the ID-to-number round trip for all 820 IDs. All pass.
 4. **Sanity.** All 594 monsters have level 1-12 and attr 1-6. Every Magic/Trap word has bits 0-16 zero and level 0.

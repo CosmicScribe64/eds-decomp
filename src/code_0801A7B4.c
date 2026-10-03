@@ -35,11 +35,11 @@ struct SaveData {
     u16 unk2162;
     u16 unk2164;            /* +0x2164: bit 0 = pending event (text 350) */
 };
-extern struct SaveData gUnk_02011C20;
+extern struct SaveData gSaveData;
 
 typedef u16 (*StepFunc)(void);
 
-/* Unpacked date (sub_08004914 output). */
+/* Unpacked date (GetCurrentDate output). */
 struct Date {
     u32 year : 12;
     u32 month : 4;
@@ -48,7 +48,7 @@ struct Date {
 
 /* gMain (0x03000040) is struct Main from main.h. This unit's +0x4888 split (bits 1 and
  * 2-3 as separate fields) differs from main.h's unk4888_0:4, which changes the generated
- * code, so the two functions that touch it (sub_0801AE2C, sub_0801B75C) use this unit-
+ * code, so the two functions that touch it (Campaign_StartPreDuelDialogue, Campaign_StartDay) use this unit-
  * specific view; every other function uses the canonical struct Main. */
 struct MainFlags0801A7B4 {
     u8 filler0[0x4857];
@@ -70,8 +70,8 @@ struct MainFlags0801A7B4 {
     u16 step488A : 8;
     u16 unk488A_12 : 4;
 };
-extern struct MainFlags0801A7B4 gMainFlags asm("gUnk_03000040");
-#define gMain gUnk_03000040
+extern struct MainFlags0801A7B4 gMainFlags asm("gMain");
+#define gMain gMain
 
 /* Duel screen state at 0x020185B8. */
 struct DuelScreen {
@@ -80,13 +80,13 @@ struct DuelScreen {
     u8 unk5;                /* +0x05 */
 };
 
-extern struct DuelScreen gUnk_020185B8;
+extern struct DuelScreen gChainListScreen;
 
 struct Unk03000000 {
     u32 unk0;
     u32 unk4;               /* +0x04: HBlank handler (hypothesis) */
 };
-extern struct Unk03000000 gUnk_03000000;
+extern struct Unk03000000 IntrTable;
 
 /* Duel state at 0x020192E0 and the player struct at 0x020192E4 come from duel.h. */
 /* Byte view of the duel flags at +0x1B12: duel.h splits that byte into 1/1/3/1/2-bit
@@ -95,12 +95,12 @@ struct DuelFlagByte {
     u8 filler0[0x1B12];
     u8 unk1B12;
 };
-#define DUEL_FLAGS_1B12 (((struct DuelFlagByte *)&gUnk_020192E0)->unk1B12)
+#define DUEL_FLAGS_1B12 (((struct DuelFlagByte *)&gDuel)->unk1B12)
 
 /* Card number to card ID table (gCardNumberToId). */
-extern const u16 gUnk_08623DF4[];
+extern const u16 gCardNumberToId[];
 /* 60 card numbers (0xFFFF-terminated?) at 0x08081A6C. */
-extern const u16 gUnk_08081A6C[];
+extern const u16 gRareCardNumbers[];
 
 /* Card number to card ID (0xFFFF maps to 0; numbers >= 2000 map to ID(no - 2000) + 1). */
 static inline u16 CardNumberToId(u16 no)
@@ -114,36 +114,36 @@ static inline u16 CardNumberToId(u16 no)
 
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 
-u16 sub_08075A6C(u16 step);     /* FadeToBlack */
-void sub_0807255C(void);
-u16 sub_08029DCC(void);
-u32 sub_08001AE4(void);         /* text-box runner; nonzero when finished */
-u16 sub_0802297C(u16 a, u16 b, u16 c, u16 d);
-void sub_08077BCC(void);        /* FadeOutBGM */
-void sub_08001C10(u16 textId);  /* StartDialogue */
-void sub_08077498(u16 id);
-void sub_0800817C(void);        /* LoadPlayerDeckFromSave */
-void sub_08023228(void);
-int sub_0801F744(void);
-void sub_08007E68(int player, int n);   /* Deck_Shuffle */
-void sub_08074554(void);
-void sub_080759F4(void);
-void sub_08073574(void);
-void sub_080757AC(void);
-void sub_0807326C(u16 a, u16 b, u16 c, const void *img);
-u16 sub_08075AE4(u16 step);     /* FadeFromBlack */
-void sub_08022A9C(int a);
-void sub_08022BFC(int a);
-void sub_08004914(struct Date *out);
-u32 sub_080044E4(u32 year, u32 month, s32 day);   /* calendar event flags for a date */
-void sub_08077B24(u16 song);    /* PlayBGM */
-void sub_080754F8(StepFunc cb); /* SetMainCallback */
-int sub_08063BAC(void);
-int sub_08063C14(void);
-int sub_08063C7C(void);
-int sub_08076F9C(void);         /* Random */
-void sub_08072510(void);
-void sub_08075278(void *dst, u32 size);
+u16 FadeToBlack(u16 step);     /* FadeToBlack */
+void LinkShutdown(void);
+u16 TurnOrder_RunRpsLink(void);
+u32 CB_Bustup(void);         /* text-box runner; nonzero when finished */
+u16 DuelLink_SendMessage(u16 a, u16 b, u16 c, u16 d);
+void FadeOutBGM(void);        /* FadeOutBGM */
+void StartDialogue(u16 textId);  /* StartDialogue */
+void AddCardToTrunk(u16 id);
+void LoadPlayerDeckFromSave(void);        /* LoadPlayerDeckFromSave */
+void DuelLink_PollMessage(void);
+int Duel_Setup(void);
+void ShuffleDeck(int player, int n);   /* Deck_Shuffle */
+void DebugMenu_Init(void);
+void SetBrightnessBlack(void);
+void ResetVideo(void);
+void ResetBgScroll(void);
+void LoadBgImage4bpp(u16 a, u16 b, u16 c, const void *img);
+u16 FadeFromBlack(u16 step);     /* FadeFromBlack */
+void DuelLink_SendDeck(int a);
+void DuelLink_SendFusionDeck(int a);
+void GetCurrentDate(struct Date *out);
+u32 GetCalendarEvents(u32 year, u32 month, s32 day);   /* calendar event flags for a date */
+void PlayBGM(u16 song);    /* PlayBGM */
+void SetMainCallback(StepFunc cb); /* SetMainCallback */
+int IsCampaignLevel2Unlocked(void);
+int IsCampaignLevel3Unlocked(void);
+int IsCampaignLevel4Unlocked(void);
+int Random(void);         /* Random */
+void LinkInit(void);
+void MemClear16(void *dst, u32 size);
 /* 0x02015EE8: only byte +1 bit 0 is used here. */
 /* Duel-intro / result dialogue state at 0x02017FB0 (bits at +0x304..+0x306). */
 struct DuelDialogue {
@@ -160,27 +160,27 @@ struct DuelDialogue {
     u32 unk304_16 : 1;      /* +0x306 bit 0 */
     u32 unk304_17 : 15;
 };
-extern struct DuelDialogue gUnk_02017FB0;
-extern u8 gUnk_0201CFB0;        /* bit 0: fast mode (see code_08013CDC) */
-extern const u8 gUnk_086893D8[];
+extern struct DuelDialogue gLinkState;
+extern u8 gDuelScreen;        /* bit 0: fast mode (see code_08013CDC) */
+extern const u8 gLinkConnectingImage[];
 
-extern StepFunc const gUnk_08198E7C[];
+extern StepFunc const gLinkBattleSteps[];
 
 struct Unk02015EE8 {
     u8 unk0;
     u8 unk1_0 : 1;
     u8 unk1_1 : 7;
 };
-extern struct Unk02015EE8 gUnk_02015EE8;
+extern struct Unk02015EE8 gDuelCtrl;
 
 /* Reset the acting player's duel-screen state by storing the command word, the player bit and
  * a zeroed byte. `player & ~player` is a byte-match idiom for the constant 0 (agbcc then emits
  * the `movs r0,#0` after the first strb, as the ROM does). */
-void sub_0801A7B4(u32 arg, u16 player)
+void ChainListScreen_Start(u32 arg, u16 player)
 {
-    gUnk_020185B8.unk0 = arg;
-    gUnk_020185B8.unk4 = player & 1;
-    gUnk_020185B8.unk5 = player & ~player;
+    gChainListScreen.unk0 = arg;
+    gChainListScreen.unk4 = player & 1;
+    gChainListScreen.unk5 = player & ~player;
 }
 void sub_0801A7CC(void)
 {
@@ -195,13 +195,13 @@ void sub_0801A7D8(void)
 {
 }
 /* Debug printf, compiled out (many callers pass a format string). */
-void sub_0801A7DC(const char *fmt, ...)
+void DebugPrintf(const char *fmt, ...)
 {
 }
 void sub_0801A7E4(void)
 {
 }
-void sub_0801A7E8(void)
+void DebugPrintFlush(void)
 {
 }
 void sub_0801A7EC(void)
@@ -211,12 +211,12 @@ void sub_0801A7F0(void)
 {
 }
 /* Duel setup sequence (hypothesis): load the player's deck (needs >= 40 cards, else state 10). */
-int sub_0801A7F4(void)
+int LinkBattle_Init(void)
 {
     switch (gMain.seqIndex1) {
     case 0:
-        sub_0800817C();
-        if (gUnk_020192E4[0].deckCount < 40) {
+        LoadPlayerDeckFromSave();
+        if (gDuelPlayers[0].deckCount < 40) {
             gMain.seqState0 = 10;
             break;
         }
@@ -224,156 +224,156 @@ int sub_0801A7F4(void)
         /* fall through */
     case 1:
         gMain.unk488A_0 = 0;
-        sub_08072510();
-        sub_08075278((void *)0x02017FB0, 0x494);
-        gUnk_020192E0.linkError = 0;
+        LinkInit();
+        MemClear16((void *)0x02017FB0, 0x494);
+        gDuel.linkError = 0;
         gMain.seqIndex1++;
         gMain.seqState1 = 0;
         gMain.seqState2 = 0;
         break;
     default:
-        sub_0807255C();
+        LinkShutdown();
         return 1;
     }
     return 0;
 }
-u16 sub_0801A8A4(void)
+u16 LinkBattle_DecideTurnOrder(void)
 {
-    gUnk_020192E0.linkError = 0;
-    return sub_08029DCC();
+    gDuel.linkError = 0;
+    return TurnOrder_RunRpsLink();
 }
 /* Duel intro sequence (hypothesis): load and shuffle the deck, set up the screen, show the intro
  * dialogue (waits on flags in 0x02017FB0) and fade out. */
-int sub_0801A8CC(void)
+int LinkBattle_Connect(void)
 {
     switch (gMain.seqIndex1) {
     case 0:
-        sub_08072510();
+        LinkInit();
         gMain.seqIndex1++;
         return 0;
     case 1:
-        if (sub_0801F744()) {
-            gUnk_02015EE8.unk1_0 = 1;
+        if (Duel_Setup()) {
+            gDuelCtrl.unk1_0 = 1;
             gMain.seqIndex1++;
         }
         return 0;
     case 2:
-        sub_0800817C();
-        sub_08007E68(0, 4);
+        LoadPlayerDeckFromSave();
+        ShuffleDeck(0, 4);
         gMain.seqIndex1++;
         return 0;
     case 3:
-        sub_08074554();
+        DebugMenu_Init();
         REG_DISPCNT = 0;
         REG_MOSAIC = 0;
         REG_BLDCNT = 0;
         REG_BLDY = 0;
         gMain.vblankFlags = 2;
-        sub_080759F4();
-        sub_08073574();
-        sub_080757AC();
+        SetBrightnessBlack();
+        ResetVideo();
+        ResetBgScroll();
         gMain.seqIndex1++;
         return 0;
     case 4:
-        sub_0807326C(0, 0, 0x100, gUnk_086893D8);
-        if (gUnk_0201CFB0 & 1)
-            sub_0802297C(0xEE03, 0, 0, 0);
+        LoadBgImage4bpp(0, 0, 0x100, gLinkConnectingImage);
+        if (gDuelScreen & 1)
+            DuelLink_SendMessage(0xEE03, 0, 0, 0);
         gMain.seqIndex1++;
         return 0;
     case 5:
         REG_DISPCNT = 0x100;
-        if (sub_08075AE4(4)) {
+        if (FadeFromBlack(4)) {
             if (gMain.unk4870_0)
                 return 1;
             gMain.seqIndex1++;
         }
         return 0;
     case 6:
-        if (gUnk_02017FB0.unk304_2) {
-            sub_0802297C(0xF001, 0, 0, 0);
-            sub_08022A9C(0);
+        if (gLinkState.unk304_2) {
+            DuelLink_SendMessage(0xF001, 0, 0, 0);
+            DuelLink_SendDeck(0);
             gMain.seqIndex1++;
         }
         return 0;
     case 7:
-        if (gUnk_02017FB0.unk304_9) {
-            sub_0802297C(0xF012, 0, 0, 0);
+        if (gLinkState.unk304_9) {
+            DuelLink_SendMessage(0xF012, 0, 0, 0);
             gMain.seqIndex1++;
         }
         return 0;
     case 8:
-        if (gUnk_02017FB0.unk304_14) {
-            sub_08022BFC(0);
+        if (gLinkState.unk304_14) {
+            DuelLink_SendFusionDeck(0);
             gMain.seqIndex1++;
         }
         return 0;
     case 9:
-        if (gUnk_02017FB0.unk304_11) {
-            sub_0802297C(0xF014, 0, 0, 0);
+        if (gLinkState.unk304_11) {
+            DuelLink_SendMessage(0xF014, 0, 0, 0);
             gMain.seqIndex1++;
         }
         return 0;
     case 10:
-        if (gUnk_02017FB0.unk304_16)
+        if (gLinkState.unk304_16)
             gMain.seqIndex1++;
         return 0;
     case 11:
-        if (sub_08075A6C(4))
+        if (FadeToBlack(4))
             gMain.seqIndex1++;
         return 0;
     default:
-        gUnk_02017FB0.unk304_2 = 0;
+        gLinkState.unk304_2 = 0;
         return 1;
     }
 }
-int sub_0801ABA0(void)
+int LinkBattle_Finish(void)
 {
-    if (sub_08075A6C(8)) {
-        gUnk_02015EE8.unk1_0 = 0;
-        sub_0807255C();
+    if (FadeToBlack(8)) {
+        gDuelCtrl.unk1_0 = 0;
+        LinkShutdown();
         return 1;
     }
     return 0;
 }
 /* Leave the duel. Fade out, stop BGM, disable the HBlank interrupt and its handler, and start text 320. */
-int sub_0801ABCC(void)
+int LinkBattle_ShowLinkError(void)
 {
-    sub_0802297C(0xEE00, 0, 0, 0);
-    if (sub_08075A6C(4)) {
-        sub_08077BCC();
+    DuelLink_SendMessage(0xEE00, 0, 0, 0);
+    if (FadeToBlack(4)) {
+        FadeOutBGM();
         REG_IME = 0;
         REG_IE &= ~2;
         REG_IME = 1;
         REG_IME = 0;
         REG_IE &= ~2;
-        gUnk_03000000.unk4 = 0;
+        IntrTable.unk4 = 0;
         REG_IME = 1;
         gMain.vblankCallback = 0;
-        sub_08001C10(320);
+        StartDialogue(320);
         return 1;
     }
     return 0;
 }
-u16 sub_0801AC48(void)
+u16 LinkBattle_RunErrorDialogue(void)
 {
     if (!(gMain.frameCounter & 7))
-        sub_0802297C(0xEE00, 0, 0, 0);
-    return sub_08001AE4();
+        DuelLink_SendMessage(0xEE00, 0, 0, 0);
+    return CB_Bustup();
 }
-int sub_0801AC7C(void)
+int LinkBattle_ErrorShutdown(void)
 {
-    sub_0807255C();
+    LinkShutdown();
     return 1;
 }
-int sub_0801AC88(void)
+int LinkBattle_DeckTooSmall(void)
 {
     switch (gMain.step488A) {
     case 0:
-        sub_08001C10(401);
+        StartDialogue(401);
         gMain.step488A++;
         break;
     case 1:
-        if ((u16)sub_08001AE4()) {
+        if ((u16)CB_Bustup()) {
             gMain.step488A++;
             gMain.seqIndex1 = 0;
             gMain.seqState1 = 0;
@@ -386,12 +386,12 @@ int sub_0801AC88(void)
     return 0;
 }
 /* Run the duel-flow step function table at 0x08198E7C (index gMain.seqState0) until a NULL entry. */
-int sub_0801AD18(void)
+int CB_LinkBattle(void)
 {
-    if (gUnk_08198E7C[gMain.seqState0] != NULL) {
-    if (gUnk_02015EE8.unk1_0)
-        sub_08023228();
-    if (gUnk_08198E7C[gMain.seqState0]()) {
+    if (gLinkBattleSteps[gMain.seqState0] != NULL) {
+    if (gDuelCtrl.unk1_0)
+        DuelLink_PollMessage();
+    if (gLinkBattleSteps[gMain.seqState0]()) {
         gMain.seqState0++;
         gMain.step488A = 0;
         gMain.seqIndex1 = 0;
@@ -409,29 +409,29 @@ int sub_0801AD18(void)
     return 1;
 }
 /* Give one copy of every card (IDs 1-820) that is valid and not yet owned (hypothesis). */
-void sub_0801ADE0(void)
+void GiveMissingCards(void)
 {
     int i;
     for (i = 1; i <= 820; i++) {
-        if (CARD_NUMBER(i) < 0xFFFF && gUnk_02011C20.trunk[i].count == 0)
-            sub_08077498(i);
+        if (CARD_NUMBER(i) < 0xFFFF && gSaveData.trunk[i].count == 0)
+            AddCardToTrunk(i);
     }
 }
-extern const u16 gUnk_080819F6[];   /* BGM per opponent */
-extern const u16 gUnk_08081AE4[];
-extern const u16 gUnk_08081B16[];
-extern const u16 gUnk_08081B48[];
-extern const u16 gUnk_08081B7A[];
-extern const u16 gUnk_08081BAE[];
-extern const u16 gUnk_08081BE2[];
-extern const u16 gUnk_08081C16[];
-extern const u16 gUnk_08081C42[];
-extern const u16 gUnk_08081C76[];
+extern const u16 gOpponentDialogueBGM[];   /* BGM per opponent */
+extern const u16 gOpponentFirstMeetingText[];
+extern const u16 gOpponentRematchText[];
+extern const u16 gOpponentGreetingText[];
+extern const u16 gOpponentMatchChallengeText[];
+extern const u16 gOpponentWeekendDuelText[];
+extern const u16 gOpponentChampionshipText[];
+extern const u16 gOpponentGrandpaCupText[];
+extern const u16 gOpponentChristmasText[];
+extern const u16 gOpponentFieldDuelText[];
 
 /* Pre-duel dialogue for the opponent picked in gMainFlags.opponent (hypothesis): chooses the
  * text by event flags, opponent record and special dates, sets the duel variant in
  * gMainFlags.unk488A_0 and starts the opponent's BGM. Returns 1 when done, 0 to wait. */
-int sub_0801AE2C(void)
+int Campaign_StartPreDuelDialogue(void)
 {
     u32 opp = gMainFlags.opponent;
     u16 text;
@@ -442,55 +442,55 @@ int sub_0801AE2C(void)
     if (flags == 0x800000) {
         switch (opp) {
         case 11:
-            sub_08001C10(11002);
+            StartDialogue(11002);
             break;
         case 12:
-            sub_08001C10(12002);
+            StartDialogue(12002);
             break;
         case 13:
-            sub_08001C10(13002);
+            StartDialogue(13002);
             break;
         case 14:
-            sub_08001C10(14002);
+            StartDialogue(14002);
             break;
         case 15:
-            sub_08001C10(15002);
+            StartDialogue(15002);
             break;
         }
     } else if (opp - 1 <= 29) {
-    text = gUnk_08081AE4[opp];
+    text = gOpponentFirstMeetingText[opp];
     if (gMainFlags.unk4888_2 == 3) {
         if (flags & 0xF000000) {
-            sub_08001C10(gUnk_08081BE2[opp]);
+            StartDialogue(gOpponentChampionshipText[opp]);
             return 1;
         } else if (flags & 0x400000) {
-            sub_08001C10(gUnk_08081BAE[opp]);
+            StartDialogue(gOpponentWeekendDuelText[opp]);
             return 1;
         } else if (flags & 0x30000000) {
-            sub_08001C10(gUnk_08081C16[opp]);
+            StartDialogue(gOpponentGrandpaCupText[opp]);
             return 1;
         }
-        sub_08001C10(gUnk_08081B7A[opp]);
+        StartDialogue(gOpponentMatchChallengeText[opp]);
         if (gMainFlags.counter4888)
             return 0;
     } else {
-        if (gUnk_02011C20.records[opp].wins + gUnk_02011C20.records[opp].losses + gUnk_02011C20.records[opp].draws == 0) {
+        if (gSaveData.records[opp].wins + gSaveData.records[opp].losses + gSaveData.records[opp].draws == 0) {
             if (opp == 22)
-                sub_0801ADE0();
-        } else if (opp == gUnk_02011C20.unk2158) {
-            text = gUnk_08081B16[opp];
+                GiveMissingCards();
+        } else if (opp == gSaveData.unk2158) {
+            text = gOpponentRematchText[opp];
         } else {
-            text = gUnk_08081B48[opp];
+            text = gOpponentGreetingText[opp];
         }
     }
 
 #define PICK(bit, id, variant)                  \
     {                                           \
-        sub_08001C10(id);                       \
+        StartDialogue(id);                       \
         gMainFlags.unk4888_2 = 3;               \
         gMainFlags.events = bit;                \
         gMainFlags.unk488A_0 = variant;         \
-        sub_08077B24(0x30);                     \
+        PlayBGM(0x30);                     \
         return 1;                               \
     }
     if ((gMainFlags.events & 1) && opp == 20)
@@ -518,176 +518,176 @@ int sub_0801AE2C(void)
     else if ((gMainFlags.events & 0x200) && opp == 2)
         PICK(0x200, 2003, 7)
     else if ((gMainFlags.events & 0x400) && opp == 16) {
-        sub_08001C10(16002);
+        StartDialogue(16002);
         gMainFlags.unk4888_2 = 3;
         gMainFlags.events = 0x400;
-        gMainFlags.unk488A_0 = sub_08076F9C() % 7 + 7;
-        sub_08077B24(0x30);
+        gMainFlags.unk488A_0 = Random() % 7 + 7;
+        PlayBGM(0x30);
         return 1;
     } else if ((gMainFlags.events & 0x8000) && opp == 22) {
-        sub_08001C10(22002);
+        StartDialogue(22002);
         gMainFlags.unk4888_2 = 3;
         gMainFlags.events = 0x8000;
-        gMainFlags.unk488A_0 = sub_08076F9C() % 13 + 1;
+        gMainFlags.unk488A_0 = Random() % 13 + 1;
         return 1;
     } else if ((gMainFlags.events & 0x10000) && opp == 11) {
-        sub_08001C10(11006);
+        StartDialogue(11006);
         gMainFlags.unk4888_2 = 3;
         gMainFlags.events = 0x10000;
-        gMainFlags.unk488A_0 = sub_08076F9C() % 13 + 1;
-        sub_08077B24(0x30);
+        gMainFlags.unk488A_0 = Random() % 13 + 1;
+        PlayBGM(0x30);
         return 1;
     } else if ((gMainFlags.events & 0x40000) && (opp == 2 || opp == 10)) {
-        sub_08001C10(gUnk_08081C76[opp]);
+        StartDialogue(gOpponentFieldDuelText[opp]);
         gMainFlags.unk4888_2 = 3;
         gMainFlags.events = 0x40000;
-        gMainFlags.unk488A_0 = sub_08076F9C() % 6 + 1;
-        sub_08077B24(0x30);
+        gMainFlags.unk488A_0 = Random() % 6 + 1;
+        PlayBGM(0x30);
         return 1;
     } else if ((gMainFlags.events & 0x80000) && (opp == 1 || opp == 3 || opp == 4 || opp == 5)) {
-        sub_08001C10(gUnk_08081C76[opp]);
+        StartDialogue(gOpponentFieldDuelText[opp]);
         gMainFlags.unk4888_2 = 3;
         gMainFlags.events = 0x80000;
-        gMainFlags.unk488A_0 = sub_08076F9C() % 6 + 1;
-        sub_08077B24(0x30);
+        gMainFlags.unk488A_0 = Random() % 6 + 1;
+        PlayBGM(0x30);
         return 1;
     } else if (opp != 21) {
         u32 f = gMainFlags.events;
         if (f & 0x20000)
-            PICK(0x20000, gUnk_08081C42[opp], 7)
+            PICK(0x20000, gOpponentChristmasText[opp], 7)
         else if (f & 0x2000)
-            PICK(0x2000, gUnk_08081B7A[opp], 4)
+            PICK(0x2000, gOpponentMatchChallengeText[opp], 4)
         else if (f & 0x4000)
-            PICK(0x4000, gUnk_08081B7A[opp], 3)
+            PICK(0x4000, gOpponentMatchChallengeText[opp], 3)
     }
 #undef PICK
     gMainFlags.events = 0;
-    sub_08077B24(gUnk_080819F6[gMainFlags.opponent]);
-    sub_08001C10(text);
+    PlayBGM(gOpponentDialogueBGM[gMainFlags.opponent]);
+    StartDialogue(text);
     }
     return 1;
 }
 /* Nonzero if the player owns at least n of the 60 cards listed at 0x08081A6C. */
-u16 sub_0801B640(int n)
+u16 HasEnoughRareCards(int n)
 {
     u32 i = 0;
     int count = 0;
     for (; i < 60; i++) {
-        if (gUnk_02011C20.trunk[CardNumberToId(gUnk_08081A6C[i])].count != 0)
+        if (gSaveData.trunk[CardNumberToId(gRareCardNumbers[i])].count != 0)
             count++;
     }
     return count >= n;
 }
 /* Pick a random card from the 60-entry list at 0x08081A6C that the player owns (trunk count != 0). */
-u16 sub_0801B6D4(void)
+u16 PickRandomOwnedRareCard(void)
 {
     u16 id;
     do {
-        u32 r = (u32)sub_08076F9C() % 60;
-        id = CardNumberToId(gUnk_08081A6C[r]);
-    } while (gUnk_02011C20.trunk[id].count == 0);
+        u32 r = (u32)Random() % 60;
+        id = CardNumberToId(gRareCardNumbers[r]);
+    } while (gSaveData.trunk[id].count == 0);
     return id;
 }
-extern const u16 gUnk_08081A28[];
-extern const u16 gUnk_08081A50[];
-extern const u16 gUnk_08081A58[];
-extern const u16 gUnk_08081A62[];
+extern const u16 gTournamentOpponents[];
+extern const u16 gGrandpaCupQualifierOpponents[];
+extern const u16 gGrandpaCupFinalOpponents[];
+extern const u16 gRareHunterOpponents[];
 
 /* Start-of-day calendar events (hypothesis): check today's date for special events (tournament
  * invitations etc.), pick the event's opponent/text and start the matching dialogue and BGM.
  * Returns 1 when nothing (more) is to be shown. */
-int sub_0801B75C(void)
+int Campaign_StartDay(void)
 {
     struct Date date;
     u32 events;
 
     switch (gMainFlags.step488A) {
     case 0:
-        sub_0800817C();
-        if (gUnk_020192E4[0].deckCount < 40) {
+        LoadPlayerDeckFromSave();
+        if (gDuelPlayers[0].deckCount < 40) {
             gMainFlags.seqIndexCampaign = 10;
             return 0;
         }
         gMainFlags.step488A++;
         /* fall through */
     case 1:
-        sub_08004914(&date);
-        events = sub_080044E4(date.year, date.month, date.day);
+        GetCurrentDate(&date);
+        events = GetCalendarEvents(date.year, date.month, date.day);
         if (date.month == 12 && date.day == 31) {
-            gUnk_02011C20.unk215E = 0;
-            gUnk_02011C20.unk2160 = 0;
+            gSaveData.unk215E = 0;
+            gSaveData.unk2160 = 0;
         }
         gMainFlags.unk4888_1 = 0;
         gMainFlags.unk4888_2 = 1;
         gMainFlags.counter4888 = 0;
         gMainFlags.score = 0;
         if (events & 0x1000000) {
-            gMainFlags.opponent = gUnk_08081A28[sub_08076F9C() % 5];
-            sub_08001C10(0xC9);
-            sub_08077B24(0x31);
+            gMainFlags.opponent = gTournamentOpponents[Random() % 5];
+            StartDialogue(0xC9);
+            PlayBGM(0x31);
             gMainFlags.events = 0x1000000;
             gMainFlags.step488A = 9;
             return 0;
         } else if (events & 0x2000000) {
-            gMainFlags.opponent = gUnk_08081A28[sub_08076F9C() % 5 + 5];
-            sub_08001C10(0xCB);
-            sub_08077B24(0x31);
+            gMainFlags.opponent = gTournamentOpponents[Random() % 5 + 5];
+            StartDialogue(0xCB);
+            PlayBGM(0x31);
             gMainFlags.events = 0x2000000;
             gMainFlags.step488A = 9;
             return 0;
         } else if (events & 0x4000000) {
-            gMainFlags.opponent = gUnk_08081A28[sub_08076F9C() % 5 + 10];
-            sub_08001C10(0xCD);
-            sub_08077B24(0x31);
+            gMainFlags.opponent = gTournamentOpponents[Random() % 5 + 10];
+            StartDialogue(0xCD);
+            PlayBGM(0x31);
             gMainFlags.events = 0x4000000;
             gMainFlags.step488A = 9;
             return 0;
         } else if (events & 0x8000000) {
-            gMainFlags.opponent = gUnk_08081A28[sub_08076F9C() % 5 + 15];
+            gMainFlags.opponent = gTournamentOpponents[Random() % 5 + 15];
             gMainFlags.events = 0x8000000;
-            sub_08001C10(0xCF);
+            StartDialogue(0xCF);
             gMainFlags.step488A = 9;
-            sub_08077B24(0x32);
+            PlayBGM(0x32);
             return 0;
         } else if (events & 0x10000000) {
-            gMainFlags.opponent = gUnk_08081A50[sub_08076F9C() & 3];
+            gMainFlags.opponent = gGrandpaCupQualifierOpponents[Random() & 3];
             gMainFlags.events = 0x10000000;
-            sub_08001C10(0x2BD);
+            StartDialogue(0x2BD);
             gMainFlags.step488A = 9;
-            gUnk_02011C20.unk2160 = 0;
-            sub_08077B24(0x33);
+            gSaveData.unk2160 = 0;
+            PlayBGM(0x33);
             return 0;
         } else if (events & 0x20000000) {
-            gMainFlags.opponent = gUnk_08081A58[sub_08076F9C() % 5u];
+            gMainFlags.opponent = gGrandpaCupFinalOpponents[Random() % 5u];
             gMainFlags.events = 0x20000000;
-            sub_08001C10(0x2BE);
+            StartDialogue(0x2BE);
             gMainFlags.step488A = 9;
-            sub_08077B24(0x33);
+            PlayBGM(0x33);
             return 0;
         } else if (events & 0x400000) {
             int n = 1;
-            if (sub_08063BAC())
+            if (IsCampaignLevel2Unlocked())
                 n = 2;
-            if (sub_08063C14())
+            if (IsCampaignLevel3Unlocked())
                 n++;
-            if (sub_08063C7C())
+            if (IsCampaignLevel4Unlocked())
                 n++;
             n *= 5;
-            gMainFlags.opponent = gUnk_08081A28[sub_08076F9C() % n];
-            sub_08001C10(500);
+            gMainFlags.opponent = gTournamentOpponents[Random() % n];
+            StartDialogue(500);
             gMainFlags.events = 0x400000;
             gMainFlags.step488A = 9;
-            sub_08077B24(0x30);
+            PlayBGM(0x30);
             return 0;
-        } else if (sub_0801B640(5) && gUnk_02011C20.unk2150 != 0 && (u16)(gUnk_02011C20.unk2150 % 60) == 0) {
-            sub_08001C10(900);
-            sub_08077B24(0x1A);
+        } else if (HasEnoughRareCards(5) && gSaveData.unk2150 != 0 && (u16)(gSaveData.unk2150 % 60) == 0) {
+            StartDialogue(900);
+            PlayBGM(0x1A);
             gMainFlags.events = 0x800000;
             gMainFlags.step488A = 7;
             return 0;
-        } else if (gUnk_02011C20.unk2164 & 1) {
-            gUnk_02011C20.unk2164 &= ~1;
-            sub_08001C10(350);
+        } else if (gSaveData.unk2164 & 1) {
+            gSaveData.unk2164 &= ~1;
+            StartDialogue(350);
             gMainFlags.step488A = 10;
             return 0;
         } else {
@@ -695,23 +695,23 @@ int sub_0801B75C(void)
             return 1;
         }
     case 7:
-        if (!sub_08001AE4())
+        if (!CB_Bustup())
             return 0;
-        gMainFlags.opponent = gUnk_08081A62[sub_08076F9C() % 5];
-        sub_08077B24(0x1B);
+        gMainFlags.opponent = gRareHunterOpponents[Random() % 5];
+        PlayBGM(0x1B);
         gMainFlags.unk4888_1 = 1;
         return 1;
     case 8:
-        sub_080754F8(0);
+        SetMainCallback(0);
         return 0;
     case 9:
-        if (!sub_08001AE4())
+        if (!CB_Bustup())
             return 0;
         gMainFlags.unk4888_1 = 1;
         gMainFlags.unk4888_2 = 3;
         return 1;
     case 10:
-        if (!sub_08001AE4())
+        if (!CB_Bustup())
             return 0;
         return 1;
     }

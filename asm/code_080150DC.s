@@ -3,8 +3,8 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_080150DC/sub_080150DC.s"
-	.include "asm/nonmatching/code_080150DC/sub_080153D4.s"
-	.include "asm/nonmatching/code_080150DC/sub_08015720.s"
-	.include "asm/nonmatching/code_080150DC/sub_08015A2C.s"
-	.include "asm/nonmatching/code_080150DC/sub_08015E40.s"
+	.include "asm/nonmatching/code_080150DC/DuelCmd_ShowCardZoomIn.s"
+	.include "asm/nonmatching/code_080150DC/DuelCmd_ShowCardEffect.s"
+	.include "asm/nonmatching/code_080150DC/DuelCmd_ShowCardScatter.s"
+	.include "asm/nonmatching/code_080150DC/DuelCmd_ShowCardUnrollDown.s"
+	.include "asm/nonmatching/code_080150DC/DuelCmd_ShowCardUnrollSideways.s"

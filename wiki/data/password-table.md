@@ -35,8 +35,8 @@ const u8 gCardPasswords[821][4];   /* proposal; e.g. BEWD (ID 82) = {0x89,0x63,0
 
 Cards without a password include most fusion and ritual monsters, ritual spells, Dark Magician Girl, Kazejin, Sanga of the Thunder, Gate Guardian, the Tickets, the Gods, and the Token.
 
-## Lookup: `sub_0807C304`
-`sub_0807C304` (`0x0807C304`–`0x0807C374`, Thumb) handles password entry:
+## Lookup: `FindCardByPassword`
+`FindCardByPassword` (`0x0807C304`–`0x0807C374`, Thumb) handles password entry:
 1. It packs 8 entered digits from `0x0201F7B0 + 8` into 4 BCD bytes on the stack (`hi<<4 | lo`).
 2. It scans IDs 0..820 (`cmp r3, #0x334` inclusive) and compares all 4 bytes.
 3. It returns the matching **card ID**, or 0 if nothing matches.
@@ -52,7 +52,7 @@ The table extracts to `cards/passwords.csv` ([[assets]]) with the columns `id,pa
 ## Method
 - Searched for each known password in three encodings: BCD big-endian, BCD little-endian, and binary u32. Only BCD big-endian hit, once per card: BEWD at `ROM+0x623268` = `0x08623120 + 82*4`, Dark Magician at `ROM+0x623378` = `+150*4`, and so on.
 - The table's boundaries meet the ID-to-number table (after 2 bytes of padding) and the number-to-ID table exactly. See the per-card data block section of [[card-table]].
-- The disassembly of `sub_0807C304` confirms the byte order and the 821-entry bound.
+- The disassembly of `FindCardByPassword` confirms the byte order and the 821-entry bound.
 - `python3 tools/extract_cards.py --verify` checks 4 passwords.
 - The `tables_game` converter round-trips all 821 entries (2026-10-02).
 

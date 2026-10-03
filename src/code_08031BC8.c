@@ -6,9 +6,9 @@
  * or a code like 0x7F, 0x80 or 0x92. See wiki/functions/code-08031bc8.md.
  */
 
-/* struct DuelCard, struct DuelZone, struct DuelZonesPlayer and gUnk_0201930C come from duel.h. */
+/* struct DuelCard, struct DuelZone, struct DuelZonesPlayer and gDuelZones come from duel.h. */
 #define ZFLAGS(z) (((u8 *)(z))[6])
-#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gUnk_0201930C))
+#define ZB(p, z) ((struct DuelZone *)((z) * 0x94 + (p) * 0xD64 + (u32)gDuelZones))
 
 struct CardRef {
     u16 id;             /* +0x00 */
@@ -35,60 +35,60 @@ struct CardRef {
 #define CARD_TYPE(id) ((CARD_STATS(id) & 0x1F00000) >> 20)
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & 0x7FF])
 
-extern const u16 gUnk_08622AB4[];
+extern const u16 gCardIdToNumber[];
 
 /* Effect-resolution state at 0x02017A40 (byte view; only two bytes used here). */
-extern u8 gUnk_02017A40[];
-#define EFF_PHASE gUnk_02017A40[0x3E0]  /* 0x7E / 0x7F / 0x80: step of a multi-step effect (hypothesis) */
-#define EFF_SIDE gUnk_02017A40[0x3E1]   /* player currently being processed */
+extern u8 gChain[];
+#define EFF_PHASE gChain[0x3E0]  /* 0x7E / 0x7F / 0x80: step of a multi-step effect (hypothesis) */
+#define EFF_SIDE gChain[0x3E1]   /* player currently being processed */
 
 /* 0x020192E4 + 0x5F0: a card word in each player's state (stride 0xD64), possibly a "set" spell/trap slot (hypothesis) */
 struct PlayerCard5F0 {
     struct DuelCard card;
     u8 filler[0xD64 - 4];
 };
-extern struct PlayerCard5F0 gUnk_020198D4[2];
+extern struct PlayerCard5F0 gDuelFieldZone[2];
 
-int sub_08019554(int player, u16 no);
-void sub_08019980(int player, int lp);
-void sub_0801EC58(u16 msg, u16 arg1, u16 arg2, u16 arg3);
-int sub_0802B28C(int player, int zone);
-void sub_08030028(int player, int zone);
-void sub_08046CB0(int player, int a, int b);
-void sub_08017AB4(int player, u16 a, u16 b, u16 c);
-u32 sub_08008300(u16 cardNo);
-void sub_08042AB0(int player, int kind, u32 arg);
-void sub_08018ED8(int player, int zone, int a, int b);
-int sub_0800C8BC(int player, int zone);
+int ReturnGraveyardCardToHand(int player, u16 no);
+void GainLifePoints(int player, int lp);
+void DuelCmd_Push(u16 msg, u16 arg1, u16 arg2, u16 arg3);
+int IsZoneTargetable(int player, int zone);
+void DestroyFieldCardByEffect(int player, int zone);
+void OnCardDestroyedByEffect(int player, int a, int b);
+void QueueAddZoneLink(int player, u16 a, u16 b, u16 c);
+u32 GetFieldMagicIndex(u16 cardNo);
+void EventResponse_Request(int player, int kind, u32 arg);
+void ChangeBattlePosition(int player, int zone, int a, int b);
+int GetZoneCardType(int player, int zone);
 void sub_080197C0(int player, u16 id);
-void sub_08018DC8(int player, int zone, int a);
-void sub_08019840(int player, u16 id);
-void sub_08046AD0(void);
-void sub_08018544(int player, int zone, int a);
-void sub_08019860(int player, int lp);
-void sub_080602A4(u32 a, u32 b, u32 c, const void *d);
-void sub_08060308(u32 a, u32 b, u32 c);
-u32 sub_08052F38(u32 keys);
-void sub_080193B0(int player, int arg1, u16 arg2);
-extern const u8 gUnk_08082AF0[];
-extern const u8 gUnk_08082B10[];
-extern const u8 gUnk_08082B58[];
+void FlipFieldCard(int player, int zone, int a);
+void ShowRevealedCard(int player, u16 id);
+void ApplyKotodama(void);
+void DestroyFieldCard(int player, int zone, int a);
+void LoseLifePoints(int player, int lp);
+void TextBoxOpen(u32 a, u32 b, u32 c, const void *d);
+void TextBoxSetMenu(u32 a, u32 b, u32 c);
+u32 DuelCursor_PickTarget(u32 keys);
+void ReturnHandCardToDeck(int player, int arg1, u16 arg2);
+extern const u8 gStrNeedleBallPayLpPrompt[];
+extern const u8 gStrYadoKaruReturnPrompt[];
+extern const u8 gStrYadoKaruSelectPrompt[];
 
-/* gUnk_020192E4 (struct DuelPlayer[2], with .handCount etc.) comes from duel.h. */
+/* gDuelPlayers (struct DuelPlayer[2], with .handCount etc.) comes from duel.h. */
 
-/* gUnk_02019AA8 (0x020192E4 + 0x7C4) is gUnk_020192E4[player].deck (struct DuelCard[80]) from duel.h. */
+/* gDuelDecks (0x020192E4 + 0x7C4) is gDuelPlayers[player].deck (struct DuelCard[80]) from duel.h. */
 /* u16 at 0x0201AE60+0x14 (nonzero = flag; hypothesis: a "count/flag" of the current effect) */
 struct AE60 {
     u8 unk0[0x14];
     u16 flag14;
 };
-extern struct AE60 gUnk_0201AE60;
-/* Duel screen state at 0x0201CFB0. The word at +0x82C is passed to sub_080193B0. */
+extern struct AE60 gTextBox;
+/* Duel screen state at 0x0201CFB0. The word at +0x82C is passed to ReturnHandCardToDeck. */
 struct DuelScreen82C {
     u8 unk0[0x82C];
     u32 unk82C;
 };
-extern struct DuelScreen82C gUnk_0201CFB0;
+extern struct DuelScreen82C gDuelScreen;
 
 /* Card-list viewer at 0x0201D810 (see code_0802AAC0 struct ListView); fields used here. */
 struct ListView {
@@ -100,64 +100,64 @@ struct ListView {
     u32 cards[0x80];    /* +0x0C: card words */
     u16 kinds[0x80];    /* +0x20C: per-entry kind (hypothesis) */
 };
-extern struct ListView gUnk_0201D810;
-extern u8 gUnk_02015F00[];   /* u16 at +0x1B22 is the saved list position (hypothesis) */
-extern const u8 gUnk_08082988[];
-int sub_08008524(int player, u16 number);
-int sub_08044224(int player, int number, int b);
-int sub_08008A1C(int player);
-void sub_08056ECC(u16 id);
-void sub_0802AF34(int player, int area, int a2, int a3);
-void sub_08056094(int player, u32 *card, int a, int b);
-void sub_08055F70(int player, u32 *card, int a, int b, int c);
-void sub_08046C20(int player, int a);
-int sub_0801970C(int player, u16 number);
-void sub_080753F4(void *dst, const void *a, const void *b);
-extern const u8 gUnk_08082AB4[];
-extern const u16 gUnk_08623DF4[];
-extern const u8 gUnk_0822C720[];
-extern const u8 gUnk_080829F0[];
-extern const u8 gUnk_08082A4C[];
-void sub_08017FF4(int player, int zone);
-int sub_0802B9EC(struct CardRef *ref, u16 pos);
-int sub_0802BAD0(struct CardRef *ref, u16 pos);
-void sub_08018AE8(int player, int zone, int a);
-void sub_08019CF0(int player, int a, int b);
-void sub_08019788(int player, int id);
-/* gUnk_020192E0 is struct DuelState in duel.h, which only covers up to the players (size 0x1ACC).
- * sub_080327F4 reads the flag byte at +0x1ACD, just past that range, so keep a unit-local tail view. */
+extern struct ListView gCardListView;
+extern u8 gAiWork[];   /* u16 at +0x1B22 is the saved list position (hypothesis) */
+extern const u8 gStrElegantEgotistSelectPrompt[];
+int CountActiveCardsOnField(int player, u16 number);
+int CollectEffectTargets(int player, int number, int b);
+int CountFreeMonsterZones(int player);
+void AiPickCardListEntry(u16 id);
+void CardListView_Open(int player, int area, int a2, int a3);
+void QueueSpecialSummonChoosePosition(int player, u32 *card, int a, int b);
+void QueueSpecialSummon(int player, u32 *card, int a, int b, int c);
+void LoseLpOnSendToGraveyard(int player, int a);
+int AddDeckCardToHand(int player, u16 number);
+void FormatStr(void *dst, const void *a, const void *b);
+extern const u8 gStrThunderDragonAddPromptFmt[];
+extern const u16 gCardNumberToId[];
+extern const u8 gCardNames[];
+extern const u8 gStrCyberSteinSelectPrompt[];
+extern const u8 gStrGaleDograSelectPrompt[];
+void TributeMonster(int player, int zone);
+int EffectBlastJugglerCheck(struct CardRef *ref, u16 pos);
+int EffectDragonSeekerCheck(struct CardRef *ref, u16 pos);
+void ReturnFieldCardToHand(int player, int zone, int a);
+void SendTopDeckCardsToGraveyard(int player, int a, int b);
+void ShowCardDetail(int player, int id);
+/* gDuel is struct DuelState in duel.h, which only covers up to the players (size 0x1ACC).
+ * EffectReverseTrapResolve reads the flag byte at +0x1ACD, just past that range, so keep a unit-local tail view. */
 struct DuelStateTail {
     u8 unk0[0x1ACD];
     u8 flags1ACD;
 };
-extern struct DuelStateTail gUnk_020192E0Tail asm("gUnk_020192E0");
-int sub_0802BBDC(struct CardRef *ref, u16 pos);
-void sub_0801919C(int player, u16 pos1, u16 pos2);
-void sub_08017B04(int player, u16 a, u16 b);
-void sub_08018ED8(int player, int zone, int a, int b);
-void sub_08019800(int player, int id);
-int sub_0800C8A8(int player, int zone);
-int sub_08007590(u16 number, int a);
-void sub_0801FBCC(u32 a, u32 b);
-void sub_08018DC8(int player, int zone, int a);
-void sub_080193D4(int player, int a, int b, int c);
-void sub_080199E0(int player, int a);
+extern struct DuelStateTail gUnk_020192E0Tail asm("gDuel");
+int EffectDestroyByTypeCheck(struct CardRef *ref, u16 pos);
+void SwapFieldCards(int player, u16 pos1, u16 pos2);
+void EquipCard(int player, u16 a, u16 b);
+void ChangeBattlePosition(int player, int zone, int a, int b);
+void ShowDestroyedCard(int player, int id);
+int GetZoneCardDef(int player, int zone);
+int HasFlipEffect(u16 number, int a);
+void Chain_AddPending(u32 a, u32 b);
+void FlipFieldCard(int player, int zone, int a);
+void DiscardHandCard(int player, int a, int b, int c);
+void DrawCards(int player, int a);
 
 
-int sub_08031BC8(struct CardRef *ref)
+int EffectDragonSeekerResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         u8 tp = ref->targets[0];
         int tz = ref->targets[0] >> 8;
 
-        if (sub_0802BAD0(ref, tz << 8 | tp)) {
-            sub_08030028(tp, tz);
-            sub_08046CB0(ref->player, tp, tz);
+        if (EffectDragonSeekerCheck(ref, tz << 8 | tp)) {
+            DestroyFieldCardByEffect(tp, tz);
+            OnCardDestroyedByEffect(ref->player, tp, tz);
         }
     }
     return 0;
 }
-int sub_08031C14(struct CardRef *ref)
+int EffectDestroyTargetResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         u8 tz;
@@ -178,7 +178,7 @@ int sub_08031C14(struct CardRef *ref)
             case 0x3FF:
             case 0x4BB:
                 if (CARD_NUMBER(id) == 0x4B1 && (ZFLAGS(z) & 3) == 1) {
-                    sub_0801EC58(tp ? 0x807F : 0x7F, tz, 0, 0);
+                    DuelCmd_Push(tp ? 0x807F : 0x7F, tz, 0, 0);
                     sub_080197C0(tp, CARD_ID(CARD_WORD(z->card)));
                     return 0;
                 }
@@ -193,18 +193,18 @@ int sub_08031C14(struct CardRef *ref)
                 u16 vid = *(volatile u16 *)ref;
                 int ct = (((const u32 *)0x08621DE0)[m & vid] & 0x1F00000) >> 20;
 
-                if (ct == 0x16 && tzi <= 4 && sub_0802B28C(tp, tz) == 0)
+                if (ct == 0x16 && tzi <= 4 && IsZoneTargetable(tp, tz) == 0)
                     return 0;
             }
             if (ref->player != tp)
-                sub_0801EC58(tp ? 0x808B : 0x8B, tz, 1, 0);
-            sub_08030028(tp, tz);
-            sub_08046CB0(ref->player, tp, tz);
+                DuelCmd_Push(tp ? 0x808B : 0x8B, tz, 1, 0);
+            DestroyFieldCardByEffect(tp, tz);
+            OnCardDestroyedByEffect(ref->player, tp, tz);
         }
     }
     return 0;
 }
-int sub_08031D30(struct CardRef *ref)
+int EffectReturnTargetToHandResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         u8 tp = ref->targets[0];
@@ -213,17 +213,17 @@ int sub_08031D30(struct CardRef *ref)
         struct DuelZone *z = ZB(p, tz);
 
         if (CARD_ID(CARD_WORD(z->card)))
-            sub_08018AE8(tp, tz, 0);
+            ReturnFieldCardToHand(tp, tz, 0);
     }
     return 0;
 }
-int sub_08031D80(struct CardRef *ref)
+int EffectNeedleWormResolve(struct CardRef *ref)
 {
     if (!ref->skip4)
-        sub_08019CF0(1 - ref->player, 5, 1);
+        SendTopDeckCardsToGraveyard(1 - ref->player, 5, 1);
     return 0;
 }
-int sub_08031DA8(struct CardRef *ref)
+int EffectPatrolRoboResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         int tp = (u8)ref->targets[0];
@@ -233,15 +233,15 @@ int sub_08031DA8(struct CardRef *ref)
         int id = CARD_ID(CARD_WORD(z->card));
 
         if (id && tp != ref->player && !(ZFLAGS(z) & 2)) {
-            sub_0801EC58(tp ? 0x807F : 0x7F, tz, 0, 0);
-            sub_08019788(tp, id);
-            sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8092 : 0x92, ref->zone, 0, 0);
-            sub_0801EC58(tp ? 0x807F : 0x7F, tz, 0, 0);
+            DuelCmd_Push(tp ? 0x807F : 0x7F, tz, 0, 0);
+            ShowCardDetail(tp, id);
+            DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8092 : 0x92, ref->zone, 0, 0);
+            DuelCmd_Push(tp ? 0x807F : 0x7F, tz, 0, 0);
         }
     }
     return 0;
 }
-int sub_08031E60(struct CardRef *ref)
+int EffectWeatherReportResolve(struct CardRef *ref)
 {
     int found = 0;
     int i;
@@ -254,15 +254,15 @@ int sub_08031E60(struct CardRef *ref)
         struct DuelZone *z2 = ZB(p2, i);
 
         if ((ZFLAGS(z2) & 2) && id && CARD_NUMBER(id) == 0x15B) {
-            sub_08018544(1 - ref->player, i, 1);
+            DestroyFieldCard(1 - ref->player, i, 1);
             found = 1;
         }
     }
     if (found)
-        sub_0801EC58((1 & ((u8 *)ref)[2]) ? 0x8047 : 0x47, 1, 0, 0);
+        DuelCmd_Push((1 & ((u8 *)ref)[2]) ? 0x8047 : 0x47, 1, 0, 0);
     return 0;
 }
-int sub_08031F30(struct CardRef *ref)
+int EffectGreenkappaResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 2) {
         int i;
@@ -274,42 +274,42 @@ int sub_08031F30(struct CardRef *ref)
             struct DuelZone *z = ZB(p, tz);
 
             if (CARD_ID(CARD_WORD(z->card)) && !(ZFLAGS(z) & 2))
-                sub_08018544(tp, tz, 1);
+                DestroyFieldCard(tp, tz, 1);
         }
     }
     return 0;
 }
-int sub_08031FAC(struct CardRef *ref)
+int EffectMorphingJarResolve(struct CardRef *ref)
 {
     if (!ref->skip4) {
         switch (EFF_PHASE) {
         case 0x80: {
-            struct DuelPlayer *pl = gUnk_020192E4;
+            struct DuelPlayer *pl = gDuelPlayers;
 
             if (pl[ref->player].handCount != 0) {
-                sub_080193D4(ref->player, 0, 0, 1);
+                DiscardHandCard(ref->player, 0, 0, 1);
                 return 0x80;
             }
             return 0x7F;
         }
         case 0x7F: {
-            struct DuelPlayer *pl = gUnk_020192E4;
+            struct DuelPlayer *pl = gDuelPlayers;
             int opp = (1 - ref->player) & 1;
 
             if (pl[opp].handCount != 0) {
-                sub_080193D4(1 - ref->player, 0, 1, 1);
+                DiscardHandCard(1 - ref->player, 0, 1, 1);
                 return 0x7F;
             }
             return 0x7E;
         }
         default:
-            sub_080199E0(ref->player, 5);
-            sub_080199E0(1 - ref->player, 5);
+            DrawCards(ref->player, 5);
+            DrawCards(1 - ref->player, 5);
         }
     }
     return 0;
 }
-int sub_08032058(struct CardRef *ref)
+int EffectPenguinSoldierResolve(struct CardRef *ref)
 {
     if (!ref->skip4) {
         int i;
@@ -321,15 +321,15 @@ int sub_08032058(struct CardRef *ref)
             struct DuelZone *z = ZB(p, tz);
 
             if (CARD_ID(CARD_WORD(z->card)))
-                sub_08018AE8(tp, tz, 0);
+                ReturnFieldCardToHand(tp, tz, 0);
         }
     }
     return 0;
 }
-int sub_080320C4(struct CardRef *ref)
+int EffectHirosShadowScoutResolve(struct CardRef *ref)
 {
     /* FAKEMATCH: the redundant outer & 1 puts movs #1 after the bit extraction */
-    int count = gUnk_020192E4[((ref->player & 1) ^ 1) & 1].handCount;
+    int count = gDuelPlayers[((ref->player & 1) ^ 1) & 1].handCount;
 
     if (!ref->skip4) {
         int i;
@@ -337,17 +337,17 @@ int sub_080320C4(struct CardRef *ref)
         for (i = 0; i <= 2; i++) {
             int p = (1 - ref->player) & 1;
 
-            if (i < gUnk_020192E4[p].deckCount) {
+            if (i < gDuelPlayers[p].deckCount) {
                 u16 p2 = (1 - ref->player) & 1;
-                u16 id = CARD_ID(CARD_WORD(gUnk_020192E4[p2].deck[i]));
+                u16 id = CARD_ID(CARD_WORD(gDuelPlayers[p2].deck[i]));
                 int id2 = id;
 
-                sub_0801EC58(!(1 & ((u8 *)ref)[2]) ? 0x8061 : 0x61, 1, 1, 0);
+                DuelCmd_Push(!(1 & ((u8 *)ref)[2]) ? 0x8061 : 0x61, 1, 1, 0);
                 if (CARD_TYPE(id) == 0x16) {
-                    sub_08019800(ref->player, id);
-                    sub_080193D4(1 - ref->player, count, 1, 1);
+                    ShowDestroyedCard(ref->player, id);
+                    DiscardHandCard(1 - ref->player, count, 1, 1);
                 } else {
-                    sub_08019840(ref->player, id2);
+                    ShowRevealedCard(ref->player, id2);
                     count++;
                 }
             }
@@ -357,7 +357,7 @@ int sub_080320C4(struct CardRef *ref)
 }
 
 
-int sub_080321C8(struct CardRef *ref)
+int EffectInvaderOfTheThroneResolve(struct CardRef *ref)
 {
     __asm__("" : : : "r8");
     if (!ref->skip4 && ref->numTargets == 1) {
@@ -375,13 +375,13 @@ int sub_080321C8(struct CardRef *ref)
                 struct DuelZone *z2 = ZB(p2, tz);
 
                 if (CARD_ID(CARD_WORD(z2->card)))
-                    sub_0801919C(pl, rz << 8 | pl, tp | tz << 8);
+                    SwapFieldCards(pl, rz << 8 | pl, tp | tz << 8);
             }
         }
     }
     return 0;
 }
-int sub_08032258(struct CardRef *ref)
+int EffectKunaiWithChainResolve(struct CardRef *ref)
 {
     if (ref->kind == 0x10) {
         int tp = (u8)ref->pos;
@@ -390,7 +390,7 @@ int sub_08032258(struct CardRef *ref)
         struct DuelZone *z = ZB(p, tz);
 
         if (CARD_ID(CARD_WORD(z->card)) && !(1 & ZFLAGS(z)) && ref->player != tp)
-            sub_08018ED8(tp, tz, 0, 0);
+            ChangeBattlePosition(tp, tz, 0, 0);
     }
     if (ref->numTargets == 1) {
         int tp = (u8)ref->targets[0];
@@ -399,15 +399,15 @@ int sub_08032258(struct CardRef *ref)
         struct DuelZone *z = ZB(p, tz);
 
         if (CARD_ID(CARD_WORD(z->card)) && (ZFLAGS(z) & 2) && ref->player == tp)
-            sub_08017B04(ref->player, ref->player | (ref->zone << 8), ref->targets[0]);
+            EquipCard(ref->player, ref->player | (ref->zone << 8), ref->targets[0]);
         else
-            sub_08018544(ref->player, ref->zone, 1);
+            DestroyFieldCard(ref->player, ref->zone, 1);
     }
     return 0;
 }
-int sub_0803231C(struct CardRef *ref)
+int EffectDestroyAllByTypeResolve(struct CardRef *ref)
 {
-    int q; /* FAKEMATCH: extra copy of p feeds sub_0802BBDC and fixes scheduling */
+    int q; /* FAKEMATCH: extra copy of p feeds EffectDestroyByTypeCheck and fixes scheduling */
     if (!ref->skip4) {
         int side;
 
@@ -422,16 +422,16 @@ int sub_0803231C(struct CardRef *ref)
                 p = 1 - ref->player;
             for (i = 0, pu = (q = p); i <= 4; i++) {
                 q = pu;
-                if (sub_0802BBDC(ref, (u8)i << 8 | q)) {
-                    sub_08018544(p, i, 1);
-                    sub_08046CB0(ref->player, p, i);
+                if (EffectDestroyByTypeCheck(ref, (u8)i << 8 | q)) {
+                    DestroyFieldCard(p, i, 1);
+                    OnCardDestroyedByEffect(ref->player, p, i);
                 }
             }
         }
     }
     return 0;
 }
-int sub_0800C894(int player, int zone);
+int GetZoneCardAtk(int player, int zone);
 static inline u32 CardAttack32390(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
@@ -461,7 +461,7 @@ static inline u16 MonsterAtk32390(u16 id)
     }
     return ((CARD_STATS(id) >> 9) & 0x1FF) * 10;
 }
-int sub_08032390(struct CardRef *ref)
+int EffectCrushCardResolve(struct CardRef *ref)
 {
     int opp = 1 - ref->player;
     int i;
@@ -477,36 +477,36 @@ int sub_08032390(struct CardRef *ref)
             u16 id = CARD_ID(CARD_WORD(z->card));
             if (id != 0) {
                 u32 faceDown = ((u32)ZFLAGS(z) << 30) >> 31;
-                sub_0801EC58(ref->player ? 0x8008 : 8, opp, i << 8, 0);
+                DuelCmd_Push(ref->player ? 0x8008 : 8, opp, i << 8, 0);
                 if (faceDown == 0) {
                     u32 atk;
-                    sub_0801EC58(opp ? 0x807F : 0x7F, i, 0, 0);
+                    DuelCmd_Push(opp ? 0x807F : 0x7F, i, 0, 0);
                     atk = MonsterAtk32390(id);
                     if (atk <= 1499) {
-                        sub_08019840(opp, id);
-                        sub_0801EC58(opp ? 0x807F : 0x7F, i, 0, 0);
+                        ShowRevealedCard(opp, id);
+                        DuelCmd_Push(opp ? 0x807F : 0x7F, i, 0, 0);
                     } else {
-                        sub_08019800(opp, id);
-                        sub_08030028(opp, i);
-                        sub_08046CB0(ref->player, opp, i);
+                        ShowDestroyedCard(opp, id);
+                        DestroyFieldCardByEffect(opp, i);
+                        OnCardDestroyedByEffect(ref->player, opp, i);
                     }
-                } else if (sub_0800C894(opp, i) > 1499) {
-                    sub_08030028(opp, i);
-                    sub_08046CB0(ref->player, opp, i);
+                } else if (GetZoneCardAtk(opp, i) > 1499) {
+                    DestroyFieldCardByEffect(opp, i);
+                    OnCardDestroyedByEffect(ref->player, opp, i);
                 }
             }
         }
         EFF_SIDE = 0;
         return 0x7F;
     case 0x7F:
-        if (EFF_SIDE < gUnk_020192E4[opp & 1].handCount) {
+        if (EFF_SIDE < gDuelPlayers[opp & 1].handCount) {
             u8 side;
             u32 id;
             u32 raw = EFF_SIDE;
             side = raw;
-            asm("" : "+r"(raw)); /* FAKEMATCH: load into r0, copy to r2, index from r0 (cf. sub_0805C0A0) */
-            id = CARD_ID(CARD_WORD(gUnk_020192E4[opp & 1].hand[raw]));
-            sub_0801EC58(ref->player ? 0x8008 : 8, opp, (side << 8) | 0xB, 0);
+            asm("" : "+r"(raw)); /* FAKEMATCH: load into r0, copy to r2, index from r0 (cf. AiStrategyCyberStein) */
+            id = CARD_ID(CARD_WORD(gDuelPlayers[opp & 1].hand[raw]));
+            DuelCmd_Push(ref->player ? 0x8008 : 8, opp, (side << 8) | 0xB, 0);
             type = CARD_TYPE(id);
             if (type <= 0x14) {
                 u32 atk;
@@ -524,23 +524,23 @@ int sub_08032390(struct CardRef *ref)
                     break;
                 }
                 if (atk > 1499) {
-                    sub_08019800(opp, id);
-                    sub_080193D4(opp, EFF_SIDE, 1, 1);
+                    ShowDestroyedCard(opp, id);
+                    DiscardHandCard(opp, EFF_SIDE, 1, 1);
                     return 0x7F;
                 }
             }
             /* FAKEMATCH: int-typed call (u32 id, no u16 narrowing) keeps opp's live range short enough for r4 */
-            ((void (*)(int, int))sub_08019840)(opp, id);
+            ((void (*)(int, int))ShowRevealedCard)(opp, id);
             EFF_SIDE++;
             return 0x7F;
         }
         return 0x7E;
     default:
-        sub_0801EC58(opp ? 0x8069 : 0x69, 3, 0, 0);
+        DuelCmd_Push(opp ? 0x8069 : 0x69, 3, 0, 0);
         return 0;
     }
 }
-int sub_0803266C(struct CardRef *ref)
+int EffectHarpiesFeatherDusterResolve(struct CardRef *ref)
 {
     if (!ref->skip4) {
         int i;
@@ -550,15 +550,15 @@ int sub_0803266C(struct CardRef *ref)
             struct DuelZone *z = ZB(p, i);
 
             if (CARD_ID(CARD_WORD(z->card)))
-                sub_08018544(1 - ref->player, i, 5);
+                DestroyFieldCard(1 - ref->player, i, 5);
         }
     }
     return 0;
 }
-/* Two-step effect on one target: step 0x80 needs a card with flags & 3 == 1 there (sub_08018DC8, then
- * step 0x7F); step 0x7F calls sub_08019840 + sub_08018DC8 when sub_0800C8A8 > 2000, otherwise
- * sub_08019800, maybe the 0x1640 event (sub_0801FBCC) and the usual sub_08030028/sub_08046CB0 finish. */
-int sub_080326C4(struct CardRef *ref)
+/* Two-step effect on one target: step 0x80 needs a card with flags & 3 == 1 there (FlipFieldCard, then
+ * step 0x7F); step 0x7F calls ShowRevealedCard + FlipFieldCard when GetZoneCardDef > 2000, otherwise
+ * ShowDestroyedCard, maybe the 0x1640 event (Chain_AddPending) and the usual DestroyFieldCardByEffect/OnCardDestroyedByEffect finish. */
+int EffectAcidTrapHoleResolve(struct CardRef *ref)
 {
     if (!ref->skip4 && ref->numTargets == 1) {
         int tp = (u8)ref->targets[0];
@@ -578,48 +578,48 @@ int sub_080326C4(struct CardRef *ref)
         switch (EFF_PHASE) {
         case 0x80:
             if (id && (ZFLAGS(z) & 3) == 1) {
-                sub_08018DC8(tp, tz, 0);
+                FlipFieldCard(tp, tz, 0);
                 return 0x7F;
             }
             break;
         case 0x7F:
-            if (sub_0800C8A8(tp, tz) > 2000) {
+            if (GetZoneCardDef(tp, tz) > 2000) {
                 /* FAKEMATCH: call with an int id; the unit's u16 prototype adds a narrowing that
                  * reorders the argument moves */
-                ((void (*)(int, int))sub_08019840)(tp, id);
-                sub_08018DC8(tp, tz, 0);
+                ((void (*)(int, int))ShowRevealedCard)(tp, id);
+                FlipFieldCard(tp, tz, 0);
             } else {
-                sub_08019800(tp, id);
-                if (sub_08007590(CARD_NUMBER(id), 0) != 0 && sub_08008524(0, 0x5FA) == 0
-                    && sub_08008524(1, 0x5FA) == 0) {
+                ShowDestroyedCard(tp, id);
+                if (HasFlipEffect(CARD_NUMBER(id), 0) != 0 && CountActiveCardsOnField(0, 0x5FA) == 0
+                    && CountActiveCardsOnField(1, 0x5FA) == 0) {
                     /* Separate statements: in one expression fold moves the constant next to p << 31. */
                     u32 hi = (u32)p << 31;
                     u32 ev = (tz & 0x1F) << 16 | 0x16400000;
 
-                    sub_0801FBCC(hi | ev | id, 0);
+                    Chain_AddPending(hi | ev | id, 0);
                 }
-                sub_08030028(tp, tz);
-                sub_08046CB0(ref->player, tp, tz);
+                DestroyFieldCardByEffect(tp, tz);
+                OnCardDestroyedByEffect(ref->player, tp, tz);
             }
             break;
         }
     }
     return 0;
 }
-int sub_080327F4(struct CardRef *ref)
+int EffectReverseTrapResolve(struct CardRef *ref)
 {
     if (!ref->skip4) {
         u16 msg = (1 & ((u8 *)ref)[2]) ? 0x801C : 0x1C;
         int f = 1 & ~(gUnk_020192E0Tail.flags1ACD >> 5);
 
-        sub_0801EC58(msg, f, 0, 0);
+        DuelCmd_Push(msg, f, 0, 0);
     }
     return 0;
 }
-#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gUnk_0201930C))
+#define ZB2(p, z) ((struct DuelZone *)((p) * 0xD64 + (z) * 0x94 + (u32)gDuelZones))
 /* Sweep effect keyed by the triggering card number: face-up spells (type 0x15) on the player's side are
- * re-activated through sub_08018DC8/sub_08019840, other cards are removed with sub_08018544 (hypothesis). */
-int sub_0803283C(struct CardRef *ref, struct CardRef *src)
+ * re-activated through FlipFieldCard/ShowRevealedCard, other cards are removed with DestroyFieldCard (hypothesis). */
+int EffectFakeTrapResolve(struct CardRef *ref, struct CardRef *src)
 {
     int z;
     u16 id; /* function scope, shared by every case: its loop-weighted refs give it r5 in case A too */
@@ -643,12 +643,12 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
         if (CARD_TYPE(id) != 0x15)
             return 0;
         if (!ZB2(tp & 1, tz)->flag6_1) {
-            sub_08018DC8(tp, tz, 0);
-            sub_08019840(ref->player, id);
-            sub_08018DC8(tp, tz, 0);
+            FlipFieldCard(tp, tz, 0);
+            ShowRevealedCard(ref->player, id);
+            FlipFieldCard(tp, tz, 0);
         }
         if (CARD_TYPE(src->id) > 0x14)
-            sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+            DuelCmd_Push(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
         return 0;
     }
     case 0x29F:
@@ -658,17 +658,17 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
                     if (!ZB2(ref->player & 1, z)->flag6_1) {
-                        sub_08018DC8(ref->player, z, 0);
-                        sub_08019840(ref->player, id);
-                        sub_08018DC8(ref->player, z, 0);
+                        FlipFieldCard(ref->player, z, 0);
+                        ShowRevealedCard(ref->player, id);
+                        FlipFieldCard(ref->player, z, 0);
                     }
                 } else {
-                    sub_08018544(ref->player, z, 5);
+                    DestroyFieldCard(ref->player, z, 5);
                 }
             }
         }
         if (CARD_TYPE(src->id) > 0x14)
-            sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+            DuelCmd_Push(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
         return 0;
     case 0x425:
         for (z = 5; z <= 10; z++) {
@@ -676,20 +676,20 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
                     if (!ZB2(ref->player & 1, z)->flag6_1) {
-                        sub_08018DC8(ref->player, z, 0);
-                        sub_08019840(ref->player, id);
-                        sub_08018DC8(ref->player, z, 0);
+                        FlipFieldCard(ref->player, z, 0);
+                        ShowRevealedCard(ref->player, id);
+                        FlipFieldCard(ref->player, z, 0);
                     }
                 } else {
-                    sub_08018544(ref->player, z, 1);
+                    DestroyFieldCard(ref->player, z, 1);
                 }
             }
         }
         for (z = 5; z <= 10; z++) {
             if (CARD_WORD(ZB2((1 - ref->player) & 1, z)->card) << 20)
-                sub_08018544(ref->player, z, 1);
+                DestroyFieldCard(ref->player, z, 1);
         }
-        sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+        DuelCmd_Push(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
         return 0;
     case 0x42B:
         for (z = 0; z <= 10; z++) {
@@ -697,20 +697,20 @@ int sub_0803283C(struct CardRef *ref, struct CardRef *src)
             if (id != 0) {
                 if (CARD_TYPE(id) == 0x15) {
                     if (!ZB2(ref->player & 1, z)->flag6_1) {
-                        sub_08018DC8(ref->player, z, 0);
-                        sub_08019840(ref->player, id);
-                        sub_08018DC8(ref->player, z, 0);
+                        FlipFieldCard(ref->player, z, 0);
+                        ShowRevealedCard(ref->player, id);
+                        FlipFieldCard(ref->player, z, 0);
                     }
                 } else {
-                    sub_08018544(ref->player, z, 1);
+                    DestroyFieldCard(ref->player, z, 1);
                 }
             }
         }
         for (z = 0; z <= 10; z++) {
             if (CARD_WORD(ZB2((1 - ref->player) & 1, z)->card) << 20)
-                sub_08018544(ref->player, z, 1);
+                DestroyFieldCard(ref->player, z, 1);
         }
-        sub_0801EC58(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
+        DuelCmd_Push(ref->player ? 0x80B0 : 0xB0, 1, 0, 0);
         return 0;
     }
     return 0;

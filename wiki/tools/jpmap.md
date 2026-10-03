@@ -20,7 +20,7 @@ tools/dr python3 tools/jpmap.py                       # analyse, match, write bu
 tools/dr python3 tools/jpmap.py --compile-test        # also recompile matched USA C at JP addresses
 tools/dr python3 tools/jpmap.py --compile-test -n 20  # ... with 20 functions instead of 10
 tools/dr python3 tools/jpmap.py --assets              # also locate each config/assets.tsv range in JP
-tools/dr python3 tools/jpmap.py --diff sub_08044224   # also write an aligned USA/JP listing of one function
+tools/dr python3 tools/jpmap.py --diff CollectEffectTargets   # also write an aligned USA/JP listing of one function
 ```
 - It needs **both ROMs**: `baserom.gba` and `roms/base_jp.gba`, whose SHA-1 it checks
   (`dc25f733…`). Unlike `check.py`, it has no ROM-free mode ([[rom-free-workflow]]).
@@ -84,7 +84,7 @@ tools/dr python3 tools/jpmap.py --diff sub_08044224   # also write an aligned US
   analysis messages. 636 JP data words point at Thumb `push` starts, and none of them is a function the gap
   scan missed, so seeding from pointer tables adds nothing.
 - `--compile-test`: 10 of 10 functions byte-identical, and every relocation agrees with the map, including
-  the 20 of `sub_0807382C` (11 of them to RAM that moved) ([[rom-versions]]).
+  the 20 of `LinkSioRecvMultiBlock` (11 of them to RAM that moved) ([[rom-versions]]).
 - 706 of 846 pairs have every aligned call and function pointer consistent with the map.
 - Re-checked for the wiki: the status counts recounted from `map.tsv` (158 / 41 / 647 / 1130, 1290 JP-only,
   confidence 311 / 164 / 172); the JP header and SHA-1; the crt0 literal, the `MAGB` and
@@ -94,8 +94,8 @@ tools/dr python3 tools/jpmap.py --diff sub_08044224   # also write an aligned US
 ## Limitations
 - **Low-confidence pairs are guesses.** The 172 low-confidence changed pairs are similarity matches, and some
   are wrong. 140 of the 846 pairs have at least one aligned call that disagrees with the map.
-- **"No match" is not "absent".** Code rewritten past recognition scores at chance level. `sub_0804412C`
-  has its JP counterpart (`sub_0806172C`) right before the counterpart of `sub_08044224`, but scores 0.36.
+- **"No match" is not "absent".** Code rewritten past recognition scores at chance level. `CanReviveGraveyardCard`
+  has its JP counterpart (`sub_0806172C`) right before the counterpart of `CollectEffectTargets`, but scores 0.36.
   Pairing by position or shared callers is not implemented.
 - **The JP function list is provisional.** It comes from the analyzer, not from a matching JP build. Re-run
   the tool after the JP all-assembly build exists (stage 2 on [[rom-versions]]).

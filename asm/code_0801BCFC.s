@@ -3,9 +3,9 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_0801BCFC/sub_0801BCFC.s"
-	.include "asm/nonmatching/code_0801BCFC/sub_0801BE0C.s"
-	.include "asm/nonmatching/code_0801BCFC/sub_0801BE58.s"
-	.include "asm/nonmatching/code_0801BCFC/sub_0801BE90.s"
-	.include "asm/nonmatching/code_0801BCFC/sub_0801BF80.s"
-	.include "asm/nonmatching/code_0801BCFC/sub_0801C938.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_SelectOpponent.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_DecideTurnOrder.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_SetupDuel.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_RecordDuelResult.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_GiveRewards.s"
+	.include "asm/nonmatching/code_0801BCFC/Campaign_ShowDuelResult.s"

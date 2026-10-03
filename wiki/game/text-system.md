@@ -13,7 +13,7 @@ updated: 2026-10-02
 > [!warning] Contradiction
 > The summary above says no byte ≥ 0x80 appears in any string. The `tables_code` converter, which types every byte of `.rodata` 1 (2026-10-02), finds two exceptions, both re-checked in the ROM for this page:
 > - **Three Japanese debug `printf` strings** in Shift-JIS at `0x080876B4`, `0x080876D4` and `0x080876F8`. They are buffer-save and buffer-output log messages, the only Japanese text in the ROM.
-> - **Glyph strings** at `0x08086470`… for `sub_0805EE30`, which use bytes 0x81 and 0xC4 as custom glyphs.
+> - **Glyph strings** at `0x08086470`… for `TextCellsPutString`, which use bytes 0x81 and 0xC4 as custom glyphs.
 >
 > All player-visible text is still English ASCII. Resolved: the summary holds for game text, not for every string.
 
@@ -34,15 +34,15 @@ updated: 2026-10-02
 - **Code:** the table base is read at `0x08001BC4`… (as `0x0813ADF4`) and at `0x080016F8`… (as `0x0813ADF8`, the text field). The text-box module is at about `0x08000930`–`0x08001E00`, and the function-pointer table at `0x0813ADD4` points into it. Its RAM state is `gTextBox` (see [[ram-map]]). The debug menu's "Bustup" item runs it directly ([[debug-menu]]).
 
 ### Character names
-The table itself is on [[duelist-table]] (IDs 1–24 are the duelists, and 38–40 are Umbra, Lumis and Ghouls). Text code reaches it only through `sub_08000228(id, full)` (`0x08000228`–`0x0800026C`). That function does a linear search over records 1–27 for a matching `id`. It returns `&name` if `full != 0`, otherwise `&shortName`. An unknown ID returns record 0's name. This is verified from the disassembly.
+The table itself is on [[duelist-table]] (IDs 1–24 are the duelists, and 38–40 are Umbra, Lumis and Ghouls). Text code reaches it only through `GetDuelistName(id, full)` (`0x08000228`–`0x0800026C`). That function does a linear search over records 1–27 for a matching `id`. It returns `&name` if `full != 0`, otherwise `&shortName`. An unknown ID returns record 0's name. This is verified from the disassembly.
 
 ## Dialogue control codes (`$`)
 The dialogue text processor is a state machine around `0x08000DC4`–`0x08001076`. When it sees `$` it dispatches on the next character through a jump table at `0x08000E00` (index `c - 'Q'`, 34 entries). The handlers below were read from the code. The counts are occurrences across all 490 records, and the V/H column marks each meaning as verified (V) or hypothesis (H).
 
 | Code | Count | Handler | Meaning | V/H |
 |---|---|---|---|---|
-| `$qNN` | 30 | `0x08001024` | Insert the **full** name of character NN: 2 decimal digits → `sub_08000228(NN, 1)` | V (code). Tea's intro "I am `$q02`" gives "I am Tea Gardner" |
-| `$QNN` | 47 | `0x08001048` | Insert the **short** name of character NN (`sub_08000228(NN, 0)`), e.g. `$Q01` gives "Yugi" | V |
+| `$qNN` | 30 | `0x08001024` | Insert the **full** name of character NN: 2 decimal digits → `GetDuelistName(NN, 1)` | V (code). Tea's intro "I am `$q02`" gives "I am Tea Gardner" |
+| `$QNN` | 47 | `0x08001048` | Insert the **short** name of character NN (`GetDuelistName(NN, 0)`), e.g. `$Q01` gives "Yugi" | V |
 | `$iNNNN` | 15 | `0x08000FAC` | Insert a **card name by card number**: 4 digits → number → ID map at `0x08623DF4` ([[card-id-map]]) → name at `0x0822C720 + id*0x40`. Numbers ≥ 2000 use `map[n-2000]+1` | V (code, and every use gives the speaker's signature card: number 20 is Exodia the Forbidden One (Rare Hunter), 34 Dark Magician (Arkana), 61 Harpie Lady (Mai), 81 Red-Eyes B. Dragon (Joey), 751 Jinzo (Espa Roba), 761 Insect Queen (Weevil). Card number = classic list number − 1, per [[card-id-map]]) |
 | `$rX` | 24 | `0x08000F10` | Text colour = hex digit X (`0`–`9`, `a`–`f`), stored at state+0x24. The data uses `$r3`, `$r4`, `$r5`, and `$r7` to reset | V (parse), H (7 = default white, via the palette at `0x0822C300`) |
 | `$bNN` | 17 | `0x08000F64` | Switch the **speaker portrait** to character NN mid-record (clamped to ≤ 39). Umbra & Lumis records alternate `$b38`/`$b39`/`$b14` | V (parse), H (portrait) |
@@ -52,7 +52,7 @@ The dialogue text processor is a state machine around `0x08000DC4`–`0x08001076
 | `$h`, `$k` | 0 | `0x08000E88`, `0x08000E9C` | Clear or set a flag byte at `0x02014786`. Unused in the data | V (code) |
 | `$$` | 0 | default | Falls to the default path, probably a literal `$` | H |
 
-Other characters after `$` (`R`, `d`, `j`, `l`, `o`, …) take the default path. `sub_08079F10(p, n)` parses *n* decimal digits. `sub_08079F40` measures string width. Bytes > 0x7E count as a **2-byte SJIS** character, `$r?` skips 3 bytes, and any other `$x` skips 2.
+Other characters after `$` (`R`, `d`, `j`, `l`, `o`, …) take the default path. `ParseDigits(p, n)` parses *n* decimal digits. `NextWordFits` measures string width. Bytes > 0x7E count as a **2-byte SJIS** character, `$r?` skips 3 bytes, and any other `$x` skips 2.
 
 ## System/duel prompt codes (`@`, `%`)
 The strings in `.rodata` 1 (`"Please select @3%s@0 as @2Tribute@0"`) use:
@@ -65,13 +65,13 @@ Text is drawn **pixel by pixel from 1bpp fonts** into a tile-ordered 8bpp canvas
 
 | Function | Role |
 |---|---|
-| `sub_08074D48(u8 ch, x, y, size|colour)` | Draws a CP1252 glyph. Size 8/10/12/16 selects the font at `0x08228D00`/`0x08229500`/`0x08229F00`/`0x0822AB00`. 7 callers |
-| `sub_08074C80(u16 sjis, x, y, size|colour)` | Draws a Shift-JIS glyph. Size 8/10/12 selects the kanji font at `0x081C0000`/`0x081D0200`/`0x081F8700`. 7 callers |
-| `sub_08072584(u16 sjis)` | SJIS → glyph index: `(lead − 0x80 if lead ≤ 0x9F, else lead − 0xC0) × 192 + (trail − 0x40)`. 11 callers |
-| `sub_08074B74` / `sub_08074BF8` | Plot one 8-px or 16-px glyph row as 8bpp pixels into the canvas (EWRAM `0x02000000`, tile-ordered, with width in tiles at `0x02010000`, H) |
-| `sub_08078ED4`, `sub_08078FD4` | Tile-path variants for 8×8 ASCII (`0x08228D00`) and 8×8 SJIS, through the nibble writer `sub_080725B0` |
-| `sub_08079FDC(dst, ch*, colour, bpp)` | Expands an 8×8 bold glyph (`0x0822BB00`) straight into a 4bpp or 8bpp tile, for HUD/number text |
-| `sub_08074A90(ch)` | ASCII 0x20–0x7E → full-width SJIS through the table at `0x081A76A0` (95 × u16: `' '`→`0x8140`, `'A'`→`0x8260`, `'a'`→`0x8281`). Returns 0 otherwise |
+| `TextDrawLatinGlyph(u8 ch, x, y, size|colour)` | Draws a CP1252 glyph. Size 8/10/12/16 selects the font at `0x08228D00`/`0x08229500`/`0x08229F00`/`0x0822AB00`. 7 callers |
+| `TextDrawSjisGlyph(u16 sjis, x, y, size|colour)` | Draws a Shift-JIS glyph. Size 8/10/12 selects the kanji font at `0x081C0000`/`0x081D0200`/`0x081F8700`. 7 callers |
+| `SjisToGlyphIndex(u16 sjis)` | SJIS → glyph index: `(lead − 0x80 if lead ≤ 0x9F, else lead − 0xC0) × 192 + (trail − 0x40)`. 11 callers |
+| `TextPlotRow8` / `TextPlotRow16` | Plot one 8-px or 16-px glyph row as 8bpp pixels into the canvas (EWRAM `0x02000000`, tile-ordered, with width in tiles at `0x02010000`, H) |
+| `RenderHalfWidthGlyph`, `RenderFullWidthGlyph` | Tile-path variants for 8×8 ASCII (`0x08228D00`) and 8×8 SJIS, through the nibble writer `ExpandGlyphNibble` |
+| `OverlayBoldGlyphTile(dst, ch*, colour, bpp)` | Expands an 8×8 bold glyph (`0x0822BB00`) straight into a 4bpp or 8bpp tile, for HUD/number text |
+| `AsciiToFullwidthSjis(ch)` | ASCII 0x20–0x7E → full-width SJIS through the table at `0x081A76A0` (95 × u16: `' '`→`0x8140`, `'A'`→`0x8260`, `'a'`→`0x8281`). Returns 0 otherwise |
 
 ## Method
 - Collecting every byte of the dialogue, name and description tables shows that the set is printable ASCII plus `\n`. Code counts come from `re.findall(rb'\$[A-Za-z][0-9]*')`.
@@ -80,6 +80,6 @@ Text is drawn **pixel by pixel from 1bpp fonts** into a tile-ordered 8bpp canvas
 - SJIS indexing was checked by rendering index 480 (`あ`, SJIS `0x82A0`) and 3834 (`日`, `0x93FA`) from all three kanji fonts.
 
 ## Open questions
-- The exact semantics of `$c`, `$p`, `$h` and `$k` are unknown. Tracing the handlers' callee `sub_0800093C` would settle them.
+- The exact semantics of `$c`, `$p`, `$h` and `$k` are unknown. Tracing the handlers' callee `Bustup_MarkBoxDirty` would settle them.
 - Is the palette at `0x0822C300` the one indexed by `$rX` and `@n`? Which colours are `@2` and `@3`?
 - Why keep a blank 821-slot table (`0x08239460`) next to the names? Maybe a Japanese name table blanked for the USA build.

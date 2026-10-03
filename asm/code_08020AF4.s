@@ -3,11 +3,11 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/code_08020AF4/sub_08020AF4.s"
-	.include "asm/nonmatching/code_08020AF4/sub_080213C0.s"
-	.include "asm/nonmatching/code_08020AF4/sub_08021580.s"
-	.include "asm/nonmatching/code_08020AF4/sub_080215CC.s"
-	.include "asm/nonmatching/code_08020AF4/sub_08021628.s"
-	.include "asm/nonmatching/code_08020AF4/sub_08021834.s"
-	.include "asm/nonmatching/code_08020AF4/sub_080218AC.s"
-	.include "asm/nonmatching/code_08020AF4/sub_08021A48.s"
+	.include "asm/nonmatching/code_08020AF4/Chain_Resolve.s"
+	.include "asm/nonmatching/code_08020AF4/Chain_Update.s"
+	.include "asm/nonmatching/code_08020AF4/HasExodiaInHand.s"
+	.include "asm/nonmatching/code_08020AF4/HasDestinyBoardComplete.s"
+	.include "asm/nonmatching/code_08020AF4/Duel_CheckWin.s"
+	.include "asm/nonmatching/code_08020AF4/DuelPhase_Init.s"
+	.include "asm/nonmatching/code_08020AF4/DuelPhase_ShowResult.s"
+	.include "asm/nonmatching/code_08020AF4/DuelMainStep.s"

@@ -17,7 +17,7 @@ struct DuelCmd {
     u32 unk80C_14:2;
     u32 unk80C_16:16;
 };
-extern struct DuelCmd gUnk_020185C0;
+extern struct DuelCmd gDuelCmd;
 
 /* Duel screen / animation state at 0x0201CFB0 (fields used here). */
 struct DuelScreen {
@@ -26,32 +26,32 @@ struct DuelScreen {
     u8 unk0_2:1;        /* +0x000 bit 2 */
     u8 unk0_3:5;
 };
-extern struct DuelScreen gUnk_0201CFB0;
+extern struct DuelScreen gDuelScreen;
 
 /* gMain (0x03000040): only the fields used here. */
 struct Main {
     u32 rngState;           /* +0x000 */
     u16 heldKeys;           /* +0x004 */
 };
-extern struct Main gUnk_03000040;
-#define gMain gUnk_03000040
-#define FAST_FORWARD() ((gMain.heldKeys & 2) || gUnk_0201CFB0.fast)
+extern struct Main gMain;
+#define gMain gMain
+#define FAST_FORWARD() ((gMain.heldKeys & 2) || gDuelScreen.fast)
 
-extern const u16 gUnk_081A4424[];   /* zoom/alpha curve for the grid effects (hypothesis) */
-extern const s32 gUnk_08081768[];   /* zoom curve, 1.0 == 0x100 (shared with code_08013CDC) */
+extern const u16 gPulseScaleCurve[];   /* zoom/alpha curve for the grid effects (hypothesis) */
+extern const s32 gScatterScaleCurve[];   /* zoom curve, 1.0 == 0x100 (shared with code_08013CDC) */
 
-void sub_080240A8(u32 player, u32 a);
-void sub_080619E8(void);
-void sub_08061A1C(u16);
-void sub_08061D24(u16);
-void sub_08061E54(u16);
-void sub_0805ED9C(void);
-void sub_0805F00C(u16);
-void sub_08060578(void);
-void sub_080763D0(u32 yx, u32 shapeSize, u32 attr2);
-void sub_080762D0(u32 yx, u32 shapeSize, u32 attr2);
-void sub_08077AEC(u16 se);  /* PlaySE */
-void sub_08076448(u32 yx, u32 shapeSize, u32 attr2, u32 extra);
+void DuelScreen_ScrollToZone(u32 player, u32 a);
+void UnloadDuelUiGfx(void);
+void LoadCardFrame(u16);
+void LoadCardPicture(u16);
+void DrawCardInfo(u16);
+void TextCellsClear(void);
+void DuelInfo_DrawCardNameCentered(u16);
+void LoadDuelUiGfx(void);
+void AddSprite8bppAlpha(u32 yx, u32 shapeSize, u32 attr2);
+void AddSprite8bpp(u32 yx, u32 shapeSize, u32 attr2);
+void PlaySE(u16 se);  /* PlaySE */
+void AddAffineSprite8bppAlpha(u32 yx, u32 shapeSize, u32 attr2, u32 extra);
 
 /*
  * Halfword view of the DuelCmd timer (0x80C bits 5-11) for the grid loops below.
@@ -68,46 +68,46 @@ struct DuelCmdTimer16 {
     u16 timer:7;
     u16 unk80C_12:4;
 };
-#define gDuelCmdT16 (*(struct DuelCmdTimer16 *)&gUnk_020185C0)
+#define gDuelCmdT16 (*(struct DuelCmdTimer16 *)&gDuelCmd)
 
 /*
- * Grid zoom-in effect (sibling of sub_08014C30). Steps 2-4 call sub_08061A1C / sub_08061D24 /
- * sub_08061E54 and step 5 calls sub_0805ED9C / sub_0805F00C. Step 6 draws a 4x5 grid of 32x32
+ * Grid zoom-in effect (sibling of DuelCmd_ShowCardAssemble). Steps 2-4 call LoadCardFrame / LoadCardPicture /
+ * DrawCardInfo and step 5 calls TextCellsClear / DuelInfo_DrawCardNameCentered. Step 6 draws a 4x5 grid of 32x32
  * sprites that zooms in over 32 frames (x * timer / 32), fades with BLDALPHA, then holds
  * until timer 0x78.
  */
-void sub_080150DC(void)
+void DuelCmd_ShowCardZoomIn(void)
 {
     int i, j;
     int x, y;
     int ta, tb, tc, td;
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_080240A8(0, 0);
-        gUnk_020185C0.step++;
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        sub_080619E8();
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        UnloadDuelUiGfx();
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 2:
-        sub_08061A1C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardFrame(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 3:
-        sub_08061D24(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardPicture(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 4:
-        sub_08061E54(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        DrawCardInfo(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 5:
-        sub_0805ED9C();
-        sub_0805F00C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        TextCellsClear();
+        DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 6:
         for (i = 0; i <= 4; i++) {
@@ -137,68 +137,68 @@ void sub_080150DC(void)
                 }
                 tc = (u8)gDuelCmdT16.timer;
                 if (tc < 16)
-                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[(u8)tc] << 16);
+                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[(u8)tc] << 16);
                 else
-                    sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        td = gUnk_020185C0.timer;
+        td = gDuelCmd.timer;
         if (td < 0x78) {
             if (FAST_FORWARD() && td <= 0x6F)
-                gUnk_020185C0.timer = td + 7;
-            gUnk_020185C0.timer++;
+                gDuelCmd.timer = td + 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     case 7:
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     default:
-        sub_08060578();
-        gUnk_020185C0.running = 0;
+        LoadDuelUiGfx();
+        gDuelCmd.running = 0;
         break;
     }
 }
-void sub_080153D4(void)
+void DuelCmd_ShowCardEffect(void)
 {
     int i, j;
     int x, y;
     int ta, tb, tc, td;
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_080240A8(0, 0);
-        gUnk_020185C0.step++;
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        sub_080619E8();
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        UnloadDuelUiGfx();
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 2:
-        sub_08061A1C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardFrame(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 3:
-        sub_08061D24(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardPicture(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 4:
-        sub_08061E54(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        DrawCardInfo(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 5:
-        sub_0805ED9C();
-        sub_0805F00C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        TextCellsClear();
+        DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 6:
         for (i = 0; i <= 4; i++) {
             for (j = 0; j <= 3; j++) {
                 x = j * 32 + 0x44;
                 y = i * 32 + 2;
-                if ((ta = gUnk_020185C0.timer) <= 0x1F) {
+                if ((ta = gDuelCmd.timer) <= 0x1F) {
                     x -= 0x68;
                     y -= 0x40;
                     x *= ta;
@@ -208,7 +208,7 @@ void sub_080153D4(void)
                     x += 0x68;
                     y += 0x40;
                 }
-                tb = gUnk_020185C0.timer;
+                tb = gDuelCmd.timer;
                 if (tb < 16) {
                     REG_BLDCNT = 0xF40;
                     REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
@@ -225,43 +225,43 @@ void sub_080153D4(void)
                     REG_BLDCNT = 0;
                     REG_BLDALPHA = 0;
                 }
-                tc = gUnk_020185C0.timer;
+                tc = gDuelCmd.timer;
                 if (tc < 16)
-                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[tc] << 16);
+                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[tc] << 16);
                 else
-                    sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        td = gUnk_020185C0.timer;
+        td = gDuelCmd.timer;
         if (td < 0x78) {
             if (FAST_FORWARD() && td <= 0x6F)
-                gUnk_020185C0.timer = td + 7;
-            gUnk_020185C0.timer++;
+                gDuelCmd.timer = td + 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     case 7:
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     default:
-        sub_08060578();
-        gUnk_020185C0.running = 0;
+        LoadDuelUiGfx();
+        gDuelCmd.running = 0;
         break;
     }
 }
 
 /*
- * Grid zoom-in effect, table variant. Like sub_080150DC, but once the timer passes
- * 0x67 the grid is scaled by the curve gUnk_08081768 (1.0 == 0x100, i.e. /256)
+ * Grid zoom-in effect, table variant. Like DuelCmd_ShowCardZoomIn, but once the timer passes
+ * 0x67 the grid is scaled by the curve gScatterScaleCurve (1.0 == 0x100, i.e. /256)
  * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
  */
 /*
- * Grid zoom-in effect, table variant. Like sub_080150DC, but once the timer passes
- * 0x67 the grid is scaled by the curve gUnk_08081768 (1.0 == 0x100, i.e. /256)
+ * Grid zoom-in effect, table variant. Like DuelCmd_ShowCardZoomIn, but once the timer passes
+ * 0x67 the grid is scaled by the curve gScatterScaleCurve (1.0 == 0x100, i.e. /256)
  * around the centre (0x68, 0x40), with a BLDALPHA fade-out over that range.
  */
-void sub_08015720(void)
+void DuelCmd_ShowCardScatter(void)
 {
     int i, j;
     int x, y, dx, dy, k;
@@ -270,32 +270,32 @@ void sub_08015720(void)
     /* FAKEMATCH: the (u8) timer casts and gDuelCmdT16 keep the grid loop long enough
      * that loop.c leaves the timer address in it (see gDuelCmdT16 above). */
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_080240A8(0, 0);
-        gUnk_020185C0.step++;
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        sub_080619E8();
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        UnloadDuelUiGfx();
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 2:
-        sub_08061A1C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardFrame(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 3:
-        sub_08061D24(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardPicture(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 4:
-        sub_08061E54(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        DrawCardInfo(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 5:
-        sub_0805ED9C();
-        sub_0805F00C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        TextCellsClear();
+        DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 6:
         for (i = 0; i <= 4; i++) {
@@ -306,8 +306,8 @@ void sub_08015720(void)
                     dx = x - 0x68;
                     dy = y - 0x40;
                     k = ta - 0x68;
-                    dx *= gUnk_08081768[k];
-                    dy *= gUnk_08081768[k];
+                    dx *= gScatterScaleCurve[k];
+                    dy *= gScatterScaleCurve[k];
                     dx /= 256;
                     dy /= 256;
                     x = dx + 0x68;
@@ -326,76 +326,76 @@ void sub_08015720(void)
                 }
                 tc = (u8)gDuelCmdT16.timer;
                 if (tc < 16)
-                    sub_08076448(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gUnk_081A4424[(u8)tc] << 16);
+                    AddAffineSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5), gPulseScaleCurve[(u8)tc] << 16);
                 else
-                    sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                    AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        td = gUnk_020185C0.timer;
+        td = gDuelCmd.timer;
         if (td < 0x78) {
             if (FAST_FORWARD() && td <= 0x6F)
-                gUnk_020185C0.timer = td + 7;
-            gUnk_020185C0.timer++;
+                gDuelCmd.timer = td + 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     case 7:
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     default:
-        sub_08060578();
-        gUnk_020185C0.running = 0;
+        LoadDuelUiGfx();
+        gDuelCmd.running = 0;
         break;
     }
 }
 /*
- * Grid fade effect (sibling of sub_08014C30). Steps 2-4 call sub_08061A1C / sub_08061D24 /
- * sub_08061E54. Step 5 draws the 4x5 sprite grid growing from the top (y * timer / 16) with
+ * Grid fade effect (sibling of DuelCmd_ShowCardAssemble). Steps 2-4 call LoadCardFrame / LoadCardPicture /
+ * DrawCardInfo. Step 5 draws the 4x5 sprite grid growing from the top (y * timer / 16) with
  * a BLDALPHA fade-in, step 6 flashes it, and step 7 shrinks it again with a fade-out.
  */
-void sub_08015A2C(void)
+void DuelCmd_ShowCardUnrollDown(void)
 {
     int i, j;
     int x, y;
     int ta, tb, te;
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0805ED9C();
-        sub_080240A8(0, 0);
-        gUnk_020185C0.step++;
+        TextCellsClear();
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        sub_080619E8();
-        gUnk_020185C0.step++;
+        UnloadDuelUiGfx();
+        gDuelCmd.step++;
         break;
     case 2:
-        sub_08061A1C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardFrame(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 3:
-        sub_08061D24(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardPicture(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 4:
-        sub_08061E54(gUnk_020185C0.arg2);
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        DrawCardInfo(gDuelCmd.arg2);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 5:
         for (i = 0; i <= 4; i++) {
             for (j = 0; j <= 3; j++) {
                 x = j * 32 + 0x44;
                 y = i * 32 + 2;
-                if (gUnk_020185C0.timer <= 0xF) {
-                    y *= gUnk_020185C0.timer;
+                if (gDuelCmd.timer <= 0xF) {
+                    y *= gDuelCmd.timer;
                     y /= 16;
                 }
-                sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        tb = gUnk_020185C0.timer;
+        tb = gDuelCmd.timer;
         if (tb < 16) {
             REG_BLDCNT = 0xF40;
             REG_BLDALPHA = tb | ((u8)(16 - tb) << 8);
@@ -403,27 +403,27 @@ void sub_08015A2C(void)
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        gUnk_020185C0.timer++;
-        if (FAST_FORWARD() && gUnk_020185C0.timer <= 11)
-            gUnk_020185C0.timer += 3;
-        if (gUnk_020185C0.timer > 15) {
-            sub_0805ED9C();
-            sub_0805F00C(gUnk_020185C0.arg2);
-            gUnk_020185C0.timer = 0;
-            gUnk_020185C0.step++;
+        gDuelCmd.timer++;
+        if (FAST_FORWARD() && gDuelCmd.timer <= 11)
+            gDuelCmd.timer += 3;
+        if (gDuelCmd.timer > 15) {
+            TextCellsClear();
+            DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
+            gDuelCmd.timer = 0;
+            gDuelCmd.step++;
         }
         break;
     case 6:
         for (i = 0; i <= 4; i++) {
             for (j = 0; j <= 3; j++)
-                sub_080762D0((j * 32 + 0x44) | ((i * 32 + 2) << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bpp((j * 32 + 0x44) | ((i * 32 + 2) << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
         }
-        gUnk_020185C0.timer++;
-        if (FAST_FORWARD() && gUnk_020185C0.timer <= 0x17)
-            gUnk_020185C0.timer += 7;
-        if (gUnk_020185C0.timer > 0x1F) {
-            gUnk_020185C0.timer = 0;
-            gUnk_020185C0.step++;
+        gDuelCmd.timer++;
+        if (FAST_FORWARD() && gDuelCmd.timer <= 0x17)
+            gDuelCmd.timer += 7;
+        if (gDuelCmd.timer > 0x1F) {
+            gDuelCmd.timer = 0;
+            gDuelCmd.step++;
         }
         break;
     case 7:
@@ -431,14 +431,14 @@ void sub_08015A2C(void)
             for (j = 0; j <= 3; j++) {
                 x = j * 32 + 0x44;
                 y = i * 32 + 2;
-                if ((ta = gUnk_020185C0.timer) > 0x27) {
+                if ((ta = gDuelCmd.timer) > 0x27) {
                     y *= (0x38 - ta);
                     y /= 16;
                 }
-                sub_080763D0(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlpha(x | (y << 16), 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        tb = gUnk_020185C0.timer;
+        tb = gDuelCmd.timer;
         if (tb > 0x27) {
             REG_BLDCNT = 0xF40;
             REG_BLDALPHA = (u8)(0x38 - tb) | ((u8)(tb - 0x28) << 8);
@@ -446,56 +446,56 @@ void sub_08015A2C(void)
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        te = gUnk_020185C0.timer;
+        te = gDuelCmd.timer;
         if (te < 0x38) {
             if (FAST_FORWARD() && te <= 0x2F)
-                gUnk_020185C0.timer = te + 7;
-            gUnk_020185C0.timer++;
+                gDuelCmd.timer = te + 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     case 8:
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     default:
-        sub_08060578();
-        gUnk_020185C0.running = 0;
+        LoadDuelUiGfx();
+        gDuelCmd.running = 0;
         break;
     }
 }
 /*
- * Variant of sub_08015A2C where the grid slides in horizontally (x * timer / 16) and
+ * Variant of DuelCmd_ShowCardUnrollDown where the grid slides in horizontally (x * timer / 16) and
  * SE 0x2C plays when it lands; step 6 flashes it with BLDY.
  */
-void sub_08015E40(void)
+void DuelCmd_ShowCardUnrollSideways(void)
 {
     int i, j;
     int x, y;
     int ta, tb, tc, te;
 
-    switch (gUnk_020185C0.step) {
+    switch (gDuelCmd.step) {
     case 0:
-        sub_0805ED9C();
-        sub_080240A8(0, 0);
-        gUnk_020185C0.step++;
+        TextCellsClear();
+        DuelScreen_ScrollToZone(0, 0);
+        gDuelCmd.step++;
         break;
     case 1:
-        sub_080619E8();
-        gUnk_020185C0.step++;
+        UnloadDuelUiGfx();
+        gDuelCmd.step++;
         break;
     case 2:
-        sub_08061A1C(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardFrame(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 3:
-        sub_08061D24(gUnk_020185C0.arg2);
-        gUnk_020185C0.step++;
+        LoadCardPicture(gDuelCmd.arg2);
+        gDuelCmd.step++;
         break;
     case 4:
-        sub_08061E54(gUnk_020185C0.arg2);
-        gUnk_020185C0.timer = 0;
-        gUnk_020185C0.step++;
+        DrawCardInfo(gDuelCmd.arg2);
+        gDuelCmd.timer = 0;
+        gDuelCmd.step++;
         break;
     case 5: {
         int rowY;
@@ -503,31 +503,31 @@ void sub_08015E40(void)
             for (j = 0; j <= 3; j++) {
                 rowY = (i * 32 + 2) << 16;
                 x = j * 32 + 0x44;
-                if (gUnk_020185C0.timer <= 0xF) {
+                if (gDuelCmd.timer <= 0xF) {
                     x -= 0x68;
-                    x *= gUnk_020185C0.timer;
+                    x *= gDuelCmd.timer;
                     x /= 16;
                     x += 0x68;
                 }
-                sub_080763D0(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlpha(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        if (gUnk_020185C0.timer < 16) {
+        if (gDuelCmd.timer < 16) {
             REG_BLDCNT = 0xF40;
-            REG_BLDALPHA = gUnk_020185C0.timer | ((u8)(16 - gUnk_020185C0.timer) << 8);
+            REG_BLDALPHA = gDuelCmd.timer | ((u8)(16 - gDuelCmd.timer) << 8);
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        gUnk_020185C0.timer++;
-        if (FAST_FORWARD() && gUnk_020185C0.timer <= 11)
-            gUnk_020185C0.timer += 3;
-        if (gUnk_020185C0.timer > 15) {
-            sub_0805ED9C();
-            sub_0805F00C(gUnk_020185C0.arg2);
-            gUnk_020185C0.timer = 0;
-            gUnk_020185C0.step++;
-            sub_08077AEC(0x2C);
+        gDuelCmd.timer++;
+        if (FAST_FORWARD() && gDuelCmd.timer <= 11)
+            gDuelCmd.timer += 3;
+        if (gDuelCmd.timer > 15) {
+            TextCellsClear();
+            DuelInfo_DrawCardNameCentered(gDuelCmd.arg2);
+            gDuelCmd.timer = 0;
+            gDuelCmd.step++;
+            PlaySE(0x2C);
         }
         break;
     }
@@ -535,10 +535,10 @@ void sub_08015E40(void)
         for (i = 0; i <= 4; i++) {
             for (j = 0; j <= 3; j++) {
                 y = (i * 32 + 2) << 16;
-                sub_080762D0((j * 32 + 0x44) | y, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bpp((j * 32 + 0x44) | y, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        tc = gUnk_020185C0.timer;
+        tc = gDuelCmd.timer;
         if (tc < 0x20) {
             if (tc < 16) {
                 REG_BLDY = tc;
@@ -551,12 +551,12 @@ void sub_08015E40(void)
             REG_BLDY = 0;
             REG_BLDCNT = 0;
         }
-        gUnk_020185C0.timer++;
-        if (FAST_FORWARD() && gUnk_020185C0.timer <= 0x1B)
-            gUnk_020185C0.timer += 3;
-        if (gUnk_020185C0.timer > 0x1F) {
-            gUnk_020185C0.timer = 0;
-            gUnk_020185C0.step++;
+        gDuelCmd.timer++;
+        if (FAST_FORWARD() && gDuelCmd.timer <= 0x1B)
+            gDuelCmd.timer += 3;
+        if (gDuelCmd.timer > 0x1F) {
+            gDuelCmd.timer = 0;
+            gDuelCmd.step++;
         }
         break;
     case 7: {
@@ -565,16 +565,16 @@ void sub_08015E40(void)
             for (j = 0; j <= 3; j++) {
                 rowY = (i * 32 + 2) << 16;
                 x = j * 32 + 0x44;
-                if ((ta = gUnk_020185C0.timer) > 0x27) {
+                if ((ta = gDuelCmd.timer) > 0x27) {
                     x -= 0x68;
                     x *= (0x38 - ta);
                     x /= 16;
                     x += 0x68;
                 }
-                sub_080763D0(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
+                AddSprite8bppAlpha(x | rowY, 0x80, (u16)(j * 4) + ((u16)(i * 2 + 1) << 5));
             }
         }
-        tb = gUnk_020185C0.timer;
+        tb = gDuelCmd.timer;
         if (tb > 0x27) {
             REG_BLDCNT = 0xF40;
             REG_BLDALPHA = (u8)(0x38 - tb) | ((u8)(tb - 0x28) << 8);
@@ -582,22 +582,22 @@ void sub_08015E40(void)
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;
         }
-        te = gUnk_020185C0.timer;
+        te = gDuelCmd.timer;
         if (te < 0x38) {
             if (FAST_FORWARD() && te <= 0x2F)
-                gUnk_020185C0.timer = te + 7;
-            gUnk_020185C0.timer++;
+                gDuelCmd.timer = te + 7;
+            gDuelCmd.timer++;
             break;
         }
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     }
     case 8:
-        gUnk_020185C0.step++;
+        gDuelCmd.step++;
         break;
     default:
-        sub_08060578();
-        gUnk_020185C0.running = 0;
+        LoadDuelUiGfx();
+        gDuelCmd.running = 0;
         break;
     }
 }

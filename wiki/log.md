@@ -817,3 +817,13 @@ updated: 2026-09-29
   (hdrcheck --all 47/47 OK with 0 warnings in a shadow tree with the staged headers; all headers in one TU, in order
   twice and reversed, 0 diagnostics with old_agbcc and agbcc; text_render identical assembly with legacy and staged
   gba.h). `make compare` not run (coordinator).
+
+## [2026-10-02] progress | Readability pass: names, unit files, shared headers, 81 units polished
+- Applied 2,856 harmonized symbol names (functions, RAM globals, ROM data) from per-unit proposal agents (431d9df);
+  decomp.dev shows the names.
+- Renamed the 110 game units from `code_<addr>` to descriptive files (45642ef; map in build/readability/unit_names.tsv;
+  wiki unit pages are now `<name>-c`). Fixed the objdiff report resolver for named ROM data and added a CI baseline guard.
+- Added 37 shared subsystem headers plus `include/constants/` (a302dfe).
+- Per-unit migration to the headers and polish (local names, function comments, constants, dead-code removal):
+  81 of 112 units done (5e947c7, 2ea1f1a); 31 remain (build/readability/remaining.txt), plus 48 header issues
+  in build/readability/issues/. ROM byte-identical throughout (make compare OK, check_all 112/112).

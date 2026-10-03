@@ -76,6 +76,16 @@ are mostly the `+0x1ACC`..`+0x1B18` duel-state bytes, a DuelCard flag at bit 18 
 into the headers is an open task. Change `include/*.h` only between migration waves, and re-check every
 including unit afterwards. One unit lost its match when duel.h changed during its migration; it was restored.
 
+## Readability polish complete (2026-10-03)
+The last 31 units from `build/readability/remaining.txt` are polished, so all 112 units now carry the module
+comment, annotated includes, canonical names and named constants. Units that cannot include the new headers yet
+keep a pre-H0 stand-in block (`/* ---- BEGIN ... stand-in (pre-H0) ---- */`) declaring the canonical part they
+use; each unit's stand-in coverage, kept local views and H0 swap steps are recorded in
+`build/readability/issues/<unit>.md`. Where a symbolic form broke the match (literal ROM table addresses are the
+common case), the literal stays with a comment naming the table. Step H0 itself (moving the staged headers into
+`include/` and deleting the stand-ins) has not run yet. Verified at this state: `tools/dr make -j8 compare`
+(`eds.gba: OK`, ROM byte-identical) and `tools/dr python3 tools/check_all.py` (112/112 units match).
+
 ## Migration
 Units move to the headers one at a time: `tools/launch_headers.sh <unit>` runs a DeepSeek agent that includes the
 headers, deletes the local definitions, renames fields by offset and verifies with check.py. Where a function only

@@ -827,3 +827,19 @@ updated: 2026-09-29
 - Per-unit migration to the headers and polish (local names, function comments, constants, dead-code removal):
   81 of 112 units done (5e947c7, 2ea1f1a); 31 remain (build/readability/remaining.txt), plus 48 header issues
   in build/readability/issues/. ROM byte-identical throughout (make compare OK, check_all 112/112).
+
+## [2026-10-03] progress | Readability pass finished: all 112 units polished
+- The 31 units left in `build/readability/remaining.txt` after 2ea1f1a are now polished to the same standard as
+  the earlier batches: module comment with the address range and wiki link, every include annotated with what is
+  taken, canonical struct/field/local names, magic numbers replaced by the `include/constants/*.h` names, dead
+  draft declarations deleted, and load-bearing codegen shapes kept with `/* Matching: */` comments.
+- Units that cannot include the new shared headers yet carry a pre-H0 stand-in block; each unit's stand-in
+  coverage, kept local views and H0 swap steps are in `build/readability/issues/<unit>.md` (31 notes, one per
+  unit). Several units (sprite, text_bg, text_canvas, deck_edit_stats, password_trade, sound_driver, gfx_util)
+  needed no stand-in and use the shared headers directly. Literal ROM table addresses that must stay literal for
+  matching are kept and commented with the table name.
+- [[shared-headers]]: migration status updated; step H0 (moving the staged headers into `include/`) is still
+  pending.
+- Working tree only, not committed: 31 files changed, 10,991 insertions, 10,135 deletions.
+- Verified for this entry: per-unit `tools/dr python3 tools/check.py <unit>` green for all 31;
+  `tools/dr make -j8 compare` (`eds.gba: OK`); `tools/dr python3 tools/check_all.py` (112/112 units match).

@@ -18,67 +18,10 @@
 #include "constants/card_stats.h"   /* CARD_STATS_* layout, enum CardType */
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneStatusFlag, ResponseEventKind, ChainEntryKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, duel_cmd.h, duel_screen.h, duel_link.h and summon.h do not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
- * (see build/readability/issues/summon_action.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u8 unk0[0x8];
-    u8 unk8_0:4;
-    u8 normalSummonUsed:1;          /* +0x008 bit 4: the Normal Summon of this turn is done */
-    u8 summonedThisTurn:1;          /* +0x008 bit 5: a summon/set action was started this turn */
-    u8 unk8_6:2;
-    u8 unk9[0xD64 - 0x9];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
-
-u32 IsToonMonster(u16 cardNo);
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountActiveCardsOnField(int player, u16 cardNo);
-/* ---- END duel.h stand-in ---- */
-
 #include "ai.h"                     /* AiShouldSetMonster */
 #include "chain.h"                  /* Chain_AddPending, EventResponse_Request */
+#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer, gDuelPlayers / gDuelZones / gDuelHands, CopyDuelCard,
+                                     * IsToonMonster, HasFlipEffect, CountActiveCardsOnField */
 #include "duel_actions.h"           /* DestroyFieldCard, TributeMonster, ChangeBattlePosition, ShowCardEffect, DrawCards */
 #include "duel_cmd.h"               /* DuelCmd_Push */
 #include "duel_flow.h"              /* gDuelCtrl, gStrSelectDisplayPosition */
@@ -109,15 +52,8 @@ extern void EventResponse_RequestInt(int player, int event, int arg) asm("EventR
  * card ID. These are the bits that do not depend on the card: the event and the monster kind. */
 #define MONSTER_TRIGGER_BITS(event) (((event) << 25) | (CHAIN_KIND_MONSTER << 21))
 
-/* Card ID of a struct DuelCard, read as the whole word and masked. Matching: the bitfield access card.id loads
- * a halfword (ldrh), the ROM loads the word (ldr; lsl 20; lsr 20). */
-#define CARD_ID_OF(card) (((*(u32 *)&(card)) << 20) >> 20)
-
-/* Key 1526 has no EDS card and no effect row, so constants/cards.h has no name for it. */
-#define CARD_1526 1526
-
-#define ZONE_STRIDE 0x94        /* sizeof(struct DuelZone) */
-#define PLAYER_STRIDE 0xD64     /* sizeof(struct DuelPlayer) */
+#define ZONE_STRIDE sizeof(struct DuelZone)
+#define PLAYER_STRIDE sizeof(struct DuelPlayer)
 /* The zone (p, z) with the address terms staged zone first (the ROM's order). Matching: SummonAction_Update
  * needs this macro; the FieldZone() inline below gives another instruction order there. */
 #define ZONE(p, z) ((struct DuelZone *)((z) * ZONE_STRIDE + (p) * PLAYER_STRIDE + (u32)gDuelZones))
@@ -214,7 +150,7 @@ u16 SummonStep_Flip(void)
         if (FieldZone(side, zone)->isDefense) {
             u32 id;
             DuelCmd_PushInt(PLAYER_CMD(player, DUEL_CMD_CHANGE_POSITION), zone, 1, 0);
-            id = CARD_ID_OF(SummonZone(action)->card);
+            id = DUEL_CARD_ID(&SummonZone(action)->card);
             /* Crass Clown queues its trigger for the position change (event POSITION_CHANGED). */
             if (CARD_NUMBER(id) == CARD_CRASS_CLOWN && CanActivateEffectOfCard(action->player, id, 0)) {
                 int owner = action->player & 1;
@@ -223,7 +159,7 @@ u16 SummonStep_Flip(void)
                 u32 destination = zoneIndex << 16;
                 destination |= MONSTER_TRIGGER_BITS(RESPONSE_POSITION_CHANGED);
                 trigger |= destination;
-                trigger |= CARD_ID_OF(FieldZone(owner, zoneIndex)->card);
+                trigger |= DUEL_CARD_ID(&FieldZone(owner, zoneIndex)->card);
                 Chain_AddPending(trigger, 0);
             }
         } else {
@@ -264,7 +200,7 @@ u16 SummonStep_Flip(void)
         case CARD_1240:
         case CARD_1246:
         case CARD_1332:
-            if (CanActivateEffectOfCard(gSummonAction.player, CARD_ID_OF(SummonZone(&gSummonAction)->card), 0)) {
+            if (CanActivateEffectOfCard(gSummonAction.player, DUEL_CARD_ID(&SummonZone(&gSummonAction)->card), 0)) {
                 int player = gSummonAction.player;
                 u32 trigger = (u32)(player & 1) << 31;
                 int zone = gSummonAction.zone;
@@ -282,7 +218,7 @@ u16 SummonStep_Flip(void)
         }
         /* A monster with a flip effect activates it, unless key 1530 is on either field. */
         if (HasFlipEffect(CARD_NUMBER(gSummonAction.cardId), 0)) {
-            if (CanActivateEffectOfCard(gSummonAction.player, CARD_ID_OF(SummonZone(&gSummonAction)->card), 0) &&
+            if (CanActivateEffectOfCard(gSummonAction.player, DUEL_CARD_ID(&SummonZone(&gSummonAction)->card), 0) &&
                 !CountActiveCardsOnField(0, CARD_1530) && !CountActiveCardsOnField(1, CARD_1530)) {
                 int player = gSummonAction.player;
                 u32 trigger = (u32)(player & 1) << 31;
@@ -389,7 +325,7 @@ u16 SummonStep_SpecialChoosePosition(void)
         /* The answer is 0 for Attack Position, 1 for Defense; Attack Position is always face up. */
         action->isDefense = gTextBox.result;
         if (!action->isDefense) action->isFaceUp = 1;
-        CopyDuelCard((u32 *)&copy, (u32 *)&action->card);
+        CopyDuelCard(&copy, &action->card);
         command = PLAYER_CMD(action->player, DUEL_CMD_PLACE_CARD);
         zone = action->zone;
         faceUp = action->isFaceUp;
@@ -544,7 +480,7 @@ u16 SummonAction_Update(void)
                 int index = action->zone;
                 zone = ZONE(player, index);
             }
-            card = CARD_ID_OF(zone->card);
+            card = DUEL_CARD_ID(&zone->card);
             /* The post-summon effects are skipped when the monster has already left the zone
              * (Goblin Fan destroying a Flip Summoned monster). */
             if (card != 0) {
@@ -864,7 +800,7 @@ void QueueNormalSummonChoosePosition(int player, int handIndex, int zone, u16 tr
         gSummonAction.hasTribute2 = 0;
         action = &gSummonAction;
     }
-    action->cardId = ((*(u32 *)((player & 1) * PLAYER_STRIDE + handIndex * 4 + (u32)gDuelHands)) << 20) >> 20;
+    action->cardId = DUEL_CARD_ID((player & 1) * PLAYER_STRIDE + handIndex * 4 + (u32)gDuelHands);
     action->kind = SUMMON_ACTION_NORMAL_CHOOSE_POSITION;
     action->statusFlags = ZONE_STATUS_NORMAL_SUMMONED | ZONE_STATUS_UNK14;
     PayChainEnergyCost(player);

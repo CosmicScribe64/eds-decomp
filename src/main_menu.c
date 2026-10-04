@@ -13,52 +13,19 @@
  *    Japanese public holidays of 2000-2002.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_*, keys, DISPCNT/BGCNT/BLDCNT bits, palette and VRAM addresses */
-#include "legacy/main.h"               /* gMain */
+#include "gba.h"                /* REG_*, keys, DISPCNT/BGCNT/BLDCNT bits, palette and VRAM addresses */
+#include "main.h"               /* gMain, VBLANK_*, SetMainCallback, ResetBgScroll */
 #include "util.h"               /* StrLen, MemClear16, MemCopy16, CopyDoubleWords */
 #include "palette.h"            /* FadeToBlack, FadeFromBlack, SetBrightnessBlack */
 #include "bg.h"                 /* LoadBgImage, LoadBgImage4bppToMap, FillMapRect, ResetVideo */
 #include "sprite.h"             /* AddSprite, AddSprite8bpp, AddSprite8bppAlpha, enum SpriteShape */
 #include "save.h"               /* gSaveData.duelRecords */
-#include "legacy/sound.h"              /* PlaySE, PlayBGMNoTrack, FadeOutBGM */
+#include "sound.h"              /* PlaySE, PlayBGMNoTrack, FadeOutBGM */
 #include "calendar.h"           /* the date helpers defined here, gDaysPerMonth, HOLIDAY_*, WEEKDAY_* */
 #include "campaign.h"           /* gOpponentSelect, OpponentSelect_*, IsCampaignLevelNUnlocked, IsOpponentUnlocked */
 #include "main_menu.h"          /* gMainMenuCursor, gRecordScreen, MainMenu_*, Record_* */
 #include "constants/game.h"     /* DUELIST_* */
 #include "constants/sound.h"    /* SE_* */
-
-/*
- * Transitional, until H0 (build/readability/HEADERS.md) installs the new include/gba.h, main.h and sound.h:
- * the legacy headers lack these names. Each one has the new header's value or prototype, and the block is
- * skipped once the new gba.h is in place (it defines DISPCNT_OBJ_ON). Delete it after H0.
- */
-#ifndef DISPCNT_OBJ_ON
-#define DISPCNT_BG1_ON          0x0200
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_CHARBASE(n)       ((n) << 2)
-#define BGCNT_256COLOR          0x0080
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define BGCNT_TXT512x256        0x4000
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_TGT2_BG0         0x0100
-#define BLDCNT_TGT2_BG1         0x0200
-#define BLDCNT_TGT2_BG2         0x0400
-#define BLDCNT_TGT2_BG3         0x0800
-#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
-#define OAM_ATTR2_PALETTE(n)    ((n) << 12)
-#define VBLANK_COPY_OAM         0x1     /* enum VBlankFlag in the new main.h */
-#define VBLANK_COPY_BG_MAPS     0x2
-#define VBLANK_BG1_HOFS         0x20
-#define VBLANK_BG2_HOFS         0x40
-#define subStep step488A                /* gMain +0x488A bits 4-11; the legacy main.h calls it step488A */
-void SetMainCallback(u16 (*callback)(void));
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-void PlayBGMNoTrack(u32 songId);
-void FadeOutBGM(void);
-#endif
 
 /* ---- Local data: ROM tables and images only this unit uses ---- */
 
@@ -77,33 +44,34 @@ extern const u16 gRecordScrollHofs[2][2][16];
 /* 0x08198618: OBJ tile of each frame of the result-marker animation (1, 3, 5, 7, 7, 5, 3, 1). */
 extern const u16 gRecordMarkerAnimTiles[8];
 /* 0x081985A0: portrait image per duelist (index duelistId - 1); entry 24 is gRecordUnknownPortraitImage. */
-extern u16 *const gRecordPortraitImages[25];
+extern const u16 *const gRecordPortraitImages[25];
 /* 0x08198604: column of duelist name plates per page. */
-extern u16 *const gRecordPageNameImages[5];
+extern const u16 *const gRecordPageNameImages[5];
 
-/* Image packs (palette, tiles and map, read by the LoadBgImage* loaders; non-const like the loaders' u16 *
- * parameter) and raw palettes and tiles. */
-extern u16 gMainMenuSkyImage[];                    /* BG1 background of the main menu */
-extern const u8 gMainMenuObjPal[], gMainMenuObjGfx[];  /* "MENU" header and item labels, plain and highlighted */
-extern u16 gRecordFrameImage[];                    /* BG0: screen frame with the "DUEL SCORE" title */
-extern u16 gRecordBgPatternImage[];                /* BG3: repeating "DUEL SCORE" pattern */
-extern u16 gRecordRows5Image[], gRecordRows4Image[];   /* BG2: WIN/DRAW/LOSE frames for 5 or 4 rows */
-extern u16 gRecordUnknownPortraitImage[];          /* "???" shown for a locked duelist */
+/* Image packs (palette, tiles and map, read by the LoadBgImage* loaders) and raw palettes and tiles. */
+extern const u16 gMainMenuSkyImage[];                   /* BG1 background of the main menu */
+extern const u8 gMainMenuObjPal[], gMainMenuObjGfx[];   /* "MENU" header and item labels, plain and highlighted */
+extern const u16 gRecordFrameImage[];                   /* BG0: screen frame with the "DUEL SCORE" title */
+extern const u16 gRecordBgPatternImage[];               /* BG3: repeating "DUEL SCORE" pattern */
+extern const u16 gRecordRows5Image[], gRecordRows4Image[];  /* BG2: WIN/DRAW/LOSE frames for 5 or 4 rows */
+extern const u16 gRecordUnknownPortraitImage[];         /* "???" shown for a locked duelist */
 extern const u8 gRecordMarkerObjPal[], gRecordMarkerObjGfx[];  /* result markers: OBJ palette 1, tiles 0x00 */
-extern const u8 gRecordArrowObjPal[];              /* page arrows: OBJ palette 0 */
+extern const u8 gRecordArrowObjPal[];                   /* page arrows: OBJ palette 0 */
 extern const u8 gRecordArrowObjGfxTop[], gRecordArrowObjGfxBottom[];  /* arrow tiles 0x20 and 0x40 (2D map) */
-extern const u8 gRecordDigitPal[], gRecordDigitGfx[];  /* digits 0-9: BG palette 0, BG tiles 4-13 */
+extern const u8 gRecordDigitPal[], gRecordDigitGfx[];   /* digits 0-9: BG palette 0, BG tiles 4-13 */
 
 /* ---- Local views (matching choices, see build/readability/HEADERS.md) ---- */
 
-/* Record_DrawPage passes its computed arguments without the u16 narrowing the real prototype
- * (u32, u16, u16, u16, u16 *) would add at the call. */
-u16 LoadBgImage4bppToMapWide(u32 map, u32 mapOffset, u32 palStart, u32 tileBase, u16 *pack)
+/* Matching: view of LoadBgImage4bppToMap (bg.h, parameters u32, u16, u16, u16, const u16 *) with u32 parameters.
+ * Record_DrawPage passes its computed arguments without the u16 narrowing the real prototype would add at
+ * the call; Record_LoadGfx calls the header prototype. */
+u16 LoadBgImage4bppToMapWide(u32 map, u32 mapOffset, u32 palStart, u32 tileBase, const u16 *pack)
     asm("LoadBgImage4bppToMap");
-/* Record_DrawPage passes its duelist id (`index + 1`) untruncated: it saw an int parameter (the definition
- * takes u16). */
+/* Matching: view of IsOpponentUnlocked (campaign.h, u16 duelistId) with an int parameter. Record_DrawPage
+ * passes its duelist id (`index + 1`) untruncated; the u16 parameter adds a truncation at the call. */
 s32 IsOpponentUnlockedInt(s32 duelistId) asm("IsOpponentUnlocked");
-/* FadeToBlack returns u32; MainMenu_Launch tests its result as a halfword (lsl #16), as through this u16 view. */
+/* Matching: view of FadeToBlack (palette.h, returns u32) that returns u16. MainMenu_Launch tests the result as
+ * a halfword (lsl #16), as through this view; the other fade calls use the header prototype. */
 u16 FadeToBlackU16(u16 step) asm("FadeToBlack");
 
 /* ---- Tiles ---- */
@@ -292,7 +260,7 @@ u16 MainMenu_Init(void)
         ResetBgScroll();
         REG_BG1CNT = BGCNT_256COLOR | BGCNT_CHARBASE(1);
         main->vblankFlags = VBLANK_COPY_OAM | VBLANK_COPY_BG_MAPS;
-        PlayBGMNoTrack(3);  /* main menu music */
+        PlayBGMNoTrack(SONG_MAIN_MENU);
         break;
     default:
         CopyDoubleWords((void *)OBJ_PLTT, gMainMenuObjPal, 0x20);
@@ -686,7 +654,7 @@ u32 GetHolidayFlags(u32 year, u32 month, u32 day)
     case 1:
         if (day == 1)
             flags |= HOLIDAY_NEW_YEARS_DAY;
-        /* Two calls whose results are unused; the ROM makes them. */
+        /* FAKEMATCH: two calls whose results are unused; the ROM makes them, and no use of the results is known. */
         GetDayOfWeek(year, month, 1);
         GetDayOfWeek(year, month, day);
         if ((day - 1) / 7 == 1 && GetDayOfWeek(year, month, day) == WEEKDAY_MONDAY)  /* 2nd Monday */
@@ -726,7 +694,7 @@ u32 GetHolidayFlags(u32 year, u32 month, u32 day)
             flags |= HOLIDAY_RESPECT_FOR_AGED_DAY;
         break;
     case 10:
-        GetDayOfWeek(year, month, 1);   /* unused, as in January */
+        GetDayOfWeek(year, month, 1);   /* FAKEMATCH: result unused, as in January */
         GetDayOfWeek(year, month, day);
         if ((day - 1) / 7 == 1 && GetDayOfWeek(year, month, day) == WEEKDAY_MONDAY)  /* 2nd Monday */
             flags |= HOLIDAY_SPORTS_DAY;

@@ -7,9 +7,9 @@
  * Title_Init, Title_Setup, Title_FadeIn, Title_HandleInput and Title_FadeOut (enum TitleStep).
  */
 #include "global.h"
-#include "legacy/gba.h"
-#include "legacy/main.h"
-#include "legacy/sound.h"
+#include "gba.h"
+#include "main.h"
+#include "sound.h"
 #include "constants/sound.h"
 #include "util.h"
 #include "palette.h"
@@ -23,35 +23,10 @@
 #include "calendar.h"
 #include "title_screen.h"
 
-/*
- * Until step H0 of the header plan installs the new gba.h, main.h and sound.h (build/readability/HEADERS.md),
- * include/ holds the legacy versions, which lack these names. The fallbacks repeat the staged headers'
- * values and prototypes; delete this block after H0. The legacy main.h also types gMain.callback as
- * void (*)(void), so the CB_Title store in License_ShowKcejLogo warns until then.
- */
-#ifndef DISPCNT_BG0_ON
-#define DISPCNT_BG0_ON          0x0100
-#define DISPCNT_BG1_ON          0x0200
-#define DISPCNT_BG2_ON          0x0400
-#define DISPCNT_BG3_ON          0x0800
-#define DISPCNT_OBJ_ON          0x1000
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_CHARBASE(n)       ((n) << 2)
-#define BGCNT_256COLOR          0x0080
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define INTR_FLAG_HBLANK        0x0002
-#define INTR_SLOT_HBLANK        1
-#define VBLANK_COPY_OAM         0x1
-#define VBLANK_COPY_BG_MAPS     0x2
-extern void (*IntrTable[16])(void);
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-void PlayBGMNoTrack(u32 songId);
-void FadeOutBGM(void);
-#endif
-
-/* Matching: this unit calls the fades as returning u16, so each caller truncates the result (lsls #16) before
- * testing or returning it. palette.h has the definitions' u32 return. */
+/* Matching: views of the palette.h fades (u32 FadeToBlack(s32) etc., asm labels FadeToBlack, FadeFromBlack,
+ * FadeToWhite, FadeFromWhite) that return u16: this unit's callers truncate the result (lsls #16) before
+ * testing or returning it, and with palette.h's u32 return the truncations disappear and the unit stops
+ * matching. The calls and the ROM symbols are the same. */
 u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
 u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
 u16 FadeToWhiteU16(s32 step) asm("FadeToWhite");
@@ -63,25 +38,21 @@ u16 FadeFromWhiteU16(s32 step) asm("FadeFromWhite");
     (REG_IME = 0, REG_IE &= ~INTR_FLAG_HBLANK, IntrTable[INTR_SLOT_HBLANK] = (handler), REG_IME = 1)
 #define ENABLE_HBLANK_INTR() (REG_IME = 0, REG_IE |= INTR_FLAG_HBLANK, REG_IME = 1)
 
-/* Font size and colour index packed for the sizeColor argument of the TextDraw* functions (text.h). */
-#define TEXT_SIZE_COLOR(size, color) (((size) << 8) | (color))
-
-/* ROM data used only by this unit. The image packs are declared u16 because the bg.h loaders take a
- * (non-const) u16 *. */
+/* ROM data used only by this unit. */
 extern u16 (*const gLicenseSteps[])(void);              /* 0x0819879C: the 4 License_* steps, NULL */
 extern const char gStrLicensedByNintendo[];             /* 0x080813F0 */
-extern u16 gKonamiLogoImage[];                          /* 0x087D01F4: 8bpp image pack */
-extern u16 gKcejLogoImage[];                            /* 0x087D292C: 8bpp image pack */
+extern const u16 gKonamiLogoImage[];                    /* 0x087D01F4: 8bpp image pack */
+extern const u16 gKcejLogoImage[];                      /* 0x087D292C: 8bpp image pack */
 extern const struct StarterDeckPool gStarterDeckPools[];/* 0x08198744: 11 pools */
 extern const char gStrStarterDeckErrorFmt[];            /* 0x080813E4: debug message for an unknown card number */
 extern const char gStrNewGame[];                        /* 0x08081408 */
 extern const char gStrContinue[];                       /* 0x08081414 */
 extern const u16 gTitleLogoWave[];                      /* 0x08198830: 16 BG1 HOFS values (Title_HBlank) */
-extern u16 gTitleLogoImage[];                           /* 0x087BDAA8: 8bpp, the logo (BG0) */
-extern u16 gTitleFlameImage[];                          /* 0x087C1DCC: 4bpp, the flames (BG1) */
-extern u16 gTitleCoinImage[];                           /* 0x087C0CD4: 4bpp, the coin (BG2) */
-extern u16 gTitleGridImage[];                           /* 0x0867DFCC: 4bpp, one 4x4-tile block of the BG3 grid */
-extern u16 gTitleCopyrightImage[];                      /* 0x087C056C: 4bpp, "(c)1996 KAZUKI TAKAHASHI" line */
+extern const u16 gTitleLogoImage[];                     /* 0x087BDAA8: 8bpp, the logo (BG0) */
+extern const u16 gTitleFlameImage[];                    /* 0x087C1DCC: 4bpp, the flames (BG1) */
+extern const u16 gTitleCoinImage[];                     /* 0x087C0CD4: 4bpp, the coin (BG2) */
+extern const u16 gTitleGridImage[];                     /* 0x0867DFCC: 4bpp, one 4x4-tile block of the BG3 grid */
+extern const u16 gTitleCopyrightImage[];                /* 0x087C056C: 4bpp, "(c)1996 KAZUKI TAKAHASHI" line */
 
 /* ---- Calendar ---- */
 
@@ -204,9 +175,9 @@ end:
 }
 
 /*
- * Unpacks a day count (day 0 = 2001-01-01) into year, month, day and weekday, in 1461-day (4-year) cycles
- * whose last year is a leap year. 2100 is not one, so from day 36524 (2101-01-01) on the count moves on by
- * one day, skipping the 366th day the cycle would give 2100.
+ * Unpacks the day count `days` (day 0 = 2001-01-01) into *date: year, month, day and weekday. It works in
+ * 1461-day (4-year) cycles whose last year is a leap year. 2100 is not one, so from day 36524 (2101-01-01) on
+ * the count moves on by one day, skipping the 366th day the cycle would give 2100.
  */
 void DayCountToDate(struct Date *date, u16 days)
 {
@@ -241,13 +212,13 @@ void DayCountToDate(struct Date *date, u16 days)
         date->day++;
 }
 
-/* Today's in-game date. */
+/* Stores today's in-game date (gSaveData.days) in *date. */
 void GetCurrentDate(struct Date *date)
 {
     DayCountToDate(date, gSaveData.days);
 }
 
-/* 1-based week of the month, (day - 1) / 7 + 1. Unreferenced out-of-line copy of WeekOfMonth. */
+/* Returns the 1-based week of the month, (day - 1) / 7 + 1. Unreferenced out-of-line copy of WeekOfMonth. */
 u32 GetWeekOfMonth(u32 year, u32 month, u32 day)
 {
     GetDayOfWeek(year, month, 1);
@@ -258,8 +229,8 @@ u32 GetWeekOfMonth(u32 year, u32 month, u32 day)
 /* ---- New Game starter deck ---- */
 
 /*
- * Card number to card ID through gCardNumberToId: 0xFFFF (no card) gives 0, and an alternate-art number
- * (2000 + n) gives the ID of n plus 1.
+ * Returns the card ID of a card number through gCardNumberToId: 0xFFFF (no card) gives 0, and an alternate-art
+ * number (2000 + n) gives the ID of n plus 1.
  */
 static inline u16 CardNumberToId(u16 number)
 {
@@ -348,7 +319,8 @@ void Title_HBlank(void)
     REG_BG1HOFS = gMain.hblankScroll[(REG_VCOUNT + gMain.frameCounter) & 0xF];
 }
 
-/* License step 0: white screen, display off; then video reset, the default BG0-3CNT and a white backdrop. */
+/* License step 0: white screen, display off; then video reset, the default BG0-3CNT and a white backdrop.
+ * Returns 1 when done. */
 u16 License_InitVideo(void)
 {
     switch (gMain.seqState0) {
@@ -376,7 +348,7 @@ u16 License_InitVideo(void)
 /*
  * License step 1: "LICENSED BY NINTENDO" centred on BG1 (rows 9-11). Each pass draws the string twice, one
  * pixel apart, for bold text: first the shadow (colour 15) at +1,+1, then the text (colour 8). Fades in from
- * white, holds 120 frames and fades out to white.
+ * white, holds 120 frames and fades out to white. Returns 1 when done.
  */
 u16 License_ShowNintendoNotice(void)
 {
@@ -420,7 +392,8 @@ u16 License_ShowNintendoNotice(void)
     return 0;
 }
 
-/* License step 2: the Konami logo on BG0; fades in from white, holds 120 frames, fades out to white. */
+/* License step 2: the Konami logo on BG0; fades in from white, holds 120 frames, fades out to white. Returns 1
+ * when done. */
 u16 License_ShowKonamiLogo(void)
 {
     switch (gMain.seqState0) {
@@ -636,7 +609,7 @@ void Title_LoadGraphics(void)
 }
 
 /* TITLE_STEP_INIT: clears gTitleState and puts the cursor on Continue when a valid save exists; display off,
- * black screen, video and BG reset. */
+ * black screen, video and BG reset. Returns 1 when done. */
 u16 Title_Init(void)
 {
     switch (gMain.seqState0) {
@@ -663,13 +636,13 @@ u16 Title_Init(void)
 }
 
 /* TITLE_STEP_SETUP (also where the delete-save prompt's B returns to): display off, video and BG reset, then
- * Title_LoadGraphics and the title song. */
+ * Title_LoadGraphics and the title song. Returns 1 when done. */
 u16 Title_Setup(void)
 {
     switch (gMain.seqState0) {
     default:
         Title_LoadGraphics();
-        PlayBGMNoTrack(0); /* title song */
+        PlayBGMNoTrack(SONG_TITLE);
         return 1;
     case 0:
         REG_DISPCNT = 0;
@@ -717,7 +690,8 @@ u16 Title_FadeIn(void)
     }
 }
 
-/* TITLE_STEP_FADE_OUT: draws the menu while fading to black, then drops the VBlank scroll callback. */
+/* TITLE_STEP_FADE_OUT: draws the menu while fading to black, then drops the VBlank scroll callback. Returns 1
+ * when the fade is done. */
 u16 Title_FadeOut(void)
 {
     Title_DrawMenu();
@@ -728,8 +702,8 @@ u16 Title_FadeOut(void)
     return 0;
 }
 
-/* TITLE_STEP_HANDLE_INPUT: Left/Right toggle New Game/Continue when a save exists (else a buzzer); A
- * confirms, fades out the music and returns 1. */
+/* TITLE_STEP_HANDLE_INPUT: draws the menu; Left/Right toggle New Game/Continue when a save exists (else a
+ * buzzer); A confirms, fades out the music and returns 1 (otherwise 0). */
 u16 Title_HandleInput(void)
 {
     Title_DrawMenu();

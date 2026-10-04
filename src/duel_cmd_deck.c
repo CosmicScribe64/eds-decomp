@@ -1,7 +1,3 @@
-#include "global.h"
-#include "constants/duel.h"         /* enum DuelArea, ZONE_LINK_EQUIP, DUEL_LOC */
-#include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER */
-
 /*
  * Duel command handlers for the deck and for zone state (wiki/functions/duel-cmd-deck-c.md).
  *
@@ -15,115 +11,12 @@
  *    the card with DuelAnim_MoveCard, then make the move in the duel state. A single card is given as a
  *    card word (struct DuelCard) split over two operands: arg2 | arg4 << 16.
  */
-
-/* ---- BEGIN duel.h subset (pre-H0) ---- */
-/*
- * The part of include/duel.h this unit uses, with the header's tags, field names and bitfield containers.
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
- * so this block stands in for it. It defines GUARD_DUEL_H so that duel_cmd.h, duel_screen.h and duel_link.h
- * (below) do not include the legacy file. After H0, replace this block (BEGIN to END) with
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- * Checked: with the staged duel.h and sound.h that gives assembly identical to this file.
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:9;
-    u32 destroyedByOpponent:1;      /* bit 22 */
-    u32 unk23:9;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0 */
-    u8 isFaceUp:1;                  /* +0x06 bit 1 */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[3];
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C[4];
-    u32 unk90_0:13;
-    u32 declaredValue:5;            /* +0x91 bits 5-9 */
-    u32 unk92_2:14;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002 */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004 */
-    u8 fusionCount;                 /* +0x005 */
-    u8 banishedCount;               /* +0x006 */
-    u8 deckOut:1;                   /* +0x007 bit 0 */
-    u8 unk7_1:7;
-    u8 unk8[0x20];
-    struct DuelZone zones[11];      /* +0x028 */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004 */
-    u8 unk1ACC;
-    u8 unk1ACD_0:7;
-    u32 prohibitionCount:4;         /* +0x1ACD bit 7 .. +0x1ACE bit 2 */
-    u32 unk1ACE_3:13;
-    u16 prohibitionZones[16];       /* +0x1AD0 */
-    u16 prohibitedCards[16];        /* +0x1AF0 */
-    u16 turnCount;                  /* +0x1B10 */
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1 */
-    u8 phase:3;
-    u8 linkError:1;
-    u8 result:2;
-    u8 unk1B13[0x1B78 - 0x1B13];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-void PlaceMonsterCard(int player, int zone, struct DuelCard *card, u16 defense, u16 faceUp);
-void ShuffleDeck(int player, int passes);
-u16 TakeDeckCardAt(int player, int idx, struct DuelCard *out);
-int RemoveCardFromDeck(int player, struct DuelCard *card);
-int RemoveCardFromFusionDeck(int player, struct DuelCard *card);
-void AddCardToGraveyard(struct DuelCard *card);
-void AddCardToBanished(struct DuelCard *card);
-void AddCardToHand(int player, struct DuelCard *card);
-void AddZoneLink(u16 loc, u16 target, u16 kind);
-void RemoveZoneLink(u16 loc, u16 target, u16 kind);
-
-void PlaySE(u32 seId);                          /* sound.h */
-/* ---- END duel.h subset ---- */
-
+#include "global.h"
+#include "constants/duel.h"         /* enum DuelArea, ZONE_LINK_EQUIP, DUEL_LOC */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* SE_CARD_MOVE */
+#include "duel.h"           /* struct DuelCard, DuelZone, DuelLoc; gDuel, gDuelPlayers, gDuelZones; deck helpers */
+#include "sound.h"          /* PlaySE */
 #include "duel_cmd.h"       /* gDuelCmd, gDuelCmdT16; the DuelCmd_* handlers defined here */
 #include "duel_screen.h"    /* gDuelScreen, DuelScreen_*, DuelCursor_Select, DuelAnim_MoveCard, DuelSprAnim_* */
 #include "duel_link.h"      /* gLinkState, DuelLink_SendDeck */
@@ -136,16 +29,17 @@ extern const u8 gDeckShuffleAnim[];             /* 0x08694EA8 */
 
 /* ---- Local views kept for matching ---- */
 
-/* DuelDrawCard is defined with one parameter; this unit passes gDuelCmd.arg2 as a second argument (r1),
- * which the function ignores. */
+/* Matching: view of DuelDrawCard (duel.h, one parameter) with a second one. DuelCmd_DrawCards passes
+ * gDuelCmd.arg2 in r1; the function ignores it. */
 void DuelDrawCard2(int player, u16 unused) asm("DuelDrawCard");
 
-/* TakeDeckCardAt returns u16; this unit tests the result as an int (no narrowing after the call). */
+/* Matching: view of TakeDeckCardAt (duel.h, returns u16) that returns int. The two deck-pile commands test the
+ * result as an int; the header prototype adds a lsl #16 before the test. */
 int TakeDeckCardAtInt(int player, int idx, struct DuelCard *out) asm("TakeDeckCardAt");
 
-/* The turn counter as bits 18-21 of the u32 at zone +0x04 (= DuelZone.turnCounter, +0x06 bits 2-5).
- * DuelCmd_AddZoneTurnCounter adds through this container; with duel.h's u8 container the operands of the
- * add come out swapped. */
+/* Matching: a local view of struct DuelZone with the turn counter (DuelZone.turnCounter, +0x06 bits 2-5) as
+ * bits 18-21 of the u32 at zone +0x04. DuelCmd_AddZoneTurnCounter adds through this container; with duel.h's
+ * u8 container the operands of the add come out swapped. */
 struct DuelZoneTurnCounterWord {
     struct DuelCard card;
     u32 unk4_0:18;                  /* serial, isDefense, isFaceUp */
@@ -153,17 +47,17 @@ struct DuelZoneTurnCounterWord {
     u32 unk6_6:10;
 };
 
-/* Card ID of a zone or of gDuelCmd.card, read through a struct DuelCard pointer: that loads the whole card
- * word (ldr; lsl #20; lsr #20) as the ROM does. A direct member read (zone->card.id) loads a halfword. */
-#define ZONE_CARD_ID(zone) (((struct DuelCard *)(zone))->id)
-#define CMD_CARD_ID (((struct DuelCard *)&gDuelCmd.card)->id)
+/* The card ID of a zone or of gDuelCmd.card is read with DUEL_CARD_ID (duel.h): through a struct DuelCard
+ * pointer that loads the whole card word (ldr; lsl #20; lsr #20) as the ROM does, where a direct member read
+ * (zone->card.id) loads a halfword. */
 
 /* ---- Helpers ---- */
 
 /* The acting player of the command (bit 15 of the command id, DUEL_CMD_PLAYER). */
 #define CMD_PLAYER (gDuelCmd.cmd >> 15)
 
-/* &gDuelZones[player].zones[zone], summed in the ROM's order (zone offset + player offset + base). */
+/* Matching: &gDuelZones[player].zones[zone], with the terms summed in the ROM's order (zone offset + player
+ * offset + base); the array form orders the adds differently. */
 #define CMD_ZONE(player, zone) \
     ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelZonesPlayer) \
                          + (u8 *)gDuelZones))
@@ -180,7 +74,8 @@ struct DuelZoneTurnCounterWord {
 /* ======== Zone-state commands (one frame each) ======== */
 
 /* 0x83 DUEL_CMD_ADD_EQUIP_LINK: arg2 = DUEL_LOC of an equip card, arg4 = DUEL_LOC of the monster it
- * equips. The monster's zone gets a ZONE_LINK_EQUIP link to the equip card. */
+ * equips. The monster's zone gets a ZONE_LINK_EQUIP link to the equip card; the info bar and the field
+ * are redrawn. */
 void DuelCmd_AddEquipLink(void)
 {
     AddZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, ZONE_LINK_EQUIP);
@@ -190,7 +85,7 @@ void DuelCmd_AddEquipLink(void)
 }
 
 /* 0x85 DUEL_CMD_ADD_ZONE_LINK: the zone at DUEL_LOC arg4 gets a link of kind arg6 (enum ZoneLinkKind) to
- * target arg2. */
+ * target arg2; the info bar and the field are redrawn. */
 void DuelCmd_AddZoneLink(void)
 {
     AddZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, gDuelCmd.arg6);
@@ -199,7 +94,8 @@ void DuelCmd_AddZoneLink(void)
     gDuelCmd.running = 0;
 }
 
-/* 0x86 DUEL_CMD_REMOVE_ZONE_LINK: remove the kind-arg6 link to target arg2 from the zone at DUEL_LOC arg4. */
+/* 0x86 DUEL_CMD_REMOVE_ZONE_LINK: remove the kind-arg6 link to target arg2 from the zone at DUEL_LOC arg4;
+ * the info bar and the field are redrawn. */
 void DuelCmd_RemoveZoneLink(void)
 {
     RemoveZoneLink(gDuelCmd.arg4, gDuelCmd.arg2, gDuelCmd.arg6);
@@ -209,8 +105,8 @@ void DuelCmd_RemoveZoneLink(void)
 }
 
 /* 0x87 DUEL_CMD_SET_ZONE_DECLARED_VALUE: declaredValue of the acting player's zone (u8)arg2 = arg4, with
- * no occupancy check. It is the choice made when the card resolved (DNA Surgery's type, 7 Completed's
- * 1 = ATK / 2 = DEF, an attribute); GetZoneCardStats reads it. */
+ * no occupancy check; redraws the field. It is the choice made when the card resolved (DNA Surgery's type,
+ * 7 Completed's 1 = ATK / 2 = DEF, an attribute); GetZoneCardStats reads it. */
 void DuelCmd_SetZoneDeclaredValue(void)
 {
     u32 player = CMD_PLAYER;
@@ -240,7 +136,7 @@ void DuelCmd_AddZoneTurnCounter(void)
     u32 player = CMD_PLAYER;
     struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
 
-    if (ZONE_CARD_ID(zone))
+    if (DUEL_CARD_ID(zone))
         ((struct DuelZoneTurnCounterWord *)zone)->turnCounter
             = amount + ((struct DuelZoneTurnCounterWord *)zone)->turnCounter;
     gDuelCmd.running = 0;
@@ -257,7 +153,7 @@ void DuelCmd_SetZoneTurnCounter(void)
      * the store below; without this read the load moves inside the if. */
     u8 oldCounter = zone->turnCounter;
 
-    if (ZONE_CARD_ID(zone))
+    if (DUEL_CARD_ID(zone))
         zone->turnCounter = value;
     gDuelCmd.running = 0;
 }
@@ -269,7 +165,7 @@ void DuelCmd_ResetZoneTurnCounterAndSetDeclaredValue(void)
     u32 player = CMD_PLAYER;
     struct DuelZone *zone = CMD_ZONE(player, gDuelCmd.arg2);
 
-    if (ZONE_CARD_ID(zone)) {
+    if (DUEL_CARD_ID(zone)) {
         zone->turnCounter = 0;
         zone->declaredValue = gDuelCmd.arg4;
     }
@@ -326,9 +222,10 @@ void DuelCmd_RemoveProhibition(void)
     s32 i, j;
 
     for (i = 0; i < gDuel.prohibitionCount; i++) {
-        /* The key is DUEL_LOC(player, zone). The (u16) cast makes the else arm recompute arg2 << 8 (combine
-         * splits the zero-extension off the shared shift). OPAQUE keeps the 0x8000 mask and the AND inside
-         * the loop as in the ROM (only the cmd load is hoisted). */
+        /* The key is DUEL_LOC(player, zone).
+         * FAKEMATCH: the (u16) cast makes the else arm recompute arg2 << 8 (combine splits the zero-extension
+         * off the shared shift). OPAQUE keeps the 0x8000 mask and the AND inside the loop as in the ROM (only
+         * the cmd load is hoisted). */
         if (gDuel.prohibitionZones[i]
             == (u16)DUEL_LOC((gDuelCmd.cmd & OPAQUE(DUEL_CMD_PLAYER)) ? 1 : 0, (u8)gDuelCmd.arg2)) {
             /* FAKEMATCH: the (u16) cast; prohibitionCount-- compiles differently. */
@@ -370,7 +267,7 @@ void DuelCmd_ShuffleDeck(void)
         gDuelCmd.counter++;
         /* FAKEMATCH: (s8) gives the ROM's signed compare; the counter is 0-127, so the value is the same. */
         if ((s8)gDuelCmd.counter <= 3) {
-            PlaySE(7);      /* SE 7: the shuffle sound (no name in constants/sound.h yet) */
+            PlaySE(SE_CARD_MOVE);   /* the shuffle sound */
             DuelSprAnim_Rewind();
         } else {
             gDuelCmd.step++;
@@ -422,7 +319,7 @@ void DuelCmd_DrawCards(void)
         DuelDrawCard2(player, gDuelCmd.arg2);
         gDuelCmd.arg4--;
         if (gDuelCmd.arg4 != 0) {
-            gDuelCmdT16.timer = 0;
+            gDuelCmd.timer = 0;
             gDuelCmd.step--;
             break;
         }
@@ -457,7 +354,7 @@ void DuelCmd_SendTopDeckCardsToGraveyard(void)
         if (TakeDeckCardAtInt(player, 0, &gDuelCmd.card)) {
             SET_LOC(from, player2, DUEL_AREA_DECK, 0, TRUE);
             SET_LOC(to, player2, DUEL_AREA_GRAVEYARD, 0, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
         } else {
             DuelCursor_Select(player2, DUEL_AREA_DECK, 0);
@@ -503,7 +400,7 @@ void DuelCmd_BanishTopDeckCards(void)
         if (TakeDeckCardAtInt(player, 0, &gDuelCmd.card)) {
             SET_LOC(from, player2 & 1, DUEL_AREA_DECK, 0, TRUE);
             SET_LOC(to, player2 & 1, DUEL_AREA_BANISHED, 0, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
         } else {
             DuelCursor_Select(player2, DUEL_AREA_DECK, 0);
@@ -549,7 +446,7 @@ void DuelCmd_AddDeckCardToHand(void)
         SET_LOC(to, player, DUEL_AREA_HAND, gDuelPlayers[player & 1].handCount, FALSE);
         /* the id is gDuelCmd.card's, which this command does not set; the card moves face down, so only
          * its back is drawn */
-        DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+        DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
         gDuelCmd.step++;
         break;
     default:
@@ -588,10 +485,10 @@ void DuelCmd_SummonFromDeck(void)
         break;
     case 1:     /* take the card out of the deck and animate it face up to the zone */
         if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
-            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            CopyDuelCard(&gDuelCmd.card, (struct DuelCard *)&cardWord);
             SET_LOC(from, player, DUEL_AREA_DECK, 0, TRUE);
             SET_LOC(to, player, DUEL_AREA_MONSTER, zone, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
             break;
         }
@@ -622,10 +519,10 @@ void DuelCmd_SendDeckCardToGraveyard(void)
         break;
     case 1:     /* take the card out of the deck and animate it face up to the graveyard */
         if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
-            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            CopyDuelCard(&gDuelCmd.card, (struct DuelCard *)&cardWord);
             SET_LOC(from, player & 1, DUEL_AREA_DECK, 0, TRUE);
             SET_LOC(to, player & 1, DUEL_AREA_GRAVEYARD, 0, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
             break;
         }
@@ -655,10 +552,10 @@ void DuelCmd_BanishDeckCard(void)
         break;
     case 1:     /* take the card out of the deck and animate it face up to the banished pile */
         if (RemoveCardFromDeck(player, (struct DuelCard *)&cardWord) != 0) {
-            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            CopyDuelCard(&gDuelCmd.card, (struct DuelCard *)&cardWord);
             SET_LOC(from, player & 1, DUEL_AREA_DECK, 0, TRUE);
             SET_LOC(to, player & 1, DUEL_AREA_BANISHED, 0, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
             break;
         }
@@ -689,10 +586,10 @@ void DuelCmd_SendFusionDeckCardToGraveyard(void)
         break;
     case 1:     /* take the card out of the fusion deck and animate it face up to the graveyard */
         if (RemoveCardFromFusionDeck(player, (struct DuelCard *)&cardWord) != 0) {
-            CopyDuelCard((u32 *)&gDuelCmd.card, &cardWord);
+            CopyDuelCard(&gDuelCmd.card, (struct DuelCard *)&cardWord);
             SET_LOC(from, player & 1, DUEL_AREA_FUSION_DECK, 0, TRUE);
             SET_LOC(to, player & 1, DUEL_AREA_GRAVEYARD, 0, TRUE);
-            DuelAnim_MoveCard(CMD_CARD_ID, &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
             gDuelCmd.step++;
             break;
         }

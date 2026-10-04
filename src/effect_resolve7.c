@@ -4,6 +4,20 @@
 #include "constants/card_stats.h"   /* enum CardType */
 #include "constants/duel.h"         /* enum ChainEntryKind, ResponseEventKind, DuelArea, DuelPromptKind, ZoneLinkKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
+#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer, gDuel, gDuelPlayers, gDuelZones */
+#include "ai.h"                     /* gAiWork.listPick, AiPickCardListEntry */
+#include "card_list_view.h"         /* gCardListView, CardListView_Open */
+#include "chain.h"                  /* struct ChainEntry, gChain, gChainEffectWork */
+#include "duel_actions.h"           /* life points, flips, banishing, discards, QueueAddZoneLink */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "duel_flow.h"              /* gDuelCtrl.isLinkDuel */
+#include "duel_prompt.h"            /* DuelPrompt_Post, DuelPrompt_TryPostSetMonster */
+#include "duel_screen.h"            /* DuelCursor_Select */
+#include "effect.h"                 /* CollectEffectTargets, TARGET_PROMPT_POS / SIZE */
+#include "effect_handlers.h"        /* the prototypes of this unit's handlers */
+#include "summon.h"                 /* QueueSpecialSummon, QueueSpecialSummonChoosePosition */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
+#include "util.h"                   /* Random, HalveRoundUp */
 
 /*
  * Card effect handlers: the Resolve slot of gCardEffects (include/effect.h) for card numbers 1116-1181
@@ -19,100 +33,6 @@
  * Players: 0 is the human, 1 the CPU (or the link partner). Duel commands queued for player 1 carry
  * DUEL_CMD_PLAYER (bit 15). Zones 0-4 hold monsters, 5-9 spells and traps; a target is player | zone << 8.
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, card_list_view.h, duel_cmd.h, duel_screen.h and summon.h do not pull in the legacy
- * header. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" (see
- * build/readability/issues/effect_resolve7.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4[0x28 - 0x4];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    u8 unk904[0xD64 - 0x904];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 unk1B12_5:3;
-    u8 unk1B13[0x1B64 - 0x1B13];
-    u16 promptResult;               /* +0x1B64: the answer of the last duel prompt */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-u32 IsEffectMonster(u16 cardId);
-u32 IsSpecialSummonOnly(u16 cardId);
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountGraveyardCardsByNumber(int player, u16 cardNo);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-void DestroyInvalidEquips(int player, int zone);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-/* ---- END duel.h stand-in ---- */
-
-#include "ai.h"                     /* gAiWork.listPick, AiPickCardListEntry */
-#include "card_list_view.h"         /* gCardListView, CardListView_Open */
-#include "chain.h"                  /* struct ChainEntry, gChain, gChainEffectWork */
-#include "duel_actions.h"           /* life points, flips, banishing, discards, QueueAddZoneLink */
-#include "duel_cmd.h"               /* DuelCmd_Push */
-#include "duel_flow.h"              /* gDuelCtrl.isLinkDuel */
-#include "duel_prompt.h"            /* DuelPrompt_Post, DuelPrompt_TryPostSetMonster */
-#include "duel_screen.h"            /* DuelCursor_Select */
-#include "effect.h"                 /* CollectEffectTargets */
-#include "effect_handlers.h"        /* the prototypes of this unit's handlers */
-#include "summon.h"                 /* QueueSpecialSummon, QueueSpecialSummonChoosePosition */
-#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
-#include "util.h"                   /* Random, HalveRoundUp */
 
 /*
  * Local views of callees (build/readability/HEADERS.md, "Keeping a deliberate local view").
@@ -134,10 +54,6 @@ extern const u8 gStrPromptAddGraveMonsterToHand[];  /* 0x08083164: "Do you wish 
                                                      * Graveyard to your hand?" */
 extern const u8 gStrSelectMonsterToAddToHand[];     /* 0x080831A8: "Select a Monster card that you wish to
                                                      * add to your hand." */
-
-/* Text box position and size (x | y << 8, width | height << 8, in cells) of the effect prompts. */
-#define EFFECT_TEXTBOX_POS      0x206
-#define EFFECT_TEXTBOX_SIZE     0x712
 
 /* The command id for player's side: player 1's commands carry DUEL_CMD_PLAYER. */
 #define PLAYER_CMD(player, cmd) ((player) ? DUEL_CMD_PLAYER | (cmd) : (cmd))
@@ -344,7 +260,7 @@ int EffectBackupSoldierResolve(struct ChainEntry *link)
                 gCardListView.top = gAiWork.listPick;
                 return EFFECT_STEP_5;
             } else {
-                TextBoxOpen(EFFECT_TEXTBOX_POS, EFFECT_TEXTBOX_SIZE, TEXTBOX_FLAGS_DEFAULT,
+                TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT,
                             gStrPromptAddGraveMonsterToHand);
                 TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
                 return EFFECT_STEP_3;
@@ -352,7 +268,7 @@ int EffectBackupSoldierResolve(struct ChainEntry *link)
         case EFFECT_STEP_3:
             if (gTextBox.result == 0)
                 goto done;
-            TextBoxOpen(EFFECT_TEXTBOX_POS, EFFECT_TEXTBOX_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectMonsterToAddToHand);
+            TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrSelectMonsterToAddToHand);
             return EFFECT_STEP_4;
         case EFFECT_STEP_4:
             CardListView_Open(link->player, -1, CARD_BACKUP_SOLDIER, 0);
@@ -670,7 +586,7 @@ int EffectMorphingJar2Resolve(struct ChainEntry *link)
                 && link->targets[gChain.effectSubStep] != 0) {
                 struct DuelCard *deck = gDuelPlayers[PlayerIndex(gChain.effectSubStep)].deck;
 
-                CopyDuelCard((u32 *)&gChain.effectCard, (u32 *)deck);
+                CopyDuelCard(&gChain.effectCard, deck);
                 DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_DRAW_CARDS), 1, 1, 0);
                 ShowRevealedCard(gChain.effectSubStep, CARD_ID(CARD_WORD(*deck)));
                 return EFFECT_STEP_3;

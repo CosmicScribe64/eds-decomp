@@ -1,12 +1,3 @@
-#include "global.h"
-#include "constants/cards.h"        /* CARD_* card numbers */
-#include "constants/card_stats.h"   /* CARD_TYPE_REPTILE (the last monster type) */
-#include "constants/duel.h"         /* enum DuelZoneIndex, ResponseEventKind, ChainEntryKind */
-#include "constants/duel_cmds.h"    /* DUEL_CMD_* ids, DUEL_CMD_PLAYER */
-#include "card_data.h"              /* CARD_ID_MASK, CARD_NUMBER_TOKEN_FIRST / _END, CARD_STATS_TYPE */
-#include "duel_actions.h"           /* the field actions defined here and their siblings */
-#include "effect.h"                 /* LoseLpOnSendToGraveyard */
-
 /*
  * Field actions of the duel rules (wiki/functions/duel-field-moves-c.md): destroy, banish, return to the
  * hand or deck, flip, change the battle position, move or swap zones, and discard from the hand. None of
@@ -17,129 +8,18 @@
  * battle" monsters, The Immortal of Thunder, Call of the Haunted, Crass Clown, Dream Clown, Ameba,
  * Griggle, Minar, Electric Snake, Magic Thorn.
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below (chain.h,
- * battle.h, duel_cmd.h) use, with the header's names, types and bitfield containers (unused bytes are
- * padding), and defines duel.h's include guard so that those headers do not pull in the legacy file.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly
- * (checked against the staged header). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:1;                    /* bit 13 */
-    u32 unk14:1;                    /* bit 14 */
-    u32 normalSummoned:1;           /* bit 15 */
-    u32 specialSummoned:1;          /* bit 16 */
-    u32 planted:1;                  /* bit 17: Parasite Paracide shuffled into the other player's deck */
-    u32 graverobbed:1;              /* bit 18 */
-    u32 unk19:1;
-    u32 isFusionMaterial:1;         /* bit 20 */
-    u32 destroyedInBattle:1;        /* bit 21: set before a battle-destroyed monster enters the graveyard */
-    u32 destroyedByOpponent:1;      /* bit 22 */
-    u32 flag23:1;                   /* bit 23 */
-    u32 pendingEquip:1;             /* bit 24 */
-    u32 equipZone:3;                /* bits 25-27 */
-    u32 pendingOpponentSummon:1;    /* bit 28 */
-    u32 unk29:3;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9; u16 container */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;                    /* +0x07 bit 3 */
-    u8 unk7_4:1;                    /* +0x07 bit 4 */
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (Ameba, Griggle) */
-    u8 revivedByMonsterReborn:1;    /* +0x07 bit 6 */
-    u8 summonedFromGraveyard:1;     /* +0x07 bit 7 */
-    u8 levelCheckDone:1;            /* +0x08 bit 0 */
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C_0:1;                   /* +0x8C: battle flags */
-    u8 destroyAfterBattle:1;        /* +0x8C bit 1 */
-    u32 returnAfterBattle:1;        /* +0x8C bit 2; u32 container */
-    u8 cannotAttackNextTurn:1;      /* +0x8C bit 3 */
-    u8 cannotAttack:1;              /* +0x8C bit 4 */
-    u8 atkHalved:1;                 /* +0x8C bit 5 */
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:6;                  /* +0x90 */
-    u32 unk90_6:4;                  /* +0x90 bits 6-9 */
-    u32 canActivate:1;              /* +0x91 bit 2 */
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:1;
-    u32 declaredValue:5;            /* +0x91 bits 5-9 */
-    u32 unk92_2:14;
-};
-
-/* A card in a zone or pile, seen as status bytes (the bits of struct DuelCard, one byte access at a time);
- * applied to a whole zone, whose card word comes first. */
-struct DuelCardStatusBytes {
-    u8 cardIdLow;                   /* +0x00: card word bits 0-7 */
-    u8 cardWordBits8to13:6;         /* +0x01: id (high bits), owner, unk13 */
-    u8 unk14:1;                     /* +0x01 bit 6 = card bit 14 */
-    u8 normalSummoned:1;            /* bit 15 */
-    u8 specialSummoned:1;           /* +0x02 bit 0 = card bit 16 */
-    u8 planted:1;                   /* bit 17 */
-    u8 graverobbed:1;               /* bit 18 */
-    u8 unk19:1;                     /* bit 19 */
-    u8 isFusionMaterial:1;          /* bit 20 */
-    u8 destroyedInBattle:1;         /* bit 21 */
-    u8 destroyedByOpponent:1;       /* bit 22 */
-    u8 flag23:1;                    /* bit 23 */
-    u8 pendingEquip:1;              /* +0x03 bit 0 = card bit 24 */
-    u8 equipZone:3;                 /* bits 25-27 */
-    u8 pendingOpponentSummon:1;     /* bit 28 */
-    u8 unk29:3;
-    u8 restOfZone[0x94 - 4];
-};
-
-struct DuelPlayer {
-    u8 unk0[0xB];
-    u8 crushCardTurns:3;            /* +0x00B bits 0-2 */
-    u8 monsterSentToGraveThisTurn:1;/* +0x00B bit 3: Last Will condition */
-    u8 unkB_4:4;
-    u8 unkC[0x28 - 0xC];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 piles[0xD64 - 0x684];        /* +0x684: hand, deck, graveyard, fusion deck, banished */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 linkError:1;                 /* +0x1B12 bit 5 */
-    u8 result:2;                    /* +0x1B12 bits 6-7 */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountMonsters(int player);
-u16 FindMonsterLinkedToCard(s32 player, s32 slot);
-/* ---- END duel.h stand-in ---- */
-
+#include "global.h"
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* CARD_TYPE_REPTILE (the last monster type) */
+#include "constants/duel.h"         /* enum DuelZoneIndex, ResponseEventKind, ChainEntryKind */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_* ids, DUEL_CMD_PLAYER */
+#include "card_data.h"              /* CARD_ID_MASK, CARD_NUMBER_TOKEN_FIRST / _END, CARD_STATS_TYPE */
+#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer, gDuel, gDuelPlayers, DUEL_CARD_ID, the zone and card queries */
+#include "duel_actions.h"           /* the field actions defined here and their siblings */
+#include "duel_cmd.h"               /* DuelCmd_Push */
 #include "chain.h"                  /* gChain.responseEvent, Chain_AddPending, EventResponse_Request */
 #include "battle.h"                 /* gBattle.atkSlot / defSlot */
-#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "effect.h"                 /* LoseLpOnSendToGraveyard */
 
 /* Local views of functions, kept on purpose (matching choices, see build/readability/HEADERS.md): the
  * definitions take a u16 card ID, but ChangeBattlePosition and SendBattleDestroyedCardToGraveyard pass
@@ -160,10 +40,6 @@ void ShowActivatedCardInt(int player, int cardId) asm("ShowActivatedCard");
 #define ZONE_AT(player, zone) \
     ((struct DuelZone *)((zone) * sizeof(struct DuelZone) + ((player) & 1) * sizeof(struct DuelPlayer) \
                          + DUEL_ZONES_ADDR))
-/* The card ID of a zone, read through a struct DuelCard pointer. Matching: `zp->card.id` takes another
- * expansion path and changes the code. */
-#define ZONE_CARD_ID(zp) (((struct DuelCard *)(zp))->id)
-
 /* The card tables through integer-constant addresses: gCardIdToNumber (0x08622AB4), gCardStats
  * (0x08621DE0) and gCardNumberToId (0x08623DF4). Matching: the literal form, not the symbols. */
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
@@ -191,7 +67,7 @@ void DestroyFaceUpCardsByNumber(int player, u16 cardNo)
 
     for (zone = 0; zone <= ZONE_FIELD; zone++) {
         struct DuelZone *z = ZONE_AT(player, zone);
-        u16 id = ZONE_CARD_ID(z);
+        u16 id = DUEL_CARD_ID(z);
         if (id != 0 && z->isFaceUp && CARD_NUMBER(id) == cardNo)
             DestroyFieldCard(player, zone, 1);
     }
@@ -207,7 +83,7 @@ void DestroyFieldCard(int player, int zone, u16 withEffects)
     u16 cardId;
     int i;
 
-    id = ZONE_CARD_ID(ZONE(player, zone));
+    id = DUEL_CARD_ID(ZONE(player, zone));
     cardId = id;
 
     SendFieldCardToGrave(player, zone, withEffects, withEffects != 0);
@@ -226,7 +102,7 @@ void DestroyFieldCard(int player, int zone, u16 withEffects)
     ShowDestroyedCard(player, cardId);
     for (i = ZONE_SPELL_0; i <= ZONE_SPELL_4; i++) {
         if (i != zone) {
-            u32 otherId = ZONE_CARD_ID(ZONE(player, i));
+            u32 otherId = DUEL_CARD_ID(ZONE(player, i));
             if (otherId != 0) {
                 switch (CARD_NUMBER(otherId)) {
                 case CARD_1528:
@@ -249,7 +125,7 @@ void DestroyPlayerMonsters(int player, u16 withEffects)
 
     for (zone = 0; zone <= ZONE_MONSTER_4; zone++) {
         struct DuelZone *z = ZONE_AT(player, zone);
-        if (ZONE_CARD_ID(z) != 0)
+        if (DUEL_CARD_ID(z) != 0)
             DestroyFieldCard(player, zone, withEffects);
     }
 }
@@ -371,7 +247,7 @@ void SendBattleDestroyedCardToGraveyard(int defender, int player, int zone, u16 
  * Prohibition lifts its prohibition, and a face-up Field Magic resets the field background. */
 void BanishFieldCard(int player, int zone, u16 flagged)
 {
-    u32 id = ZONE_CARD_ID(ZONE(player, zone));
+    u32 id = DUEL_CARD_ID(ZONE(player, zone));
 
     if (id == 0)
         return;
@@ -393,7 +269,7 @@ void BanishFieldCard(int player, int zone, u16 flagged)
  * Call of the Haunted destroys the monster it revived unless it is disabled. */
 void ReturnFieldCardToHand(int player, int zone, u16 cmdArg)
 {
-    u32 id = ZONE_CARD_ID(ZONE(player, zone));
+    u32 id = DUEL_CARD_ID(ZONE(player, zone));
 
     if (id == 0)
         return;
@@ -421,7 +297,7 @@ void ReturnFieldCardToHand(int player, int zone, u16 cmdArg)
  * response window. */
 void ReturnFieldCardToDeck(int player, int zone)
 {
-    u32 id = ZONE_CARD_ID(ZONE(player, zone));
+    u32 id = DUEL_CARD_ID(ZONE(player, zone));
 
     if (id == 0)
         return;
@@ -476,7 +352,7 @@ void FlipFieldCard(int player, int zone, u16 triggerFlip)
      * ROM's register roles for the player and the narrowed card ID. */
     __asm__("" : : "r"(p));
     z = (struct DuelZone *)(zoneBytes + p * sizeof(struct DuelPlayer) + DUEL_ZONES_ADDR);
-    id = ZONE_CARD_ID(z);
+    id = DUEL_CARD_ID(z);
 
     if (id == 0)
         return;
@@ -518,7 +394,7 @@ void ChangeBattlePosition(int player, int zone, u16 flipFaceUp, u16 triggerFlip)
      * FAKEMATCH: the empty input constraint keeps `one` live, matching the lifetime the ROM gives it. */
     __asm__("" : : "r"(one));
     z = (struct DuelZone *)(zoneBytes + playerBytes + DUEL_ZONES_ADDR);
-    id = ZONE_CARD_ID(z);
+    id = DUEL_CARD_ID(z);
 
     if (zone > ZONE_MONSTER_4)
         return;
@@ -579,14 +455,14 @@ void MoveFieldCard(int player, u16 fromLoc, u16 toLoc)
     int toZone = toLoc >> 8;
     u32 id;
 
-    if (ZONE_CARD_ID(ZONE(fromPlayer, fromZone)) == 0)
+    if (DUEL_CARD_ID(ZONE(fromPlayer, fromZone)) == 0)
         return;
-    if (ZONE_CARD_ID(ZONE(toPlayer, toZone)) != 0)
+    if (DUEL_CARD_ID(ZONE(toPlayer, toZone)) != 0)
         return;
     DuelCmd_Push(PLAYER_CMD(fromPlayer, DUEL_CMD_MOVE_TO_ZONE), fromLoc, toLoc, 0);
     if (fromPlayer == toPlayer)
         return;
-    id = ZONE_CARD_ID(ZONE(fromPlayer, fromZone));
+    id = DUEL_CARD_ID(ZONE(fromPlayer, fromZone));
     switch (CARD_NUMBER(id)) {
     case CARD_AMEBA:
         if (ZONE(fromPlayer, fromZone)->effectUnused) {
@@ -615,8 +491,8 @@ void SwapFieldCards(int player, u16 loc1, u16 loc2)
     int zone1 = loc1 >> 8;
     int player2 = (u8)loc2;
     int zone2 = loc2 >> 8;
-    u16 id1 = ZONE_CARD_ID(ZONE(player1, zone1));
-    u32 id2 = ZONE_CARD_ID(ZONE(player2, zone2));
+    u16 id1 = DUEL_CARD_ID(ZONE(player1, zone1));
+    u32 id2 = DUEL_CARD_ID(ZONE(player2, zone2));
 
     if (id1 == 0)
         return;
@@ -626,14 +502,14 @@ void SwapFieldCards(int player, u16 loc1, u16 loc2)
     switch (CARD_NUMBER(id1)) {
     case CARD_AMEBA:
         if (ZONE(player1, zone1)->effectUnused) {
-            ShowActivatedCard(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
+            ShowActivatedCard(player1, DUEL_CARD_ID(ZONE(player1, zone1)));
             LoseLifePoints(player2, 2000);
             DuelCmd_Push(PLAYER_CMD(player2, DUEL_CMD_SET_EFFECT_UNUSED), zone2, 0, 0);
         }
         break;
     case CARD_GRIGGLE:
         if (ZONE(player1, zone1)->effectUnused) {
-            ShowActivatedCard(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
+            ShowActivatedCard(player1, DUEL_CARD_ID(ZONE(player1, zone1)));
             GainLifePoints(player1, 3000);
             DuelCmd_Push(PLAYER_CMD(player2, DUEL_CMD_SET_EFFECT_UNUSED), zone2, 0, 0);
         }
@@ -642,14 +518,14 @@ void SwapFieldCards(int player, u16 loc1, u16 loc2)
     switch (CARD_NUMBER(id2)) {
     case CARD_AMEBA:
         if (ZONE(player2, zone2)->effectUnused) {
-            ShowActivatedCard(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
+            ShowActivatedCard(player2, DUEL_CARD_ID(ZONE(player2, zone2)));
             LoseLifePoints(player1, 2000);
             DuelCmd_Push(PLAYER_CMD(player1, DUEL_CMD_SET_EFFECT_UNUSED), zone1, 0, 0);
         }
         break;
     case CARD_GRIGGLE:
         if (ZONE(player2, zone2)->effectUnused) {
-            ShowActivatedCard(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
+            ShowActivatedCard(player2, DUEL_CARD_ID(ZONE(player2, zone2)));
             GainLifePoints(player2, 3000);
             DuelCmd_Push(PLAYER_CMD(player1, DUEL_CMD_SET_EFFECT_UNUSED), zone1, 0, 0);
         }

@@ -11,10 +11,10 @@
  * IsEffectMonster, IsSpecialSummonOnly).
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_*, OBJ_PLTT, OBJ_VRAM0, key masks */
-#include "legacy/main.h"                   /* gMain */
-#include "legacy/duel.h"                   /* struct DuelPlayer, gDuelZones */
-#include "legacy/sound.h"
+#include "gba.h"                    /* REG_*, OBJ_PLTT, OBJ_VRAM0, DISPCNT_*, BGCNT_*, key masks */
+#include "main.h"                   /* gMain, IntrTable, ResetBgScroll, enum VBlankFlag */
+#include "duel.h"                   /* struct DuelPlayer, struct DuelCard, struct DuelCardStatusBytes, gDuelZones */
+#include "sound.h"                  /* PlaySE */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/sound.h"        /* SE_CANCEL */
 #include "card_data.h"              /* card tables, CARD_STATS_* field extractors, frame and digit graphics */
@@ -24,58 +24,17 @@
 #include "debug.h"                  /* DebugCardDetail_*, CB_DebugCardDetail, CB_DebugAutoDetail */
 #include "card_detail.h"            /* struct CardDetail gCardDetail, CardDetail_* */
 
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, duel.h and sound.h are the legacy headers,
- * which lack the names below. The new headers define them with the same values (the staged gba.h defines
- * INTR_FLAG_HBLANK), so this block compiles away with them. Delete it once the new headers are installed.
- */
-#ifndef INTR_FLAG_HBLANK
-#define DISPCNT_OBJ_1D_MAP      0x0040
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_CHARBASE(n)       ((n) << 2)
-#define BGCNT_MOSAIC            0x0040
-#define BGCNT_16COLOR           0x0000
-#define BGCNT_256COLOR          0x0080
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define BGCNT_TXT256x512        0x8000
-#define INTR_FLAG_HBLANK        0x0002
-#define INTR_SLOT_HBLANK        1
-#define VBLANK_COPY_OAM         0x1
-#define VBLANK_COPY_BG_MAPS     0x2
-#define VBLANK_BG3_VOFS         0x800
-extern void (*IntrTable[16])(void);
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-struct DuelCardStatusBytes {
-    u8 cardIdLow;
-    u8 cardWordBits8to13:6;
-    u8 unk14:1;
-    u8 normalSummoned:1;
-    u8 specialSummoned:1;
-    u8 planted:1;
-    u8 graverobbed:1;
-    u8 unk19:1;
-    u8 isFusionMaterial:1;
-    u8 destroyedInBattle:1;
-    u8 destroyedByOpponent:1;
-    u8 flag23:1;
-    u8 pendingEquip:1;
-    u8 equipZone:3;
-    u8 pendingOpponentSummon:1;
-    u8 unk29:3;
-    u8 restOfZone[0x94 - 4];
-};
-#endif
+/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md). */
 
-/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md):
- * - gCardStats and gCardIdToNumber are read through their integer addresses, so GCC reloads the table address
- *   at every use instead of keeping it in a register; the symbol forms give different code;
- * - CardDetail_FadeOut calls FadeToBlack through a u16 view: the ROM tests only the low halfword of the result
- *   (lsl #16), which the u32 prototype leaves out. */
+/* gCardStats[id] and gCardIdToNumber[id] through their integer addresses 0x08621DE0 / 0x08622AB4 (HEADERS.md
+ * pattern 4). Matching: GCC then reloads the table address at every use instead of keeping it in a register;
+ * the symbol forms of card_data.h give different code. */
 #define CARD_STATS_WORD(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])   /* gCardStats[id] */
 #define CARD_NUMBER(id)     (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])   /* gCardIdToNumber[id] */
+
+/* A view of FadeToBlack (palette.h: u32 FadeToBlack(s32 step)) with a u16 parameter and result. Matching:
+ * CardDetail_FadeOut tests only the low halfword of the result (lsl #16 after the call), which the u32
+ * prototype leaves out. */
 extern u16 FadeToBlack16(u16 step) asm("FadeToBlack");
 
 /* ROM data used only here. */
@@ -575,8 +534,8 @@ u32 IsSameCardName(u32 cardId1, u32 cardId2)
             return 1;
         break;
     case CARD_HARPIE_LADY:
-    case 1249:          /* not in EDS */
-        if (cardNo2 == CARD_HARPIE_LADY || cardNo2 == 1249)
+    case CARD_1249:     /* not in EDS */
+        if (cardNo2 == CARD_HARPIE_LADY || cardNo2 == CARD_1249)
             return 1;
         break;
     }
@@ -685,7 +644,7 @@ u32 IsEffectMonster(u16 cardId)
     case CARD_ALLIGATORS_SWORD_DRAGON:
     case CARD_1241:
     case CARD_1334:
-    case 1526:          /* not in EDS */
+    case CARD_1526:     /* not in EDS */
         result = 1;
     }
     return result;
@@ -724,10 +683,10 @@ u32 IsSpecialSummonOnly(u16 cardId)
     case CARD_DARK_SAGE:
     case CARD_1257:     /* 1257-1519: not in EDS */
     case CARD_1514:
-    case 1515:
-    case 1516:
+    case CARD_1515:
+    case CARD_1516:
     case CARD_1517:
-    case 1518:
+    case CARD_1518:
     case CARD_1519:
     yes:
         return 1;

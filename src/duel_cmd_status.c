@@ -1,12 +1,3 @@
-#include "global.h"
-#include "constants/cards.h"        /* CARD_SNATCH_STEAL, CARD_INSECT_MONSTER_TOKEN */
-#include "constants/duel.h"         /* enum DuelArea, DuelPhase, DuelZoneIndex, ZoneStatusFlag; DUEL_LOC_ZONE */
-#include "constants/duel_cmds.h"    /* enum TokenKind */
-#include "card_data.h"              /* CARD_NUMBER_TOKEN_FIRST / _END, CARD_NUMBER_ALT_ART */
-#include "util.h"                   /* MemCopy16 */
-#include "duel_flow.h"              /* gDuelCtrl */
-#include "duel_actions.h"           /* UpdateMonsterControl */
-
 /*
  * Duel command handlers 0x90-0xA7 and 0xB0-0xB4 (wiki/functions/duel-cmd-status-c.md), called by
  * DuelCmd_Dispatch once per frame while gDuelCmd.running is set. Each reads its operands from gDuelCmd
@@ -19,195 +10,24 @@
  *    summon a token, disable a spell/trap, move a monster face down;
  *  - ten no-op handlers (0x99-0x9F, 0xB2 and two unreferenced ones).
  */
-
-/* ---- BEGIN pre-H0 subset of duel.h, duel_cmd.h, duel_screen.h, chain.h and sound.h ---- */
-/*
- * The part of those headers this unit uses, with their names, types and bitfield containers. include/duel.h
- * and include/sound.h still hold the legacy headers until the header switch (H0, build/readability/HEADERS.md),
- * and duel_cmd.h, duel_screen.h and chain.h include duel.h. After H0, replace this block (BEGIN to END) with
- *     #include "legacy/duel.h"
- *     #include "duel_cmd.h"
- *     #include "duel_screen.h"
- *     #include "chain.h"
- *     #include "legacy/sound.h"
- * which gives identical assembly (checked against the staged headers).
- */
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:1;                    /* bit 13: DuelCmd_SummonToken sets it like owner (controller? hypothesis) */
-    u32 unk14:1;                    /* bit 14: set for tribute, flip, Toon and special summons and tokens, not
-                                     * for a plain Normal Summon */
-    u32 normalSummoned:1;           /* bit 15: Normal Summoned (not Set); cleared when the summon is negated */
-    u32 specialSummoned:1;          /* bit 16: Special Summoned (summon actions 4-6, tokens, Parasite Paracide) */
-    u32 planted:1;                  /* bit 17: Parasite Paracide shuffled into the other player's deck */
-    u32 graverobbed:1;              /* bit 18: taken with Graverobber; cleared when it leaves the field */
-    u32 unk19:1;
-    u32 isFusionMaterial:1;         /* bit 20: one of Polymerization's materials */
-    u32 destroyedInBattle:1;        /* bit 21: set before a battle-destroyed monster enters the graveyard */
-    u32 destroyedByOpponent:1;      /* bit 22 */
-    u32 flag23:1;                   /* bit 23: set by DUEL_CMD_MARK_GRAVEYARD_CARD; reader unknown */
-    u32 pendingEquip:1;             /* bit 24: graveyard card waiting to be equipped at end of turn (low) */
-    u32 equipZone:3;                /* bits 25-27: monster zone that pendingEquip card goes to (low) */
-    u32 pendingOpponentSummon:1;    /* bit 28: graveyard card the opponent may Special Summon at end of turn */
-    u32 unk29:3;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;                       /* +0x02: padding, copied with the word */
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04: gDuel.serial when the card was placed (replay check) */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5: turns a face-up card has been active */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9: turns until the monster is destroyed; u16 container */
-    u8 positionLocked:1;            /* +0x07 bit 2: cannot change position (DuelCmd_SetPositionLocked, tokens) */
-    u8 unk7_3:1;                    /* +0x07 bit 3 */
-    u8 unk7_4:1;                    /* +0x07 bit 4 */
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (Ameba, Griggle) */
-    u8 revivedByMonsterReborn:1;    /* +0x07 bit 6: ZONE_STATUS_MONSTER_REBORN */
-    u8 summonedFromGraveyard:1;     /* +0x07 bit 7: ZONE_STATUS_FROM_GRAVEYARD */
-    u8 levelCheckDone:1;            /* +0x08 bit 0 */
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C_0:1;                   /* +0x8C: battle flags */
-    u8 destroyAfterBattle:1;        /* +0x8C bit 1 */
-    u32 returnAfterBattle:1;        /* +0x8C bit 2: borrowed by Magic-Arm Shield; u32 container */
-    u8 cannotAttackNextTurn:1;      /* +0x8C bit 3: Electric Lizard; moved into cannotAttack */
-    u8 cannotAttack:1;              /* +0x8C bit 4 */
-    u8 atkHalved:1;                 /* +0x8C bit 5: Riryoku halving until end of turn */
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:6;                  /* +0x90 */
-    u32 unk90_6:4;
-    u32 canActivate:1;              /* +0x91 bit 2 */
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:1;
-    u32 declaredValue:5;            /* +0x91 bits 5-9 */
-    u32 unk92_2:14;
-};
-
-struct DuelPlayer {
-    u8 unk0[0xE];
-    u16 lpPaid[11];                 /* +0x00E: per zone, LP paid for the card there (Toon World) */
-    u16 attackableMask;             /* +0x024 */
-    u16 attackedMask;               /* +0x026: monster zones that have attacked this turn */
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 piles[0xD64 - 0x684];        /* +0x684: hand, deck, graveyard, fusion deck, banished */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 linkError:1;                 /* +0x1B12 bit 5 */
-    u8 result:2;                    /* +0x1B12 bits 6-7 */
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-void PlaceMonsterCard(int player, int zone, struct DuelCard *card, u16 defense, u16 faceUp);
-void SendZoneCardToGraveyardOrBanished(int player, int zone, u16 banish);
-void AddCardToDeckTop(int player, struct DuelCard *card);
-void AddCardToGraveyard(struct DuelCard *card);
-u16 FindMonsterWithLinkTo(int player, int zone);
-
-struct DuelCmdEntry {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-};
-
-struct DuelCmd {
-    u16 cmd;                            /* +0x000: enum DuelCmdId in bits 0-11, acting player in bit 15 */
-    u16 arg2;                           /* +0x002 */
-    u16 arg4;                           /* +0x004 */
-    u16 arg6;                           /* +0x006 */
-    struct DuelCmdEntry queue[256];     /* +0x008 */
-    u16 queueCount;                     /* +0x808 */
-    u16 step:7;                         /* +0x80A bits 0-6: handler step; 0 when a command starts */
-    u16 counter:7;                      /* +0x80A bits 7-13 */
-    u16 unk80A_14:2;
-    u32 unk80C_0:5;                     /* +0x80C */
-    u32 timer:7;                        /* +0x80C bits 5-11 */
-    u32 unk80C_12:1;
-    u32 running:1;                      /* +0x80D bit 5: cleared by the finished handler */
-    u32 unk80C_14:18;
-    u16 *hofsTable;                     /* +0x810 */
-    struct DuelCard card;               /* +0x814: card saved by the current command (the moving card) */
-    u16 savedDeckCount[2];              /* +0x818 */
-    u16 savedFusionCount[2];            /* +0x81C */
-    u32 savedDeck[2][80];               /* +0x820 */
-    u32 savedFusionDeck[2][80];         /* +0xAA0 */
-};
-
-extern struct DuelCmd gDuelCmd;             /* 0x020185C0 */
-extern struct DuelCard gDuelCmdCard;        /* 0x02018DD4: alias of gDuelCmd.card */
-extern const u8 gSmokePuffAnim[];           /* smoke-puff sprite animation of a card set face down */
-
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void DuelAnim_MoveCard(u16 cardId, struct DuelLoc *from, struct DuelLoc *to);
-void DuelAnim_PlayZoneEffect(struct DuelLoc *loc, u32 anim, u32 dx, u32 dy);
-void ClearZoneTiles(u32 player, u32 area);
-void DrawAllAreaTiles(void);
-int GetZoneArea(int zone);
-
-struct ChainEntry {
-    u16 card;                   /* +0x00: card ID */
-    u8 player:1;                /* +0x02 bit 0: activating player */
-    u8 kind:3;                  /* +0x02 bits 1-3: enum ChainEntryKind */
-    u16 zone:6;                 /* +0x02 bits 4-9: zone of the activated card */
-    u16 event:6;                /* +0x02 bits 10-15 */
-    u8 skipChainA:1;            /* +0x04 bit 0 */
-    u8 skipChainB:1;            /* +0x04 bit 1 */
-    u8 negated:1;               /* +0x04 bit 2: activation negated; most handlers return at once */
-    u8 destroyIfNegated:1;      /* +0x04 bit 3: a card that would stay on the field goes to the graveyard */
-    u8 flag4_4:1;               /* +0x04 bit 4 */
-    u8 unk4_5:3;
-    u8 unk5;                    /* +0x05 */
-    u16 loc0;                   /* +0x06 */
-    u16 loc1;                   /* +0x08 */
-    u8 numTargets:3;            /* +0x0A bits 0-2 */
-    u8 unkA_3:5;
-    u8 unkB;                    /* +0x0B */
-    u16 targets[3];             /* +0x0C */
-    u16 unk12;                  /* +0x12 */
-};
-
-struct ChainState {
-    struct ChainEntry pending[32];      /* +0x000 */
-    struct ChainEntry links[16];        /* +0x280: the chain, resolved from the last link back */
-    u16 linkCount;                      /* +0x3C0: entries in links */
-};
-
-extern struct ChainState gChain;            /* 0x02017A40 */
-
-void PlaySE(u32 seId);
-/* ---- END pre-H0 subset ---- */
+#include "global.h"
+#include "duel.h"                   /* struct DuelCard / DuelLoc / DuelZone / DuelPlayer, gDuel, gDuelPlayers,
+                                     * gDuelZones, CopyDuelCard, PlaceMonsterCard, AddCardToGraveyard,
+                                     * AddCardToDeckTop, SendZoneCardToGraveyardOrBanished,
+                                     * FindMonsterWithLinkTo, DUEL_CARD_ID */
+#include "sound.h"                  /* PlaySE */
+#include "constants/cards.h"        /* CARD_SNATCH_STEAL, CARD_INSECT_MONSTER_TOKEN */
+#include "constants/duel.h"         /* enum DuelArea, DuelPhase, DuelZoneIndex, ZoneStatusFlag; DUEL_LOC_ZONE */
+#include "constants/duel_cmds.h"    /* enum TokenKind */
+#include "constants/sound.h"        /* SE_ZONE_EFFECT */
+#include "card_data.h"              /* CARD_NUMBER_TOKEN_FIRST / _END, CARD_NUMBER_ALT_ART */
+#include "util.h"                   /* MemCopy16 */
+#include "chain.h"                  /* struct ChainEntry, gChain */
+#include "duel_actions.h"           /* UpdateMonsterControl */
+#include "duel_cmd.h"               /* struct DuelCmd gDuelCmd, gDuelCmdCard, gSmokePuffAnim */
+#include "duel_flow.h"              /* gDuelCtrl */
+#include "duel_screen.h"            /* DuelScreen_ScrollToZone, DuelAnim_MoveCard, DuelAnim_PlayZoneEffect,
+                                     * ClearZoneTiles, DrawAllAreaTiles, GetZoneArea */
 
 /* ---- Unit-local helpers and views ---- */
 
@@ -278,8 +98,8 @@ static inline u16 CardNumberToId(u16 number)
         return *(((const u16 *)0x08623DF4) + ((number - CARD_NUMBER_ALT_ART) & 0x7FF)) + 1;
 }
 
-/* Sprite animation streams for DuelAnim_PlayZoneEffect (only this unit uses them). Each is played with
- * sound effect 16, which constants/sound.h does not name yet. */
+/* Sprite animation streams for DuelAnim_PlayZoneEffect (only this unit uses them). Each is played together
+ * with SE_ZONE_EFFECT. */
 extern const u8 gNegateAnim[];          /* 0x0868DB94: a card is negated */
 extern const u8 gNegateAnimSideways[];  /* 0x0868EC38: the same for a card in defense position */
 extern const u8 gTributeAnim[];         /* 0x08690D0C: a whirlwind sweeps the card away */
@@ -343,14 +163,14 @@ void DuelCmd_SetSpellTrapDisabled(void)
     switch (gDuelCmd.step) {
     case 0:
         zone = ZoneAt(player & 1, zoneIdx);
-        /* Empty zone. Read through a card pointer, which loads the whole word as the ROM does. */
-        if (((struct DuelCard *)zone)->id == 0) {
+        /* Empty zone. DUEL_CARD_ID reads through a card pointer, which loads the whole word as the ROM does. */
+        if (DUEL_CARD_ID(zone) == 0) {
             gDuelCmd.running = 0;
             break;
         }
         ((struct DuelZoneDisabledView *)zone)->isDisabled = gDuelCmd.arg4;
         if (gDuelCmd.arg4 != 0) {
-            PlaySE(16);
+            PlaySE(SE_ZONE_EFFECT);
             loc.player = player;
             loc.area = DUEL_AREA_SPELL_TRAP;
             loc.index = zoneIdx - ZONE_SPELL_0;
@@ -473,7 +293,7 @@ void DuelCmd_ClearZoneStatusFlags(void)
 
     switch (gDuelCmd.step) {
     case 0:
-        PlaySE(16);
+        PlaySE(SE_ZONE_EFFECT);
         loc.player = player;
         loc.area = DUEL_AREA_MONSTER;
         loc.index = zoneIdx;
@@ -527,7 +347,7 @@ void DuelCmd_TributeMonster(void)
 
     switch (gDuelCmd.step) {
     case 0:
-        PlaySE(16);
+        PlaySE(SE_ZONE_EFFECT);
         from.player = player;
         from.area = DUEL_AREA_MONSTER;
         from.index = zoneIdx;
@@ -540,7 +360,7 @@ void DuelCmd_TributeMonster(void)
     case 1:
         card = &gDuelCmd.card;
         zones = gDuelZones[player & 1].zones;
-        CopyDuelCard((u32 *)card, (u32 *)(zones + zoneIdx));
+        CopyDuelCard(card, &zones[zoneIdx].card);
         SendZoneCardToGraveyardOrBanished(player, zoneIdx, banish);
         /* Tokens (card numbers 1920-1999) leave the duel without an animation. The number is looked up from
          * the low halfword of the card word. */
@@ -593,7 +413,7 @@ void DuelCmd_PlantInOpponentDeck(void)
     case 1:
         /* gDuelCmdCard is gDuelCmd.card under its own symbol; the ROM addresses it by that symbol here. */
         zones = gDuelZones[player & 1].zones;
-        CopyDuelCard((u32 *)&gDuelCmdCard, (u32 *)(zones + zoneIdx));
+        CopyDuelCard(&gDuelCmdCard, &zones[zoneIdx].card);
         gDuelCmdCard.planted = 1;
         ClearZoneTiles(player, zoneIdx);
         from.player = player;
@@ -648,26 +468,31 @@ void DuelCmd_Nop99(void)
     gDuelCmd.running = 0;
 }
 
+/* 0x9A: no-op, as 0x99. */
 void DuelCmd_Nop9A(void)
 {
     gDuelCmd.running = 0;
 }
 
+/* 0x9B: no-op, as 0x99. */
 void DuelCmd_Nop9B(void)
 {
     gDuelCmd.running = 0;
 }
 
+/* 0x9C: no-op, as 0x99. */
 void DuelCmd_Nop9C(void)
 {
     gDuelCmd.running = 0;
 }
 
+/* 0x9D: no-op, as 0x99. */
 void DuelCmd_Nop9D(void)
 {
     gDuelCmd.running = 0;
 }
 
+/* 0x9E: no-op, as 0x99. */
 void DuelCmd_Nop9E(void)
 {
     gDuelCmd.running = 0;
@@ -791,7 +616,7 @@ void DuelCmd_SetZoneCardWord(void)
     u8 zoneIdx = gDuelCmd.arg2;
     u32 card = (gDuelCmd.arg6 << 16) | gDuelCmd.arg4;
 
-    CopyDuelCard((u32 *)&gDuelPlayers[player].zones[zoneIdx].card, &card);
+    CopyDuelCard(&gDuelPlayers[player].zones[zoneIdx].card, (struct DuelCard *)&card);
     DrawAllAreaTiles();
     gDuelCmd.running = 0;
 }
@@ -818,7 +643,7 @@ void DuelCmd_MoveMonsterFaceDown(void)
         ZoneAt(player & 1, to)->isFaceUp = 0;
         ZoneAt(player & 1, to)->isDefense = 1;
         ZoneAt(player & 1, from)->card.id = 0;
-        PlaySE(16);
+        PlaySE(SE_ZONE_EFFECT);
         loc.player = player;
         loc.area = DUEL_AREA_MONSTER;
         loc.index = to;

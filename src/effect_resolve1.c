@@ -22,73 +22,7 @@
 #include "constants/card_stats.h"   /* enum CardType */
 #include "constants/duel.h"         /* enum DuelZoneIndex, ResponseEventKind, ZoneLinkKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, duel_cmd.h, card_list_view.h, summon.h and duel_screen.h do not pull in the legacy
- * header. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly
- * (checked against the staged header, build/readability/issues/effect_resolve1.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 banishedCount;               /* +0x006 */
-    u8 unk7[0x28 - 0x7];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-u32 GetFieldMagicIndex(u16 cardNo);
-u32 GetZoneCardType(s32 player, s32 slot);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-/* ---- END duel.h stand-in ---- */
-
+#include "duel.h"                   /* DuelZone, gDuelPlayers, gDuelZones, GetFieldMagicIndex, GetZoneCardType */
 #include "chain.h"                  /* struct ChainEntry, gChain, EventResponse_Request */
 #include "duel_cmd.h"               /* DuelCmd_Push */
 #include "duel_actions.h"           /* LP, destroy, flip, position, hand and deck actions */
@@ -143,13 +77,9 @@ extern struct FieldZoneStride gDuelFieldZoneByPlayer[2] asm("gDuelFieldZone");
 /* Duel command id for a player: DUEL_CMD_PLAYER marks player 1 as the acting player. */
 #define CMD_FOR(isPlayer1, cmd) ((isPlayer1) ? DUEL_CMD_PLAYER | (cmd) : (cmd))
 
-/* Text box of the effect prompts: x 5, y 2, 20 x 9 cells. */
-#define EFFECT_TEXT_POS 0x205
-#define EFFECT_TEXT_SIZE 0x914
-
-/* Card number 1249: an effect key with no EDS card that counts as a Harpie Lady (constants/cards.h has no
- * CARD_1249; build/readability/issues/effect_resolve1.md). */
-#define HARPIE_LADY_KEY 1249
+/* Text box of the effect prompts: x 5, y 2, 20 x 9 cells (TextBoxOpen's pos and size arguments). */
+#define EFFECT_TEXT_POS TEXTBOX_POS(5, 2)
+#define EFFECT_TEXT_SIZE TEXTBOX_SIZE(20, 9)
 
 /*
  * Elegant Egotist (317): Special Summon a Harpie Lady or Harpie Lady Sisters from the hand or the deck.
@@ -170,7 +100,7 @@ int EffectElegantEgotistResolve(struct ChainEntry *link)
     switch (gChain.effectStep) {
     case EFFECT_STEP_START:
         if (!CountActiveCardsOnField(0, CARD_HARPIE_LADY) && !CountActiveCardsOnField(1, CARD_HARPIE_LADY)
-            && !CountActiveCardsOnField(0, HARPIE_LADY_KEY) && !CountActiveCardsOnField(1, HARPIE_LADY_KEY))
+            && !CountActiveCardsOnField(0, CARD_1249) && !CountActiveCardsOnField(1, CARD_1249))
             return EFFECT_STEP_DONE;
         if (CollectEffectTargetsInt(link->player, CARD_ELEGANT_EGOTIST, 0) == 0)
             return EFFECT_STEP_DONE;
@@ -178,7 +108,7 @@ int EffectElegantEgotistResolve(struct ChainEntry *link)
             return EFFECT_STEP_DONE;
         if (link->player) {
             count = CollectEffectTargetsInt(1, CARD_ELEGANT_EGOTIST, 0);
-            /* Matching: `cards + i` (not cards[i]) keeps 0x0201D81C as one pool constant, so the found
+            /* FAKEMATCH: `cards + i` (not cards[i]) keeps 0x0201D81C as one pool constant, so the found
              * blocks address the viewer as base - 12. The u16 id locals in the first and third loops add
              * the RTL insns that make loop.c hoist the card table only in its second pass (after the
              * pointer copy), as the ROM does. */
@@ -188,7 +118,7 @@ int EffectElegantEgotistResolve(struct ChainEntry *link)
                     goto foundSisters;
             }
             for (i = 0; i < count; i++) {
-                if (CARD_NUMBER(CARD_ID(*(gCardListView.cards + i))) == HARPIE_LADY_KEY)
+                if (CARD_NUMBER(CARD_ID(*(gCardListView.cards + i))) == CARD_1249)
                     goto foundKey;
             }
             for (i = 0; i < count; i++) {
@@ -479,7 +409,7 @@ int EffectDamageOpponentResolve(struct ChainEntry *link)
             int side = (1 - link->player) & 1;
 
             if (players[side].handCount != 0) {
-                /* Matching: the opponent is computed before the second side index (operand order). */
+                /* FAKEMATCH: the opponent is computed before the second side index (the ROM's operand order). */
                 int opponent = 1 - link->player;
                 int side2 = (1 - link->player) & 1;
 
@@ -641,7 +571,8 @@ int EffectCyberSteinResolve(struct ChainEntry *link)
         case EFFECT_STEP_4:
             switch (CARD_NUMBER(link->card)) {
             case CARD_CYBER_STEIN:
-                /* Matching: the status flags are the (zero) negated byte, as in the ROM. */
+                /* FAKEMATCH: the last argument (the status flags, 0) is the zero `negated` byte rather than a
+                 * literal, which reproduces the ROM's register reuse. */
                 QueueSpecialSummon(link->player,
                     (struct DuelCard *)&gCardListView.cards[gCardListView.cursorRow + gCardListView.top], 1, 0,
                     negated);

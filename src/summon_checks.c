@@ -1,16 +1,3 @@
-#include "global.h"
-#include "legacy/gba.h"                    /* A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
-#include "legacy/main.h"                   /* gMain.newKeys, gMain.frameCounter */
-#include "util.h"                   /* Random */
-#include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_32x32 */
-#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu, TextBoxMenuState */
-#include "card_data.h"              /* gCardIdToNumber, gCardStats, CARD_ID_MASK, CARD_STATS_* */
-#include "constants/cards.h"        /* CARD_* card numbers */
-#include "constants/card_stats.h"   /* enum CardType, CardAttribute, CardKind */
-#include "constants/duel.h"         /* enum DuelArea, ZONE_*, RESPONSE_SUMMONED, CHAIN_KIND_MONSTER */
-#include "constants/duel_cmds.h"    /* DUEL_CMD_*, DUEL_CMD_PLAYER */
-#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
-
 /*
  * Painful Choice's five-card prompt, the hand-summon legality checks, the summon position prompt and the step
  * machines of the two hand-summon actions (wiki/functions/summon-checks-c.md).
@@ -29,92 +16,21 @@
  * SummonAction_Update (summon_action.c). The second asks Attack or Defense first, with the SummonPositionMenu_*
  * callbacks.
  */
-
-/* ---- BEGIN pre-H0 subset of duel.h ---- */
-/*
- * The part of the staged duel.h that this unit and the headers it includes need (names, types and bitfield
- * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
- * header switch (H0, build/readability/HEADERS.md), and chain.h, summon.h, duel_screen.h and duel_cmd.h
- * include it, so this block also defines its include guard. After H0, replace the block (BEGIN to END) with
- * #include "legacy/duel.h".
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u8 unk4[0x94 - 4];              /* not used here; chain.h embeds a whole zone */
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 unk3;
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 unk5[7];                     /* +0x005 */
-    u8 unkC_0:5;                    /* +0x00C bits 0-4 */
-    u8 banishCostFromField:1;       /* +0x00C bit 5: graveyard-banish summon costs are paid from the field */
-    u8 unkC_6:2;
-    u8 unkD[0xD64 - 0xD];
-};
-
-/* gDuelZones (0x0201930C = &gDuel.players[0].zones): the zones of each player with the player stride. */
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B50 - 0x1ACC];
-    u8 promptLinked:1;              /* +0x1B50 bit 0: the prompt is mirrored over the link */
-    u8 promptActive:1;              /* +0x1B50 bit 1: a prompt is pending */
-    u8 promptPlayer:1;              /* +0x1B50 bit 2: player who answers (1 = CPU or link partner) */
-    u8 unk1B50_3:1;
-    u16 promptKind:6;               /* +0x1B50 bits 4-9: enum DuelPromptKind */
-    u16 unk1B51_2:6;
-    u16 promptArgs[8];              /* +0x1B52: [0] argument, [1] value (DuelPrompt_Post); all 8 for PostData */
-    u8 promptStep;                  /* +0x1B62: step of the running prompt handler */
-    u8 unk1B63;
-    u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelGraveyards[];       /* 0x02019BE8 = gDuelPlayers[0].graveyard (player stride 0xD64) */
-
-u32 IsToonMonster(u16 cardNo);                          /* the four Toon effect monsters */
-u32 IsCardProhibited(u16 cardId);                       /* an active Prohibition declares the same name */
-int CountActiveCardsOnField(int player, u16 cardNo);    /* face-up, not-disabled copies in zones 0-10 */
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountMonstersByNumber(int player, u16 cardNo);      /* face up or down */
-int CountMonsters(int player);
-int CountHandCardsByNumber(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-int CountTributableMonsters(int player, int excludeZone);   /* excludeZone -1 = none */
-int HasFaceUpToonWorld(int player);
-u32 GetZoneCardType(s32 player, s32 slot);              /* effective type of the card in a zone, 0 if empty */
-u32 GetZoneCardAttribute(s32 player, s32 slot);         /* effective attribute, 0 if empty */
-void PlaySE(u32 seId);                                  /* legacy sound.h lacks it */
-/* ---- END pre-H0 subset ---- */
+#include "global.h"
+#include "gba.h"                    /* A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
+#include "main.h"                   /* gMain.newKeys, gMain.frameCounter */
+#include "sound.h"                  /* PlaySE */
+#include "util.h"                   /* Random */
+#include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_32x32 */
+#include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu, TextBoxMenuState */
+#include "card_data.h"              /* gCardIdToNumber, gCardStats, CARD_ID_MASK, CARD_STATS_* */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType, CardAttribute, CardKind */
+#include "constants/duel.h"         /* enum DuelArea, ZONE_*, RESPONSE_SUMMONED, CHAIN_KIND_MONSTER */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_*, DUEL_CMD_PLAYER */
+#include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
+#include "duel.h"                   /* gDuel, gDuelPlayers, gDuelZones, gDuelGraveyards, struct DuelCard / DuelZone /
+                                     * DuelPlayer, the card and zone counters, IsToonMonster, IsCardProhibited */
 
 #include "chain.h"                  /* Chain_AddPending */
 #include "summon.h"                 /* struct SummonAction, gSummonAction, the summon rules */
@@ -129,11 +45,11 @@ void PlaySE(u32 seId);                                  /* legacy sound.h lacks 
 /* ROM data used only here. */
 extern const u8 gStrPromptSelectOneOfFive[];            /* "Select 1 card from out of 5." */
 
-/* Text-box positions and sizes (x | y << 8, width | height << 8, in cells). */
-#define BOX_ONE_OF_FIVE_POS     0x206       /* cell (6, 2) */
-#define BOX_ONE_OF_FIVE_SIZE    0x213       /* 19 x 2 */
-#define BOX_POSITION_POS        0x207       /* cell (7, 2) */
-#define BOX_POSITION_SIZE       0x30F       /* 15 x 3 */
+/* Text boxes, in cells: the five-card prompt at (6, 2), 19 x 2; the position prompt at (7, 2), 15 x 3. */
+#define BOX_ONE_OF_FIVE_POS     TEXTBOX_POS(6, 2)
+#define BOX_ONE_OF_FIVE_SIZE    TEXTBOX_SIZE(19, 2)
+#define BOX_POSITION_POS        TEXTBOX_POS(7, 2)
+#define BOX_POSITION_SIZE       TEXTBOX_SIZE(15, 3)
 
 /* gCardIdToNumber, gCardStats and gPulseScaleCurve through their integer addresses (0x08622AB4, 0x08621DE0,
  * 0x081A4424): the ROM's register allocation needs these forms (the symbols give other code). */
@@ -205,8 +121,9 @@ void FiveCardMenu_Draw(void)
 {
     int y = (gTextBox.revealRow - gTextBox.height + 2) * 8;
     int i = 0;
-    /* Matching: promptArgs is reached as gDuel + 0x1B52 through two locals, and the pulse curve by its integer
-     * address; gDuel.promptArgs and the symbol gPulseScaleCurve give other code. */
+    /* Matching: the pulse curve is read by its integer address (the symbol gPulseScaleCurve gives other code).
+     * FAKEMATCH: promptArgs is reached as gDuel + 0x1B52 through the two locals base and off; the member
+     * gDuel.promptArgs gives other code. */
     u32 base = (u32)&gDuel;
     int x = 0x28;
     u32 off = OFFSET_OF(struct DuelState, promptArgs);
@@ -255,7 +172,7 @@ u16 FiveCardMenu_HandleInput(void)
     TextCellsClear();
     DuelInfo_DrawCard(gDuel.promptArgs[box->result], 1);
     return 0;
-check_a:    /* Matching: the shared tail is a goto target, as in the ROM's block order */
+check_a:    /* FAKEMATCH: the shared tail is a goto target, as in the ROM's block order */
     if (gMain.newKeys & A_BUTTON)
         return 1;
     return 0;
@@ -275,7 +192,7 @@ int DuelPrompt_PickOneOfFiveCards(void)
     register u8 *step asm("r5");
     if (duel->promptPlayer) {
         pick = Random() % 5;
-        goto store;
+        goto store;     /* FAKEMATCH: the store below is shared by a goto into the if body (the ROM's block order) */
     }
     {
         /* FAKEMATCH: initialized base/offset copies retain the ADD order. */
@@ -359,9 +276,9 @@ int CanSummonKey1257(int player)
     u16 noTributeKey = CARD_1418;
     if (CountActiveCardsOnField(0, noTributeKey) > 0 || CountActiveCardsOnField(1, noTributeKey) > 0)
         return 0;
-    if (CountMonstersByNumber(player, 1410))    /* key 1410, no EDS card */
+    if (CountMonstersByNumber(player, CARD_1410))
         hasKeyMonster = 1;
-    if (CountMonstersByNumber(player, 1412))    /* key 1412, no EDS card */
+    if (CountMonstersByNumber(player, CARD_1412))
         hasKeyMonster = 1;
     if (hasKeyMonster != 0 && CountTributableMonsters(player, -1) > 1)
         return 1;
@@ -412,17 +329,17 @@ int CanPayBanishSummonCost(int player, u16 cardId)
             }
         }
         return 0;
-    case 1515:      /* key 1515, no EDS card */
+    case CARD_1515:
         need = 2;
         attribute = ATTRIBUTE_LIGHT;
         break;
-    case 1516:      /* key 1516, no EDS card */
+    case CARD_1516:
         attribute = ATTRIBUTE_FIRE;
         break;
     case CARD_1517:
         attribute = ATTRIBUTE_WATER;
         break;
-    case 1518:      /* key 1518, no EDS card */
+    case CARD_1518:
         attribute = ATTRIBUTE_EARTH;
         break;
     case CARD_1519:
@@ -488,14 +405,14 @@ int CanSummonFromHand(int player, u16 cardId)
     if (IsToonMonster(number) != 0 && HasFaceUpToonWorld(player) == 0)
         return 0;
     switch (number) {
-    case CARD_1514:
-    case 1515:      /* keys 1514-1519: Special Summons that remove monsters from play (non-EDS) */
-    case 1516:
+    case CARD_1514:     /* keys 1514-1519: Special Summons that remove monsters from play (non-EDS) */
+    case CARD_1515:
+    case CARD_1516:
     case CARD_1517:
-    case 1518:
+    case CARD_1518:
     case CARD_1519:
         if (CanSpecialSummon(player) != 0)
-            goto summon_check;
+            goto summon_check;  /* FAKEMATCH: the label sits after the Valkyrion case (the ROM's block order) */
         return 0;
     case CARD_RED_EYES_BLACK_METAL_DRAGON:
     case CARD_HARPIE_LADY_SISTERS:
@@ -509,7 +426,7 @@ int CanSummonFromHand(int player, u16 cardId)
         if (CanSpecialSummon(player) == 0)
             return 0;
         return (u16)(CanActivateEffectOfCard(player, cardId, 1));
-    case 1250:      /* key 1250, no EDS card */
+    case CARD_1250:
         if (gDuelPlayers[player & 1].handCount == 1 && CountFreeMonsterZones(player) > 0)
             return 1;
         if (CountTributableMonsters(player, -1) > 1)
@@ -720,7 +637,7 @@ int ExecuteSummonAction(void)
             ChangeBattlePosition(gSummonAction.player, gSummonAction.zone, 0, 0);
             break;
         case CARD_BOAR_SOLDIER:
-        case 1413:      /* key 1413, no EDS card */
+        case CARD_1413:
             DestroyFieldCard(gSummonAction.player, gSummonAction.zone, 1);
             break;
         }
@@ -783,7 +700,7 @@ int ExecuteSummonActionAskPosition(void)
         lightOfIntervention = CARD_LIGHT_OF_INTERVENTION;
         if (CountActiveCardsOnField(0, lightOfIntervention) != 0 || CountActiveCardsOnField(1, lightOfIntervention) != 0)
             gSummonAction.isFaceUp = 1;
-        goto next_step;
+        goto next_step;     /* FAKEMATCH: step 1 shares the step increment at the end of step 4 (the ROM's block order) */
     }
     case 2: {
         u16 msg;
@@ -850,7 +767,7 @@ int ExecuteSummonActionAskPosition(void)
             ChangeBattlePosition(gSummonAction.player, gSummonAction.zone, 0, 0);
             break;
         case CARD_BOAR_SOLDIER:
-        case 1413:      /* key 1413, no EDS card */
+        case CARD_1413:
             DestroyFieldCard(gSummonAction.player, gSummonAction.zone, 1);
             break;
         }

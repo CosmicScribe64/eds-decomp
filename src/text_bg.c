@@ -20,9 +20,9 @@
 #include "global.h"
 #include "bg.h"        /* LoadBgImageMap1, SetBgMapEntry, DrawCardPortrait */
 #include "debug.h"     /* DebugPrintf, DebugPrintFlush */
-#include "legacy/gba.h"       /* REG_SIOCNT */
+#include "gba.h"       /* REG_SIOCNT */
 #include "link.h"      /* struct LinkBuf gLinkBuf, enum LinkPacketType, the Link* packet layer */
-#include "legacy/main.h"      /* struct Main gMain (vblankCallbackEarly) */
+#include "main.h"      /* struct Main gMain (vblankCallbackEarly, textAreaStart/End, bgMapBuffer), IntrTable */
 #include "text.h"      /* SetTextArea, the DrawBg* printers, the glyph tile renderers */
 #include "util.h"      /* MemCopy16, MemClear16 */
 
@@ -42,8 +42,6 @@ extern u32 __udivsi3(u32 a, u32 b);      /* 0x0807F0AC: the game's unsigned divi
 /* Matching: LinkSioRecv is called with a third argument (the byte count) that the link.h
  * prototype does not take; the count lands in a dead register. */
 extern u16 LinkSioRecv3(s32 id, void *buf, u32 n) asm("LinkSioRecv");
-
-extern u8 IntrTable[];                      /* 0x03000000 */
 
 /* gMain views of the text area (SetTextArea) and of the BG map buffers with the text area
  * end: the draw functions recompute the map pointer from these symbols on a wrap. */
@@ -73,12 +71,11 @@ extern u32 gDecimalDigitChars[];           /* 0x08087634 */
 int LinkSendPacket(void *pkt)
 {
     int ok;
-    MemCopy16(gLinkSendBuf, pkt, 12);
-    /* gLinkSendBuf - 0x31A is gLinkBuf.sendSeq, - 0x532 is gLinkBuf.lastSentPacket. */
-    *(u16 *)gLinkSendBuf = (*(u16 *)gLinkSendBuf & 0xF0FF) | (*(u16 *)(gLinkSendBuf - 0x31A) << 8);
-    if (LinkSioSend(gLinkSendBuf, 12)) {
-        MemCopy16(gLinkSendBuf - 0x532, gLinkSendBuf, 12);
-        *(u16 *)(gLinkSendBuf - 0x31A) = (*(u16 *)(gLinkSendBuf - 0x31A) + 1) & 0xF;
+    MemCopy16(&gLinkBuf.sendBuf, pkt, 12);
+    *(u16 *)&gLinkBuf.sendBuf = (*(u16 *)&gLinkBuf.sendBuf & 0xF0FF) | (gLinkBuf.sendSeq << 8);
+    if (LinkSioSend(&gLinkBuf.sendBuf, 12)) {
+        MemCopy16(gLinkBuf.lastSentPacket, &gLinkBuf.sendBuf, 12);
+        gLinkBuf.sendSeq = (gLinkBuf.sendSeq + 1) & 0xF;
         ok = 1;
     } else {
         ok = 0;
@@ -91,17 +88,17 @@ int LinkSendPacket(void *pkt)
    the ROM computes them (sendCount +0x300, queueIndex +0x830). */
 void LinkSendNextQueued(void)
 {
-    u8 *b = (u8 *)&gLinkBuf;
-    u16 *n = (u16 *)(b + 0x300);
+    struct LinkBuf *b = &gLinkBuf;
+    u16 *n = &b->sendCount;
     int *ip;
     if (*n != 0 && (u16)LinkSendPacket(b)) {
         u16 left = *n - 1;
         int zero = 0;
         *n = left;
-        ip = (int *)(b + 0x830);
+        ip = &b->queueIndex;
         *ip = zero;
         if (*ip < *n) {
-            u8 *queue = b;
+            struct LinkPacket *queue = b->sendQueue;
             int *counter = ip;
             do {
                 u32 off = *counter * 12;
@@ -122,10 +119,10 @@ void LinkSendNextQueued(void)
    and answer with an ACK packet. */
 void LinkStoreRecvPacket(void *pkt)
 {
-    u8 *b = (u8 *)&gLinkBuf;
-    u16 *wr = (u16 *)(b + 0x528);
+    struct LinkBuf *b = &gLinkBuf;
+    u16 *wr = &b->recvWrite;
     int off = *wr * 12;
-    u32 addr = (u32)b + 0x52C;
+    u32 addr = (u32)b->recvRing;
     MemCopy16((u8 *)(addr + off), pkt, 12);
     *wr = (*wr + 1) & 0x3F;
     LinkSendPacket(gLinkPacketAck);
@@ -377,9 +374,9 @@ void LinkInit(void)
 {
     LinkSioStop();
     MemClear16(&gLinkBuf, 0x840);
-    LinkSioInit(IntrTable, IntrTable + 0x1C);
+    LinkSioInit((u32 *)&IntrTable[INTR_SLOT_SERIAL], (u32 *)&IntrTable[INTR_SLOT_TIMER3]);
     gLinkBuf.lastRecvSeq = 0xF;
-    gMain.vblankCallbackEarly = LinkVBlankHook;
+    gMain.vblankCallbackEarly = (void (*)(void))LinkVBlankHook;
 }
 
 /* Shut the link driver down and clear the buffers. */
@@ -485,8 +482,8 @@ void RenderSjisGlyphTile(u16 sjis, u16 *dst, u16 fg, u16 bg)
 /* Store the text area start/end cells in the main struct at +0x441C / +0x441E. */
 void SetTextArea(u16 startCell, u16 endCell)
 {
-    gMainTextArea.textAreaStart = startCell;
-    gMainTextArea.textAreaEnd = endCell;
+    gMain.textAreaStart = startCell;
+    gMain.textAreaEnd = endCell;
 }
 
 /* Is this Shift-JIS code a character that may not start a line (punctuation, small kana)? */
@@ -543,7 +540,7 @@ int IsLineEndForbidden(u16 sjis)
    (u8) casts and the repeated *(u16 *)str reads set cell's live length so that ch gets r5. */
 void DrawBgSjisString(u16 cell, u16 colors, u16 tile, u8 *str)
 {
-    u16 *map = (u16 *)gBgMaps;
+    u16 *map = (u16 *)gMain.bgMapBuffer;
     u8 fg = colors;
     u8 bg = colors >> 8;
     u16 base = cell;
@@ -553,11 +550,11 @@ void DrawBgSjisString(u16 cell, u16 colors, u16 tile, u8 *str)
         if ((u8)*(u16 *)str == 0)
             return;
         ch = (u8)(*(u16 *)str >> 8) | ((u8)*(u16 *)str << 8);
-        if (((cell & 0x1F) >= (gMainBgMap.textAreaEnd & 0x1F) - 2 && !IsLineStartForbiddenU16(ch))
-            || ((cell & 0x1F) >= (gMainBgMap.textAreaEnd & 0x1F) - 3 && IsLineEndForbiddenU16(ch))) {
+        if (((cell & 0x1F) >= (gMain.textAreaEnd & 0x1F) - 2 && !IsLineStartForbiddenU16(ch))
+            || ((cell & 0x1F) >= (gMain.textAreaEnd & 0x1F) - 3 && IsLineEndForbiddenU16(ch))) {
             base += 0x20;
             cell = base;
-            map = (u16 *)gBgMaps + base;
+            map = (u16 *)gMain.bgMapBuffer + base;
         }
         RenderSjisGlyphTile(ch, (u16 *)(0x06004000 + tile * 32), fg, bg);
         *map++ = tile;
@@ -572,7 +569,7 @@ void DrawBgSjisString(u16 cell, u16 colors, u16 tile, u8 *str)
    (text area end @ +0x441E). */
 void DrawBgFullwidthString(u16 cell, u16 colors, u16 tile, u8 *str)
 {
-    u16 *map = (u16 *)gBgMaps;
+    u16 *map = (u16 *)gMain.bgMapBuffer;
     u8 fg = colors;
     u8 bg = colors >> 8;
     u16 base = cell;
@@ -583,10 +580,10 @@ void DrawBgFullwidthString(u16 cell, u16 colors, u16 tile, u8 *str)
             return;
         ch = AsciiToFullwidthSjis(*str);
         if (ch != 0) {
-            if ((cell & 0x1F) >= (gMainBgMap.textAreaEnd & 0x1F) - 2) {
+            if ((cell & 0x1F) >= (gMain.textAreaEnd & 0x1F) - 2) {
                 base += 0x20;
                 cell = base;
-                map = &gMainBgMap.bgMapBuffer[base];
+                map = (u16 *)gMain.bgMapBuffer + base;
             }
             RenderSjisGlyphTile(ch, (u16 *)(0x06004000 + tile * 32), fg, bg);
             *map++ = tile;
@@ -600,7 +597,7 @@ void DrawBgFullwidthString(u16 cell, u16 colors, u16 tile, u8 *str)
 /* Draw a NUL-terminated ASCII string: glyph tiles to 0x06004000 + tile*32, map entries at (cell). */
 void DrawBgString(u16 cell, u16 colors, u16 tile, char *str)
 {
-    u16 *map = (u16 *)gBgMaps;
+    u16 *map = (u16 *)gMain.bgMapBuffer;
     u8 fg = colors;
     u8 bg = colors >> 8;
     map += cell;
@@ -675,7 +672,7 @@ void DrawBgHex(u32 cellColors, u32 tileDigits, int value)
 void DrawCardPortrait(u16 screenBlock, u16 cell, u16 cardId, u16 tileBase, u16 palBase)
 {
     u32 pal = palBase;
-    u16 *map = (u16 *)(0x0300045C + (screenBlock & 7) * 0x800);
+    u16 *map = gMain.bgMapBuffer[screenBlock & 7];
     u16 i;
     u16 tile;
     u16 j;
@@ -726,7 +723,7 @@ void DrawCardPortrait(u16 screenBlock, u16 cell, u16 cardId, u16 tileBase, u16 p
 /* Write tile entry `entry` at (cell, screenBlock) of the BG map buffer at 0x0300045C. */
 void SetBgMapEntry(u16 screenBlock, u16 cell, u16 entry)
 {
-    u8 *row = gBgMaps[screenBlock];
+    u8 *row = (u8 *)gMain.bgMapBuffer[screenBlock];
     u8 *cellPtr = row + cell * 2;
     *(u16 *)cellPtr = entry;
 }
@@ -763,7 +760,7 @@ u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
         u16 tile = *cells++;
         u16 idx = (pos & 0x3F) | ((pos & 0xFF00) >> 3);
         idx += mapOffset;
-        ((u16 *)gBgMaps[1])[idx] = tile + tileBase / 2;
+        gMain.bgMapBuffer[1][idx] = tile + tileBase / 2;
     }
     return hdrT[0];
 }

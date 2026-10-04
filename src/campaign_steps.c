@@ -16,6 +16,10 @@
 #include "constants/cards.h"    /* CARD_THE_MONARCHY, ... (the three Championship tickets) */
 #include "constants/duel.h"     /* enum DuelResult, DuelFormat */
 #include "constants/game.h"     /* enum BoosterPackId, DuelistId */
+#include "constants/sound.h"    /* enum Song */
+#include "main.h"               /* gMain: the step and sub-step bytes, opponent, events, reward */
+#include "duel.h"               /* gDuel.result, ShuffleDeck */
+#include "sound.h"              /* PlayBGM */
 #include "save.h"               /* gSaveData, RecordDuel*, Add/RemoveCardFromTrunk, SaveGame, ... */
 #include "calendar.h"           /* enum CalendarEvent (gMain.events) */
 #include "campaign.h"           /* struct OpponentResultTexts, Campaign_*, OpponentSelect_Run */
@@ -27,69 +31,20 @@
 #include "card_detail.h"        /* CardDetail_Init, CardDetail_Run */
 #include "deck_edit.h"          /* SideDeckSwap_Run */
 
-/* ---- BEGIN header subset (pre-H0) ---- */
-/*
- * The parts of main.h, duel.h and sound.h this unit uses, with the headers' tags, names, types and bitfield
- * containers. include/main.h, duel.h and sound.h still hold the legacy headers until the header switch (H0,
- * build/readability/HEADERS.md), and the legacy main.h has none of the +0x4888 names. After H0, replace this
- * block (BEGIN to END) with:
- *     #include "legacy/main.h"
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- */
-struct Main {
-    u8 unk0[0x4857];
-    u8 seqIndexCampaign;                /* +0x4857 step index of the Campaign runner */
-    u8 seqState0;                       /* +0x4858 */
-    u8 seqIndex1;                       /* +0x4859 step index of the menu/Password/Trading/Deck Edit runners */
-    u8 seqState1;                       /* +0x485A */
-    u8 seqState2;                       /* +0x485B */
-    u8 unk485C[0x4870 - 0x485C];
-    u8 firstPlayer:1;                   /* +0x4870 bit 0: who takes the first turn, 0 = this player */
-    u8 opponent:5;                      /* +0x4870 bits 1-5: duelist ID of the Campaign opponent */
-    u8 result:2;                        /* +0x4870 bits 6-7 */
-    u8 unk4871[0x4876 - 0x4871];
-    u16 rewardPack;                     /* +0x4876 reward for the Get Pack screen */
-    u8 unk4878[4];
-    u32 events;                         /* +0x487C CalendarEvent mask of the current duel (0 = ordinary) */
-    u16 rewardCard;                     /* +0x4880 card given after a calendar-event duel (0 = none) */
-    u8 unk4882[6];
-    u8 unk4888_0:1;                     /* +0x4888 bit 0 */
-    u8 opponentFixed:1;                 /* +0x4888 bit 1: opponent already chosen, skip OpponentSelect_Run */
-    u8 duelFormat:2;                    /* +0x4888 bits 2-3: enum DuelFormat (1 single, 3 best of 3) */
-    u8 matchDuelCount:2;                /* +0x4888 bits 4-5: duels played in the current match */
-    u8 unk4888_6:2;
-    s8 matchScore;                      /* +0x4889 wins minus losses in the current match */
-    u16 startField:4;                   /* +0x488A bits 0-3 */
-    u16 subStep:8;                      /* +0x488A bits 4-11: sub-state of the Campaign/Link/menu step */
-    u16 unk488A_12:4;
-};
-extern struct Main gMain;
-
-struct DuelState {
-    u8 unk0[0x1B12];
-    u8 bgmOn:1;                         /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                    /* +0x1B12 bit 1 */
-    u8 phase:3;                         /* +0x1B12 bits 2-4 */
-    u8 linkError:1;                     /* +0x1B12 bit 5 */
-    u8 result:2;                        /* +0x1B12 bits 6-7: enum DuelResult */
-    u8 unk1B13;
-};
-extern struct DuelState gDuel;
-void ShuffleDeck(int player, int passes);
-
-void PlayBGM(u32 songId);
-/* ---- END header subset ---- */
-
 /* ---- Local data and views ---- */
 
 /*
- * Matching: these callers test or return the result of four u16 functions as a whole word (no lsl #16
- * after the call), so they are called through u32-returning views of the same symbols.
+ * Matching: u32-returning views of four functions that return u16 in their headers. Each is another C name
+ * bound to the real symbol with asm(""): these callers test or return the result as a whole word, and the ROM
+ * has no lsl #16 after the call, which the u16 prototypes add (with the header forms 2 of 6 functions match).
  */
+/* View of CB_Bustup (bustup.h: u16 CB_Bustup(void)): the dialogue-finished result is tested whole. */
 u32 CB_BustupU32(void) asm("CB_Bustup");
+/* View of OpponentSelect_Run (campaign.h: u16 return): the "opponent confirmed" result is tested whole. */
 u32 OpponentSelect_RunU32(void) asm("OpponentSelect_Run");
+/* View of SideDeckSwap_Run (deck_edit.h: u16 return): the "swap finished" result is tested whole. */
 u32 SideDeckSwap_RunU32(void) asm("SideDeckSwap_Run");
+/* View of IsPackUnlocked (campaign.h: u16 IsPackUnlocked(u32)): the result is tested whole. */
 u32 IsPackUnlockedU32(u32 packId) asm("IsPackUnlocked");
 
 /* 0x080819BE: the 28 booster packs of the Get Pack list in display order. */
@@ -101,9 +56,9 @@ extern const u16 gOpponentNextMatchDuelText[];
 
 /* The card IDs of the three Championship tickets, read through address-suffixed aliases of
  * gCardNumberToId entries: each gets its own literal, as in the ROM (a single base would be shared). */
-extern const u16 gCardNumberToId_TheMonarchy;         /* gCardNumberToId[CARD_THE_MONARCHY]: round 2 prize */
-extern const u16 gCardNumberToId_SetSailForTheKingdom;         /* gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]: round 1 prize */
-extern const u16 gCardNumberToId_GloryOfTheKingsHand;         /* gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]: semifinal prize */
+extern const u16 gCardNumberToId_TheMonarchy;           /* gCardNumberToId[CARD_THE_MONARCHY]: round 2 prize */
+extern const u16 gCardNumberToId_SetSailForTheKingdom;  /* gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]: round 1 prize */
+extern const u16 gCardNumberToId_GloryOfTheKingsHand;   /* gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]: semifinal prize */
 
 /* Clear the sub-states of the screen runners before the next one starts. */
 #define RESET_SEQ_STATE() (gMain.seqIndex1 = 0, gMain.seqState1 = 0, gMain.seqState2 = 0)
@@ -451,7 +406,8 @@ u16 Campaign_GiveRewards(void)
     case REWARD_STEP_RARE_HUNTER_TEXT:
         return CB_BustupU32();
     case REWARD_STEP_DONE:
-        /* Matching: written out so that the jump table has this last entry. */
+        /* FAKEMATCH: the case is written out, though the default does the same, so that the jump table has
+         * this last entry. */
         return 1;
     }
     return 1;
@@ -501,7 +457,7 @@ u16 Campaign_ShowDuelResult(void)
                 gMain.matchScore--;
                 break;
             case DUEL_RESULT_DRAW:
-                /* Matching: the empty case keeps the ROM's compare tree. */
+                /* FAKEMATCH: the empty case keeps the ROM's compare tree. */
                 break;
             }
             gMain.matchDuelCount++;
@@ -544,7 +500,7 @@ u16 Campaign_ShowDuelResult(void)
             RESET_SEQ_STATE();
             gMain.subStep++;
             gMain.subStep++;
-            PlayBGM(0x15);
+            PlayBGM(SONG_MATCH_CONTINUES);
             return 0;
         }
         switch (gDuel.result) {
@@ -561,18 +517,18 @@ u16 Campaign_ShowDuelResult(void)
                 text = gOpponentResultTexts[opp].win;
                 break;
             }
-            PlayBGM(0x18);
+            PlayBGM(SONG_DUEL_WON);
             break;
         case DUEL_RESULT_LOSE:
             text = gOpponentResultTexts[opp].lose;
             if (gMain.events == CAL_RARE_HUNTER)
-                PlayBGM(0x1C);
+                PlayBGM(SONG_RARE_HUNTER_WON);
             else
-                PlayBGM(0x19);
+                PlayBGM(SONG_DUEL_LOST);
             break;
         case DUEL_RESULT_DRAW:
             text = gOpponentResultTexts[opp].draw;
-            PlayBGM(0x19);
+            PlayBGM(SONG_DUEL_LOST);
             break;
         }
         /* Rare Hunter event: the Ghoul's own texts (X003 after a win, X000 otherwise). */

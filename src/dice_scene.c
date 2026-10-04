@@ -21,66 +21,37 @@
  *    scrolling BG layers (ScrollLayer_*), the HBlank and VBlank scroll handlers, and the F-I-N-A-L letters.
  */
 #include "global.h"
-#include "legacy/gba.h"            /* REG_*, CpuSet, CpuFastSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
-#include "legacy/main.h"           /* gMain */
+#include "constants/sound.h"        /* SE_EXODIA_PIECE, SE_EXODIA_LAUNCH, SE_EXODIA_GATHERED */
+#include "gba.h"            /* REG_*, CpuSet, CpuFastSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0/1, B_BUTTON, IRQ, BLDCNT_*, DISPCNT_* */
+#include "main.h"           /* gMain, IntrTable, INTR_SLOT_HBLANK, VBLANK_COPY_OAM */
+#include "sound.h"          /* PlaySE */
 #include "util.h"           /* MemClear16, MemCopy16, gSineTable, struct Timer / Line, Timer_*, LineInit/Step */
 #include "palette.h"        /* struct Fade / PalFade, FadeStart, FadeTick, PalFade_Start/Apply */
 #include "bg.h"             /* CopyMapRect, CopyTileSheetTo2D, TILE_COLORS_16 */
 #include "sprite.h"         /* struct OamTemplate / OamListEntry / AnimSeq / AnimState, OamList*, ObjAffine* */
 #include "duel_scenes.h"    /* gDuelScene, gSceneWork, gFinalLettersAnim, struct ScrollLayer, scene enums */
 
-/* ---- Names the legacy headers lack (until H0 installs the new gba.h and main.h) ---- */
-
-/* Values as in the new gba.h and main.h; inert once they are installed. */
-#ifndef INTR_FLAG_HBLANK
-#define BG_VRAM                     VRAM
-#define BG_SCREEN_ADDR(n)           (BG_VRAM + 0x800 * (n))
-#define DISPCNT_MODE_4              0x0004
-#define DISPCNT_BG0_ON              0x0100
-#define DISPCNT_BG1_ON              0x0200
-#define DISPCNT_BG2_ON              0x0400
-#define DISPCNT_BG_ALL_ON           0x0F00
-#define DISPCNT_OBJ_ON              0x1000
-#define BGCNT_PRIORITY(n)           (n)
-#define BGCNT_SCREENBASE(n)         ((n) << 8)
-#define BLDCNT_TGT1_BG0             0x0001
-#define BLDCNT_TGT1_OBJ             0x0010
-#define BLDCNT_TGT1_ALL             0x003F
-#define BLDCNT_EFFECT_BLEND         0x0040
-#define BLDCNT_EFFECT_LIGHTEN       0x0080
-#define BLDCNT_TGT2_ALL             0x3F00
-#define BLDALPHA_BLEND(eva, evb)    (((evb) << 8) | (eva))
-#define INTR_FLAG_HBLANK            0x0002
-#define OAM_ATTR0_AFFINE            0x0100
-#define OAM_ATTR0_AFFINE_DOUBLE     0x0300
-#define OAM_ATTR1_MATRIX(n)         ((n) << 9)
-#define INTR_SLOT_HBLANK            1       /* main.h enum IntrSlot */
-#define VBLANK_COPY_OAM             0x1     /* main.h enum VBlankFlag */
-extern void (*IntrTable[16])(void);         /* main.h: IRQ handlers at 0x03000000 */
-#endif
-
-/* The legacy sound.h does not declare PlaySE (the new one does, with this prototype). */
-void PlaySE(u32 seId);
-
 /* ---- Local views kept on purpose (matching choices, see build/readability/HEADERS.md) ---- */
 
-/* MulFix8 with int parameters and result: the ROM neither narrows the arguments nor sign-extends the result
- * (util.h: s16 MulFix8(s16, s16)). */
+/* View of MulFix8 (util.h: s16 MulFix8(s16, s16)) with int parameters and result: the ROM neither narrows the
+ * arguments nor sign-extends the result before the shift that follows each call. */
 extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
 
-/* AnimBlockInit with a u16 result: ExodiaScene_LoadEye stores it to animCount without narrowing (sprite.h:
- * u8 AnimBlockInit, whose result the caller would narrow to 8 bits first). */
+/* View of AnimBlockInit (sprite.h: returns u8) with a u16 result: ExodiaScene_LoadEye stores it to animCount
+ * without narrowing, where the u8 result would be narrowed to 8 bits first. */
 extern u16 AnimBlockInitU16(struct AnimSeq **scripts, u8 *block) asm("AnimBlockInit");
 
-/* OamListAddSpriteGroup as DestinyBoardScene_DrawFinalLetters calls it: layer, position and flags are passed
- * as words without narrowing. With sprite.h's u8/u16 parameters that function grows to 0x700 bytes. */
+/* View of OamListAddSpriteGroup (sprite.h: u8 layer, count, mode, ...; u16 x, y) as
+ * DestinyBoardScene_DrawFinalLetters calls it: layer, position and flags are passed as words without narrowing.
+ * With sprite.h's u8/u16 parameters that function grows to 0x700 bytes. */
 extern u16 *OamListAddSpriteGroupWide(u16 *tmpls, u32 layer, u32 count, s32 x, s32 y, u32 mode, u32 priority,
                                       u32 sheetX, u32 sheetY, u32 format, u32 attr0Flags, void *list)
     asm("OamListAddSpriteGroup");
 
-/* CopyMapBlock as ExodiaScene_LoadFlames calls it: the source cell (sx, sy) is passed as two addresses
- * (bg.h: u16 sx, u16 sy would narrow them). */
-extern u32 CopyMapBlockAddrXY(u16 *srcMap, u8 *sx, u8 *sy, u32 srcStride, u16 *dstMap, u32 dx, u32 dy, u32 w,
+/* View of CopyMapBlock (bg.h: u16 sx, u16 sy) as ExodiaScene_LoadFlames calls it: the source cell (sx, sy) is
+ * passed as two addresses (see gUnkA_00000000 below), which the u16 parameters would narrow. The map is const
+ * here as the ROM map is. */
+extern u32 CopyMapBlockAddrXY(const u16 *srcMap, u8 *sx, u8 *sy, u32 srcStride, u16 *dstMap, u32 dx, u32 dy, u32 w,
                               u32 h, u32 mapSize) asm("CopyMapBlock");
 /* FAKEMATCH: the ROM loads sx and sy (both 0) from two literal-pool words instead of using `mov #0`. Two
  * symbols at address 0 reproduce that; two distinct names keep two pool entries. */
@@ -108,7 +79,7 @@ extern const struct OamTemplate gExodiaPieceOamTemplates[];
  * frames each, then two steps with all five. */
 extern struct AnimSeq *gExodiaPiecesAnimList[];
 /* 0x08199CC8: NULL-terminated animation list of the flames phase: [0] two steps of 18 sprites from the sheet
- * at OBJ_VRAM0, [1] a five-step loop drawn as affine sprites from OBJ_VRAM_BITMAP. */
+ * at OBJ_VRAM0, [1] a five-step loop drawn as affine sprites from OBJ_VRAM1. */
 extern struct AnimSeq *gExodiaFlameAnimList[];
 
 /* 0x086B8568 / 0x086C1B68: the Millennium Eye, a 240x160 mode-4 bitmap, and its 256-colour palette. */
@@ -116,7 +87,7 @@ extern const u8 gMillenniumEyeBitmap[];
 extern const u8 gMillenniumEyePal[];
 /* 0x086B6368 / 0x086B6568: OBJ palettes and the 128x128 OBJ sheet of the pieces phase. */
 extern const u8 gExodiaPiecesObjPal[];
-extern u8 gExodiaPiecesObjTiles[];
+extern const u8 gExodiaPiecesObjTiles[];
 /* 0x086CED78 / 0x086CF778: two strips of five linear 4x4-tile blocks of the pieces (low-confidence names
  * gExodiaPieceBlocksA / B, not applied). */
 extern const u8 gExodiaPiecesColorObjTiles[];
@@ -131,19 +102,15 @@ extern const u8 gExodiaFlameBgTiles3[];
 extern const u8 gExodiaFlameBgPal[];
 /* 0x086CAD78 (low-confidence name gExodiaFlameObjTilesA, not applied) and 0x086CCD78: the OBJ sheets of the
  * flames phase. */
-extern u8 gExodiaFlameArmsObjTiles[];
-extern u8 gExodiaFlameObjTilesB[];
+extern const u8 gExodiaFlameArmsObjTiles[];
+extern const u8 gExodiaFlameObjTilesB[];
 /* 0x086C9D68 / 0x086CA218 / 0x086CA6C8: the 30x20 maps of BG2, BG1 and BG0 (BG0 is the waving layer). */
-extern u16 gExodiaFlameBg2Map[];
-extern u16 gExodiaFlameBg1Map[];
-extern u16 gExodiaFlameBg0Map[];
+extern const u16 gExodiaFlameBg2Map[];
+extern const u16 gExodiaFlameBg1Map[];
+extern const u16 gExodiaFlameBg0Map[];
 
 /* 0x080823C4: one period (64 entries) of the Destiny Board HBlank wave, a sine of amplitude 16. */
 extern const s8 gDestinyBoardWaveTable[];
-
-/* OBJ tiles 0x200 and up (OBJ VRAM + 0x4000): the only OBJ tiles the bitmap modes leave usable. The flames
- * phase (mode 0) also loads a sheet there. */
-#define OBJ_VRAM_BITMAP     (OBJ_VRAM0 + 0x4000)
 
 /* Sine, 8.8 fixed (0x100 = 1.0), 256 steps per turn; SIN(i + 0x40) is the cosine. */
 #define SIN(i) gSineTable[i]
@@ -202,7 +169,7 @@ void ExodiaScene_HBlank(void)
 
 /* Adds the current frame of `anim` to layer 0 of `oamList` as affine sprites (matrix 0) with the given
  * priority. The template tiles are on a 16-tile-wide sheet: their column (bits 4-7) moves to bits 5-8 of the
- * 32-tile-wide 2D layout, plus tile 0x200 (the sheet is loaded at OBJ_VRAM_BITMAP). */
+ * 32-tile-wide 2D layout, plus tile 0x200 (the sheet is loaded at OBJ_VRAM1). */
 void ExodiaScene_DrawAffineAnim(struct AnimState *anim, u8 priority, void *oamList)
 {
     const struct OamTemplate *tmpl = anim->pieces;
@@ -266,7 +233,7 @@ void CopyObjTileBlock4x4(const u8 *src, u8 *dst)
  * The fourth argument is not used. */
 void LoadObjTileBlock4x4(const u8 *src, u32 dstTile, u32 srcTile, u32 unused)
 {
-    CopyObjTileBlock4x4(src + srcTile * 32, (u8 *)OBJ_VRAM_BITMAP + dstTile * 32);
+    CopyObjTileBlock4x4(src + srcTile * 32, (u8 *)OBJ_VRAM1 + dstTile * 32);
 }
 
 /* EXODIA_STEP_LOAD_EYE: starts a fade-in from black, the pieces animation, the Millennium Eye bitmap and
@@ -279,7 +246,7 @@ u16 ExodiaScene_LoadEye(void)
     CpuFastSet(gMillenniumEyeBitmap, (void *)VRAM, 240 * 160 / 4);
     CpuFastSet(gMillenniumEyePal, (void *)BG_PLTT, 0x200 / 4);
     CpuSet(gExodiaPiecesObjPal, (void *)OBJ_PLTT, 0x200 / 2);
-    CopyTileSheetTo2D(gExodiaPiecesObjTiles, (u8 *)OBJ_VRAM_BITMAP, TILE_COLORS_16);
+    CopyTileSheetTo2D(gExodiaPiecesObjTiles, (u8 *)OBJ_VRAM1, TILE_COLORS_16);
     LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x04, 0x10, 0x40);
     LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x08, 0x20, 0x40);
     LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x0C, 0x30, 0x40);
@@ -306,7 +273,7 @@ u16 ExodiaScene_LoadFlames(void)
     CpuFastSet(gExodiaFlameBgTiles3, (void *)(VRAM + 0x6000), 0x2000 / 4);
     CpuFastSet(gExodiaFlameBgPal, (void *)BG_PLTT, 0x200 / 4);
     CopyTileSheetTo2D(gExodiaFlameArmsObjTiles, (u8 *)OBJ_VRAM0, TILE_COLORS_16);
-    CopyTileSheetTo2D(gExodiaFlameObjTilesB, (u8 *)OBJ_VRAM_BITMAP, TILE_COLORS_16);
+    CopyTileSheetTo2D(gExodiaFlameObjTilesB, (u8 *)OBJ_VRAM1, TILE_COLORS_16);
     CopyMapRect(gExodiaFlameBg2Map, (void *)BG_SCREEN_ADDR(28), 30, 20);
     CopyMapRect(gExodiaFlameBg1Map, (void *)BG_SCREEN_ADDR(26), 30, 20);
     CopyMapRect(gExodiaFlameBg0Map, (void *)BG_SCREEN_ADDR(24), 30, 20);
@@ -338,11 +305,11 @@ u16 ExodiaScene_LoadFlames(void)
 
 /*
  * EXODIA_STEP_ASSEMBLE_PIECES, per frame (enum ExodiaPiecesState):
- *   PIECES_APPEAR     the pieces script shows one more piece every 16 frames (SE 0x13 each); at step 5 (all
- *                     five) it is frozen and a white flash of the sprites starts (SE 0x13)
+ *   PIECES_APPEAR     the pieces script shows one more piece every 16 frames (SE_EXODIA_PIECE each); at step 5
+ *                     (all five) it is frozen and a white flash of the sprites starts (SE_EXODIA_PIECE)
  *   PIECES_FLASH_IN   at half white (level 0x800) the flash reverses
  *   PIECES_FLASH_OUT  waits for the flash to end
- *   PIECES_LAUNCH     starts the five flights and a fade to white (SE 0x14); returns 1
+ *   PIECES_LAUNCH     starts the five flights and a fade to white (SE_EXODIA_LAUNCH); returns 1
  * Draws the animations and ticks the timer every frame. Returns 0 until the launch.
  */
 u16 ExodiaScene_AssemblePieces(void)
@@ -358,7 +325,7 @@ u16 ExodiaScene_AssemblePieces(void)
             FadeStart(FADE_WHITE, 0xA0, 0, &gSceneWork.u.exodia.fade);
             REG_BLDCNT = BLDCNT_TGT1_OBJ | BLDCNT_EFFECT_LIGHTEN;
             gSceneWork.u.exodia.piecesState++;
-            PlaySE(0x13);
+            PlaySE(SE_EXODIA_PIECE);
         }
         break;
     case PIECES_FLASH_IN:
@@ -387,20 +354,20 @@ u16 ExodiaScene_AssemblePieces(void)
         FadeStart(FADE_WHITE, 0x20, 0, &gSceneWork.u.exodia.fade);
         gSceneWork.u.exodia.timer.state = TICK_IDLE;
         gSceneWork.u.exodia.pulsePhase = 0;
-        PlaySE(0x14);
+        PlaySE(SE_EXODIA_LAUNCH);
         return 1;
     }
 
-    /* A new step of the pieces script while they appear: one more piece, SE 0x13. */
+    /* A new step of the pieces script while they appear: one more piece, SE_EXODIA_PIECE. */
     gSceneWork.u.exodia.pieceFrame = gSceneWork.anims[0].stepIdx;
     if (gSceneWork.u.exodia.piecesState == PIECES_APPEAR
         && gSceneWork.u.exodia.pieceFrame != gSceneWork.u.exodia.prevPieceFrame) {
         gSceneWork.u.exodia.prevPieceFrame = gSceneWork.u.exodia.pieceFrame;
-        PlaySE(0x13);
+        PlaySE(SE_EXODIA_PIECE);
     }
     for (i = 0; i < gSceneWork.animCount; i++)
         AnimStateTick(&gSceneWork.anims[i]);
-    /* Sheet quadrant sheetY 1 = tile 0x200 and up (OBJ_VRAM_BITMAP). */
+    /* Sheet quadrant sheetY 1 = tile 0x200 and up (OBJ_VRAM1). */
     for (i = 0; i < gSceneWork.animCount; i++) {
         OamListAddSpriteGroup((u16 *)anim->pieces, anim->layer, anim->pieceCount, anim->x, anim->y,
                               OAM_GROUP_TEMPLATE_POS, 0, 0, 1, OAM_TILES_SHEET16, 0, &gSceneWork.oamList);
@@ -414,7 +381,7 @@ u16 ExodiaScene_AssemblePieces(void)
 
 /* EXODIA_STEP_GATHER_PIECES, per frame: the fade to white speeds up (step 0x40 * (1 - cos(pulsePhase)),
  * pulsePhase 0 -> 0x40), and each piece takes one step along its line to the centre. At full white a 1-frame
- * timer starts; when it expires SE 0x15 plays and the step returns 1. */
+ * timer starts; when it expires SE_EXODIA_GATHERED plays and the step returns 1. */
 u16 ExodiaScene_GatherPieces(void)
 {
     u8 i;
@@ -429,7 +396,7 @@ u16 ExodiaScene_GatherPieces(void)
         Timer_Start(&gSceneWork.u.exodia.timer, 1);
     }
     if (gSceneWork.u.exodia.timer.state == TICK_DONE) {
-        PlaySE(0x15);
+        PlaySE(SE_EXODIA_GATHERED);
         return 1;
     }
     tmpl = gExodiaPieceOamTemplates;
@@ -545,7 +512,8 @@ u16 ExodiaScene_BlendFlames(void)
     u32 level;
 
     ExodiaScene_DrawSprites();
-    /* level holds the u16 fade level shifted to the top halfword; >> 24 is level >> 8. */
+    /* FAKEMATCH: the assignment inside the expression; level holds the u16 fade level shifted to the top
+     * halfword (>> 24 is level >> 8), which the compare below also uses. */
     REG_BLDALPHA = ((level = gSceneWork.u.exodia.fade.level << 16) >> 24) | BLDALPHA_BLEND(0, 8);
     if (level <= 0xA00 << 16) {
         gSceneWork.u.exodia.fade.state = FADE_STATE_IDLE;
@@ -714,7 +682,7 @@ void DestinyBoardScene_DrawFinalLetters(u32 unused, u16 x, u16 y)
 
     for (i = 0; i < 5; i++) {
         layer = 7;
-        /* Matching: five separate cases (case 0 with the constant index) give the ROM's jump table. */
+        /* FAKEMATCH: five separate cases (case 0 with the constant index) give the ROM's jump table. */
         switch (i) {
         case 0:
             SET_LETTER_PULSE(0);

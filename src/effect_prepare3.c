@@ -1,10 +1,3 @@
-#include "global.h"
-#include "card_data.h"              /* CARD_ID_MASK, CARD_NAME_SIZE, CARD_STATS_TYPE / LEVEL, gCardNames */
-#include "constants/cards.h"        /* CARD_* card numbers */
-#include "constants/card_stats.h"   /* enum CardType */
-#include "constants/duel.h"         /* enum ResponseEventKind, ChainEntryKind, ZoneLinkKind, ZoneStatusFlag */
-#include "constants/duel_cmds.h"    /* DUEL_CMD_* ids, DUEL_CMD_PLAYER */
-
 /*
  * Card effect handlers (wiki/functions/effect-prepare3-c.md). Three groups, all reached through gCardEffects
  * (struct CardEffect, include/effect.h) except DestroyFieldCardByEffect:
@@ -20,80 +13,13 @@
  *    state machines on gChain.effectStep, which Chain_Resolve starts at EFFECT_STEP_START (0x80) and then
  *    sets to each return value, until a handler returns EFFECT_STEP_DONE.
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit uses, with the header's names, types
- * and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that chain.h,
- * duel_cmd.h, duel_link.h and card_list_view.h do not pull in the legacy header. After H0, replace the block
- * (BEGIN to END) with #include "legacy/duel.h". */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:1;
-    u32 unk14:1;                    /* bit 14: summon status bit (ZONE_STATUS_UNK14) */
-    u32 unk15:17;
-};
-
-/* The status bits of a card word as single-bit u8 fields (byte accesses). */
-struct DuelCardStatusBytes {
-    u8 cardIdLow;                   /* +0x00: card word bits 0-7 */
-    u8 cardWordBits8to13:6;         /* +0x01: id (high bits), owner, unk13 */
-    u8 unk14:1;                     /* +0x01 bit 6 = card bit 14 */
-    u8 normalSummoned:1;            /* bit 15 */
-    u8 unk2[2];
-    u8 restOfZone[0x94 - 4];
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[3];
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C[8];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4[0x28 - 0x4];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountGraveyardCardsByNumber(int player, u16 cardNo);
-int CountGraveyardMonsters(int player);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
-int CountSpellTrapsFiltered(int player, u16 faceUp, u16 faceDown, u16 includeField);
-int CountTributableMonsters(int player, int excludeZone);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-/* ---- END duel.h stand-in ---- */
-
+#include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, CARD_NAME_SIZE, CARD_STATS_TYPE / LEVEL, gCardNames */
+#include "constants/cards.h"        /* CARD_* card numbers */
+#include "constants/card_stats.h"   /* enum CardType */
+#include "constants/duel.h"         /* enum ResponseEventKind, ChainEntryKind, ZoneLinkKind, ZoneStatusFlag */
+#include "constants/duel_cmds.h"    /* DUEL_CMD_* ids, DUEL_CMD_PLAYER */
+#include "duel.h"                   /* struct DuelZone, DuelCardStatusBytes, gDuelPlayers, gDuelZones, Count* */
 #include "chain.h"                  /* struct ChainEntry, gChain */
 #include "effect.h"                 /* enum EffectStep, enum SevenCompletedStat */
 #include "effect_handlers.h"        /* the prototypes of this unit's handlers, EffectTributeTargetChainB */
@@ -113,23 +39,31 @@ extern const u8 gStrSelectDeckMonsterToAdd[];       /* 'Please select a monster 
 extern const char gStrTributeToReturnToDeckPrompt[];/* '%s has been sent to the Graveyard. ... tribute ...' */
 extern const char gStrPayLpToReturnToDeckPrompt[];  /* '%s has been sent to the Graveyard. ... pay 500LP ...' */
 
-/* gCardNumberToId[CARD_AXE_OF_DESPAIR] (0x08624052), an alias symbol the ROM loads directly. */
+/* Matching: an address alias for the one element gCardNumberToId[CARD_AXE_OF_DESPAIR] (0x08624052), listed in
+ * card_data.h. The ROM loads it through its own literal; indexing gCardNumberToId loads base and offset
+ * separately (the unit grows by 8 bytes). */
 extern const u16 gCardNumberToId_AxeOfDespair;
 
 /*
- * Local views of callees (HEADERS.md, "Keeping a deliberate local view"). Matching: the ROM uses the
- * results without narrowing them (and compares them as signed ints); the header's u16 return types would
- * add a narrowing of r0. EffectDarkHolePrepare is defined with one parameter but called here with three
- * (r1 and r2 are set) and its result narrowed to u16.
+ * Local views of callees (HEADERS.md, "Keeping a deliberate local view"), each bound to the real symbol
+ * with asm(""), so the call and its relocation are the same.
+ *
+ * Matching: int-returning views of CollectEffectTargets (effect.h: u16 (int, u16, int)), IsValidEquipTarget and
+ * FindMonsterLinkedToCard (duel.h: u16 returns). The ROM uses their results without narrowing them and
+ * compares them as signed ints (`<= 0`, `> 4`, `== 0`, against a register); the header's u16 return types
+ * would add a narrowing of r0 after each call.
  */
 int CollectEffectTargetsInt(int player, int cardNumber, int param) asm("CollectEffectTargets");
 int IsValidEquipTargetInt(int equipPlayer, int equipSlot, int targetPlayer, int targetSlot)
     asm("IsValidEquipTarget");
 int FindMonsterLinkedToCardInt(int player, int slot) asm("FindMonsterLinkedToCard");
+/* Matching: a three-argument view of EffectDarkHolePrepare, which effect_handlers.h declares with one
+ * parameter (its definition has one). Key 1425 calls it with three arguments (r1 = chainLink, r2 = 0) and
+ * narrows the result to u16. */
 u16 EffectDarkHolePrepare3(struct ChainEntry *card, struct ChainEntry *chainLink, int fromHand)
     asm("EffectDarkHolePrepare");
-/* Matching: two handlers pass a command id held in an int register; the header's u16 cmd parameter would
- * narrow it at the call (lsl/lsr #16). */
+/* Matching: a view of DuelCmd_Push with an int command: two handlers pass a command id held in an int
+ * register, and the header's u16 cmd parameter would narrow it at the call (lsl/lsr #16). */
 void DuelCmd_PushInt(int cmd, u16 arg2, u16 arg4, int arg6) asm("DuelCmd_Push");
 
 /* The card word of a zone as one u32. Matching: the ROM loads the whole word (ldr) and extracts the ID with
@@ -175,9 +109,9 @@ void DuelCmd_PushInt(int cmd, u16 arg2, u16 arg4, int arg6) asm("DuelCmd_Push");
 /* Duel command id for player's side: DUEL_CMD_PLAYER (bit 15) marks a command of player 1. */
 #define PLAYER_CMD(player, cmd) ((player) ? (DUEL_CMD_PLAYER | (cmd)) : (cmd))
 
-/* Text box of the prompts here: x 5, y 2, 20 x 9 cells. */
-#define PROMPT_POS  0x205
-#define PROMPT_SIZE 0x914
+/* Text box of the prompts here: x 5, y 2, 20 x 9 cells (0x205, 0x914). */
+#define PROMPT_POS  TEXTBOX_POS(5, 2)
+#define PROMPT_SIZE TEXTBOX_SIZE(20, 9)
 
 /*
  * Key 1425: on the field, answering a summon (Normal, Flip or Special), with a monster on the field
@@ -654,7 +588,7 @@ int EffectMaskOfDarknessResolve(struct ChainEntry *link)
         return EFFECT_STEP_DONE;
     if (link->numTargets != 2)
         return EFFECT_STEP_DONE;
-    /* Matching: the assignment inside the argument fixes the evaluation order; u32 shifts give lsr. */
+    /* FAKEMATCH: the assignment inside the argument fixes the evaluation order; the u32 shifts give lsr. */
     if (CountGraveyardCardsByNumber(link->player, CARD_NUMBER(id = (u32)(link->targets[0] << 20) >> 20)) > 0) {
         ShowPickedCard(link->player, id);
         {
@@ -705,8 +639,7 @@ int EffectBigEyeResolve(struct ChainEntry *link)
         if (gDuelPlayers[link->player].deckCount <= 4)
             return EFFECT_STEP_DONE;
         for (i = 0; i <= 4; i++)
-            CopyDuelCard((u32 *)&gChain.scratch.deckReorder.cards[i],
-                         (u32 *)&gDuelPlayers[link->player].deck[i]);
+            CopyDuelCard(&gChain.scratch.deckReorder.cards[i], &gDuelPlayers[link->player].deck[i]);
         gChain.scratch.deckReorder.mode = DECK_REORDER_INIT;
         gChain.scratch.deckReorder.phase = 0;
         gChain.scratch.deckReorder.timer = 0;
@@ -718,10 +651,11 @@ int EffectBigEyeResolve(struct ChainEntry *link)
         return EFFECT_STEP_2;
     case EFFECT_STEP_3:
         for (i = 0; i <= 4; i++)
-            CopyDuelCard((u32 *)&gDuelPlayers[link->player & 1].deck[i],
-                         (u32 *)&gChain.scratch.deckReorder.cards[i]);
+            CopyDuelCard(&gDuelPlayers[link->player & 1].deck[i], &gChain.scratch.deckReorder.cards[i]);
         if (gDuelCtrl.isLinkDuel) {
             DuelLink_SendDeck(link->player);
+            /* FAKEMATCH: the label and goto make both cases share one `return EFFECT_STEP_4` block, as in the
+             * ROM; plain returns are not merged (the unit grows by 8 bytes). */
         waitForPartner:
             return EFFECT_STEP_4;
         }

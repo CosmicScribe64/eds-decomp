@@ -1,4 +1,5 @@
 #include "global.h"
+#include "duel.h"                   /* struct DuelZone / DuelPlayer / DuelState, gDuel*, Count* queries, GetZoneCardStats */
 #include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_STATS_* extractors */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* enum CardType, CardAttribute */
@@ -14,117 +15,6 @@
  * wrappers, the battle code and the AI read it. The two small functions before it find the face-up
  * monsters that a given card affects (Ring of Magnetism's attack redirection).
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit uses, with the header's names,
- * types and bitfield containers (unused bytes are padding), and defines duel.h's include guard. After H0,
- * replace the block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly (checked against
- * the staged header). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12 */
-    u32 unk13:4;
-    u32 planted:1;                  /* bit 17: Parasite Paracide shuffled into the other player's deck */
-    u32 unk18:14;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04: gDuel.serial when the card was placed */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5: turns a face-up card has been active */
-    u8 unk6_6:2;
-    u8 unk7_0:5;
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (Ameba, Griggle) */
-    u8 unk7_6:2;
-    u8 unk8[2];
-    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one, or a value / card ID */
-    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
-    u16 numLinks;                   /* +0x8A: entries in links / linkKinds */
-    u8 unk8C_0:5;
-    u8 atkHalved:1;                 /* +0x8C bit 5: Riryoku halving until end of turn */
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:11;
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:1;
-    u32 declaredValue:5;            /* +0x91 bits 5-9: value chosen when the card resolved (DNA Surgery type,
-                                     * an ATK/DEF choice, an attribute) */
-    u32 unk92_2:14;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 unk5[0x28 - 0x5];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    u8 unkA44[0xD64 - 0xA44];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 fieldBackground:4;           /* +0x1ACC bits 0-3 */
-    u8 duelOver:1;                  /* +0x1ACC bit 4 */
-    u8 unk1ACC_5:1;
-    u8 magicNegated:1;              /* +0x1ACC bit 6: Imperial Order */
-    u8 trapsNegated:1;              /* +0x1ACC bit 7: Jinzo / Royal Decree */
-    u8 equipMagicNegated:1;         /* +0x1ACD bit 0 */
-    u8 equipMagicNegatedThisTurn:1; /* +0x1ACD bit 1: Armored Glass */
-    u8 fieldMagicNegatedThisTurn:1; /* +0x1ACD bit 2: World Suppression */
-    u8 contMagicNegatedThisTurn:1;  /* +0x1ACD bit 3 */
-    u8 contTrapNegatedThisTurn:1;   /* +0x1ACD bit 4 */
-    u8 statChangesReversed:1;       /* +0x1ACD bit 5: Reverse Trap: stat modifiers are subtracted */
-    u8 atkDefSwapped:1;             /* +0x1ACD bit 6: Shield & Sword */
-    u8 unk1ACD_7:1;
-    u8 unk1ACE[0x1B12 - 0x1ACE];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 unk1B12_5:3;
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-/* Effective stats of the card in a zone (GetZoneCardStats). */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0: card ID */
-    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
-    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
-    u8 unk3;
-    s32 atk;                        /* +0x4: effective ATK */
-    s32 def;                        /* +0x8: effective DEF */
-};
-
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-extern struct DuelZone gDuelSpellTrapZones;     /* 0x020195F0 = gDuelPlayers[0].zones[ZONE_SPELL_0] */
-
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersOfType(int player, u16 type);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountFaceUpMonstersByNumberInPosition(int player, u16 cardNo, u16 defense);
-int CountMonsters(int player);
-int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
-int CountSpellTrapsFiltered(int player, u16 faceUp, u16 faceDown, u16 includeField);
-int CountAquaChorusBoosts(int player, int zone);
-int GetFaceUpFieldMagicNumber(void);
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-/* ---- END duel.h stand-in ---- */
 
 /* 0x080815A8: ATK/DEF change per enum CardType for Forest, Wasteland, Mountain, Sogen, Umi and Yami
  * (row = card number - CARD_FOREST). */
@@ -143,9 +33,10 @@ extern const s16 gFieldAttributeBonuses[][8];
 /* &gDuelZones[player].zones[zone]: base, then the zone term, then the player term. */
 #define ZONE_AT(player, zone) \
     ((struct DuelZone *)((u8 *)gDuelZones + (zone) * sizeof(struct DuelZone) + (player) * sizeof(struct DuelPlayer)))
-/* The card word at the start of a zone, read through a struct DuelCard pointer. */
+/* The card word at the start of a zone, read through a struct DuelCard pointer (the other card bits). */
 #define ZONE_CARD(zonePtr) (*(struct DuelCard *)(zonePtr))
-#define ZONE_CARD_ID(player, zone) (ZONE_CARD(ZONE_AT(player, zone)).id)
+/* Card ID of the zone (player, zone): DUEL_CARD_ID loads the whole card word, as the ROM does. */
+#define ZONE_CARD_ID(player, zone) DUEL_CARD_ID(ZONE_AT(player, zone))
 /* gDuelPlayers[player].graveyard[index]: gDuelPlayers, then the player term, then the pile offset. */
 #define GRAVEYARD_CARD(player, index) \
     (((struct DuelCard *)((u8 *)gDuelPlayers + (player) * sizeof(struct DuelPlayer) \
@@ -158,20 +49,24 @@ extern const s16 gFieldAttributeBonuses[][8];
 #define PLAYERS_VIA_ZONES ((struct DuelPlayer *)((u8 *)gDuelZones - OFFSET_OF(struct DuelPlayer, zones)))
 
 /*
- * Flag groups read as whole bytes or halfwords. Matching: the ROM tests several flags with one load and
- * one mask (and tests bit 0 with and #1, where a 1-bit field gives lsl #31).
+ * Flag groups read as whole bytes or halfwords (local views of struct DuelZone and struct DuelState).
+ * Matching: the ROM tests several flags with one load and one mask (and tests bit 0 with and #1, where a
+ * 1-bit field gives lsl #31).
  */
-/* Zone +0x06 as one byte: bit 0 isDefense, bit 1 isFaceUp. */
+/* Zone +0x06 as one byte: bit 0 isDefense, bit 1 isFaceUp. Used for Chorus of Sanctuary's isDefense test,
+ * which the ROM does with `and #1` (the 1-bit member isDefense gives `lsl #31`). */
 struct ZoneFlagsByte { u8 unk0[6]; u8 flags; u8 unk7; };
 #define ZONE_FLAG_DEFENSE 0x01
-/* The rule flags of gDuel (fieldBackground .. atkDefSwapped, +0x1ACC) as one u16. */
+/* The rule flags of gDuel (fieldBackground .. atkDefSwapped, +0x1ACC) as one u16: the Reverse Trap and Shield &
+ * Sword tests each check two flags with one load and one mask. */
 struct DuelRuleFlagsView { u8 unk0[0x1ACC]; u16 flags; };
 #define DUEL_RULE_FLAGS (((struct DuelRuleFlagsView *)&gDuel)->flags)
 #define RULE_MAGIC_NEGATED      0x0040  /* magicNegated: Imperial Order */
 #define RULE_TRAPS_NEGATED      0x0080  /* trapsNegated: Jinzo, Royal Decree */
 #define RULE_STATS_REVERSED     0x2000  /* statChangesReversed: Reverse Trap */
 #define RULE_ATK_DEF_SWAPPED    0x4000  /* atkDefSwapped: Shield & Sword */
-/* Its second byte (gDuel +0x1ACD), reached from the gDuelZones literal. */
+/* Its second byte (gDuel +0x1ACD, equipMagicNegated and equipMagicNegatedThisTurn), reached from the gDuelZones
+ * literal, tested with one mask in the equip case. */
 #define DUEL_RULE_FLAGS_HI (*((u8 *)gDuelZones - OFFSET_OF(struct DuelState, players[0].zones) + 0x1ACD))
 #define RULE_HI_EQUIP_MAGIC_NEGATED 0x03    /* equipMagicNegated | equipMagicNegatedThisTurn (Armored Glass) */
 
@@ -180,17 +75,22 @@ struct DuelRuleFlagsView { u8 unk0[0x1ACC]; u16 flags; };
  * Matching: the ROM reloads the table address at each use. The inline functions keep a u16 card-ID boundary,
  * so the repeated ID and table loads are not folded into one expression.
  */
+/* The gCardStats word of a card ID. */
 #define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
+/* Returns the enum CardType of a card ID (printed type, from its gCardStats word). */
 static inline int GetCardType(u16 id) { return CARD_STATS_TYPE(CARD_STATS(id)); }
 #define CARD_TYPE(id) GetCardType(id)
+/* Returns the card number of a card ID (gCardIdToNumber at its constant address). */
 static inline u16 GetCardNumber(int id) { return ((const u16 *)0x08622AB4)[id & CARD_ID_MASK]; }
 #define CARD_NUMBER(id) GetCardNumber(id)
-/* The equip switch reads the number table through its symbol, so one register holds the table address
- * across the case bodies; elsewhere the ROM reloads a constant address. */
+/* GetCardNumber through the table's symbol: the equip switch reads the number table this way, so one
+ * register holds the table address across the case bodies; elsewhere the ROM reloads a constant address. */
 static inline u16 GetCardNumberSym(int id) { return *(gCardIdToNumber + (id & CARD_ID_MASK)); }
-/* Matching: the u16 return keeps the ROM's extra 5-bit mask on the value. */
+/* Returns the value that was declared when the card in `zone` resolved (a type, an attribute or an ATK/DEF
+ * choice). Matching: the u16 return keeps the ROM's extra 5-bit mask on the value. */
 static inline u16 GetDeclaredValue(struct DuelZone *zone) { return zone->declaredValue; }
-/* FAKEMATCH: the ROM reads the whole stats word here; ordinary non-volatile expressions narrow the load to
+/* Returns the enum CardAttribute of a card ID (printed attribute: the top bits of its gCardStats word).
+ * FAKEMATCH: the ROM reads the whole stats word here; ordinary non-volatile expressions narrow the load to
  * the top byte. volatile keeps the word read; the original qualifier is unknown. */
 static inline int GetCardAttribute(u16 id)
 {
@@ -264,14 +164,14 @@ int FindMonsterAffectedByCard(u32 player, u16 cardNo)
  * Fill *out with the card ID, effective type, attribute, ATK and DEF of the card in (player, zone).
  * An empty zone gives all 0; spell/trap zones and face-down monsters get the printed values. A face-up
  * monster's stats are built in this order:
- *  1. Printed stats; its own one-shot effects (Karate Man, card 1254) and Magic immunity (cards 1326/1329
+ *  1. Printed stats; its own one-shot effects (Karate Man, CARD_1254) and Magic immunity (CARD_1326/CARD_1329
  *     while Umi is the face-up Field Magic).
  *  2. Type overrides: a planted Parasite Paracide on the monster's side makes it an Insect, a face-up DNA
  *     Surgery on either side gives the declared type; the most recently placed card wins.
  *  3. The zone's links (enum ZoneLinkKind): resolved card effects, continuous effects, equips, the monster
  *     absorbed by Relinquished, and value links.
  *  4. The monster's own effect, Plant support, and the attribute auras of both fields.
- *  5. Field Magic of both players, Chorus of Sanctuary, card 1515 and Aqua Chorus.
+ *  5. Field Magic of both players, Chorus of Sanctuary, CARD_1515 and Aqua Chorus.
  *  6. The modifiers are added (subtracted while Reverse Trap is active), the stats are clamped at 0, the
  *     net doublings/halvings are applied (a halving rounds up), and Shield & Sword swaps ATK and DEF.
  * Three modifier sums are kept: equipAtk/equipDef (equips and the equip-like value links), otherAtk/otherDef
@@ -298,8 +198,9 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
     out->id = ZONE_CARD_ID(player & 1, zone);
     if (!out->id)
         return;
-    /* Printed type and attribute. Matching: the ROM writes the packed byte +2 twice (type, then type |
-     * attribute << 5); bitfield stores to out->type and out->attribute generate other code. */
+    /* Printed type and attribute. FAKEMATCH: the ROM writes the packed byte +2 twice (type, then type |
+     * attribute << 5), so the first store is dead; bitfield stores to out->type and out->attribute generate
+     * other code. */
     {
         int type = CARD_TYPE(out->id);
 
@@ -318,8 +219,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
     if (zone > ZONE_MONSTER_4 || !ZONE_AT(player & 1, zone)->isFaceUp)
         return;
 
-    /* 1. Karate Man's doubled ATK (and card 1254's +500 ATK/DEF) while effectUnused is clear, i.e. after its
-     *    effect was used, and the Magic immunity of cards 1326/1329 under Umi (1254, 1326, 1329: no EDS cards). */
+    /* 1. Karate Man's doubled ATK (and CARD_1254's +500 ATK/DEF) while effectUnused is clear, i.e. after its
+     *    effect was used, and the Magic immunity of CARD_1326/CARD_1329 under Umi. */
     switch (CARD_NUMBER(out->id)) {
     case CARD_KARATE_MAN:
         if (!ZONE_AT(player & 1, zone)->effectUnused)
@@ -332,7 +233,7 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
         }
         break;
     case CARD_1326:
-    case 1329:
+    case CARD_1329:
         if (GetFaceUpFieldMagicNumber() == CARD_UMI)
             immuneToMagic = 1;
         break;
@@ -346,8 +247,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
 
         /* a face-up planted Parasite Paracide (summoned when drawn from this player's deck) among this
          * player's monsters: Insect */
-        if (ZONE_CARD(monster).id
-            && CARD_NUMBER(ZONE_CARD(monster).id) == CARD_PARASITE_PARACIDE
+        if (DUEL_CARD_ID(monster)
+            && CARD_NUMBER(DUEL_CARD_ID(monster)) == CARD_PARASITE_PARACIDE
             && ZONE_CARD(monster).planted && monster->isFaceUp
             && monster->serial > (u32)newestSerial) {
             newestSerial = monster->serial;
@@ -359,8 +260,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
             struct DuelZone *spell = (struct DuelZone *)((p & 1) * sizeof(struct DuelPlayer) + i * sizeof(struct DuelZone)
                                                          + (u32)&gDuelSpellTrapZones);
 
-            if (ZONE_CARD(spell).id
-                && CARD_NUMBER(ZONE_CARD(spell).id) == CARD_DNA_SURGERY
+            if (DUEL_CARD_ID(spell)
+                && CARD_NUMBER(DUEL_CARD_ID(spell)) == CARD_DNA_SURGERY
                 && spell->isFaceUp && !spell->isDisabled
                 && spell->serial > (u32)newestSerial) {
                 newestSerial = spell->serial;
@@ -409,7 +310,7 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
                 otherAtk -= (ZONE_AT(player & 1, zone)->linkKinds[i] >> 8) * 100;
                 otherDef -= (ZONE_AT(player & 1, zone)->linkKinds[i] >> 8) * 100;
                 break;
-            case 1231: otherAtk -= (value + 1) * 500; break;    /* card number 1231: no EDS card */
+            case CARD_1231: otherAtk -= (value + 1) * 500; break;
             case CARD_1314: atkDoubles++; break;
             case CARD_1415: otherAtk -= (value + 1) * 700; break;
             case CARD_1534:
@@ -441,7 +342,7 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
             break;
         case ZONE_LINK_EQUIP: {
             /*
-             * The equip card in the source zone. Its effect is skipped while it is disabled, while card 1537
+             * The equip card in the source zone. Its effect is skipped while it is disabled, while CARD_1537
              * (negates Equip Magic; no EDS card) is active on either field, while gDuel +0x1ACD bit 0 or 1 is set
              * (equipMagicNegated, equipMagicNegatedThisTurn: Armored Glass) or while the monster is immune
              * to Magic; it still counts for equipCount.
@@ -537,9 +438,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
                     }
                     break;
                 case CARD_CYBER_SHIELD:
-                    /* Harpie Lady or Harpie Lady Sisters (number - CARD_HARPIE_LADY <= 1), or card number 1249
-                     * (no EDS card) */
-                    if ((u16)(GetCardNumberSym(out->id) - CARD_HARPIE_LADY) <= 1 || GetCardNumberSym(out->id) == 1249)
+                    /* Harpie Lady or Harpie Lady Sisters (number - CARD_HARPIE_LADY <= 1), or CARD_1249 */
+                    if ((u16)(GetCardNumberSym(out->id) - CARD_HARPIE_LADY) <= 1 || GetCardNumberSym(out->id) == CARD_1249)
                         equipAtk += 500;
                     break;
                 case CARD_MYSTICAL_MOON:
@@ -682,7 +582,7 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
                     equipDef += CountSpellTrapsFiltered(sourcePlayer, 0, 0, 0) * 500;
                     break;
                 case CARD_1540:
-                    if (GetCardNumberSym(out->id) == 1339)
+                    if (GetCardNumberSym(out->id) == CARD_1339)
                         equipAtk += 300;
                     break;
                 case CARD_1550:
@@ -692,8 +592,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
                         equipAtk += 500;
                         equipDef += 500;
                     }
-                    /* Matching: sourcePlayer % 2, not & 1: the byte-wide AND would share its constant 1 with
-                     * the store below. */
+                    /* FAKEMATCH: sourcePlayer % 2 in place of & 1: the byte-wide AND would share its constant 1
+                     * with the store below. */
                     if (ZONE_AT(sourcePlayer % 2, sourceZone)->serial > (u32)newestSerial)
                         out->type = CARD_TYPE_DRAGON;
                     break;
@@ -708,7 +608,7 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
             addDef += value * 100;
             break;
         case ZONE_LINK_ABSORBED:
-            /* Relinquished (or card 1334) takes the printed ATK/DEF of the monster it absorbed, 0/0 while that
+            /* Relinquished (or CARD_1334) takes the printed ATK/DEF of the monster it absorbed, 0/0 while that
              * monster is face down */
             if (CARD_NUMBER(out->id) == CARD_RELINQUISHED || CARD_NUMBER(out->id) == CARD_1334) {
                 out->atk = 0;
@@ -726,7 +626,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
             break;
         case ZONE_LINK_ADD_CARD_STATS:
             /* link is a card ID whose printed ATK/DEF are added.
-             * Matching: the sums go through a temporary: printed stat + total, in that order. */
+             * FAKEMATCH: the sums go through block-local temporaries, printed stat + total in that order;
+             * addAtk = BaseAttack(link) + addAtk differs. */
             {
                 int sum = BaseAttack(link) + addAtk;
                 addAtk = sum;
@@ -762,9 +663,9 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
         addAtk += CountFaceUpMonstersOfType(1, CARD_TYPE_PLANT) * 100;
         break;
     case CARD_HARPIES_PET_DRAGON: {
-        /* +300 ATK/DEF per Harpie Lady (or card number 1249) on either field */
+        /* +300 ATK/DEF per Harpie Lady (or CARD_1249) on either field */
         int harpies0 = CountActiveCardsOnField(0, CARD_HARPIE_LADY), harpies1 = CountActiveCardsOnField(1, CARD_HARPIE_LADY);
-        int others0 = CountActiveCardsOnField(0, 1249), others1 = CountActiveCardsOnField(1, 1249);
+        int others0 = CountActiveCardsOnField(0, CARD_1249), others1 = CountActiveCardsOnField(1, CARD_1249);
 
         addAtk += (harpies0 + harpies1 + others0 + others1) * 300;
         addDef += (harpies0 + harpies1 + others0 + others1) * 300;
@@ -830,27 +731,27 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
         if (CountMonsters(1 - player) > 0)
             addAtk -= 1000;
         break;
-    case 1413:
-        /* card number 1413 (no EDS card): -200 ATK per opponent's monster */
+    case CARD_1413:
+        /* -200 ATK per opponent's monster */
         addAtk -= CountMonsters(1 - player) * 200;
         break;
-    case 1516:
-        /* card number 1516 (no EDS card): +300 ATK during its controller's Battle Phase */
+    case CARD_1516:
+        /* +300 ATK during its controller's Battle Phase */
         if (player == gDuel.turnPlayer && gDuel.phase == PHASE_BATTLE)
             addAtk += 300;
         break;
-    case 1518:
-        /* card number 1518 (no EDS card): +300 ATK during the opponent's Battle Phase */
+    case CARD_1518:
+        /* +300 ATK during the opponent's Battle Phase */
         if (player != gDuel.turnPlayer && gDuel.phase == PHASE_BATTLE)
             addAtk += 300;
         break;
     }
 
-    /* 4b. Plant support: +500 ATK/DEF per face-up defense-position card 1252 (no EDS card) of the player. */
+    /* 4b. Plant support: +500 ATK/DEF per face-up defense-position CARD_1252 of the player. */
     switch (out->type) {
     case CARD_TYPE_PLANT:
-        addAtk += CountFaceUpMonstersByNumberInPosition(player, 1252, 1) * 500;
-        addDef += CountFaceUpMonstersByNumberInPosition(player, 1252, 1) * 500;
+        addAtk += CountFaceUpMonstersByNumberInPosition(player, CARD_1252, 1) * 500;
+        addDef += CountFaceUpMonstersByNumberInPosition(player, CARD_1252, 1) * 500;
         break;
     }
 
@@ -935,8 +836,8 @@ void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out)
             }
         }
     }
-    /* -300 ATK during its controller's Battle Phase while the opponent has a face-up card 1515 (no EDS card) */
-    if (player == gDuel.turnPlayer && gDuel.phase == PHASE_BATTLE && CountFaceUpMonstersByNumber(1 - player, 1515))
+    /* -300 ATK during its controller's Battle Phase while the opponent has a face-up CARD_1515 */
+    if (player == gDuel.turnPlayer && gDuel.phase == PHASE_BATTLE && CountFaceUpMonstersByNumber(1 - player, CARD_1515))
         addAtk -= 300;
     addAtk += CountAquaChorusBoosts(player, zone) * 500;
     addDef += CountAquaChorusBoosts(player, zone) * 500;

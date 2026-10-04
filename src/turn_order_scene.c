@@ -19,39 +19,16 @@
  * after a draw, a rematch flag (LINKMSG_RPS_REMATCH) with LinkSyncStep; the "Wait" sign shows meanwhile.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_*, CpuFastSet, VRAM, PLTT, keys */
-#include "legacy/main.h"               /* gMain */
-#include "legacy/sound.h"              /* PlaySE, FadeOutBGM (new sound.h) */
-#include "constants/sound.h"    /* SE_CURSOR, SE_CONFIRM */
+#include "gba.h"                /* REG_*, DISPCNT_*, BLDCNT_*, BLDALPHA_BLEND, CpuFastSet, VRAM, PLTT, keys */
+#include "main.h"               /* gMain, VBLANK_COPY_OAM */
+#include "sound.h"              /* PlaySE, FadeOutBGM */
+#include "constants/sound.h"    /* SE_CURSOR, SE_CONFIRM, SE_DUEL_LOGO_SWING */
 #include "util.h"               /* MemClear16, MemCopy16, Random, Timer_*, Tween*, gSineTable, gSquareTable */
 #include "palette.h"            /* FadeStart, SetBldAlpha, SetBldY */
 #include "sprite.h"             /* struct AnimSeq, OamListClear, ObjAffineInit, AnimBlockInit */
 #include "link.h"               /* LinkSyncStart, LinkSyncStep */
 #include "duel_scenes.h"        /* gSceneWork, struct TurnOrderSceneWork, ChoiceBob, TurnOrder_DrawUnusedSprite */
 #include "turn_order.h"         /* the screen's enums, steps, phases and drawers, its graphics */
-
-/* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
-
-/* Values and prototypes as in the new headers; this block compiles away once they are installed. */
-#ifndef INTR_FLAG_HBLANK
-#define DISPCNT_MODE_4          0x0004
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BLDCNT_TGT1_ALL         0x003F
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_EFFECT_LIGHTEN   0x0080
-#define BLDCNT_EFFECT_DARKEN    0x00C0
-#define BLDCNT_TGT2_BG2         0x0400
-#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
-#define CPU_FAST_SET_SRC_FIXED  0x01000000
-#define OAM_ATTR0_AFFINE        0x0100
-#define OAM_ATTR0_AFFINE_DOUBLE 0x0300
-#define OAM_ATTR0_BLEND         0x0400
-#define OAM_ATTR1_MATRIX(n)     ((n) << 9)
-#define VBLANK_COPY_OAM         0x1
-void PlaySE(u32 seId);
-void FadeOutBGM(void);
-#endif
 
 /* OamListAddSprite returns the entry; these drawers OR attr0 and attr1 into its first word in one go. */
 #define OAM_ATTR01(attr0, attr1) (((attr1) << 16) | (attr0))
@@ -81,11 +58,14 @@ extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
 
 /* ---- ROM data used only here ---- */
 
-/* 0x0808270C / 0x08082710: {0x318, 0x398} and {11, 12}: tiles and palettes of the unused TurnOrder_DrawUnusedSprite. */
+/* 0x0808270C / 0x08082710: {0x318, 0x398} and {11, 12}: the tiles and palettes of the unused
+ * TurnOrder_DrawUnusedSprite. */
 extern const u16 gTurnOrderUnusedSpriteTiles[];
 extern const u8 gTurnOrderUnusedSpritePals[];
 
-/* The screen's own data, at gSceneWork + 0xAAC. */
+/* The screen's own data, at gSceneWork + 0xAAC.
+ * Matching: the phase functions reach it both through this macro and through a local `struct SceneWork *work =
+ * &gSceneWork` (work->u.turnOrder); which accesses use the pointer is part of the match. */
 #define sTurn gSceneWork.u.turnOrder
 
 /* Bytes of gSceneWork the screen uses (0xB24), cleared by TurnOrder_Init. */
@@ -144,7 +124,8 @@ void TurnOrder_DrawDuelLogo(u8 unused, u8 swing, u8 drop)
         sinSwing = gSineTable[swing];
         spreadY = MulFix8Int(sinSwing, 0x4000);
         pivotY = MulFix8Int(0x60, sinSwing - gSineTable[0xF4]);
-        y = (((spreadY + 0xA) >> 8) * i - (pivotY >> 8) + (MulFix8Int(0x4E0, gSquareTable[drop]) >> 4) - 0x5E) & 0xFFFF;
+        y = (((spreadY + 0xA) >> 8) * i - (pivotY >> 8) + (MulFix8Int(0x4E0, gSquareTable[drop]) >> 4) - 0x5E)
+            & 0xFFFF;
         oam = OamListAddSpriteWide(0, gDuelLogoTileNums[i], x, y, 0x40, 0x40, 4, 10, 0x200, 0, 0, 0,
                                    &gSceneWork.oamList);
         *oam |= OAM_ATTR0_AFFINE_DOUBLE;
@@ -154,20 +135,20 @@ void TurnOrder_DrawDuelLogo(u8 unused, u8 swing, u8 drop)
     }
 }
 
-/* Unreferenced: a 64x32 sprite (tile gTurnOrderUnusedSpriteTiles[index], palette gTurnOrderUnusedSpritePals[index]) at (0x58, 0x64).
- * Nothing is loaded at tile 0x318 or into palettes 11 and 12: a leftover. */
+/* Unreferenced: a 64x32 sprite (tile gTurnOrderUnusedSpriteTiles[index], palette gTurnOrderUnusedSpritePals[index])
+ * at (0x58, 0x64). Nothing is loaded at tile 0x318 or into palettes 11 and 12: a leftover. */
 void TurnOrder_DrawUnusedSprite(u8 index)
 {
     u32 width = 0x40;
     u32 height = 0x20;
-    OamListAddSpriteWide(0, gTurnOrderUnusedSpriteTiles[index], 0x58, 0x64, width, height, 4, gTurnOrderUnusedSpritePals[index], 0x200, 0, 0,
-                         0, &gSceneWork.oamList);
+    OamListAddSpriteWide(0, gTurnOrderUnusedSpriteTiles[index], 0x58, 0x64, width, height, 4,
+                         gTurnOrderUnusedSpritePals[index], 0x200, 0, 0, 0, &gSceneWork.oamList);
 }
 
 /* ---- Rules ---- */
 
-/* The result for the player (enum RpsResult) of `player` against `opponent` (enum RpsHand): rock beats
- * scissors, scissors beat paper, paper beats rock. Returns `player` for an out-of-range opponent hand. */
+/* The result for the player (enum RpsResult) of `player` against `opponent` (both enum RpsHand): rock beats
+ * scissors, scissors beat paper, paper beats rock. If either hand is out of range it returns `player`. */
 u8 JudgeRockPaperScissors(u8 player, u8 opponent)
 {
     switch (opponent) {
@@ -225,8 +206,8 @@ u8 TurnOrder_CpuPickTurn(u8 frame)
 
 /* ---- Script steps ---- */
 
-/* Step 0: clears the work area, resets the BG1-3 scroll, hides every layer, and sets up the OAM list, the
- * "Wait" sign animation (stopped), the affine records and the phase state. Returns 1. */
+/* Step 0: clears the work area, has VBlank copy only OAM, resets the BG1-3 scroll, hides every layer, and sets
+ * up the OAM list, the "Wait" sign animation (stopped), the affine records and the phase state. Returns 1. */
 u16 TurnOrder_Init(void)
 {
     MemClear16(&gSceneWork, TURN_ORDER_WORK_SIZE);
@@ -246,7 +227,7 @@ u16 TurnOrder_Init(void)
     sTurn.linkWaiting = 0;
     sTurn.rematchSend = 0;
     sTurn.rematchReady = 0;
-    AnimBlockInit((struct AnimSeq **)gTurnOrderWaitAnimList, (u8 *)gSceneWork.anims);
+    AnimBlockInit(gTurnOrderWaitAnimList, (u8 *)gSceneWork.anims);
     gSceneWork.anims[0].active = ANIM_FINISHED;
     ObjAffineInit(gSceneWork.aff);
     sTurn.logoTimer = 0;
@@ -267,7 +248,8 @@ void TurnOrder_LoadObjTiles(const u8 *src, u32 tile, u32 width, s32 rows)
 }
 
 /* Step 1: starts the fade-in, loads the corridor backdrop (mode 4 bitmap), the OBJ palettes and tiles, and
- * resets the sprite state; then turns on mode 4 (BG2 is the bitmap) and OBJ. Returns 1. */
+ * resets the affine, carousel, banner and logo state; then sets DISPCNT to mode 4 (BG2 is the bitmap) with
+ * the BG and OBJ layers on. Returns 1. */
 u16 TurnOrder_Load(void)
 {
     u8 i;
@@ -433,6 +415,7 @@ u16 TurnOrder_ShowResult(void)
         TurnOrder_ShowWaitSign();
         if (LinkSyncStep(LINKMSG_TURN_CHOICE, work->u.turnOrder.scrollers[SCROLLER_CAROUSEL].stop,
                          &work->u.turnOrder.linkSync)) {
+            /* Matching: the partner's choice is read as a byte of the received halfword */
             sTurn.turnChoice = 1 ^ *(u8 *)&sTurn.linkSync.rx.data;
             sTurn.phase += 2;
             sTurn.linkWaiting = 0;
@@ -522,6 +505,7 @@ u16 TurnOrder_ChooseTurn(void)
 u16 TurnOrder_AnimateTurnChoice(u8 *phase)
 {
     TweenUpdate(&sTurn.tween);
+    /* the bob and tween records go to the drawer as s16 arrays, as it is defined */
     TurnOrder_DrawTurnChoiceConfirm(sTurn.turnChoice, sTurn.frame, sTurn.blendMask, (s16 *)sTurn.choiceBob,
                                     sTurn.turnChoice, (s16 *)&sTurn.tween);
     if (sTurn.tween.state == TWEEN_DONE) {
@@ -535,9 +519,9 @@ u16 TurnOrder_AnimateTurnChoice(u8 *phase)
 }
 
 /* TURN_ORDER_DUEL_LOGO: the DUEL logo drops in over 16 frames, then swings from -12 to rest by 3 per frame
- * (sound 0x2A as it starts; the music fades out at rest). On frame 15 of the drop the chosen banner is
- * squashed (scale 0xC0) and then springs back while it moves down 0x38. After 90 frames, or on A, the white
- * flash starts (BLDCNT brighten, brightness step 0x300). Returns 0. */
+ * (SE_DUEL_LOGO_SWING as it starts; the music fades out at rest). On frame 15 of the drop the chosen banner
+ * is squashed (scale 0xC0) and then springs back while it moves down 0x38. After 90 frames, or on A, the
+ * white flash starts (BLDCNT brighten, brightness step 0x300). Returns 0. */
 u16 TurnOrder_ShowDuelLogo(void)
 {
     if (sTurn.logoDrop < 0x10)
@@ -545,7 +529,7 @@ u16 TurnOrder_ShowDuelLogo(void)
     if (sTurn.logoDrop >= 0x10) {
         if (sTurn.logoSwing < 0) {
             if ((u8)sTurn.logoSwing == 0xF4)
-                PlaySE(0x2A);
+                PlaySE(SE_DUEL_LOGO_SWING);
             sTurn.logoSwing += 3;
         } else {
             sTurn.logoSwing = 0;

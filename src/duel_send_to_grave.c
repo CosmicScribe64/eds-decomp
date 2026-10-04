@@ -18,95 +18,12 @@
 #include "constants/card_stats.h"   /* enum CardType */
 #include "constants/duel.h"         /* DuelZoneIndex, ZoneLinkKind, ResponseEventKind, ChainEntryKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
-
-/* ---- BEGIN duel.h subset (pre-H0) ---- */
-/*
- * The part of include/duel.h this unit uses, with the header's tags, field names and bitfield containers.
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
- * so this block stands in for it: it defines GUARD_DUEL_H so that the headers included below do not pull
- * in the legacy file. After H0, replace this block (BEGIN to END) with #include "legacy/duel.h".
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:1;
-    u32 unk14:1;                    /* bit 14: set for tribute, flip, Toon and special summons and tokens */
-    u32 normalSummoned:1;           /* bit 15 */
-    u32 specialSummoned:1;          /* bit 16 */
-    u32 unk17:15;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0 */
-    u8 isFaceUp:1;                  /* +0x06 bit 1 */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet */
-    u8 revivedByMonsterReborn:1;    /* +0x07 bit 6 */
-    u8 summonedFromGraveyard:1;     /* +0x07 bit 7 */
-    u8 levelCheckDone:1;            /* +0x08 bit 0 */
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one (or a value / card ID) */
-    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C[4];                    /* +0x8C: battle flags */
-    u32 unk90_0:6;                  /* +0x90 */
-    u32 unk90_6:4;
-    u32 canActivate:1;              /* +0x91 bit 2 */
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:1;
-    u32 declaredValue:5;            /* +0x91 bits 5-9 */
-    u32 unk92_2:14;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002 */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004 */
-    u8 fusionCount;                 /* +0x005 */
-    u8 banishedCount;               /* +0x006 */
-    u8 unk7[0xB - 0x7];             /* +0x007: player flags */
-    u8 crushCardTurns:3;            /* +0x00B bits 0-2 */
-    u8 monsterSentToGraveThisTurn:1;/* +0x00B bit 3: Last Will condition */
-    u8 unkB_4:4;
-    u8 unkC[2];
-    u16 lpPaid[11];                 /* +0x00E: per zone, LP paid for the card there (Toon World) */
-    u16 attackableMask;             /* +0x024 */
-    u16 attackedMask;               /* +0x026 */
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-
-u32 IsToonMonster(u16 cardNo);
-int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int FindFreeMonsterZone(int player);
-void RemoveZoneLink(u16 loc, u16 target, u16 kind);
-u16 FindMonsterWithLinkTo(int player, int zone);
-u16 FindMonsterLinkedToCard(s32 player, s32 slot);
-/* ---- END duel.h subset ---- */
-
-#include "duel_cmd.h"       /* DuelCmd_Push */
-#include "chain.h"          /* gChain, Chain_AddPending, EventResponse_Request */
-#include "duel_actions.h"   /* the functions defined here; DestroyFieldCard, MoveFieldCard, LP changes */
-#include "effect.h"         /* LoseLpOnSendToGraveyard */
+#include "duel.h"                   /* struct DuelCard, DuelZone, DuelPlayer, gDuelPlayers, IsToonMonster,
+                                     * FindFreeMonsterZone, RemoveZoneLink, the Count* queries */
+#include "duel_cmd.h"               /* DuelCmd_Push */
+#include "chain.h"                  /* gChain, Chain_AddPending, EventResponse_Request */
+#include "duel_actions.h"           /* the functions defined here; DestroyFieldCard, MoveFieldCard, LP changes */
+#include "effect.h"                 /* LoseLpOnSendToGraveyard */
 
 /*
  * Card tables read through integer-constant addresses: gCardIdToNumber (0x08622AB4) and gCardStats
@@ -383,22 +300,24 @@ void SendFieldCardToGrave(int player, int zone, u16 destroyed, u16 runTriggers)
     DestroyLinkedCards(player, zone, 1);
 }
 
-/* Queue DUEL_CMD_ADD_ZONE_LINK: the zone at DUEL_LOC `at` gets a link of `kind` to `target`. */
+/* Queue DUEL_CMD_ADD_ZONE_LINK (player is the command's side): the zone at DUEL_LOC `at` gets a link of `kind`
+ * to `target`. */
 void QueueAddZoneLink(int player, u16 target, u16 at, u16 kind)
 {
     DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_ADD_ZONE_LINK), target, at, kind);
 }
 
-/* Queue DUEL_CMD_REMOVE_ZONE_LINK: remove the `kind` link to `target` from the zone at DUEL_LOC `at`. */
+/* Queue DUEL_CMD_REMOVE_ZONE_LINK (player is the command's side): remove the `kind` link to `target` from the
+ * zone at DUEL_LOC `at`. */
 void QueueRemoveZoneLink(int player, u16 target, u16 at, u16 kind)
 {
     DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_REMOVE_ZONE_LINK), target, at, kind);
 }
 
 /*
- * Equip the card at equipLoc to the monster at targetLoc (DUEL_CMD_ADD_EQUIP_LINK). Card 1351 (no EDS card)
- * destroys any equip put on it, and itself too when the equip is Premature Burial; otherwise the opponent
- * gets a RESPONSE_EQUIP window.
+ * Equip the card at equipLoc to the monster at targetLoc (DUEL_CMD_ADD_EQUIP_LINK; player is the side that
+ * equips). Card 1351 (no EDS card) destroys any equip put on it, and itself too when the equip is Premature
+ * Burial; otherwise the opponent gets a RESPONSE_EQUIP window. Both locations are DUEL_LOC values.
  */
 void EquipCard(int player, u16 equipLoc, u16 targetLoc)
 {
@@ -409,7 +328,7 @@ void EquipCard(int player, u16 equipLoc, u16 targetLoc)
     u16 targetId = ZONE_CARD(ZONE(targetPlayer, targetZone))->id;
 
     DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_ADD_EQUIP_LINK), equipLoc, targetLoc, 0);
-    if (CARD_NUMBER(targetId) == 1351) {     /* no EDS card; constants/cards.h has no CARD_1351 */
+    if (CARD_NUMBER(targetId) == CARD_1351) {   /* no EDS card */
         DuelCmd_Push(PLAYER_CMD(targetPlayer, DUEL_CMD_SHOW_CARD_EFFECT), targetId, 1, 0);
         DestroyFieldCard(equipPlayer, equipZone, 1);
         if (CARD_NUMBER(ZONE_CARD(ZONE(equipPlayer, equipZone))->id) == CARD_PREMATURE_BURIAL)
@@ -419,7 +338,8 @@ void EquipCard(int player, u16 equipLoc, u16 targetLoc)
     }
 }
 
-/* Move the equip card at equipLoc from the monster it equips to the monster at newTargetLoc. */
+/* Move the equip card at equipLoc (a DUEL_LOC; its player is the side that acts) from the monster it equips to
+ * the monster at newTargetLoc: queue the removal of the old equip link, then EquipCard. */
 void MoveEquipCard(u16 equipLoc, u16 newTargetLoc)
 {
     u8 player = equipLoc;

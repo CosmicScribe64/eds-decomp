@@ -1,9 +1,3 @@
-#include "global.h"
-#include "util.h"                   /* MemClear16, MemCopy16 */
-#include "card_data.h"              /* CARD_ID_MASK, CARD_NUMBER_TOKEN_FIRST / END */
-#include "constants/duel.h"
-#include "constants/sound.h"
-
 /*
  * Duel commands that change or move a card on the field (wiki/functions/duel-cmd-field-c.md):
  * DUEL_CMD_SEND_TO_GRAVEYARD .. DUEL_CMD_BANISH_FLAGGED (0x79-0x7B), DUEL_CMD_CHANGE_POSITION, FLIP_CARD
@@ -12,153 +6,32 @@
  * machine on gDuelCmd.step: scroll the field to the zone, play the animation, then change the duel state,
  * redraw the field and clear gDuelCmd.running. A card leaving the field is saved in gDuelCmd.card first, and
  * its move to the pile is animated unless it is a token.
+ *
+ * Most handlers form a zone address by byte arithmetic on gDuelZones (slot * 0x94 + player * 0xD64 +
+ * (u32)gDuelZones, the terms in the ROM's order) instead of &gDuelZones[player].zones[slot]: the member form
+ * emits the instructions in another order (tried on DuelCmd_Banish). A zone's card id is read through a
+ * struct DuelCard pointer (DUEL_CARD_ID), which loads the whole card word as the ROM does.
  */
+#include "global.h"
+#include "util.h"                   /* MemClear16, MemCopy16 */
+#include "card_data.h"              /* CARD_ID_MASK, CARD_NUMBER_TOKEN_FIRST / END */
+#include "constants/duel.h"
+#include "constants/sound.h"
+#include "sound.h"                  /* PlaySE */
+#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer, gDuelZones, the zone actions */
+#include "duel_cmd.h"               /* struct DuelCmd, gDuelCmd */
+#include "duel_screen.h"            /* DuelAnim_*, DuelCursor_Select, DuelScreen_*, DrawAllAreaTiles, GetZoneArea */
 
-/* ---- BEGIN header subset (pre-H0) ---- */
-/*
- * The parts of duel.h, duel_screen.h, duel_cmd.h and sound.h this unit uses, with the headers' tags, names,
- * types and bitfield containers. include/duel.h and include/sound.h still hold the legacy headers until the
- * header switch (H0, build/readability/HEADERS.md), and duel_screen.h and duel_cmd.h include duel.h. After
- * H0, replace this block (BEGIN to END) with:
- *     #include "legacy/duel.h"
- *     #include "duel_cmd.h"
- *     #include "duel_screen.h"
- *     #include "legacy/sound.h"
- */
-
-/* duel.h */
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:19;
-};
-
-struct DuelCardStatusBytes {
-    u8 cardIdLow;                   /* +0x00: card word bits 0-7 */
-    u8 cardWordBits8to13:6;         /* +0x01: id (high bits), owner, unk13 */
-    u8 unk14:1;                     /* +0x01 bit 6 = card bit 14 */
-    u8 normalSummoned:1;            /* bit 15 */
-    u8 specialSummoned:1;           /* +0x02 bit 0 = card bit 16 */
-    u8 planted:1;                   /* bit 17 */
-    u8 graverobbed:1;               /* bit 18 */
-    u8 unk19:1;                     /* bit 19 */
-    u8 isFusionMaterial:1;          /* bit 20 */
-    u8 destroyedInBattle:1;         /* bit 21 */
-    u8 destroyedByOpponent:1;       /* bit 22 */
-    u8 flag23:1;                    /* bit 23 */
-    u8 pendingEquip:1;              /* +0x03 bit 0 = card bit 24 */
-    u8 equipZone:3;                 /* bits 25-27 */
-    u8 pendingOpponentSummon:1;     /* bit 28 */
-    u8 unk29:3;
-    u8 restOfZone[0x94 - 4];
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;                       /* +0x02: padding, copied with the word */
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04: gDuel.serial when the card was placed (replay check) */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7_0:2;
-    u8 positionLocked:1;            /* +0x07 bit 2: cannot change position (set when the monster attacked) */
-    u8 unk7_3:5;
-    u8 unk8[0x94 - 0x8];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[]; also the slot the next card lands in */
-    u8 unk3[0xD64 - 0x3];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-u32 IsFusionMonster(u16 cardId);
-void CopyDuelCard(u32 *dst, u32 *src);
-void ClearZoneCardStatusFlags(u32 player, u32 zone);
-void SendZoneCardToGraveyard(int player, int zone);
-void BanishZoneCard(int player, int zone);
-void ReturnZoneCardToHand(int player, int zone);
-void ReturnZoneCardToDeck(int player, int zone);
-
-/* duel_screen.h */
-enum DuelAnimKind {
-    DUEL_ANIM_CHANGE_POSITION = 1,  /* quarter turn between attack and defense, optionally flipping */
-    DUEL_ANIM_FLIP = 2,             /* card flips face up or down in its zone */
-    DUEL_ANIM_MOVE_CARD = 3,        /* one card moves between two locations (DuelAnim_MoveCard) */
-    DUEL_ANIM_SWAP_CARDS = 4,       /* two face-down cards swap places (DuelAnim_SwapCards) */
-    DUEL_ANIM_ZONE_EFFECT = 5       /* sprite animation stream on a zone (DuelAnim_PlayZoneEffect) */
-};
-void DuelScreen_StartScroll(u32 target);
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void DuelCursor_Select(s32 player, s32 area, s32 index);
-void DuelAnim_Request(u16 kind, u32 arg);
-void DuelAnim_MoveCard(u16 cardId, struct DuelLoc *from, struct DuelLoc *to);
-void DuelAnim_SwapCards(struct DuelLoc *a, struct DuelLoc *b);
-void DuelAnim_PlayZoneEffect(struct DuelLoc *loc, u32 anim, u32 dx, u32 dy);
-void ClearZoneTiles(u32 player, u32 area);
-void DrawAllAreaTiles(void);
-int GetZoneArea(int zone);
-
-/* duel_cmd.h (the fields used here) */
-struct DuelCmdEntry {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-};
-struct DuelCmd {
-    u16 cmd;                        /* +0x000: enum DuelCmdId in bits 0-11, acting player in bit 15 */
-    u16 arg2;                       /* +0x002: first operand */
-    u16 arg4;                       /* +0x004: second operand */
-    u16 arg6;                       /* +0x006: third operand */
-    struct DuelCmdEntry queue[256]; /* +0x008 */
-    u16 queueCount;                 /* +0x808 */
-    u16 step:7;                     /* +0x80A bits 0-6: handler step; 0 when a command starts */
-    u16 counter:7;
-    u16 unk80A_14:2;
-    u32 unk80C_0:5;                 /* +0x80C */
-    u32 timer:7;
-    u32 unk80C_12:1;
-    u32 running:1;                  /* +0x80D bit 5: cleared by the finished handler */
-    u32 unk80C_14:18;
-    u16 *hofsTable;                 /* +0x810 */
-    struct DuelCard card;           /* +0x814: card saved by the current command (the moving card) */
-};
-extern struct DuelCmd gDuelCmd;                 /* 0x020185C0 */
-
-/* sound.h */
-void PlaySE(u32 seId);
-/* ---- END header subset ---- */
-
-/*
- * Matching: DuelCmd_SendToGraveyard and DuelCmd_Banish call DuelAnim_MoveCard with a u32 card ID; the
- * header's u16 parameter moves the argument set-up one instruction earlier.
- */
+/* Local view of DuelAnim_MoveCard (duel_screen.h, u16 cardId): the same symbol called with a u32 card ID, by
+ * DuelCmd_SendToGraveyard and DuelCmd_Banish. With the header's u16 parameter the argument set-up (mov r0, ip)
+ * moves one instruction earlier; the other four calls use the header prototype. */
 extern void DuelAnim_MoveCard32(u32 cardId, struct DuelLoc *from, struct DuelLoc *to) asm("DuelAnim_MoveCard");
 
-extern const u8 gExplosionAnim[];   /* 8-frame 32x32 explosion: sprite animation stream played on a zone */
+/* 0x0868CAC0: the 8-frame 32x32 explosion, a sprite animation stream played on a zone (used only here). */
+extern const u8 gExplosionAnim[];
 
 /* Acting player of the running command: bit 15 of the command word (DUEL_CMD_PLAYER). */
 #define CMD_ACTING_PLAYER() (gDuelCmd.cmd >> 15)
-
-/* Card ID of the card word at zone (a zone, whose card word comes first, or a card). Matching: the ROM loads
- * the whole word (ldr and shifts); a member access (zone->card.id) loads only the halfword. */
-#define ZONE_CARD_ID(zone) (((struct DuelCard *)(zone))->id)
 
 /* Card number of a card ID, read through the integer-constant address of gCardIdToNumber. Matching: the ROM
  * forms the address after the index math (with the symbol, before). Same table, same bytes. */
@@ -186,7 +59,7 @@ void DuelCmd_ChangePosition(void)
     struct DuelZonesPlayer *zones = &gDuelZones[player];
     struct DuelZone *zone = &zones->zones[slot];
 
-    if (ZONE_CARD_ID(zone) == 0) {
+    if (DUEL_CARD_ID(zone) == 0) {
         gDuelCmd.running = 0;
         return;
     }
@@ -231,7 +104,7 @@ void DuelCmd_FlipCard(void)
     struct DuelZone *zone = (struct DuelZone *)((u8 *)zones + offset);
 
     offset += player * 0xD64;
-    if (ZONE_CARD_ID((u8 *)gDuelZones + offset) == 0) {
+    if (DUEL_CARD_ID((u8 *)gDuelZones + offset) == 0) {
         gDuelCmd.running = 0;
         return;
     }
@@ -272,7 +145,7 @@ void DuelCmd_SendToGraveyard(void)
 
     switch (cmd->step) {
     case 0:
-        if (ZONE_CARD_ID(player * 0xD64 + slot * 0x94 + (u32)gDuelZones) == 0) {
+        if (DUEL_CARD_ID(player * 0xD64 + slot * 0x94 + (u32)gDuelZones) == 0) {
             DrawAllAreaTiles();
             cmd->running = 0;
         }
@@ -307,7 +180,7 @@ void DuelCmd_SendToGraveyard(void)
         struct DuelCard card;
         u32 cardId;
 
-        CopyDuelCard((u32 *)saved, (u32 *)(playerZones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerZones + slotOffset));
         zone = (struct DuelZone *)(slotOffset + playerOffset + (u32)zones);
         ((struct DuelCardStatusBytes *)zone)->graverobbed = 0;
         SendZoneCardToGraveyard(player, slot);
@@ -352,7 +225,7 @@ void DuelCmd_Banish(void)
 
     switch (cmd->step) {
     case 0:
-        if (ZONE_CARD_ID(player * 0xD64 + slot * 0x94 + (u32)gDuelZones) == 0)
+        if (DUEL_CARD_ID(player * 0xD64 + slot * 0x94 + (u32)gDuelZones) == 0)
             cmd->running = 0;
         else {
             DuelScreen_ScrollToZone(player, GetZoneArea(slot));
@@ -384,7 +257,7 @@ void DuelCmd_Banish(void)
         struct DuelCard card;
         u32 cardId;
 
-        CopyDuelCard((u32 *)saved, (u32 *)(playerZones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerZones + slotOffset));
         BanishZoneCard(player, slot);
         card = *saved;
         cardId = card.id;
@@ -469,7 +342,7 @@ void DuelCmd_BanishFlagged(void)
 
         ((struct DuelCardStatusBytes *)zone)->isFusionMaterial = 1;
         saved = &cmd->card;
-        CopyDuelCard((u32 *)saved, (u32 *)(playerOffset + (u32)zones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerOffset + (u32)zones + slotOffset));
         BanishZoneCard(player, slot);
         from.player = player;
         from.area = DUEL_AREA_MONSTER;
@@ -530,7 +403,7 @@ void DuelCmd_ReturnToHand(void)
         struct DuelCard card;
         u32 handIndex;
 
-        CopyDuelCard((u32 *)saved, (u32 *)(playerZones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerZones + slotOffset));
         ClearZoneCardStatusFlags(player, slot);
         ClearZoneTiles(player, slot);
         card = *saved;
@@ -555,7 +428,7 @@ void DuelCmd_ReturnToHand(void)
             to.index = handIndex;
             to.isDefense = 0;
             to.isFaceUp = ((struct DuelZone *)((player & 1) * 0xD64 + slot * 0x94 + (u32)gDuelZones))->isFaceUp;
-            DuelAnim_MoveCard(ZONE_CARD_ID(&gDuelCmd.card), &from, &to);
+            DuelAnim_MoveCard(DUEL_CARD_ID(&gDuelCmd.card), &from, &to);
         }
         gDuelCmd.step++;
         break;
@@ -605,7 +478,7 @@ void DuelCmd_ReturnToDeck(void)
         struct DuelZone *zone;
         struct DuelCard card;
 
-        CopyDuelCard((u32 *)saved, (u32 *)(playerZones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerZones + slotOffset));
         zone = (struct DuelZone *)(slotOffset + playerOffset + (u32)zones);
         ((struct DuelCardStatusBytes *)zone)->graverobbed = 0;
         ClearZoneTiles(player, slot);
@@ -655,7 +528,7 @@ void DuelCmd_MoveToZone(void)
 
     switch (gDuelCmd.step) {
     case 0:
-        if (ZONE_CARD_ID((srcPlayer & 1) * 0xD64 + srcSlot * 0x94 + (u32)gDuelZones) == 0) {
+        if (DUEL_CARD_ID((srcPlayer & 1) * 0xD64 + srcSlot * 0x94 + (u32)gDuelZones) == 0) {
             cmd->running = 0;
         } else {
             DuelScreen_ScrollToZone(srcPlayer, GetZoneArea(srcSlot));
@@ -670,7 +543,7 @@ void DuelCmd_MoveToZone(void)
         u32 slotOffset = srcSlot * 0x94;
         struct DuelZone *zone;
 
-        CopyDuelCard((u32 *)saved, (u32 *)(playerZones + slotOffset));
+        CopyDuelCard(saved, (struct DuelCard *)(playerZones + slotOffset));
         ClearZoneTiles(srcPlayer, srcSlot);
         from.player = srcPlayer;
         from.area = DUEL_AREA_MONSTER;
@@ -700,7 +573,7 @@ void DuelCmd_MoveToZone(void)
         struct DuelZone *src = (struct DuelZone *)(srcPlayerZones + srcSlot * 0x94);
 
         MemCopy16(dst, src, sizeof(struct DuelZone));
-        CopyDuelCard((u32 *)&dst->card, (u32 *)&cmd->card);
+        CopyDuelCard(&dst->card, &cmd->card);
         MemClear16(src, sizeof(struct DuelZone));
         ((struct DuelZone *)(dstPlayerOffset + dstSlotOffset + (u32)zones))->positionLocked = 0;
         DuelCursor_Select(dstPlayer, DUEL_AREA_MONSTER, dstSlot);
@@ -712,9 +585,9 @@ void DuelCmd_MoveToZone(void)
 }
 
 /*
- * Zone address forms of DuelCmd_SwapZones. The add order picks the ROM's evaluation order: a local `zones`
- * keeps (zones + p * 0xD64) + s * 0x94 from being reassociated, and in a memory address the second product
- * is emitted first.
+ * Zone address forms of DuelCmd_SwapZones (Matching: byte arithmetic instead of a member access, see the top of
+ * the file). The add order picks the ROM's evaluation order: a local `zones` keeps (zones + p * 0xD64) + s * 0x94
+ * from being reassociated, and in a memory address the second product is emitted first.
  */
 #define SWAP_ZONE(p, s)        ((struct DuelZone *)(zones + (p) * 0xD64 + (s) * 0x94))
 #define SWAP_ZONE_GLOBAL(p, s) ((struct DuelZone *)((p) * 0xD64 + (s) * 0x94 + (u32)gDuelZones))
@@ -737,13 +610,13 @@ void DuelCmd_SwapZones(void)
 
     switch (gDuelCmd.step) {
     case 0:
-        /* Two separate ifs (cross-jumped later) give cmd the extra reference that puts it in r9 ahead of
-         * slotA. */
-        if (ZONE_CARD_ID(SWAP_ZONE_GLOBAL(playerA & 1, slotA)) == 0) {
+        /* FAKEMATCH: two separate ifs (cross-jumped later) instead of one || give cmd the extra reference
+         * that puts it in r9 ahead of slotA. */
+        if (DUEL_CARD_ID(SWAP_ZONE_GLOBAL(playerA & 1, slotA)) == 0) {
             cmd->running = 0;
             break;
         }
-        if (ZONE_CARD_ID(SWAP_ZONE_GLOBAL(playerB & 1, slotB)) == 0) {
+        if (DUEL_CARD_ID(SWAP_ZONE_GLOBAL(playerB & 1, slotB)) == 0) {
             cmd->running = 0;
             break;
         }
@@ -754,9 +627,9 @@ void DuelCmd_SwapZones(void)
         u8 *zones = (u8 *)gDuelZones;
         u32 playerOffset;
 
-        /* Naming only the player offset, assigned inside the argument, gives it r5 and the slot product r4
-         * (as in the ROM). */
-        CopyDuelCard((u32 *)&cmd->card, (u32 *)(zones + (playerOffset = (playerA & 1) * 0xD64) + slotA * 0x94));
+        /* FAKEMATCH: naming only the player offset, assigned inside the argument, gives it r5 and the slot
+         * product r4, as in the ROM. */
+        CopyDuelCard(&cmd->card, (struct DuelCard *)(zones + (playerOffset = (playerA & 1) * 0xD64) + slotA * 0x94));
         ClearZoneTiles(playerA, slotA);
         ClearZoneTiles(playerB, slotB);
         from.player = playerA;

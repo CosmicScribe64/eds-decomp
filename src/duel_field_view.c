@@ -11,44 +11,12 @@
  *    of the scene (sparkles, glints, matching) is in coin_toss_scene.c.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* IO registers, VRAM / palette addresses, CpuSet */
-#include "legacy/main.h"               /* gMain.vblankFlags, gMain.bgVofs */
-#include "legacy/sound.h"              /* PlaySE */
+#include "gba.h"                /* IO registers, VRAM / palette addresses, CpuSet, CpuFill16 */
+#include "main.h"               /* gMain.vblankFlags, gMain.bgVofs */
+#include "sound.h"              /* PlaySE */
 #include "constants/duel.h"     /* enum DuelArea */
-
-/* ---- BEGIN pre-H0 block ---- */
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
- * headers: they lack the names below, and duel_screen.h needs struct DuelLoc from the new duel.h. This
- * block repeats them with the new headers' values and layout, and defines GUARD_DUEL_H so that
- * duel_screen.h does not pull in the legacy duel.h. With the new gba.h installed the block is skipped;
- * then delete it (build/readability/issues/duel_field_view.md).
- */
-#ifndef DISPCNT_MODE_4
-#define GUARD_DUEL_H
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;                       /* +0x02: padding, copied with the word */
-};
-
-#define DISPCNT_MODE_4          0x0004
-#define DISPCNT_OBJ_1D_MAP      0x0040
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_TGT2_OBJ         0x1000
-#define CPU_SET_SRC_FIXED       0x01000000
-#define BG_CHAR_ADDR(n)         (VRAM + 0x4000 * (n))
-#define VBLANK_COPY_OAM         0x1
-
-void PlaySE(u32 seId);
-#endif
-/* ---- END pre-H0 block ---- */
-
+#include "constants/sound.h"    /* SE_COIN_TOSS */
+#include "duel.h"               /* struct DuelLoc */
 #include "duel_screen.h"        /* gDuelScreen, gDuelZonePositions, DuelScreen_*, DuelCursor_*, DuelAnim_* */
 #include "duel_scenes.h"        /* gDuelScene, gCoinTossWork, struct Coin / CoinToss, CoinToss_* */
 #include "text_box.h"           /* gTextBox */
@@ -74,20 +42,6 @@ extern struct OamListEntry *OamListAddSpriteWide(u32 layer, u32 tile, s32 x, s32
                                                  u32 bpp, u32 palette, u32 unused, u32 attr0Flags,
                                                  u32 attr1Bits, u32 priority, struct OamList *list)
     asm("OamListAddSprite");
-
-/* Sound effect of a coin being thrown (only used here; constants/sound.h has no name for it yet). */
-#define SE_COIN_TOSS 30
-
-#ifndef CpuFill16
-/* Fills `size` bytes at dest with the halfword `value` through a CpuSet fill, as the SDK's CpuFill16 macro
- * does. The source must be a volatile stack temporary: with a plain local the compiler moves the zero store
- * ahead of the address computation (mov r5, #0 before mov r0, sp), unlike the ROM. */
-#define CpuFill16(value, dest, size)                                \
-    {                                                               \
-        vu16 fill_ = (value);                                       \
-        CpuSet((void *)&fill_, (dest), CPU_SET_SRC_FIXED | (size) / 2); \
-    }
-#endif
 
 /* Address of 4bpp OBJ tile n (in the bitmap modes the OBJ tiles start at tile 0x200, 0x06014000). */
 #define OBJ_TILE_ADDR(n) ((void *)(OBJ_VRAM0 + (n) * 0x20))

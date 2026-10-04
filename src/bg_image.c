@@ -18,28 +18,12 @@
  * LinkSioRecvSingle and LinkSioRecvDebug are unreferenced driver variants.
  */
 #include "global.h"
+#include "gba.h"                    /* REG_IME, REG_IE, REG_IF, REG_SIOCNT, REG_RCNT, REG_BG0CNT, REG_BG2X..REG_BG3PD, BG_PLTT, VRAM, CpuSet */
 #include "bg.h"                     /* struct ImagePackCount, struct ImagePackCell, gBgTileBuffer, the loader and map-buffer prototypes */
 #include "debug.h"                  /* DebugPrintf, DebugPrintFlush */
-#include "legacy/gba.h"                    /* REG_IME, REG_IE, REG_IF, REG_SIOCNT, REG_RCNT, BG_PLTT, VRAM, CpuSet */
 #include "link.h"                   /* struct LinkSio gLinkSio, enum LinkSioPacketType, LinkSioMain, LinkSioSetSendData, LinkSerialIntr */
 #include "text.h"                   /* SetTextArea */
 #include "util.h"                   /* MemCopy16, MemClear16, CopyDoubleWords */
-
-/* ---- Names the legacy gba.h lacks (until H0 installs the new one) ---- */
-#ifndef REG_BG2PA
-#define REG_BG2PA     REG16(0x020)
-#define REG_BG2PB     REG16(0x022)
-#define REG_BG2PC     REG16(0x024)
-#define REG_BG2PD     REG16(0x026)
-#define REG_BG2X      REG32(0x028)
-#define REG_BG2Y      REG32(0x02C)
-#define REG_BG3PA     REG16(0x030)
-#define REG_BG3PB     REG16(0x032)
-#define REG_BG3PC     REG16(0x034)
-#define REG_BG3PD     REG16(0x036)
-#define REG_BG3X      REG32(0x038)
-#define REG_BG3Y      REG32(0x03C)
-#endif
 
 /* ---- Map buffers ---- */
 
@@ -399,23 +383,6 @@ struct LinkSioFramePacket {
     u16 data[7];
 };
 
-/* gLinkSio as seen by LinkSioRecvMultiBlock: txMsg in 8-halfword packets and rxMsg stepped flat
- * per player. A local view is kept because the canonical field expressions change the register
- * allocation in this function (build/readability/issues/bg_image.md). */
-struct LinkSioMultiBlockView {
-    u8 pad0[8];
-    u16 txPackets[32][8];           /* +0x008: = gLinkSio.txMsg, one 16-byte packet per row */
-    u8 pad208[0x20C - 0x208];
-    u16 rxMsg[2][2][0x101];         /* +0x20C: = gLinkSio.rxMsg, stepped as rxMsg[slot] + blockIndex * 7 */
-    u8 padA14[0xA40 - 0xA14];
-    u16 txBuf2;                     /* +0xA40: = gLinkSio.txBuf[2] */
-    u8 padA42[0xAF0 - 0xA42];
-    u16 blockCount[2];              /* +0xAF0 */
-    u16 blockIndex[2];              /* +0xAF4 */
-    u16 msgPending[2];              /* +0xAF8: expected total (length + block count) while receiving */
-};
-#define gLinkMultiBlock (*(struct LinkSioMultiBlockView *)&gLinkSio)
-
 /* Unused receive variant: pump LinkSioMain, then for each player slot with data reassemble
  * FIRST / MIDDLE / LAST blocks into that slot's rxMsg area, acknowledging our own slot's blocks
  * with the next tx packet (RESEND asks for a block again). When slot `id`'s message is complete,
@@ -443,57 +410,57 @@ u32 LinkSioRecvMultiBlock(u32 id, void *dst)
                 case LINKSIO_PKT_IDLE:
                     break;
                 case LINKSIO_PKT_FIRST:
-                    gLinkMultiBlock.msgPending[slot] = rx[slot].hdr & 0x1FF;
+                    gLinkSio.msgPending[slot] = rx[slot].hdr & 0x1FF;
                     /* Matching: signed division; its sign-fixup branch (removed later by
                        combine) keeps the gLinkSio base from being hoisted first. */
-                    gLinkMultiBlock.blockCount[slot] = (gLinkMultiBlock.msgPending[slot] + 0x10) / 16;
-                    gLinkMultiBlock.msgPending[slot] += gLinkMultiBlock.blockCount[slot];
-                    gLinkMultiBlock.blockIndex[slot] = 0;
+                    gLinkSio.blockCount[slot] = (gLinkSio.msgPending[slot] + 0x10) / 16;
+                    gLinkSio.msgPending[slot] += gLinkSio.blockCount[slot];
+                    gLinkSio.blockIndex[slot] = 0;
                     /* fall through */
                 case LINKSIO_PKT_MIDDLE:
-                    CpuSet(rx[slot].data, gLinkMultiBlock.rxMsg[slot] + gLinkMultiBlock.blockIndex[slot] * 7, 7);
-                    gLinkMultiBlock.blockIndex[slot]++;
+                    CpuSet(rx[slot].data, gLinkSio.rxMsg[slot] + gLinkSio.blockIndex[slot] * 7, 7);
+                    gLinkSio.blockIndex[slot]++;
                     if (slot == (REG_SIOCNT & 0x30) >> 4) {
-                        if (gLinkMultiBlock.blockIndex[slot] == 0)
-                            tx.hdr = LINKSIO_PKT_FIRST | gLinkMultiBlock.msgPending[slot];
-                        else if (gLinkMultiBlock.blockIndex[slot] == gLinkMultiBlock.blockCount[slot] - 1)
+                        if (gLinkSio.blockIndex[slot] == 0)
+                            tx.hdr = LINKSIO_PKT_FIRST | gLinkSio.msgPending[slot];
+                        else if (gLinkSio.blockIndex[slot] == gLinkSio.blockCount[slot] - 1)
                             tx.hdr = LINKSIO_PKT_LAST;
                         else
                             tx.hdr = LINKSIO_PKT_MIDDLE;
-                        CpuSet(gLinkMultiBlock.txPackets[gLinkMultiBlock.blockIndex[slot]], tx.data, 7);
+                        CpuSet((gLinkSio.txMsg + gLinkSio.blockIndex[slot] * 8), tx.data, 7);
                         LinkSioSetSendData(&tx);
                     }
-                    gLinkMultiBlock.blockIndex[slot]++;
+                    gLinkSio.blockIndex[slot]++;
                     break;
                 case LINKSIO_PKT_LAST:
-                    if (gLinkMultiBlock.blockCount[slot] == 0)
-                        gLinkMultiBlock.msgPending[slot] = rx[slot].hdr & 0x1FF;
+                    if (gLinkSio.blockCount[slot] == 0)
+                        gLinkSio.msgPending[slot] = rx[slot].hdr & 0x1FF;
                     if (slot == (REG_SIOCNT & 0x30) >> 4)
-                        gLinkMultiBlock.txBuf2 = LINKSIO_PKT_IDLE;
-                    CpuSet(rx[slot].data, gLinkMultiBlock.rxMsg[slot] + gLinkMultiBlock.blockIndex[slot] * 7, 7);
-                    gLinkMultiBlock.blockIndex[slot]++;
+                        gLinkSio.txBuf[2] = LINKSIO_PKT_IDLE;
+                    CpuSet(rx[slot].data, gLinkSio.rxMsg[slot] + gLinkSio.blockIndex[slot] * 7, 7);
+                    gLinkSio.blockIndex[slot]++;
                     break;
                 case LINKSIO_PKT_RESEND:
-                    gLinkMultiBlock.blockIndex[slot]--;
+                    gLinkSio.blockIndex[slot]--;
                     if (slot == (REG_SIOCNT & 0x30) >> 4) {
-                        if (gLinkMultiBlock.blockIndex[slot] == 0)
-                            tx.hdr = LINKSIO_PKT_FIRST | gLinkMultiBlock.msgPending[slot];
-                        else if (gLinkMultiBlock.blockIndex[slot] == gLinkMultiBlock.blockCount[slot] - 1)
+                        if (gLinkSio.blockIndex[slot] == 0)
+                            tx.hdr = LINKSIO_PKT_FIRST | gLinkSio.msgPending[slot];
+                        else if (gLinkSio.blockIndex[slot] == gLinkSio.blockCount[slot] - 1)
                             tx.hdr = LINKSIO_PKT_LAST;
                         else
                             tx.hdr = LINKSIO_PKT_MIDDLE;
-                        CpuSet(gLinkMultiBlock.txPackets[gLinkMultiBlock.blockIndex[slot]], tx.data, 7);
+                        CpuSet((gLinkSio.txMsg + gLinkSio.blockIndex[slot] * 8), tx.data, 7);
                         LinkSioSetSendData(&tx);
                     }
                     break;
                 }
-                if (gLinkMultiBlock.blockIndex[slot] * 15 >= gLinkMultiBlock.msgPending[slot]) {
+                if (gLinkSio.blockIndex[slot] * 15 >= gLinkSio.msgPending[slot]) {
                     if (slot == id) {
-                        len = gLinkMultiBlock.msgPending[slot];
-                        CpuSet(gLinkMultiBlock.rxMsg[slot], dst, len >> 1);
+                        len = gLinkSio.msgPending[slot];
+                        CpuSet(gLinkSio.rxMsg[slot], dst, len >> 1);
                     }
-                    gLinkMultiBlock.msgPending[slot] = 0;
-                    gLinkMultiBlock.blockIndex[slot] = 0;
+                    gLinkSio.msgPending[slot] = 0;
+                    gLinkSio.blockIndex[slot] = 0;
                 }
             }
             mask <<= 1;
@@ -504,7 +471,6 @@ u32 LinkSioRecvMultiBlock(u32 id, void *dst)
         return len;
     return 0;
 }
-#undef gLinkMultiBlock
 
 /* Unused receive variant for single-block messages: run LinkSioMain, and if slot `id` holds a
  * complete LINKSIO_PKT_LAST packet copy it to dst; returns its length. */
@@ -548,23 +514,15 @@ extern u8 gStrLinkDbgBufferStoredBoth[];    /* 0x080876B4 */
 extern u8 gStrLinkDbgBufferOutput[];        /* 0x080876D4 */
 extern u8 gStrLinkDbgBufferStored[];        /* 0x080876F8 */
 
-/* gLinkSio as seen by LinkSioRecvDebug. A local view is kept because the canonical field
- * expressions change the code generation in this function (the stored-header index folds into
- * the struct base; build/readability/issues/bg_image.md). */
-struct LinkSioDebugView {
-    u8 pad0[0x20C];
-    u16 rxMsg[2][2][0x101];         /* +0x20C: [buffer][slot] */
-    u8 rxMsgLen[4];                 /* +0xA14: [buffer * 2 + slot] stored header (low byte used) */
-    u8 rxReadBuf[2];                /* +0xA18 */
-    u8 rxWriteBuf[2];               /* +0xA1A */
-    u16 rxPending;                  /* +0xA1C */
-    u8 padA1E[0xA40 - 0xA1E];
-    u16 txBuf2;                     /* +0xA40: = gLinkSio.txBuf[2] */
-    u8 padA42[0xAF4 - 0xA42];
-    u16 blockIndex[2];              /* +0xAF4 */
-    u16 msgPending[2];              /* +0xAF8 */
+/* gLinkSio.rxMsgLen (link.h: u8[2][2], [buffer][slot]) as one flat u8[4] at +0xA14, indexed [buffer * 2 + slot].
+ * Matching: LinkSioRecvDebug only matches when the table is reached through a cast of &gLinkSio to this
+ * view; gLinkSio.rxMsgLen, flat-cast to u8 *, folds the index differently and the function comes out 4 bytes
+ * shorter. Every other field of the function is the canonical member. */
+struct LinkSioRxLenView {
+    u8 pad0[0xA14];
+    u8 rxMsgLen[4];                 /* +0xA14: stored header per [buffer * 2 + slot] (low byte used) */
 };
-#define gLinkDebug (*(struct LinkSioDebugView *)&gLinkSio)
+#define gLinkRxMsgLen (((struct LinkSioRxLenView *)&gLinkSio)->rxMsgLen)
 
 /* Unused receive variant of the debug build: pump LinkSioMain, then for each slot with a complete
  * LINKSIO_PKT_LAST packet print it (DebugPrintf), store it in the slot's double buffer, and copy
@@ -599,26 +557,26 @@ u32 LinkSioRecvDebug(int slot, void *dst)
                 break;
             case LINKSIO_PKT_LAST:
                 if (i == (REG_SIOCNT & 0x30) >> 4)
-                    gLinkDebug.txBuf2 = LINKSIO_PKT_IDLE;
-                DebugPrintf(gStrLinkDbgBufferStoredBoth, i, gLinkDebug.rxWriteBuf[i]);
+                    gLinkSio.txBuf[2] = LINKSIO_PKT_IDLE;
+                DebugPrintf(gStrLinkDbgBufferStoredBoth, i, gLinkSio.rxWriteBuf[i]);
                 CpuSet(p + 1,
-                       (u8 *)gLinkDebug.rxMsg[gLinkDebug.rxWriteBuf[i]++][i] + gLinkDebug.blockIndex[i] * 14,
+                       (u8 *)gLinkSio.rxMsg[gLinkSio.rxWriteBuf[i]++][i] + gLinkSio.blockIndex[i] * 14,
                        7);
-                gLinkDebug.blockIndex[i]++;
-                gLinkDebug.rxMsgLen[i + gLinkDebug.rxWriteBuf[i] * 2] = *p;
+                gLinkSio.blockIndex[i]++;
+                gLinkRxMsgLen[i + gLinkSio.rxWriteBuf[i] * 2] = *p;
                 if (i == slot) {
-                    if (--gLinkDebug.rxPending != 0xFFFF) {
-                        ret = gLinkDebug.rxMsgLen[i + gLinkDebug.rxReadBuf[i] * 2];
-                        DebugPrintf(gStrLinkDbgBufferOutput, i, gLinkDebug.rxReadBuf[i], ret);
-                        CpuSet(gLinkDebug.rxMsg[gLinkDebug.rxReadBuf[i]++][i], dst, ret >> 1);
-                        gLinkDebug.rxReadBuf[i] &= 1;
+                    if (--gLinkSio.rxPending != 0xFFFF) {
+                        ret = gLinkRxMsgLen[i + gLinkSio.rxReadBuf[i] * 2];
+                        DebugPrintf(gStrLinkDbgBufferOutput, i, gLinkSio.rxReadBuf[i], ret);
+                        CpuSet(gLinkSio.rxMsg[gLinkSio.rxReadBuf[i]++][i], dst, ret >> 1);
+                        gLinkSio.rxReadBuf[i] &= 1;
                     }
                 }
-                gLinkDebug.rxWriteBuf[i] &= 1;
+                gLinkSio.rxWriteBuf[i] &= 1;
                 break;
             }
-            gLinkDebug.msgPending[i] = 0;
-            gLinkDebug.blockIndex[i] = 0;
+            gLinkSio.msgPending[i] = 0;
+            gLinkSio.blockIndex[i] = 0;
             i++;
         }
         DebugPrintFlush();
@@ -627,17 +585,17 @@ u32 LinkSioRecvDebug(int slot, void *dst)
         t = rx[0][0] & 0xF000;
         if (t == LINKSIO_PKT_IDLE) {
         } else if (t == LINKSIO_PKT_LAST) {
-            DebugPrintf(gStrLinkDbgBufferStored, 0, gLinkDebug.rxWriteBuf[0], rx[0][0] & 0x1FF);
+            DebugPrintf(gStrLinkDbgBufferStored, 0, gLinkSio.rxWriteBuf[0], rx[0][0] & 0x1FF);
             DebugPrintFlush();
-            gLinkDebug.rxMsgLen[gLinkDebug.rxWriteBuf[0] * 2] = rx[0][0];
+            gLinkRxMsgLen[gLinkSio.rxWriteBuf[0] * 2] = rx[0][0];
             /* FAKEMATCH: temporaries keep the target's order (src arg first,
                then rxMsg base + blockIndex*14) so the tail cross-jumps with case 2 */
             payload = &rx[0][1];
-            row = (u8 *)gLinkDebug.rxMsg[gLinkDebug.rxWriteBuf[0]++];
-            CpuSet(payload, row + gLinkDebug.blockIndex[0] * 14, 7);
-            gLinkDebug.rxWriteBuf[0] &= one;
-            gLinkDebug.blockIndex[0]++;
-            gLinkDebug.rxPending++;
+            row = (u8 *)gLinkSio.rxMsg[gLinkSio.rxWriteBuf[0]++];
+            CpuSet(payload, row + gLinkSio.blockIndex[0] * 14, 7);
+            gLinkSio.rxWriteBuf[0] &= one;
+            gLinkSio.blockIndex[0]++;
+            gLinkSio.rxPending++;
         }
         break;
     case LINKSIO_RX_OK_1:
@@ -645,20 +603,20 @@ u32 LinkSioRecvDebug(int slot, void *dst)
         t = *pkt & 0xF000;
         if (t == LINKSIO_PKT_IDLE) {
         } else if (t == LINKSIO_PKT_LAST) {
-            DebugPrintf(gStrLinkDbgBufferStored, 1, gLinkDebug.rxWriteBuf[1], *pkt & 0x1FF);
+            DebugPrintf(gStrLinkDbgBufferStored, 1, gLinkSio.rxWriteBuf[1], *pkt & 0x1FF);
             DebugPrintFlush();
-            gLinkDebug.rxMsgLen[gLinkDebug.rxWriteBuf[1] * 2 + 1] = *pkt;
+            gLinkRxMsgLen[gLinkSio.rxWriteBuf[1] * 2 + 1] = *pkt;
             CpuSet(pkt + 1,
-                   (u8 *)gLinkDebug.rxMsg[gLinkDebug.rxWriteBuf[1]++][1] + gLinkDebug.blockIndex[1] * 14, 7);
-            gLinkDebug.rxWriteBuf[1] &= one;
-            gLinkDebug.blockIndex[1]++;
-            gLinkDebug.rxPending++;
+                   (u8 *)gLinkSio.rxMsg[gLinkSio.rxWriteBuf[1]++][1] + gLinkSio.blockIndex[1] * 14, 7);
+            gLinkSio.rxWriteBuf[1] &= one;
+            gLinkSio.blockIndex[1]++;
+            gLinkSio.rxPending++;
         }
         break;
     }
     return 0;
 }
-#undef gLinkDebug
+#undef gLinkRxMsgLen
 
 /* Public link receive: pump LinkSioMain, then scan the two player slots for a complete
  * LINKSIO_PKT_LAST packet and copy it to dst; returns the byte count. (msgPending holds the

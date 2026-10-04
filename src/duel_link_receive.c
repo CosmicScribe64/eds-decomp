@@ -1,8 +1,14 @@
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_SIOCNT */
+#include "gba.h"                    /* REG_SIOCNT */
 #include "util.h"                   /* MemCopy16 */
 #include "link.h"                   /* gLinkBuf.timedOut, LinkRecvMessage */
+#include "sound.h"                  /* FadeOutBGM */
+#include "duel.h"                   /* gDuel, gDuelPlayers, struct DuelCard, CopyDuelCard */
 #include "duel_prompt.h"            /* DuelPrompt_PostData */
+#include "chain.h"                  /* gChain, Chain_Add, Chain_AddPartnerEntry, EventResponse_Request */
+#include "duel_link.h"              /* gLinkState, gLinkRxCards, LINKMSG_*, DuelLink_* */
+#include "duel_screen.h"            /* gDuelScreen.fast, DuelCursor_Select, DrawAllAreaTiles, ChainListScreen_Start */
+#include "summon.h"                 /* gSummonAction, SummonAction_StartFromLink */
 #include "constants/duel.h"         /* enum DuelArea, enum ResponseEventKind, enum ZoneLinkKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER, DUEL_CMD_ID_MASK */
 
@@ -19,100 +25,13 @@
  * DuelLink_MirrorCommand does this for a received duel command.
  */
 
-/* ---- BEGIN pre-H0 subset of duel.h and sound.h ---- */
-/*
- * The part of those headers this unit uses, with their names, types and bitfield containers (unused bytes
- * are padding). include/duel.h and include/sound.h still hold the legacy headers until the header switch
- * (H0, build/readability/HEADERS.md), and chain.h, duel_link.h, duel_screen.h and summon.h include duel.h,
- * so this block also defines duel.h's include guard. After H0, replace this block (BEGIN to END) with
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- * Checked: the unit compiles to the same assembly both ways.
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u8 unk4[0x94 - 4];              /* not used here; chain.h embeds a whole zone */
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 banishedCount;               /* +0x006: entries in banished[] */
-    u8 unk7[0x684 - 0x7];
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1 */
-    u8 phase:3;                     /* +0x1B12 bits 2-4 */
-    u8 linkError:1;                 /* +0x1B12 bit 5: the link failed */
-    u8 result:2;                    /* +0x1B12 bits 6-7: enum DuelResult */
-    u8 unk1B13;
-    u16 unk1B14_0:1;
-    u16 interruptActive:1;          /* +0x1B14 bit 1: the non-turn link player is acting */
-    u16 unk1B14_2:7;
-    u8 unk1B16[0x1B50 - 0x1B16];
-    u8 promptLinked:1;              /* +0x1B50 bit 0: the prompt is mirrored over the link */
-    u8 promptActive:1;
-    u8 promptPlayer:1;
-    u8 unk1B50_3:1;
-    u16 promptKind:6;
-    u16 unk1B51_2:6;
-    u16 promptArgs[8];              /* +0x1B52 */
-    u8 promptStep;                  /* +0x1B62 */
-    u8 unk1B63;
-    u16 promptResult;               /* +0x1B64: the answer; the partner's 16-byte result is copied here */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-void FadeOutBGM(void);
-/* ---- END pre-H0 subset ---- */
-
-#include "chain.h"                  /* gChain, Chain_Add, Chain_AddPartnerEntry, EventResponse_Request */
-#include "duel_link.h"              /* gLinkState, gLinkRxCards, LINKMSG_*, DuelLink_* */
-#include "duel_screen.h"            /* gDuelScreen.fast, DuelCursor_Select, DrawAllAreaTiles, ChainListScreen_Start */
-#include "summon.h"                 /* gSummonAction, SummonAction_StartFromLink */
-
 /* (zone << 8) | player with the player byte flipped: a location in the other GBA's point of view. */
 #define FLIP_LOC_PLAYER(loc) ((u8)(1 - (loc)) | (((loc) >> 8) << 8))
 
 /*
- * Local views kept for matching. They reach parts of gChain and gLinkState with another bitfield container
- * or another address form than the headers', which changes the code agbcc emits:
+ * Matching: local views of gChain and gLinkState parts (own tags, no clash with chain.h / duel_link.h). They
+ * use another bitfield container or another address form than the headers', which changes the code agbcc
+ * emits:
  * - struct ChainEntryU16: a chain entry whose player bit has a u16 container (chain.h: u8). With the u8
  *   container agbcc compiles `1 - player` to `player ^ 1`; the ROM subtracts and masks.
  * - QUERY_ENTRY_LOCS: gChain.queryEntry.loc0 / loc1 addressed from the gChain base (+0x4C2), not from
@@ -353,8 +272,9 @@ u16 DuelLink_PollMessage(void)
             QUERY_ENTRY_LOCS.loc1 = (QUERY_ENTRY_LOCS.loc1 >> 8) | ((u8)QUERY_ENTRY_LOCS.loc1 << 8);
             break;
         case RESPONSE_BATTLE_DESTROYED:
-            /* The ROM reloads both and stores them back unchanged (LINKMSG_TRIGGER_EVENT swaps them for
-             * this event). A plain self-assignment would be optimised away. */
+            /* FAKEMATCH: the ROM reloads both and stores them back unchanged (LINKMSG_TRIGGER_EVENT swaps
+             * them for this event). A plain self-assignment would be optimised away, so the values go
+             * through temporaries. */
             {
                 u16 loc0 = QUERY_ENTRY_LOCS.loc0;
                 u16 loc1 = QUERY_ENTRY_LOCS.loc1;
@@ -504,8 +424,9 @@ u16 DuelLink_PollMessage(void)
     case LINKMSG_REQUEST_BANISHED: DuelLink_SendBanished(0); return 1;
     /*
      * One of the partner's lists: {count | player << 8, card words}. Store it for player 1 - player with
-     * every owner bit flipped, then acknowledge it. (The order of the src and card declarations matters for
-     * the deck loop's registers; the other loops follow it.)
+     * every owner bit flipped, then acknowledge it.
+     * FAKEMATCH: the order of the src and card declarations matters for the deck loop's registers; the other
+     * loops follow it.
      */
     case LINKMSG_HAND_LIST:
         player = gLinkState.rxArgs[0] >> 8; count = (u8)gLinkState.rxArgs[0];
@@ -513,7 +434,7 @@ u16 DuelLink_PollMessage(void)
         for (i = 0; i < count; i++) {
             const struct DuelCard *src = &gLinkRxCards[i];
             struct DuelCard *card = &gDuelPlayers[player & 1].hand[i];
-            CopyDuelCard((u32 *)card, (u32 *)src);
+            CopyDuelCard(card, src);
             card->owner = 1 - card->owner;
         }
         gDuelPlayers[player & 1].handCount = count;
@@ -526,7 +447,7 @@ u16 DuelLink_PollMessage(void)
         for (i = 0; i < count; i++) {
             const struct DuelCard *src = &gLinkRxCards[i];
             struct DuelCard *card = &gDuelPlayers[player & 1].deck[i];
-            CopyDuelCard((u32 *)card, (u32 *)src);
+            CopyDuelCard(card, src);
             card->owner = 1 - card->owner;
         }
         gDuelPlayers[player & 1].deckCount = count;
@@ -539,7 +460,7 @@ u16 DuelLink_PollMessage(void)
         for (i = 0; i < count; i++) {
             const struct DuelCard *src = &gLinkRxCards[i];
             struct DuelCard *card = &gDuelPlayers[player & 1].graveyard[i];
-            CopyDuelCard((u32 *)card, (u32 *)src);
+            CopyDuelCard(card, src);
             card->owner = 1 - card->owner;
         }
         gDuelPlayers[player & 1].graveCount = count;
@@ -553,7 +474,7 @@ u16 DuelLink_PollMessage(void)
         for (i = 0; i < count; i++) {
             const struct DuelCard *src = &gLinkRxCards[i];
             struct DuelCard *card = &gDuelPlayers[player & 1].fusionDeck[i];
-            CopyDuelCard((u32 *)card, (u32 *)src);
+            CopyDuelCard(card, src);
             card->owner = 1 - card->owner;
         }
         gDuelPlayers[player & 1].fusionCount = count;
@@ -567,7 +488,7 @@ u16 DuelLink_PollMessage(void)
         for (i = 0; i < count; i++) {
             const struct DuelCard *src = &gLinkRxCards[i];
             struct DuelCard *card = &gDuelPlayers[player & 1].banished[i];
-            CopyDuelCard((u32 *)card, (u32 *)src);
+            CopyDuelCard(card, src);
             card->owner = 1 - card->owner;
         }
         /* The ROM does not update banishedCount here. */

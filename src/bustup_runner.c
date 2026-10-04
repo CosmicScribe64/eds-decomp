@@ -8,8 +8,8 @@
  * Mode-4 frame, and its cursor/header sprites. The Calendar steps are in campaign_select.c.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_DISPCNT, REG16, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON */
-#include "legacy/main.h"               /* gMain */
+#include "gba.h"                /* REG_DISPCNT, REG_BG2X_L.., DISPCNT_*, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON */
+#include "main.h"               /* gMain */
 #include "constants/game.h"     /* enum DuelistId */
 #include "constants/sound.h"    /* enum SoundEffect */
 #include "util.h"               /* MemCopy16, struct Line, LineStep */
@@ -17,33 +17,10 @@
 #include "sprite.h"             /* struct OamList, struct AnimState, AddSprite*, AnimStateTick, AnimBlockDraw */
 #include "text.h"               /* gFontKanji10x10, gFontLatin8x10, SjisToGlyphIndex */
 #include "save.h"               /* gSaveData */
-#include "legacy/sound.h"              /* (the new sound.h declares PlaySE; see below) */
+#include "sound.h"              /* PlaySE */
 #include "debug.h"              /* DebugPrintFlush */
 #include "calendar.h"           /* gCalendar, struct Date, the date functions, Calendar_* */
 #include "bustup.h"             /* gBustup and its aliases, enum BustupStep, GetSceneSet, Bustup_* */
-
-/* ---- Names the legacy headers lack (until H0 installs the new gba.h and sound.h) ---- */
-
-/* Values as in the new gba.h; inert once it is installed. */
-#ifndef DISPCNT_MODE_4
-#define DISPCNT_MODE_4      0x0004
-#define DISPCNT_BG_ALL_ON   0x0F00
-#define DISPCNT_OBJ_ON      0x1000
-#endif
-/* Not in the new gba.h either (build/readability/issues/bustup_runner.md). */
-#ifndef DISPCNT_FRAME_SELECT
-#define DISPCNT_FRAME_SELECT 0x0010     /* Mode 4/5: display frame 1 (VRAM + 0xA000) */
-#endif
-#ifndef REG_BG2X_L
-/* The ROM writes the 28-bit BG2 reference point registers (REG_BG2X / REG_BG2Y) as two halfwords. */
-#define REG_BG2X_L REG16(0x028)
-#define REG_BG2X_H REG16(0x02A)
-#define REG_BG2Y_L REG16(0x02C)
-#define REG_BG2Y_H REG16(0x02E)
-#endif
-
-/* The legacy sound.h does not declare PlaySE (the new one does, with this prototype). */
-void PlaySE(u32 seId);
 
 /* ---- ROM data used only here ---- */
 
@@ -78,26 +55,21 @@ extern const u8 gCalendarMonthNameTiles[];
 
 /* ---- Local views (matching choices, see build/readability/HEADERS.md) ---- */
 
-/* Bustup_Init passes an argument (0) that Bustup_InitState ignores. */
+/* Matching: view of Bustup_InitState (bustup.h: void). Bustup_Init passes an argument (0) that the function
+ * ignores, and the ROM loads it into r0 before the call, which the (void) prototype would not emit. */
 extern void Bustup_InitStateArg(u32 unused) asm("Bustup_InitState");
-/* The unused preview step passes two arguments (the fade level and 1) that Bustup_DrawCursorTrail ignores. */
+/* Matching: view of Bustup_DrawCursorTrail (bustup.h: void). The unused preview step passes two arguments (the
+ * fade level and 1) that the function ignores; the ROM computes and passes them. */
 extern void Bustup_DrawCursorTrailArgs(u16 level, s32 one) asm("Bustup_DrawCursorTrail");
-/* Bustup_Update uses the event id as a full register, without the u16 re-extension of the real prototype. */
+/* Matching: view of GetDialogueEventId (bustup.h: u16 return). Bustup_Update uses the event id as a full
+ * register, without the u16 re-extension that the real prototype adds after the call. */
 extern u32 GetDialogueEventIdU32(u32 index) asm("GetDialogueEventId");
-/* Bustup_UnusedOpponentPreview and Bustup_Update clear gMain.intrCheck bit 0 through a volatile struct member
- * (two ldrh for `&=`, base and offset formed separately); the legacy main.h declares it u16. With the new
- * main.h (vu16 intrCheck), `gMain.intrCheck &= ~1` compiles to the same code: drop this view after H0. */
-struct MainIntrCheckView {
-    u8 pad[0x40C];
-    vu16 intrCheck;     /* +0x40C = gMain.intrCheck */
-};
-#define gMainIntrCheck ((*(struct MainIntrCheckView *)&gMain).intrCheck)
-
 /*
- * Several steps address gBustup members from one of its alias symbols (bustup.h: gBustupFade = &gBustup.fade,
- * gBustupSprites = &gBustup.sprites, gBustupCursor = &gBustup.textBox.cursor), so the ROM builds those
- * addresses from the alias. BUSTUP_VIA(alias, aliasMember, type, member) is gBustup.member (read as `type`)
- * addressed from `alias`, which is &gBustup.aliasMember.
+ * Matching: views of gBustup members through the alias symbols of bustup.h (gBustupFade = &gBustup.fade,
+ * gBustupSprites = &gBustup.sprites, gBustupCursor = &gBustup.textBox.cursor). Several steps address gBustup
+ * members from one of these symbols, so the ROM builds those addresses from the alias; folding any of them into
+ * `gBustup.member` changes the code. BUSTUP_VIA(alias, aliasMember, type, member) is gBustup.member (read as
+ * `type`) addressed from `alias`, which is &gBustup.aliasMember.
  */
 #define BUSTUP_VIA(alias, aliasMember, type, member)                                                         \
     (*(type *)((u8 *)&(alias) + ((s32)OFFSET_OF(struct BustupState, member)                                  \
@@ -188,7 +160,7 @@ s32 Bustup_UnusedOpponentPreview(void)
 
     OamListFlush(&gBustupSprites);
     OamListClear((u8 *)&gBustupSprites);
-    gMainIntrCheck &= ~1;
+    gMain.intrCheck &= ~1;
     FadeTick(&VIA_SPRITES(struct Fade, fade));
     if (VIA_SPRITES(u8, fade.state) == FADE_STATE_FADED_OUT) {
         /* unk12F9 = the last page (row 4 of gBustupOpponentIds) is selected. */
@@ -349,7 +321,7 @@ s32 Bustup_Update(void)
     OamListClear((u8 *)&gBustupSprites);
     tb = &VIA_SPRITES(struct BustupTextBox, textBox);
     Bustup_ClearHiddenBox(tb);
-    gMainIntrCheck &= ~1;
+    gMain.intrCheck &= ~1;
     boxDirty = &VIA_SPRITES(u16, textBox.boxDirty);
     if (*boxDirty == 1) {
         Bustup_ShowPage(tb);
@@ -588,9 +560,9 @@ void Calendar_DrawStringShadow(u32 x, u32 y, const u8 *str)
     u8 *dest;
 
     if (gCalendar.displayFrame)
-        dest = (u8 *)VRAM;              /* frame 1 is shown: draw into frame 0 */
+        dest = (u8 *)MODE4_FRAME0;      /* frame 1 is shown: draw into frame 0 */
     else
-        dest = (u8 *)VRAM + 0xA000;     /* frame 1 */
+        dest = (u8 *)MODE4_FRAME1;      /* frame 0 is shown: draw into frame 1 */
     dest += x;
     dest += y * 240;
     while (*str != 0) {
@@ -631,9 +603,9 @@ void Calendar_DrawEventNames(u32 eventMask)
 void Calendar_ClearEventPanel(void)
 {
     if (gCalendar.displayFrame)
-        MemCopy16((void *)(VRAM + 120 * 240), gCalendarBgEventPanel, 40 * 240);
+        MemCopy16((void *)(MODE4_FRAME0 + 120 * 240), gCalendarBgEventPanel, 40 * 240);
     else
-        MemCopy16((void *)(VRAM + 0xA000 + 120 * 240), gCalendarBgEventPanel, 40 * 240);
+        MemCopy16((void *)(MODE4_FRAME1 + 120 * 240), gCalendarBgEventPanel, 40 * 240);
 }
 
 /* Shows the other Mode-4 frame (the one just drawn into). */

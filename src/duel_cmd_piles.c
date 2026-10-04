@@ -1,9 +1,3 @@
-#include "global.h"
-#include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE / CARD_STATS_KIND */
-#include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, ... */
-#include "constants/card_stats.h"   /* enum CardType, enum CardKind */
-#include "constants/duel.h"         /* enum DuelArea, enum DuelZoneIndex, enum ZoneLinkKind */
-
 /*
  * Duel command handlers that move cards between the hand and the piles: deck, graveyard, banished pile and
  * fusion deck (commands 0x69-0x6B, 0xC0, 0xC1, 0xC3, 0xD0-0xDC and 0xDE; the other hand commands are in
@@ -21,107 +15,21 @@
  * Operands: the acting player is bit 15 of the command; arg2 is a hand or graveyard index or a card ID, or
  * arg2 | arg4 << 16 is a whole card word (struct DuelCard). See wiki/functions/duel-cmd-piles-c.md.
  */
-
-/* ---- BEGIN duel.h / duel_cmd.h / duel_screen.h subset (pre-H0) ---- */
-/*
- * The declarations of include/duel.h, duel_cmd.h and duel_screen.h this unit uses, with the headers' tags,
- * field names, types and bitfield containers. include/duel.h still holds the legacy header until the header
- * switch (H0, build/readability/HEADERS.md), and duel_cmd.h and duel_screen.h include it. After H0, replace
- * this block (BEGIN to END) with #include "legacy/duel.h", "duel_cmd.h" and "duel_screen.h".
- */
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:5;
-    u32 graverobbed:1;              /* bit 18: taken with Graverobber; cleared when it leaves the field */
-    u32 unk19:4;
-    u32 flag23:1;                   /* bit 23: set by DUEL_CMD_MARK_GRAVEYARD_CARD; reader unknown */
-    u32 pendingEquip:1;             /* bit 24: graveyard card waiting to be equipped at end of turn */
-    u32 equipZone:3;                /* bits 25-27: monster zone that pendingEquip card goes to */
-    u32 pendingOpponentSummon:1;    /* bit 28: graveyard card the opponent may Special Summon at end of turn */
-    u32 unk29:3;
-};
-
-struct DuelCardStatusBytes;         /* ClearCardStatusFlags' view of a card word */
-
-/* A card location on the duel screen: the endpoints of the card-move animation. */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;
-};
-
-struct DuelPlayer {
-    u8 unk0[2];
-    u8 handCount;                   /* +0x002: entries in hand[]; also the slot the next card lands in */
-    u8 unk3;
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 unk5[6];
-    u8 crushCardTurns:3;            /* +0x00B bits 0-2: turns left of Crush Card's draw check */
-    u8 unkB_3:5;
-    u8 unkC[0x684 - 0xC];
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    u8 unkA44[0xD64 - 0xA44];
-};
-
-struct DuelCmd {
-    u16 cmd;                        /* +0x000: enum DuelCmdId in bits 0-11, acting player in bit 15 */
-    u16 arg2;                       /* +0x002 */
-    u16 arg4;                       /* +0x004 */
-    u16 arg6;                       /* +0x006 */
-    u8 queue[0x808 - 0x8];          /* +0x008: struct DuelCmdEntry queue[256] */
-    u16 queueCount;                 /* +0x808 */
-    u16 step:7;                     /* +0x80A bits 0-6: handler step; 0 when a command starts */
-    u16 counter:7;                  /* +0x80A bits 7-13: handler loop counter or saved value */
-    u16 unk80A_14:2;
-    u32 unk80C_0:5;                 /* +0x80C */
-    u32 timer:7;                    /* +0x80C bits 5-11 */
-    u32 unk80C_12:1;
-    u32 running:1;                  /* +0x80D bit 5: set by the queue runner, cleared by the finished handler */
-    u32 unk80C_14:18;
-    u16 *hofsTable;                 /* +0x810 */
-    struct DuelCard card;           /* +0x814: card saved by the current command (the moving card) */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];   /* 0x020192E4 */
-extern struct DuelCmd gDuelCmd;             /* 0x020185C0 */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-void ClearCardStatusFlags(struct DuelCardStatusBytes *card);
-void PlaceSpellTrapCard(int player, int slot, struct DuelCard *card, u16 faceUp);
-void AddCardToDeckTop(int player, struct DuelCard *card);
-void AddCardToDeckBottom(int player, struct DuelCard *card);
-int RemoveCardFromFusionDeck(int player, struct DuelCard *card);
-void AddCardToGraveyard(struct DuelCard *card);
-void AddCardToBanished(struct DuelCard *card);
-int TakeGraveyardCardAt(int player, int index, struct DuelCard *out);
-u16 RemoveCardFromGraveyard(int player, struct DuelCard *card);
-u16 RemoveGraveyardCardById(int player, u16 cardId);
-int GetGraveyardCardById(int player, u16 cardId, struct DuelCard *out);
-u16 RemoveCardFromBanished(int player, struct DuelCard *card);
-void AddCardToHand(int player, struct DuelCard *card);
-void CompactHand(int player);
-int FindFreeSpellTrapZone(int player);
-void AddZoneLink(u16 loc, u16 target, u16 kind);
-
-void DuelScreen_StartScroll(u32 target);
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void DuelCursor_Select(s32 player, s32 area, s32 index);
-void DuelAnim_MoveCard(u16 cardId, struct DuelLoc *from, struct DuelLoc *to);
-void DrawAllAreaTiles(void);
-/* ---- END duel.h / duel_cmd.h / duel_screen.h subset ---- */
+#include "global.h"
+#include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE / CARD_STATS_KIND */
+#include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, ... */
+#include "constants/card_stats.h"   /* enum CardType, enum CardKind */
+#include "constants/duel.h"         /* enum DuelArea, enum DuelZoneIndex, enum ZoneLinkKind */
+#include "duel.h"                   /* struct DuelCard / DuelLoc / DuelPlayer, gDuelPlayers, the pile functions */
+#include "duel_cmd.h"               /* struct DuelCmd, gDuelCmd */
+#include "duel_screen.h"            /* DuelScreen_ScrollToZone, DuelCursor_Select, DuelAnim_MoveCard, DrawAllAreaTiles */
 
 /* Acting player of the current command (bit 15 of cmd, read as a whole halfword and shifted). */
 #define CMD_PLAYER()    (gDuelCmd.cmd >> 15)
 /* The card word that arg2 (low half) and arg4 (high half) carry. */
 #define CMD_CARD_WORD() ((gDuelCmd.arg4 << 16) | gDuelCmd.arg2)
-/* Owner bit (12) of a card word held in a u32. */
-#define CARD_WORD_OWNER(word)   (((word) << 19) >> 31)
+/* Owner bit (12) of a card word held in a u32 (struct DuelCard.owner: the pile owner the card returns to). */
+#define CARD_WORD_OWNER(word)   (((struct DuelCard *)&(word))->owner)
 
 /*
  * The card the command moves, as a pointer. Matching: reading a field through the pointer loads the whole
@@ -600,6 +508,7 @@ void DuelCmd_MarkGraveyardCard(void)
     u32 *entry;
     u32 cardWord = CMD_CARD_WORD();
     int i;
+    /* FAKEMATCH: s16 (a u32 player changes the register allocation of the loop). */
     s16 player = CMD_PLAYER();
 
     for (i = 0; i < gDuelPlayers[player].graveCount; i++) {
@@ -630,7 +539,7 @@ void DuelCmd_SendHandCardToGraveyard(void)
         gDuelCmd.step++;
         break;
     case 1:
-        CopyDuelCard((u32 *)CMD_CARD, (u32 *)&gDuelPlayers[player & 1].hand[handIndex]);
+        CopyDuelCard(CMD_CARD, &gDuelPlayers[player & 1].hand[handIndex]);
         (&gDuelPlayers[player & 1].hand[handIndex])->id = 0;  /* a hole; word access via the pointer */
         from.player = player;
         from.area = DUEL_AREA_HAND;
@@ -671,7 +580,7 @@ void DuelCmd_BanishHandCard(void)
         gDuelCmd.step++;
         break;
     case 1:
-        CopyDuelCard((u32 *)CMD_CARD, (u32 *)&gDuelPlayers[player & 1].hand[handIndex]);
+        CopyDuelCard(CMD_CARD, &gDuelPlayers[player & 1].hand[handIndex]);
         (&gDuelPlayers[player & 1].hand[handIndex])->id = 0;  /* a hole; word access via the pointer */
         from.player = player;
         from.area = DUEL_AREA_HAND;
@@ -699,8 +608,9 @@ void DuelCmd_BanishHandCard(void)
 }
 
 /*
- * DUEL_CMD_RETURN_HAND_CARD_TO_DECK (0xC3): move hand[arg2] of the acting player (face down) to its owner's
- * deck, then compact the hand and put the card on top (arg4 != 0) or at the bottom of the deck.
+ * DUEL_CMD_RETURN_HAND_CARD_TO_DECK (0xC3): copy hand[arg2] of the acting player to gDuelCmd.card, clear its
+ * ID and animate it (face up) to its owner's deck; then compact the hand and put the card on top (arg4 != 0)
+ * or at the bottom of the deck.
  */
 void DuelCmd_ReturnHandCardToDeck(void)
 {
@@ -714,7 +624,7 @@ void DuelCmd_ReturnHandCardToDeck(void)
         gDuelCmd.step++;
         break;
     case 1:
-        CopyDuelCard((u32 *)CMD_CARD, (u32 *)&gDuelPlayers[player & 1].hand[handIndex]);
+        CopyDuelCard(CMD_CARD, &gDuelPlayers[player & 1].hand[handIndex]);
         (&gDuelPlayers[player & 1].hand[handIndex])->id = 0;  /* a hole; word access via the pointer */
         from.player = player;
         from.area = DUEL_AREA_HAND;

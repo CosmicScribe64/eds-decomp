@@ -10,9 +10,9 @@
  * stars, icons, ATK/DEF digits).
  */
 #include "global.h"
-#include "legacy/gba.h"
-#include "legacy/main.h"
-#include "legacy/sound.h"
+#include "gba.h"
+#include "main.h"
+#include "sound.h"
 #include "constants/sound.h"
 #include "constants/cards.h"
 #include "util.h"
@@ -27,35 +27,21 @@
 #include "title_screen.h"
 
 /*
- * Until step H0 of the header plan installs the new gba.h, main.h and sound.h (build/readability/HEADERS.md),
- * include/ holds the legacy versions, which lack these names. The fallbacks repeat the staged headers'
- * values and prototypes; delete this block after H0.
+ * Local views of functions, kept on purpose (matching choices, see build/readability/HEADERS.md). Each name is
+ * bound to the header's real symbol with asm(""): same relocation, only the types at the call sites differ.
  */
-#ifndef DISPCNT_BG0_ON
-#define DISPCNT_MODE_4          0x0004
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define VBLANK_COPY_OAM         0x1
-#define VBLANK_COPY_BG_MAPS     0x2
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-void PlayBGM(u32 songId);
-#endif
-
-/*
- * Local views of functions, kept on purpose (matching choices, see build/readability/HEADERS.md):
- * - the fades are called as returning u16, so each caller truncates the result (lsls #16), while CB_Bustup
- *   and StarterDeckSelect_Run (u16 in their definitions) are called as returning u32 (no truncation);
- * - TextDrawNumber is called with the value as a 4th argument (the definition names only three).
- */
+/* FadeToBlack (palette.h returns u32) called as returning u16: each caller truncates the result (lsls #16). */
 u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
+/* FadeFromBlack (palette.h returns u32), called as returning u16 like FadeToBlackU16. */
 u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
+/* CB_Bustup (bustup.h returns u16) called as returning u32, so Title_StartGame does not truncate the result;
+ * with the header's u16 return it gains two lsls r0, r0, #16. */
 u32 CB_BustupU32(void) asm("CB_Bustup");
+/* StarterDeckSelect_Run (booster.h returns u16), called as returning u32 like CB_BustupU32. */
 u32 StarterDeckSelect_RunU32(void) asm("StarterDeckSelect_Run");
+/* TextDrawNumber (text.h) is defined with three parameters but called with the value as a 4th argument (it
+ * passes through r3 untouched): the callers use this 4-parameter view. */
 void TextDrawNumber4(s32 x, s32 y, u16 sizeColor, s32 value) asm("TextDrawNumber");
-
-/* Font size and colour index packed for the sizeColor argument of the TextDraw* functions (text.h). */
-#define TEXT_SIZE_COLOR(size, color) (((size) << 8) | (color))
 
 /* Sprite position argument of AddSprite: y << 16 | x. */
 #define SPRITE_YX(x, y) (((y) << 16) | (x))
@@ -211,7 +197,7 @@ u16 Title_StartGame(void)
     switch (gMain.seqState0) {
     case 0:
         StartDialogue(100);
-        PlayBGM(1);
+        PlayBGM(SONG_NEW_GAME);
         gMain.seqState0++;
     case 1:
         if (CB_BustupU32()) {
@@ -297,8 +283,8 @@ void CardDetail_RenderText(u16 size, u32 pos, const u8 *str, u16 colors, int fon
     if (gTextCanvas.bottom < 0xC0)
         return;
 
-    /* No shadow, font size 8. sizeColor is a u32 so the 0x800 stays a full-width
-     * register and the orr ties to it, as in the original. */
+    /* No shadow, font size 8. FAKEMATCH: sizeColor is a u32 local so the 0x800 stays a full-width
+     * register and the orr ties to it, as in the ROM. */
     TextCanvasInitEx(width, height, wrap, 1);
     sizeColor = color | (8 << 8);
     TextDrawString(x, y, sizeColor, str);
@@ -349,6 +335,8 @@ void CardDetail_DrawTextBox(u32 bg, u16 mapPos, u16 size, u16 tile, u16 colors, 
  * inlined RTL keeps the stats address as (plus reg const), the same form the other inlines use, so CSE shares
  * the address register.
  */
+
+/* enum CardType of a card ID. */
 static inline int GetCardType(u16 id)
 {
     return CARD_TYPE(id);
@@ -381,8 +369,8 @@ static inline int GetCardLevel(u16 id)
     }
 }
 
-/* GetCardLevel as a u8: the narrow return type gives the inline its own result register (r0) and the copy
- * into `level` that CardDetail_DrawSprites keeps. */
+/* GetCardLevel as a u8, for CardDetail_DrawSprites. FAKEMATCH: the narrow return type gives the inline its own
+ * result register (r0) and the copy into `level` that the ROM keeps. */
 static inline u8 GetCardLevelU8(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
@@ -397,8 +385,9 @@ static inline u8 GetCardLevelU8(u16 id)
     }
 }
 
-/* Shown ATK/DEF: 0 for Trap/Magic/Ticket, 4000 for the Divine cards. The u16 return type gives the inline its
- * own result register (r0) and the copy into the argument register that the ROM has. */
+/* Shown ATK of a card ID: 0 for Trap/Magic/Ticket, 4000 for the Divine cards, else the stored ATK * 10.
+ * FAKEMATCH: the u16 return type gives the inline its own result register (r0) and the copy into the argument
+ * register that the ROM has. */
 static inline u16 GetCardAtk(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
@@ -413,6 +402,7 @@ static inline u16 GetCardAtk(u16 id)
     }
 }
 
+/* Shown DEF of a card ID, as GetCardAtk (4000 for the Divine cards, else the stored DEF * 10). */
 static inline u16 GetCardDef(u16 id)
 {
     switch ((int)CARD_TYPE(id)) {
@@ -449,6 +439,7 @@ static inline int GetCardKind(u16 id)
     }
 }
 
+/* enum CardAttribute of a card ID (the top bits of its stats word). */
 static inline u32 GetCardAttribute(u16 id)
 {
     return CARD_STATS_ATTR(CARD_STATS_WORD(id));
@@ -527,8 +518,8 @@ void CardDetail_DrawInfo(u16 cardId)
         /* Nested ifs: a single && chain folds into one (attr - 1) <= 5 range test. */
         if (attr != 0) {
             if (attr <= ATTRIBUTE_WIND && CARD_TYPE(cardId) <= CARD_TYPE_REPTILE) {
-                CopyDoubleWords((void *)(OBJ_PLTT + 0x20), (const void *)gCardIconPals[attr], 0x20);
-                CopyDoubleWords((void *)(OBJ_VRAM0 + 0x400), (const void *)gCardIconGfx[attr], 0x80);
+                CopyDoubleWords((void *)(OBJ_PLTT + 0x20), gCardIconPals[attr], 0x20);
+                CopyDoubleWords((void *)(OBJ_VRAM0 + 0x400), gCardIconGfx[attr], 0x80);
             }
         }
         break;
@@ -544,8 +535,8 @@ void CardDetail_DrawInfo(u16 cardId)
     if (IS_TOKEN(cardId)) {
         /* Attribute icon (BG palette 1, tiles 0x20-0x23) and the level stars (tile 3) on BG0, right of the
          * name. */
-        CopyDoubleWords((void *)(BG_PLTT + 0x20), (const void *)gCardIconPals[GetCardAttribute(cardId)], 0x20);
-        CopyDoubleWords((void *)(VRAM + 0x4400), (const void *)gCardIconGfx[GetCardAttribute(cardId)], 0x80);
+        CopyDoubleWords((void *)(BG_PLTT + 0x20), gCardIconPals[GetCardAttribute(cardId)], 0x20);
+        CopyDoubleWords((void *)(VRAM + 0x4400), gCardIconGfx[GetCardAttribute(cardId)], 0x80);
         BG_MAP_CELL(0, 13, 2) = 0x1020;
         BG_MAP_CELL(0, 14, 2) = 0x1021;
         BG_MAP_CELL(0, 13, 3) = 0x1022;
@@ -606,9 +597,9 @@ void CardDetail_DrawInfo(u16 cardId)
                 /* Fusions with an effect; 1241, 1334 and 1526 are not EDS cards. */
                 switch (CARD_NUMBER(cardId)) {
                 case CARD_ALLIGATORS_SWORD_DRAGON:
-                case 1241:
-                case 1334:
-                case 1526:
+                case CARD_1241:
+                case CARD_1334:
+                case CARD_1526:
                     StrCat(buf, gStrFusionEffectSuffix);
                     break;
                 default:
@@ -630,7 +621,7 @@ void CardDetail_DrawInfo(u16 cardId)
         fontSize = 10;
         if (len > 22)
             fontSize = 8;
-        /* The (u16) keeps CSE from sharing the 9 with the last argument. */
+        /* FAKEMATCH: the (u16) keeps CSE from sharing the 9 with the last argument. */
         CardDetail_DrawTextBox(0, BOX_XY(13, 2), BOX_XY(18, 2), 0x224, TEXT_COLORS(7, 8), fontSize,
                                ((u16)(9 - (fontSize >> 1)) << 16) | 4, buf, 1, 9);
         /* The description (gCardDescriptions, by address) in an 18x24-tile box on bgMapBuffer[4], which

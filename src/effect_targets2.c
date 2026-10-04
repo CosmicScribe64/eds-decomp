@@ -21,66 +21,10 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum DuelZoneIndex, FieldPickMask, DUEL_LOC */
 #include "constants/sound.h"        /* SE_ERROR */
-#include "legacy/gba.h"                    /* B_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h and duel_screen.h do not pull in the legacy header. After H0, replace the block
- * (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h" (build/readability/issues/effect_targets2.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 unk2[0x28 - 0x2];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 unk684[0xD64 - 0x684];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-int CountMonsters(int player);
-int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
-
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
+#include "duel.h"                   /* struct DuelZone / DuelPlayer, gDuelPlayers, gDuelZones, CountMonsters, GetZoneCardAtk */
+#include "sound.h"                  /* PlaySE */
 #include "ai.h"                     /* AiFindStrongestMonster, AI_FLAG_EXODIA */
 #include "chain.h"                  /* struct ChainEntry, struct ChainState, gChain */
 #include "duel_flow.h"              /* gDuelCtrl */
@@ -89,13 +33,14 @@ void PlaySE(u32 seId);
 #include "effect_handlers.h"        /* the handlers defined here and the Check/Prepare handlers they call */
 #include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
 
-/* Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view"). */
-/* Matching: CanCardTargetZone is defined with a u16 return; this unit tests the result as an int (cmp r0, #0
- * with no lsl #16). */
+/* Local views of two functions, kept for matching: asm-label aliases with the types this unit calls them with. */
+
+/* View of CanCardTargetZone (effect.h: returns u16). Matching: this unit tests the result as an int
+ * (cmp r0, #0 with no lsl #16 narrowing). */
 extern int CanCardTargetZoneInt(u16 cardId, int player, int zone) asm("CanCardTargetZone");
-/* Matching: EffectGreenkappaPrepare is a condition callback that ignores its arguments, so the header gives it
- * only the link. Greenkappa's ChainB passes it the second argument it received (the ROM leaves that in r1
- * from entry to the call). */
+/* View of EffectGreenkappaPrepare (effect_handlers.h: takes only the link, as the definition is a condition
+ * callback that ignores its arguments). Matching: Greenkappa's ChainB passes it the second argument it
+ * received (the ROM leaves that in r1 from entry to the call). */
 extern int EffectGreenkappaPrepare2(struct ChainEntry *card, int prevLink) asm("EffectGreenkappaPrepare");
 
 /* Prompts (ROM; only this unit uses them) */
@@ -121,16 +66,11 @@ extern const u8 gStrSelectFaceUpTrapToDestroy[];        /* 0x08084470: Remove Tr
 extern const u8 gStrDesignateFirstOwnMonster[];         /* 0x0808449C: Two-Pronged Attack */
 extern const u8 gStrDesignateSecondOwnMonster[];        /* 0x080844C0: Two-Pronged Attack */
 
-/* Text box of the target prompts: cell (6, 2), 18 x 7 cells. */
-#define TARGET_PROMPT_POS 0x206
-#define TARGET_PROMPT_SIZE 0x712
-/* The box of 7 Completed's ATK/DEF menu: cell (6, 2), 19 x 6 cells. */
-#define STAT_MENU_SIZE 0x613
+/* The box of 7 Completed's ATK/DEF menu (the other prompts use TARGET_PROMPT_POS / _SIZE, 18 x 7 cells): at
+ * cell (6, 2), 19 x 6 cells. */
+#define STAT_MENU_SIZE TEXTBOX_SIZE(19, 6)
 
-/* Pick masks: the same positions on both sides, a face-up monster in either position, and a face-down card
- * (a face-down monster in either position, or a set Magic/Trap card). */
-#define PICK_BOTH_SIDES(mask) ((mask) | PICK_PLAYER1(mask))
-#define PICK_FACE_UP_MONSTER_ANY (PICK_FACE_UP_MONSTER | PICK_ATTACK_POSITION | PICK_DEFENSE_POSITION)
+/* Pick mask of a face-down card: a face-down monster in either position, or a set Magic/Trap card (0xD2). */
 #define PICK_FACE_DOWN_CARD (PICK_FACE_DOWN_SPELL_TRAP | PICK_FACE_DOWN_MONSTER | PICK_ATTACK_POSITION \
                              | PICK_DEFENSE_POSITION)
 
@@ -158,32 +98,17 @@ extern const u8 gStrDesignateSecondOwnMonster[];        /* 0x080844C0: Two-Prong
  * face-up test. */
 #define ZONE_AT_PLAYER_FIRST(player, zone) \
     ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
-/* The card word of a zone as one u32 (ldr), and its card ID (lsl #20; lsr #20). Matching: a read of the
- * bitfield card.id generates other code. */
-#define CARD_WORD(card) (*(u32 *)&(card))
-#define CARD_ID(word) (((word) << 20) >> 20)
-#define ZONE_CARD_ID(zone) CARD_ID(CARD_WORD((zone)->card))
-/* 1 if the zone holds a card (ID != 0), tested with a single lsl #20. */
-#define HAS_CARD(card) (CARD_WORD(card) << 20 != 0)
-/* The card word's 11 bits that the card tables index with (CARD_ID_MASK), as lsl #21; lsr #21. */
-#define CARD_ID11(word) (((word) << 21) >> 21)
 
 /* gCardIdToNumber (0x08622AB4) through its integer-constant address. Matching: the symbol form
  * gCardIdToNumber[...] gives other code (it changes the literal pool). */
 #define CARD_NUMBER(id) (((const u16 *)0x08622AB4)[CARD_ID_MASK & (id)])
-/* The same for a card word, indexed with the shift pair (lsl #21; lsr #21) that the Exodia scan of
- * EffectPenguinSoldierChainB uses. */
-#define CARD_NUMBER_OF_WORD(word) (((const u16 *)0x08622AB4)[CARD_ID11(word)])
-
-/* Card number 1351 is no EDS card (gCardIdToNumber has no ID with it), so constants/cards.h has no name
- * for it (build/readability/issues/effect_targets2.md). */
-#define UNUSED_CARD_NUMBER_1351 1351
 
 /*
  * ChainB of Patrol Robo: pick one of the opponent's face-down cards (a monster or a set Magic/Trap). No CPU
  * branch.
  *   Step 0: prompt.
  *   Then: a pick among the opponent's face-down cards; a refused pick plays SE_ERROR; B goes back to step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectPatrolRoboChainB(struct ChainEntry *link)
 {
@@ -227,6 +152,7 @@ enum GreenkappaStep {
  *   Step 1: pick a set Magic/Trap card of either side.
  *   Step 2: prompt for the 2nd card.
  *   Step 3: pick a second, different set card; done. A refused pick plays SE_ERROR; B goes back to step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectGreenkappaChainB(struct ChainEntry *link, int prevLink)
 {
@@ -242,7 +168,7 @@ int EffectGreenkappaChainB(struct ChainEntry *link, int prevLink)
             int zone;
             for (zone = ZONE_SPELL_0; zone <= ZONE_SPELL_4; zone++) {
                 struct DuelZone *z = ZONE_AT(1 & player, zone);    /* Matching: the redundant & 1 is the ROM's */
-                if (HAS_CARD(z->card) && !z->isFaceUp) {
+                if (DUEL_CARD_ID(z) && !z->isFaceUp) {
                     TryAddEffectTarget(link, player, zone);
                     found++;
                     if (found == 2)
@@ -323,6 +249,7 @@ enum PenguinSoldierStep {
  *        zone 0, not the zone of the first pick). The second pass may not repeat the first target. Stops at
  *        the first pass without a candidate.
  *   Human, 6 steps (see enum PenguinSoldierStep): Yes/No, pick, Yes/No, pick.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
 {
@@ -334,7 +261,7 @@ int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
         if (CountMonsters(0) <= 0)
             return 1;
         for (pass = 0; pass <= 1; pass++) {
-            /* Matching: the 'no candidate' marker in a variable; the ROM keeps it in sl for the compares. */
+            /* FAKEMATCH: the 'no candidate' marker in a variable; the ROM keeps it in sl for the compares. */
             int none = 0xFFFF;
             u16 candidate = 0xFFFF; /* position player | zone << 8, or none */
             if (gDuelCtrl.aiFlags & AI_FLAG_EXODIA) {
@@ -342,8 +269,8 @@ int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
                 for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
                     /* Quirk kept from the ROM: this tests zone `pass` (0 or 1) of the CPU's side for a card, not
                      * zone `zone`; the test does not depend on the loop, so the ROM computes it before the loop. */
-                    if (ZONE_CARD_ID(ZONE_AT(1, pass)) != 0) {
-                        switch (CARD_NUMBER_OF_WORD(CARD_WORD(ZONE_AT(1, zone)->card))) {
+                    if (DUEL_CARD_ID(ZONE_AT(1, pass)) != 0) {
+                        switch (CARD_NUMBER(DUEL_CARD_ID(ZONE_AT(1, zone)))) {
                         case CARD_RIGHT_LEG_OF_THE_FORBIDDEN_ONE ... CARD_EXODIA_THE_FORBIDDEN_ONE:
                             /* Matching: a range case gives the ROM's `cmp #0x14; bgt` then `cmp #0x10; blt`. */
                             if (pass != 0) {
@@ -371,7 +298,8 @@ int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
                 return 1;
             TryAddEffectTarget(link, (u8)candidate, (u8)(candidate >> 8));
         }
-        /* Shares step 5's `return 1` (the ROM keeps a single r0 = 1 block after case 5). */
+        /* FAKEMATCH: shares step 5's `return 1` through a goto into the switch (the ROM keeps a single r0 = 1
+         * block after case 5). */
         goto done;
     } else {
         u8 *chain = CHAIN_BYTES;
@@ -464,6 +392,7 @@ int EffectPenguinSoldierChainB(struct ChainEntry *link, int prevLink)
  *   Then: a pick; it must pass CanCardTargetZone, and Snatch Steal refuses card number 1351 (dead: no EDS card
  *         has it); Snatch Steal and key 1244 also refuse a face-down card (SE_ERROR).
  * No B handling.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectTakeControlChainB(struct ChainEntry *link)
 {
@@ -473,14 +402,14 @@ int EffectTakeControlChainB(struct ChainEntry *link)
     u8 *chain;
 
     isCpu = LINK_PLAYER_BYTE(link);
-    /* Matching: the constant 1 in a variable; the ROM keeps it in one register for the opponent's side
+    /* FAKEMATCH: the constant 1 in a variable; the ROM keeps it in one register for the opponent's side
      * (one - link->player, in the first two prompts) and for AiFindStrongestMonster's useDef argument. */
     one = 1;
     if (isCpu) {
         int noZone;
         int zone;
         link->numTargets = 0;
-        noZone = -1;    /* Matching: the sentinel in a variable (one register for the call and the test) */
+        noZone = -1;    /* FAKEMATCH: the sentinel in a variable (one register for the call and the test) */
         zone = AiFindStrongestMonster(0, noZone, 1, one);
         if (zone > noZone)
             TryAddEffectTarget(link, 0, zone);
@@ -539,11 +468,11 @@ int EffectTakeControlChainB(struct ChainEntry *link)
         int zone = SEL_WORD(screen, selArea) + SEL_WORD(screen, selIndex);
         int side = 1 & player;
         struct DuelZone *target = ZONE_AT(side, zone);
-        u16 targetId = ZONE_CARD_ID(target);
+        u16 targetId = DUEL_CARD_ID(target);
         if (CanCardTargetZoneInt(link->card, player, zone) != 0) {
             switch (CARD_NUMBER(link->card)) {
             case CARD_SNATCH_STEAL:
-                if (CARD_NUMBER(targetId) == UNUSED_CARD_NUMBER_1351) {
+                if (CARD_NUMBER(targetId) == CARD_1351) {
                 refuse:
                     PlaySE(SE_ERROR);
                     return 0;
@@ -569,6 +498,7 @@ int EffectTakeControlChainB(struct ChainEntry *link)
  * ChainB of Kunai with Chain: pick one of your face-up monsters to equip. No CPU branch.
  *   Step 0: no target (return 1) if you have no face-up monster, else the prompt.
  *   Then: a pick among your face-up monsters; done if TryAddEffectTarget accepts it. B goes back to step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectKunaiWithChainChainB(struct ChainEntry *link)
 {
@@ -598,6 +528,7 @@ int EffectKunaiWithChainChainB(struct ChainEntry *link)
  *   Step 0: prompt.
  *   Then: a pick; the result of TryAddEffectTarget is ignored, so the pick always finishes. B goes back to
  *         step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectAcidTrapHoleChainB(struct ChainEntry *link)
 {
@@ -631,6 +562,7 @@ int EffectAcidTrapHoleChainB(struct ChainEntry *link)
  *   Step 0: the prompt (Bell of Destruction and key 1451 say 'destroy'; the others 'Designate 1 monster.').
  *   Then: a pick among the face-up monsters of both sides; done if TryAddEffectTarget accepts it. B goes
  *         back to step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectTargetableFaceUpMonsterChainB(struct ChainEntry *link)
 {
@@ -647,7 +579,7 @@ int EffectTargetableFaceUpMonsterChainB(struct ChainEntry *link)
             int zone;
             for (zone = ZONE_MONSTER_0; zone <= ZONE_MONSTER_4; zone++) {
                 struct DuelZone *z = ZONE_AT(1 & player, zone);    /* Matching: the redundant & 1 is the ROM's */
-                if (HAS_CARD(z->card) && z->isFaceUp) {
+                if (DUEL_CARD_ID(z) && z->isFaceUp) {
                     int atk = GetZoneCardAtk(player, zone);
                     if (atk > bestAtk) {
                         bestAtk = atk;
@@ -692,6 +624,7 @@ int EffectTargetableFaceUpMonsterChainB(struct ChainEntry *link)
  *           play').
  *   Step 1: a pick among your monsters; the result of TryAddEffectTarget is ignored, so the pick always
  *           finishes. B goes back to step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectOwnMonsterTargetChainB(struct ChainEntry *link)
 {
@@ -747,6 +680,7 @@ enum SevenCompletedStep {
  *           SE_ERROR); B goes back to step 0.
  *   Step 2: menu 'Which do you wish to increase?' (ATK+700 / DEF+700).
  *   Step 3: the answer plus 1 is the second target (SEVEN_COMPLETED_ATK or SEVEN_COMPLETED_DEF); done.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectSevenCompletedChainB(struct ChainEntry *link)
 {
@@ -800,6 +734,7 @@ int EffectSevenCompletedChainB(struct ChainEntry *link)
  *   Step 0: prompt.
  *   Then: a pick among the opponent's face-up monsters, accepted by EffectMagicArmShieldCheck (else
  *         SE_ERROR). No B handling.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectMagicArmShieldChainB(struct ChainEntry *link)
 {
@@ -841,6 +776,7 @@ int EffectMagicArmShieldChainB(struct ChainEntry *link)
  *   Step 0: prompt.
  *   Then: a pick; the result of TryAddEffectTarget is ignored, so the pick always finishes. B goes back to
  *         step 0.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectRemoveTrapChainB(struct ChainEntry *link)
 {
@@ -887,6 +823,7 @@ enum TwoProngedStep {
  *   Step 3: pick a different one (SE_ERROR if it is the 1st monster again).
  *   Step 4: prompt for the opponent's monster.
  *   Step 5: pick it; done once TryAddEffectTarget accepts. A step above 5 also returns 1.
+ * link is the chain entry being built; returns 1 when its targets are complete, else 0 (called again next frame).
  */
 int EffectTwoProngedAttackChainB(struct ChainEntry *link)
 {

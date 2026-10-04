@@ -14,9 +14,9 @@
  *   (OpponentSelect_DrawCursor, OpponentSelect_DrawDuelistInfo) live in main_menu.c.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* IO registers, DMA, DISPCNT, OAM flip bits */
-#include "legacy/main.h"               /* gMain, SetMainCallback, ResetBgScroll */
-#include "legacy/sound.h"              /* PlaySE */
+#include "gba.h"                       /* IO registers, DMA, DISPCNT, OAM flip bits, MODE4_FRAME* */
+#include "main.h"                      /* gMain, SetMainCallback, ResetBgScroll */
+#include "sound.h"                     /* PlaySE */
 #include "constants/sound.h"    /* SE_* */
 #include "util.h"               /* MemCopy16, StrLen, struct Coords16 */
 #include "palette.h"            /* SetBrightnessBlack, FadeToBlack, FadeFromBlack */
@@ -27,28 +27,6 @@
 #include "calendar.h"           /* gCalendar, struct Date, date math, CAL_* event bits, Calendar_* */
 #include "campaign.h"           /* gOpponentSelect, OPPSEL_STEP_*, OpponentSelect_*, unlock checks */
 #include "main_menu.h"          /* CB_MainMenu */
-
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h and sound.h are still the legacy headers,
- * which lack these names. The values are those of the new headers; delete this block once they are
- * installed (see build/readability/issues/campaign_select.md).
- */
-#ifndef DISPCNT_MODE_4
-#define REG_BG2X            REG32(0x028)
-#define DISPCNT_MODE_4      0x0004
-#define DISPCNT_BG_ALL_ON   0x0F00
-#define DISPCNT_OBJ_ON      0x1000
-#define BGCNT_PRIORITY(n)   (n)
-#define DMA_SRC_FIXED       0x0100
-#define DMA_16BIT           0x0000
-#define DMA_ENABLE          0x8000
-#define OAM_ATTR1_HFLIP     0x1000
-#define OAM_ATTR1_VFLIP     0x2000
-#define VBLANK_COPY_OAM     0x1
-void SetMainCallback(u16 (*callback)(void));
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-#endif
 
 /* A scene step: returns nonzero when done, and the runner moves on to the next entry. */
 typedef u16 (*StepFunc)(void);
@@ -75,21 +53,21 @@ extern const u8 gCalendarMonthNamePal[];        /* OBJ palette 7 */
 extern const u8 gCalendarIconPal[];             /* 8bpp OBJ colours 0-95 */
 extern const u8 gCalendarIconTiles[];           /* 8bpp: event icons 0x170-0x174, today marker 0x17C */
 
-/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md):
- * - the unit calls FadeToBlack / FadeFromBlack as returning u16 (palette.h: u32) and IsOpponentUnlocked as
- *   returning s32 (campaign.h: u16); the return width decides where the results get narrowed, and the
- *   header prototypes do not match;
- * - OpponentSelect_SnapCursor reads the slot positions through a non-const view: with campaign.h's
- *   `const struct Coords16` the compiler treats the loads as unchanging and allocates the loop differently. */
-extern u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
-extern u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
-extern s32 IsOpponentUnlockedS32(u16 duelistId) asm("IsOpponentUnlocked");
-extern struct Coords16 gOpponentSelectSlotPosRW[5] asm("gOpponentSelectSlotPos");
+/* Local views kept on purpose (matching choices, see build/readability/HEADERS.md). Each is another C name
+ * bound to the real symbol with asm(""), so it calls or loads the same address as the header's name. */
 
-/* Mode 4: two 240x160 8bpp frames in VRAM; DISPCNT bit 4 selects the one shown. */
-#define MODE4_FRAME0        (VRAM)
-#define MODE4_FRAME1        (VRAM + 0xA000)
-#define MODE4_FRAME_SIZE    (240 * 160)
+/* View of FadeToBlack (palette.h: u32 FadeToBlack(s32)) with a u16 return: the ROM narrows the result
+ * (lsl #16) before testing it, which the u32 prototype leaves out (7 of 20 functions match with it). */
+extern u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
+/* The same view of FadeFromBlack (palette.h: u32 return). */
+extern u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
+/* View of IsOpponentUnlocked (campaign.h: u16 return) returning s32: the ROM tests the result without
+ * narrowing it (the u16 prototype adds an lsl #16; 13 of 20 functions match with it). */
+extern s32 IsOpponentUnlockedS32(u16 duelistId) asm("IsOpponentUnlocked");
+/* View of gOpponentSelectSlotPos (campaign.h: const struct Coords16[5]) without const, used only by
+ * OpponentSelect_SnapCursor: with const the compiler treats the slot loads as unchanging and allocates that
+ * loop differently. OpponentSelect_DrawLockedCovers matches with the const header symbol. */
+extern struct Coords16 gOpponentSelectSlotPosRW[5] asm("gOpponentSelectSlotPos");
 
 /* Palette slots and OBJ tile addresses (in the bitmap modes OBJ tiles start at 4bpp tile 0x200). */
 #define BG_PALETTE(n)       (BG_PLTT + (n) * 0x20)
@@ -97,15 +75,7 @@ extern struct Coords16 gOpponentSelectSlotPosRW[5] asm("gOpponentSelectSlotPos")
 #define OBJ_TILE(n)         (OBJ_VRAM0 + (n) * 0x20)    /* 4bpp tile n, as in attr2 */
 #define OBJ_TILE_8BPP(n)    (OBJ_VRAM0 + (n) * 0x40)    /* 8bpp tile n, as passed to AddSprite8bpp */
 
-/* TextDraw* sizeColor: font size in pixels in the high byte, colour index in the low byte. */
-#define SIZE_COLOR(size, color) (((size) << 8) | (color))
-
-/* gCalendar.monthNameState once the month-name tiles are loaded; L/R wait for it. */
-#define MONTH_NAME_LOADED   3
-
-#define OPPONENTS_PER_PAGE  5
 #define LAST_SLOT           (OPPONENTS_PER_PAGE - 1)
-#define LAST_PAGE           4   /* only slots 1-4: slot 0 of the last page is empty */
 #define PAGE_DUELIST(page, slot) gOpponentSelectDuelists[(page) * OPPONENTS_PER_PAGE + (slot)]
 
 /*
@@ -124,7 +94,7 @@ void Calendar_DrawMonth(void)
      * instead of 9 to be allocated before day). */
     register s32 rowY asm("r9");
     u32 iconY, dayY;
-    u32 rowStep; /* Matching: 24 << 16 in a variable that gets no register, so it is rematerialised per use */
+    u32 rowStep; /* FAKEMATCH: 24 << 16 in a variable that gets no register, so it is rematerialised per use */
     u32 events;
 
     Calendar_DrawCursorAndHeader();
@@ -446,7 +416,7 @@ u16 OpponentSelect_HandleInput(void)
             gOpponentSelect.cursor++;
         else
             gOpponentSelect.cursor = 0;
-        if (gOpponentSelect.page == LAST_PAGE && gOpponentSelect.cursor == 0)
+        if (gOpponentSelect.page == OPPONENT_SELECT_LAST_PAGE && gOpponentSelect.cursor == 0)
             gOpponentSelect.cursor = 1;
         PlaySE(SE_CURSOR);
     }
@@ -455,7 +425,7 @@ u16 OpponentSelect_HandleInput(void)
             gOpponentSelect.cursor--;
         else
             gOpponentSelect.cursor = LAST_SLOT;
-        if (gOpponentSelect.page == LAST_PAGE && gOpponentSelect.cursor == 0)
+        if (gOpponentSelect.page == OPPONENT_SELECT_LAST_PAGE && gOpponentSelect.cursor == 0)
             gOpponentSelect.cursor = LAST_SLOT;
         PlaySE(SE_CURSOR);
     }
@@ -678,7 +648,7 @@ void OpponentSelect_DrawLockedCovers(s32 scroll)
     s32 firstSlot = 0;
     s32 slot;
 
-    if (gOpponentSelect.page >= LAST_PAGE)
+    if (gOpponentSelect.page >= OPPONENT_SELECT_LAST_PAGE)
         firstSlot = 1;
     for (slot = firstSlot; slot <= LAST_SLOT; slot++) {
         if (IsOpponentUnlockedS32(PAGE_DUELIST(gOpponentSelect.page, slot)) == 0) {
@@ -694,7 +664,8 @@ void OpponentSelect_DrawLockedCovers(s32 scroll)
     }
 }
 
-/* Puts the cursor straight onto slot with no ease: the whole trail at the slot's position + (16, 0). */
+/* Puts the cursor straight onto `slot` with no ease: every trail entry becomes the slot's position + (16, 0);
+ * targetSlot = slot, and the ease timer is cleared. */
 void OpponentSelect_SnapCursor(u32 slot)
 {
     s32 i;
@@ -721,14 +692,14 @@ void OpponentSelect_LoadPage(s32 page)
     s32 i;
 
     count = OPPONENTS_PER_PAGE - 1;
-    if (page < LAST_PAGE)
+    if (page < OPPONENT_SELECT_LAST_PAGE)
         count = OPPONENTS_PER_PAGE;
     OpponentSelect_SetBgScroll(0);
     MemCopy16((void *)BG_PALETTE(0), gOpponentSelectPageBgs[page].pal, 0x200);
     MemCopy16((void *)MODE4_FRAME0, gOpponentSelectPageBgs[page].bitmap, MODE4_FRAME_SIZE);
     MemCopy16((void *)MODE4_FRAME1, gOpponentSelectPageBgs[page].bitmap, MODE4_FRAME_SIZE);
     gOpponentSelect.page = page;
-    if (page == LAST_PAGE && gOpponentSelect.cursor == 0) {
+    if (page == OPPONENT_SELECT_LAST_PAGE && gOpponentSelect.cursor == 0) {
         gOpponentSelect.cursor = LAST_SLOT;
         OpponentSelect_SnapCursor(gOpponentSelect.cursor);
     }
@@ -742,15 +713,15 @@ void OpponentSelect_LoadPage(s32 page)
             slot = i + 1;
         if (IsOpponentUnlockedS32(PAGE_DUELIST(page, slot)) == 0) {
             TextDrawString(0x31 - StrLen((const char *)gUnknownOpponentName) * 5 / 2, slot * 16 + 1,
-                           SIZE_COLOR(10, 5), gUnknownOpponentName);
+                           TEXT_SIZE_COLOR(10, 5), gUnknownOpponentName);
             TextDrawString(0x30 - StrLen((const char *)gUnknownOpponentName) * 5 / 2, slot * 16,
-                           SIZE_COLOR(10, 1), gUnknownOpponentName);
+                           TEXT_SIZE_COLOR(10, 1), gUnknownOpponentName);
         } else {
             const u8 *name = gOpponentSelectNames[page * OPPONENTS_PER_PAGE + slot];
             s32 halfWidth = StrLen((const char *)name) * 5 / 2;
 
-            TextDrawString(0x31 - halfWidth, slot * 16 + 1, SIZE_COLOR(10, 5), name);
-            TextDrawString(0x30 - halfWidth, slot * 16, SIZE_COLOR(10, 1), name);
+            TextDrawString(0x31 - halfWidth, slot * 16 + 1, TEXT_SIZE_COLOR(10, 5), name);
+            TextDrawString(0x30 - halfWidth, slot * 16, TEXT_SIZE_COLOR(10, 1), name);
         }
     }
     TextCanvasToTiles((u16 *)OBJ_TILE(0x2C0), 0);
@@ -760,8 +731,8 @@ void OpponentSelect_LoadPage(s32 page)
     for (i = 0; i <= 2; i++) {
         const u8 *label = gWinLoseDrawLabels[i];
 
-        TextDrawString(0x51 + i * 0x20, 1, SIZE_COLOR(10, (u8)(i + 6)), label);
-        TextDrawString(0x50 + i * 0x20, 0, SIZE_COLOR(10, (u8)(i + 2)), label);
+        TextDrawString(0x51 + i * 0x20, 1, TEXT_SIZE_COLOR(10, (u8)(i + 6)), label);
+        TextDrawString(0x50 + i * 0x20, 0, TEXT_SIZE_COLOR(10, (u8)(i + 2)), label);
     }
     TextCanvasToTiles((u16 *)OBJ_TILE(0x280), 0);
     MemCopy16((void *)OBJ_PALETTE(3), gOpponentSelectTextPal, 0x20);

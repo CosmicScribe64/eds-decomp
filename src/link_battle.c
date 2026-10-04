@@ -11,9 +11,14 @@
  *    Field), with the rare-card helpers of the Rare Hunter event.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_DISPCNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY, REG_IE, REG_IME */
+#include "gba.h"                /* REG_DISPCNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY, REG_IE, REG_IME, DISPCNT_BG0_ON,
+                                 * INTR_FLAG_HBLANK */
+#include "main.h"               /* gMain, IntrTable, SetMainCallback, ResetBgScroll, enum IntrSlot / VBlankFlag */
+#include "duel.h"               /* gDuel, gDuelPlayers, ShuffleDeck */
+#include "sound.h"              /* PlayBGM, FadeOutBGM */
 #include "constants/duel.h"     /* enum DuelField, DuelFormat */
 #include "constants/game.h"     /* enum DuelistId */
+#include "constants/sound.h"    /* enum Song */
 #include "card_data.h"          /* CARD_ID_COUNT, CARD_ID_MASK, CARD_NUMBER_ALT_ART */
 #include "save.h"               /* gSaveData, AddCardToTrunk, LoadPlayerDeckFromSave */
 #include "calendar.h"           /* struct Date, GetCurrentDate, GetCalendarEvents, enum CalendarEvent */
@@ -26,163 +31,35 @@
 #include "debug.h"              /* DebugMenu_Init; DebugPrintf and DebugPrintFlush are defined here */
 #include "turn_order.h"         /* TurnOrder_RunRpsLink */
 #include "duel_flow.h"          /* Duel_Setup, gDuelCtrl */
-
-/*
- * Transitional, until H0 (build/readability/HEADERS.md) installs the new include/gba.h: the legacy gba.h
- * lacks these names. The values are the new header's; the block is skipped once it is in place.
- */
-#ifndef DISPCNT_BG0_ON
-#define DISPCNT_BG0_ON          0x0100
-#define INTR_FLAG_HBLANK        0x0002
-#endif
-
-/* ---- BEGIN header subset (pre-H0) ---- */
-/*
- * The parts of main.h, duel.h, sound.h, duel_screen.h and duel_link.h this unit uses, with the headers'
- * tags, names, types and bitfield containers. include/main.h, duel.h and sound.h still hold the legacy
- * headers until the header switch (H0, build/readability/HEADERS.md), and duel_screen.h and duel_link.h
- * include duel.h. After H0, replace this block (BEGIN to END) with:
- *     #include "legacy/main.h"
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- *     #include "duel_screen.h"
- *     #include "duel_link.h"
- */
-
-/* main.h */
-enum IntrSlot {
-    INTR_SLOT_SERIAL,
-    INTR_SLOT_HBLANK                    /* 1: per-scene HBlank effects */
-};
-extern void (*IntrTable[16])(void);
-
-enum VBlankFlag {
-    VBLANK_COPY_OAM     = 0x1,
-    VBLANK_COPY_BG_MAPS = 0x2           /* gMain.bgMapBuffer -> VRAM screenblocks 0-7 */
-};
-
-struct Main {
-    u8 unk0[0x40C];
-    vu16 intrCheck;                     /* +0x040C */
-    u16 vblankFlags;                    /* +0x040E enum VBlankFlag */
-    u16 (*callback)(void);              /* +0x0410 current scene */
-    void (*vblankCallback)(void);       /* +0x0414 called last in VBlankIntr */
-    void (*vblankCallbackEarly)(void);  /* +0x0418 */
-    u8 unk41C[0x4857 - 0x41C];
-    u8 seqIndexCampaign;                /* +0x4857 step index of the Campaign runner */
-    u8 seqState0;                       /* +0x4858 shared sub-state; CB_LinkBattle's step index */
-    u8 seqIndex1;                       /* +0x4859 step index of the screen runners */
-    u8 seqState1;                       /* +0x485A */
-    u8 seqState2;                       /* +0x485B */
-    u16 currentBgm;                     /* +0x485C */
-    u16 frameCounter;                   /* +0x485E +1 per MainLoop iteration */
-    u8 unk4860[0x4870 - 0x4860];
-    u8 firstPlayer:1;                   /* +0x4870 bit 0: who takes the first turn, 0 = this player */
-    u8 opponent:5;                      /* +0x4870 bits 1-5: duelist ID of the Campaign opponent */
-    u8 result:2;                        /* +0x4870 bits 6-7 */
-    u8 unk4871[0x487C - 0x4871];
-    u32 events;                         /* +0x487C CalendarEvent mask of the current duel (0 = ordinary) */
-    u8 unk4880[8];
-    u8 unk4888_0:1;                     /* +0x4888 bit 0 */
-    u8 opponentFixed:1;                 /* +0x4888 bit 1: opponent already chosen, skip OpponentSelect_Run */
-    u8 duelFormat:2;                    /* +0x4888 bits 2-3: enum DuelFormat (1 single, 3 best of 3) */
-    u8 matchDuelCount:2;                /* +0x4888 bits 4-5: duels played in the current match */
-    u8 unk4888_6:2;
-    s8 matchScore;                      /* +0x4889 wins minus losses in the current match */
-    u16 startField:4;                   /* +0x488A bits 0-3: enum DuelField in play from the start */
-    u16 subStep:8;                      /* +0x488A bits 4-11: sub-state of the Campaign/Link/menu step */
-    u16 unk488A_12:4;
-};
-extern struct Main gMain;
-void SetMainCallback(u16 (*callback)(void));
-void ResetBgScroll(void);
-
-/* duel.h */
-struct DuelPlayer {
-    u8 unk0[3];
-    u8 deckCount;                       /* +0x003: entries in deck[] */
-    u8 unk4[0xD64 - 4];
-};
-struct DuelState {
-    u16 serial;                         /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];       /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                         /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                    /* +0x1B12 bit 1 */
-    u8 phase:3;                         /* +0x1B12 bits 2-4 */
-    u8 linkError:1;                     /* +0x1B12 bit 5: no acknowledgement from the link partner */
-    u8 result:2;                        /* +0x1B12 bits 6-7: enum DuelResult */
-    u8 unk1B13;
-};
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-void ShuffleDeck(int player, int passes);
-
-/* sound.h */
-void PlayBGM(u32 songId);
-void FadeOutBGM(void);
-
-/* duel_screen.h */
-struct DuelScreen {
-    u8 fast:1;                          /* +0x000 bit 0: fast-forward card animations */
-    u8 unk0_1:7;
-};
-extern struct DuelScreen gDuelScreen;
-void ChainListScreen_Start(u32 list, u16 player);
-
-/* duel_link.h */
-enum LinkMsgId {
-    LINKMSG_ABORT = 0xEE00,             /* link error */
-    LINKMSG_FAST_MODE = 0xEE03,         /* the partner turned fast mode on */
-    LINKMSG_READY = 0xF001,             /* partner ready (readyReceived) */
-    LINKMSG_REQUEST_DECK = 0xF012,
-    LINKMSG_REQUEST_FUSION_DECK = 0xF014
-};
-struct LinkState {
-    u8 unk0[0x304];
-    u32 unk304_0:1;                     /* +0x304 bit 0 */
-    u32 unk304_1:1;                     /* +0x304 bit 1 */
-    u32 readyReceived:1;                /* +0x304 bit 2: LINKMSG_READY */
-    u32 unk304_3:5;
-    u32 handAcked:1;                    /* +0x305 bit 0 */
-    u32 deckAcked:1;                    /* +0x305 bit 1: the partner stored our deck */
-    u32 graveAcked:1;                   /* +0x305 bit 2 */
-    u32 fusionAcked:1;                  /* +0x305 bit 3: the partner stored our fusion deck */
-    u32 banishedAcked:1;                /* +0x305 bit 4 */
-    u32 handReceived:1;                 /* +0x305 bit 5 */
-    u32 deckReceived:1;                 /* +0x305 bit 6: the partner's deck list arrived */
-    u32 graveReceived:1;                /* +0x305 bit 7 */
-    u32 fusionReceived:1;               /* +0x306 bit 0: the partner's fusion deck list arrived */
-    u32 unk306_1:15;
-    u8 unk308[0x494 - 0x308];
-};
-extern struct LinkState gLinkState;
-u16 DuelLink_SendMessage(u16 id, u16 arg1, u16 arg2, u16 arg3);
-void DuelLink_SendDeck(int player);
-void DuelLink_SendFusionDeck(int player);
-u16 DuelLink_PollMessage(void);
-/* ---- END header subset ---- */
+#include "duel_screen.h"        /* gDuelScreen, ChainListScreen_Start (defined here) */
+#include "duel_link.h"          /* gLinkState, enum LinkMsgId, DuelLink_SendMessage / SendDeck / SendFusionDeck /
+                                 * PollMessage */
 
 /* ---- Local data and views ---- */
 
 /* A scene step: returns nonzero when done, and the runner moves on to the next entry. */
 typedef u16 (*StepFunc)(void);
 
-/*
- * Matching: the Link Battle steps test FadeToBlack/FadeFromBlack (u32 in palette.h) as u16 results (lsl #16
- * after the call), and Campaign_StartDay tests CB_Bustup and the campaign-level checks (u16 in bustup.h and
- * campaign.h) as whole words (no lsl #16).
- */
+/* Views of functions that other units define with another type (build/readability/HEADERS.md, pattern 2):
+ * the same symbols under a local name, so that the calls here compile as the ROM's do. */
+
+/* Views of FadeToBlack / FadeFromBlack (palette.h: u32 f(s32 step)) with a u16 result. Matching: the Link
+ * Battle steps test the result as a halfword (lsl #16 after the call), which the u32 prototype leaves out. */
 u16 FadeToBlackU16(s32 step) asm("FadeToBlack");
 u16 FadeFromBlackU16(s32 step) asm("FadeFromBlack");
+/* A view of CB_Bustup (bustup.h: u16 CB_Bustup(void)) with a u32 result. Matching: Campaign_StartDay tests the
+ * result as a whole word, where the u16 prototype adds an lsl #16 after each call; the other callers here use
+ * the header prototype. */
 u32 CB_BustupU32(void) asm("CB_Bustup");
+/* Views of IsCampaignLevel2/3/4Unlocked (campaign.h: u16 f(void)) with an int result. Matching: Campaign_StartDay
+ * uses the results as ints, where the u16 prototype adds an lsl #16 after each call. */
 int IsCampaignLevel2UnlockedInt(void) asm("IsCampaignLevel2Unlocked");
 int IsCampaignLevel3UnlockedInt(void) asm("IsCampaignLevel3Unlocked");
 int IsCampaignLevel4UnlockedInt(void) asm("IsCampaignLevel4Unlocked");
 
-/* Matching: ChainListScreen_Start stores the flags byte at +0x4 whole (resolving = bit 0, state 0) and the
- * timer at +0x5; struct ChainListScreen (duel_screen.h) has resolving:1 and state:7 there. */
+/* The first bytes of gChainListScreen (duel_screen.h: struct ChainListScreen) as whole bytes. Matching:
+ * ChainListScreen_Start stores the byte at +0x4 whole (resolving = bit 0, state = 0) and the timer at +0x5;
+ * with the header's resolving:1 / state:7 bitfields the stores become read-modify-write. */
 struct ChainListScreenBytes {
     u32 list;                           /* +0x0 the chain to list */
     u8 flags;                           /* +0x4 bit 0 resolving, bits 1-7 state */
@@ -293,7 +170,7 @@ int LinkBattle_Init(void)
     switch (gMain.seqIndex1) {
     case 0:
         LoadPlayerDeckFromSave();
-        if (gDuelPlayers[0].deckCount < 40) {
+        if (gDuelPlayers[0].deckCount < DECK_MIN_CARDS) {
             gMain.seqState0 = LINKBATTLE_STEP_DECK_TOO_SMALL;
             break;
         }
@@ -618,7 +495,7 @@ int Campaign_StartPreDuelDialogue(void)
         gMain.duelFormat = DUEL_FORMAT_MATCH;       \
         gMain.events = event;                       \
         gMain.startField = field;                   \
-        PlayBGM(0x30);                              \
+        PlayBGM(SONG_SPECIAL_DUEL);                 \
         return 1;                                   \
     }
         if ((gMain.events & CAL_NEW_YEARS_DAY) && opp == DUELIST_YAMI_YUGI)
@@ -652,7 +529,7 @@ int Campaign_StartPreDuelDialogue(void)
             gMain.duelFormat = DUEL_FORMAT_MATCH;
             gMain.events = CAL_EMPERORS_BIRTHDAY;
             gMain.startField = Random() % 7 + FIELD_CHORUS_OF_SANCTUARY;  /* .. FIELD_MYSTIC_PLASMA_ZONE */
-            PlayBGM(0x30);
+            PlayBGM(SONG_SPECIAL_DUEL);
             return 1;
         } else if ((gMain.events & CAL_MURAN_BIRTHDAY) && opp == DUELIST_SIMON) {
             StartDialogue(22002);
@@ -665,14 +542,14 @@ int Campaign_StartPreDuelDialogue(void)
             gMain.duelFormat = DUEL_FORMAT_MATCH;
             gMain.events = CAL_HALLOWEEN;
             gMain.startField = Random() % 13 + FIELD_FOREST;    /* any Field */
-            PlayBGM(0x30);
+            PlayBGM(SONG_SPECIAL_DUEL);
             return 1;
         } else if ((gMain.events & CAL_VALENTINES_DAY) && (opp == DUELIST_TEA || opp == DUELIST_MAI)) {
             StartDialogue(gOpponentFieldDuelText[opp]);
             gMain.duelFormat = DUEL_FORMAT_MATCH;
             gMain.events = CAL_VALENTINES_DAY;
             gMain.startField = Random() % 6 + FIELD_FOREST;     /* .. FIELD_YAMI */
-            PlayBGM(0x30);
+            PlayBGM(SONG_SPECIAL_DUEL);
             return 1;
         } else if ((gMain.events & CAL_WHITE_DAY)
                    && (opp == DUELIST_YUGI || opp == DUELIST_JOEY || opp == DUELIST_TRISTAN
@@ -681,7 +558,7 @@ int Campaign_StartPreDuelDialogue(void)
             gMain.duelFormat = DUEL_FORMAT_MATCH;
             gMain.events = CAL_WHITE_DAY;
             gMain.startField = Random() % 6 + FIELD_FOREST;     /* .. FIELD_YAMI */
-            PlayBGM(0x30);
+            PlayBGM(SONG_SPECIAL_DUEL);
             return 1;
         } else if (opp != DUELIST_DUEL_COMPUTER) {
             /* Christmas Eve, Spring Day and Autumn Day: any opponent but the Duel Computer. */
@@ -754,7 +631,7 @@ int Campaign_StartDay(void)
     switch (gMain.subStep) {
     case START_DAY_STEP_DECK_CHECK:
         LoadPlayerDeckFromSave();
-        if (gDuelPlayers[0].deckCount < 40) {
+        if (gDuelPlayers[0].deckCount < DECK_MIN_CARDS) {
             gMain.seqIndexCampaign = CAMPAIGN_STEP_DECK_TOO_SMALL;
             return 0;
         }
@@ -776,21 +653,21 @@ int Campaign_StartDay(void)
             /* Championship rounds 1 to 3 and the final: an opponent of tier 1-4 (texts 201/203/205/207). */
             gMain.opponent = gTournamentOpponents[Random() % 5];
             StartDialogue(201);
-            PlayBGM(0x31);
+            PlayBGM(SONG_CHAMPIONSHIP);
             gMain.events = CAL_TOURNAMENT_ROUND1;
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
             return 0;
         } else if (events & CAL_TOURNAMENT_ROUND2) {
             gMain.opponent = gTournamentOpponents[Random() % 5 + 5];
             StartDialogue(203);
-            PlayBGM(0x31);
+            PlayBGM(SONG_CHAMPIONSHIP);
             gMain.events = CAL_TOURNAMENT_ROUND2;
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
             return 0;
         } else if (events & CAL_TOURNAMENT_SEMIFINAL) {
             gMain.opponent = gTournamentOpponents[Random() % 5 + 10];
             StartDialogue(205);
-            PlayBGM(0x31);
+            PlayBGM(SONG_CHAMPIONSHIP);
             gMain.events = CAL_TOURNAMENT_SEMIFINAL;
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
             return 0;
@@ -799,7 +676,7 @@ int Campaign_StartDay(void)
             gMain.events = CAL_TOURNAMENT_FINAL;
             StartDialogue(207);
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
-            PlayBGM(0x32);
+            PlayBGM(SONG_CHAMPIONSHIP_FINAL);
             return 0;
         } else if (events & CAL_SUGOROKU_PRELIM) {
             /* Grandpa Cup qualifier and final (texts 701/702). */
@@ -808,14 +685,14 @@ int Campaign_StartDay(void)
             StartDialogue(701);
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
             gSaveData.sugorokuQualified = 0;
-            PlayBGM(0x33);
+            PlayBGM(SONG_GRANDPA_CUP);
             return 0;
         } else if (events & CAL_SUGOROKU_MATCH) {
             gMain.opponent = gGrandpaCupFinalOpponents[Random() % 5u];
             gMain.events = CAL_SUGOROKU_MATCH;
             StartDialogue(702);
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
-            PlayBGM(0x33);
+            PlayBGM(SONG_GRANDPA_CUP);
             return 0;
         } else if (events & CAL_DUEL_CEREMONY) {
             /* Duel Ceremony (text 500): any opponent of the tiers unlocked so far. */
@@ -832,12 +709,12 @@ int Campaign_StartDay(void)
             StartDialogue(500);
             gMain.events = CAL_DUEL_CEREMONY;
             gMain.subStep = START_DAY_STEP_EVENT_INTRO;
-            PlayBGM(0x30);
+            PlayBGM(SONG_SPECIAL_DUEL);
             return 0;
         } else if (HasEnoughRareCards(5) && gSaveData.days != 0 && (u16)(gSaveData.days % 60) == 0) {
             /* Rare Hunter (text 900): every 60th day if the player owns 5 or more rare cards. */
             StartDialogue(900);
-            PlayBGM(0x1A);
+            PlayBGM(SONG_RARE_HUNTER_APPEARS);
             gMain.events = CAL_RARE_HUNTER;
             gMain.subStep = START_DAY_STEP_RARE_HUNTER;
             return 0;
@@ -855,7 +732,7 @@ int Campaign_StartDay(void)
         if (!CB_BustupU32())
             return 0;
         gMain.opponent = gRareHunterOpponents[Random() % 5];
-        PlayBGM(0x1B);
+        PlayBGM(SONG_RARE_HUNTER_CHALLENGE);
         gMain.opponentFixed = 1;
         return 1;
     case START_DAY_STEP_RESET:

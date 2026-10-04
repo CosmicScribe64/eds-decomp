@@ -9,102 +9,14 @@
  * (1 - player, gBattle.defSlot); defSlot 5 is a direct attack, for which stage 6 is skipped by the caller.
  */
 #include "global.h"
+#include "duel.h"                   /* struct DuelZone / DuelCard / DuelLoc, gDuel, gDuelZones, HasFlipEffect, CountMonsters,
+                                     * CountActiveCardsOnField, CountFreeMonsterZones, FindFreeMonsterZone, ... */
+#include "sound.h"                  /* PlaySE */
 #include "card_data.h"              /* CARD_ID_MASK, gCardNames */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum BattleStage, ResponseEventKind, ZoneLinkKind, PromptKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* SE_ERROR */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
- * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
- * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h". */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04: gDuel.serial when the card was placed (replay check) */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet (Sanga, Kazejin, Suijin) */
-    u8 unk7_6:2;
-    u8 unk8[0x91 - 0x8];
-    u8 unk91_0:3;
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u8 unk91_4:4;
-    u8 unk92[0x94 - 0x92];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 unk2[0x28 - 0x2];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 unk684[0xD64 - 0x684];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B14 - 0x1ACC];
-    u16 unk1B14_0:1;                /* +0x1B14 */
-    u16 interruptActive:1;
-    u16 unk1B14_2:7;
-    u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
-    u16 battleStep:8;               /* +0x1B16 bits 1-8: step inside the stage */
-    u16 battleArg0:8;               /* +0x1B17 bit 1 .. +0x1B18 bit 0: stage scratch (a zone or player) */
-    u16 battleArg1:8;               /* +0x1B18 bit 1 .. +0x1B19 bit 0 */
-    u16 unk1B19_1:7;
-    u8 unk1B1A[0x1B64 - 0x1B1A];
-    u16 promptResult;               /* +0x1B64: the answer of the last duel prompt (a hand slot, a card ID) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-int CountMonsters(int player);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-int FindFreeSpellTrapZone(int player);
-int CanPlaceSpellTrapCard(int player, u16 cardId);
-int FindFaceUpCardOnField(int player, u16 cardNo, int skipZone);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
-
 #include "ai.h"                     /* AiPickTributeMonster */
 #include "battle.h"                 /* gBattle (struct Battle), CanMonsterAttack, Battle_CheckReplay, ... */
 #include "chain.h"                  /* Chain_AddPending, EventResponse_Request */
@@ -135,11 +47,6 @@ extern const u16 gCardNumberToId_1243;
 /* The name of a card ID as a string (gCardNames, one 64-byte record per card). */
 #define CARD_NAME(id)       (((const char (*)[64])0x0822C720)[id])
 
-/* Text box rectangles: TextBoxOpen takes x | y << 8 and width | height << 8, in cells. */
-#define TEXTBOX_XY(x, y)    ((x) | (y) << 8)
-
-/* The card ID (bits 0-11) of a zone, from the whole card word. */
-#define ZONE_CARD_ID(zone) ((*(u32 *)&(zone)->card << 20) >> 20)
 /* The zone of (player, zone) of gDuelZones: player stride first, then the zone. */
 #define ZONE_AT(player, zone) ((struct DuelZone *)((player) * sizeof(struct DuelPlayer) + (zone) * sizeof(struct DuelZone) + (u32)gDuelZones))
 
@@ -255,7 +162,7 @@ int BattleStage_DeclareAttack(int player)
     struct StepView *step;
     u16 id;
 
-    id = ZONE_CARD_ID(ZONE_AT(side, gBattle.atkSlot));
+    id = DUEL_CARD_ID(ZONE_AT(side, gBattle.atkSlot));
     step = &STEP_VIA_ZONES;
     switch (step->step) {
     case DECLARE_STEP_CHECK:
@@ -307,12 +214,12 @@ int BattleStage_DeclareAttack(int player)
                     gDuel.battleStep = 0;
                     return 0;
                 } else {
-                    TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(21, 7), TEXTBOX_FLAGS_DEFAULT, gStrSelectTributeToAttack);
+                    TextBoxOpen(TEXTBOX_POS(4, 2), TEXTBOX_SIZE(21, 7), TEXTBOX_FLAGS_DEFAULT, gStrSelectTributeToAttack);
                     gDuel.battleStep = DECLARE_STEP_PICK_TRIBUTE;
                     return 0;
                 }
             case CARD_JIRAI_GUMO:
-                TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 6), TEXTBOX_FLAGS_DEFAULT, gStrCoinTossCall);
+                TextBoxOpen(TEXTBOX_POS(6, 2), TEXTBOX_SIZE(19, 6), TEXTBOX_FLAGS_DEFAULT, gStrCoinTossCall);
                 TextBoxSetMenu(TEXTBOX_MENU_TWO_CHOICE, NULL, NULL);
                 STEP_VIA_ZONES.step = DECLARE_STEP_COIN_TOSS;
                 return 0;
@@ -344,7 +251,8 @@ int BattleStage_DeclareAttack(int player)
 
         DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_TOSS_COIN : DUEL_CMD_TOSS_COIN, gTextBox.result, toss, 0);
         DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_OPEN_DUEL_SCREEN : DUEL_CMD_OPEN_DUEL_SCREEN, 0, 0, 0);
-        /* A wrong call loses half the LP. */
+        /* A wrong call loses half the LP. Matching: gDuelPlayers[side].lifePoints is spelled from the gDuelZones
+         * literal (zones - 0x28 + side * 0xD64); the member form swaps r5 and r6 in this function. */
         if (toss != gTextBox.result)
             DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_LOSE_LP : DUEL_CMD_LOSE_LP,
                          HalveRoundDown(*(u16 *)((u8 *)gDuelZones - OFFSET_OF(struct DuelPlayer, zones)
@@ -368,6 +276,8 @@ int BattleStage_PayAttackCosts(int player)
         int count;
 
         BATTLE_BYTES.attackCostsPaid = 1;
+        /* FAKEMATCH: the assignment inside the argument loads the card number after `1 - player`, as the ROM does;
+         * a separate statement loads it before. */
         count = CountActiveCardsOnField(1 - player, number = CARD_GRAVEKEEPERS_SERVANT);
         if (count > 0) {
             ShowCardEffect(player, CARD_ID_OF(number));
@@ -484,7 +394,7 @@ static inline struct DuelZone *DefenderZone(int player)
 }
 /* Byte +6 of the zone: isDefense (bit 0), isFaceUp (bit 1). */
 #define DEFENDER_FLAGS(player)  (((u8 *)DefenderZone(player))[6])
-#define DEFENDER_ID(player)     ZONE_CARD_ID(DefenderZone(player))
+#define DEFENDER_ID(player)     DUEL_CARD_ID(DefenderZone(player))
 
 /*
  * Stage 6 (skipped by the caller for a direct attack): reveal the target.
@@ -530,7 +440,7 @@ int BattleStage_RevealDefender(int player)
         int offset = ZONE_OFFSET(p, gBattle.defSlot);
         u8 *zones = e + OFFSET_OF(struct DuelState, players[0].zones);
 
-        id = ZONE_CARD_ID((struct DuelZone *)(offset + (u32)zones));
+        id = DUEL_CARD_ID((struct DuelZone *)(offset + (u32)zones));
         BATTLE_BYTES.flipCardId = id;
         BATTLE_BYTES.flipEffectPending = HasFlipEffect(CARD_NUMBER_OF(id), 1);
         if (CountActiveCardsOnField(0, CARD_1530) != 0 || CountActiveCardsOnField(1, CARD_1530) != 0)
@@ -538,12 +448,11 @@ int BattleStage_RevealDefender(int player)
         number = CARD_NUMBER_OF(BATTLE_BYTES.flipCardId);
         if (number == CARD_BLAST_SPHERE || number == CARD_KISEITAI) {
             int opponent = 1 - player;
-            int absent;
 
             /* Defense position, key 1530 not on a field and somewhere to put the card. */
             if ((DEFENDER_FLAGS(opponent) & 1)
                 && CountActiveCardsOnField(0, CARD_1530) == 0
-                && (absent = CountActiveCardsOnField(1, CARD_1530)) == 0
+                && CountActiveCardsOnField(1, CARD_1530) == 0
                 && CanPlaceSpellTrapCard(opponent, DEFENDER_ID(opponent)) != 0) {
                 int zone = FindFreeSpellTrapZone(opponent);
                 u16 source, destination;
@@ -558,8 +467,8 @@ int BattleStage_RevealDefender(int player)
                 CalcBattle(player, 0);
                 BATTLE_BYTES.side[0].destroyed = 0;
                 BATTLE_BYTES.side[1].destroyed = 0;
-                BATTLE_BYTES.side[0].damage = absent;
-                BATTLE_BYTES.side[1].damage = absent;
+                BATTLE_BYTES.side[0].damage = 0;
+                BATTLE_BYTES.side[1].damage = 0;
                 BATTLE_BYTES.flipEffectPending = 0;
                 /* REVEAL_DEFENDER + 4 = BATTLE_STAGE_DESTROY. */
                 STAGE_HALF_VIA_ZONES.stage += 4;
@@ -701,7 +610,7 @@ int BattleStage_DamageCalc(int player)
         int i;
         int opponent;
 
-        switch (CardNumberWide(ZONE_CARD_ID(AttackerZone(player)))) {
+        switch (CardNumberWide(DUEL_CARD_ID(AttackerZone(player)))) {
         case CARD_1336:
             /* Its extra attack: while it is unused, attacking uses it up instead of marking the monster. */
             if (ATTACKER_FLAGS7(player) & 0x20) {
@@ -723,7 +632,7 @@ int BattleStage_DamageCalc(int player)
         /* Every face-up, enabled Mirror Wall of the opponent gets a link to the attacker. */
         for (; i <= ZONE_SPELL_4; i++) {
             u8 *zone = (u8 *)ZONE_VIA_ZONES(opponent & 1, i);
-            u16 id = (*(u32 *)zone << 20) >> 20;
+            u16 id = DUEL_CARD_ID(zone);
 
             if (id != 0 && (zone[6] & 2) && !(zone[0x91] & 8) && CardNumberWide(id) == CARD_MIRROR_WALL)
                 QueueAddZoneLink(opponent, PackLoc(opponent, i), LOC(player, gBattle.atkSlot), ZONE_LINK_CONTINUOUS);
@@ -740,7 +649,7 @@ int BattleStage_DamageCalc(int player)
             opponent = 1 - player;
             if (DefenderFlags(opponent) & 2) {
                 {
-                    u16 id = ZONE_CARD_ID(DefenderZone(opponent));
+                    u16 id = DUEL_CARD_ID(DefenderZone(opponent));
 
                     number = CardNumberWide(id);
                 }
@@ -820,8 +729,8 @@ int BattleStage_DamageCalc(int player)
     case DAMAGE_STEP_ASK_ZERO_ATK:
         if (player != 0) {
             /* The defender is the human. */
-            FormatStr(askText, gStrAskZeroAttackerAtkFmt, CARD_NAME(ZONE_CARD_ID(DefenderZone(1 - player))));
-            TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(22, 11), TEXTBOX_FLAGS_DEFAULT, (u8 *)askText);
+            FormatStr(askText, gStrAskZeroAttackerAtkFmt, CARD_NAME(DUEL_CARD_ID(DefenderZone(1 - player))));
+            TextBoxOpen(TEXTBOX_POS(4, 2), TEXTBOX_SIZE(22, 11), TEXTBOX_FLAGS_DEFAULT, (u8 *)askText);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             STEP_VIA_ZONES.step++;
         } else if (!(gDuelCtrl.isLinkDuel)) {
@@ -829,7 +738,7 @@ int BattleStage_DamageCalc(int player)
             gTextBox.result = 1;
             gDuel.battleStep++;
         } else {
-            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, ZONE_CARD_ID(DefenderZone(1)), 0, 0);
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, DUEL_CARD_ID(DefenderZone(1)), 0, 0);
             LINK_CARD_PROMPT->answered = 0;
         }
         gDuel.battleStep++;
@@ -842,7 +751,7 @@ int BattleStage_DamageCalc(int player)
         return 0;
     case DAMAGE_STEP_APPLY_ZERO_ATK:
         if (gTextBox.result != 0) {
-            ShowActivatedCard(1 - player, ZONE_CARD_ID(DefenderZone(1 - player)));
+            ShowActivatedCard(1 - player, DUEL_CARD_ID(DefenderZone(1 - player)));
             DuelCmd_Push(player != 1 ? DUEL_CMD_PLAYER | DUEL_CMD_SET_EFFECT_UNUSED : DUEL_CMD_SET_EFFECT_UNUSED,
                          gBattle.defSlot, 0, 0);
             DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_ZERO_ATTACKER_ATK : DUEL_CMD_ZERO_ATTACKER_ATK, 0, 0, 0);
@@ -864,15 +773,15 @@ int BattleStage_DamageCalc(int player)
         return 0;
     case DAMAGE_STEP_ASK_SUBSTITUTE:
         if (player != 0) {
-            FormatStr(substituteText, gStrAskSubstituteTargetFmt, CARD_NAME(ZONE_CARD_ID(DefenderZone(1 - player))));
-            TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 7), TEXTBOX_FLAGS_DEFAULT, (u8 *)substituteText);
+            FormatStr(substituteText, gStrAskSubstituteTargetFmt, CARD_NAME(DUEL_CARD_ID(DefenderZone(1 - player))));
+            TextBoxOpen(TEXTBOX_POS(6, 2), TEXTBOX_SIZE(19, 7), TEXTBOX_FLAGS_DEFAULT, (u8 *)substituteText);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             STEP_VIA_ZONES.step++;
         } else if (!(gDuelCtrl.isLinkDuel)) {
             gTextBox.result = 1;
             gDuel.battleStep++;
         } else {
-            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, ZONE_CARD_ID(DefenderZone(1)), 0, 0);
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, DUEL_CARD_ID(DefenderZone(1)), 0, 0);
             LINK_CARD_PROMPT->answered = 0;
         }
         gDuel.battleStep++;
@@ -936,7 +845,7 @@ int BattleStage_DamageCalc(int player)
 
         if (!(DefenderFlags(opponent) & 2)) {
             FlipFieldCard(opponent, gBattle.defSlot, 0);
-            ShowRevealedCard(player, ZONE_CARD_ID(DefenderZone(opponent)));
+            ShowRevealedCard(player, DUEL_CARD_ID(DefenderZone(opponent)));
             TriggerMysteriousPuppeteer(opponent);
         }
         STEP_VIA_ZONES.step++;
@@ -944,7 +853,7 @@ int BattleStage_DamageCalc(int player)
     }
     case DAMAGE_STEP_SUBSTITUTE_DONE: {
         struct BattleBytes *battle = (struct BattleBytes *)&gBattle;
-        u16 id = ZONE_CARD_ID(DefenderZone(1 - player));
+        u16 id = DUEL_CARD_ID(DefenderZone(1 - player));
 
         battle->flipCardId = id;
         battle->flipEffectPending = HasFlipEffect(CARD_NUMBER_OF(id), 1);

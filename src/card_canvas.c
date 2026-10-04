@@ -21,94 +21,48 @@
 #include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON,
                                    * CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/duel.h"         /* enum DuelArea */
-#include "legacy/gba.h"                    /* REG_DISPCNT, REG_VCOUNT, BG_PLTT, OBJ_PLTT, VRAM */
-#include "legacy/main.h"                   /* struct Main gMain, bgVofs / bgHofs */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that duel_screen.h does not pull in the legacy header. After H0, replace the block (BEGIN to
- * END) with the include line of duel.h (build/readability/issues/card_canvas.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 unk3[0x7 - 0x3];
-    u8 unk7_0:6;
-    u8 magicTrapLockTurns:2;        /* +0x007 bits 6-7: nonzero blocks Magic/Trap activation */
-    u8 unk8[0x28 - 0x8];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    u8 unk7C4[0xD64 - 0x7C4];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-/* ---- END duel.h stand-in ---- */
-
+#include "gba.h"                    /* REG_DISPCNT, REG_VCOUNT, BG_PLTT, OBJ_PLTT, VRAM */
+#include "main.h"                   /* struct Main gMain, bgVofs / bgHofs */
+#include "duel.h"                   /* struct DuelCard, struct DuelPlayer, gDuelPlayers, DuelLoc */
 #include "duel_screen.h"            /* struct DuelScreen gDuelScreen, struct DuelZonePos
                                    * gDuelZonePositions, DrawCardImageTile, DrawCardImageIcon16,
                                    * this unit's prototypes */
 #include "booster.h"                /* struct PackOpenWork gPackOpenWork, the GetPack_* prototypes */
 #include "util.h"                   /* MemClear16, MemCopy16 */
+#include "text.h"                   /* TextCanvasInit, TextDrawString, TextCanvasToTiles, DrawBgDecimal */
+#include "bg.h"                     /* LoadBgImage4bpp, SetBgMapEntry */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
 
-/* Card tables through their integer addresses, not the card_data.h symbols: GCC reloads the table
- * address at every use instead of keeping it in a register; the symbol forms give different code
- * (include/card_data.h). */
+/* Matching: the card tables through their integer addresses, not the card_data.h symbols: GCC reloads the
+ * table address at every use instead of keeping it in a register; the symbol forms give different code
+ * (include/card_data.h). Each macro names the table it reads. */
 #define CARD_STATS_WORD(id)     (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])   /* gCardStats[id] */
 #define CARD_NUMBER(id)         (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])   /* gCardIdToNumber[id] */
 #define CARD_ID_FROM_NUMBER(n)  (((const u16 *)0x08623DF4)[(n) & CARD_ID_MASK])    /* gCardNumberToId[n] */
-#define CARD_TYPE(id)           CARD_STATS_TYPE(CARD_STATS_WORD(id))
-#define CARD_KIND(id)           CARD_STATS_KIND(CARD_STATS_WORD(id))
+#define CARD_TYPE(id)           CARD_STATS_TYPE(CARD_STATS_WORD(id))                /* enum CardType of card id */
+#define CARD_KIND(id)           CARD_STATS_KIND(CARD_STATS_WORD(id))                /* monster kind (stats bits 18-19) */
 
-/* Matching: this unit calls AddSpriteXY through int parameters; sprite.h declares u16/s16/u16/u16. */
+/* Matching: asm-label view of AddSpriteXY (sprite.h: u16 x, s16 y, u16 shape, u16 attr2). This unit passes the
+ * computed y and the tile as plain ints; with the narrow prototype GetPack_DrawCardSprites gets extra
+ * narrowing at the call and differs. */
 extern void AddSpriteXYInt(int x, int y, int shape, u32 tile) asm("AddSpriteXY");
 
-/* text.h declares TextCanvasToTiles(u16 *, u16) and TextDrawString(s32, s32, u16, const u8 *);
- * this unit's calls compile through these views. */
-extern void TextCanvasInit(u32 widthTiles, u32 heightTiles);
-extern void TextDrawString(u32 x, u32 y, u32 sizeColor, const void *str);
-extern void TextCanvasToTiles(void *dst, u32 bgColor);
-/* bg.h declares LoadBgImage4bpp(u16, u16, u16, u16 *) and SetBgMapEntry(u16, u16, u16); text.h declares
- * DrawBgDecimal(u32, u32, int, u16). This unit's calls compile through these views. */
-extern void LoadBgImage4bpp(u32 mapOffset, u32 palStart, u32 tileBase, const void *pack);
-extern void DrawBgDecimal(u32 cellColors, u32 tileDigits, u32 value, u32 zeroPad);
-extern void SetBgMapEntry(u32 screenBlock, u32 cell, u32 entry);
+/* Matching: asm-label view of LoadBgImage4bpp (bg.h: u16 map offset, palette start and tile base). This unit
+ * passes plain int expressions; with the u16 prototype every call gets an extra lsl/lsr narrowing that the
+ * ROM does not have (GetPack_DrawCardRow differs). */
+extern u16 LoadBgImage4bppWide(u32 mapOffset, u32 palStart, u32 tileBase, const u16 *pack) asm("LoadBgImage4bpp");
 
-/* 0x081A451C: the 8-entry BG palette colour cycle of the pack-opening scene. */
+/* 0x081A451C: the 8-entry BG palette colour cycle of the pack-opening scene (ROM data only GetPack_HBlank
+ * reads, so it has no header). */
 extern const u16 gPackSceneRasterColors[8];
-/* 0x0300045C (= gMain.bgMapBuffer): kept as this symbol; the base load must come after the row * 4
- * copy in GetPack_DrawCardRow. */
-extern u16 gBgMaps[];
+
+/* 0x0808659C: per-flip-frame sprite attribute words of the pack reveal (24 entries; bit 0x1000 marks the
+ * frames that add the card's icon tile); only GetPack_DrawCardSprites reads it.
+ * Matching: an extern symbol, not a cast-address form: the ROM loads this table through a constant-pool
+ * symbol_ref, which loop.c hoists in its first pass; that pushes the 0xFFFF compare hoist to the second pass
+ * so it wins sl. */
+extern const u16 gCardFlipAnimTiles[];
 
 /* Card category (same inline as in card_detail): Obelisk (card number 1910) gives RITUAL, Slifer and
  * Ra (1911, 1912) give EFFECT, the Magic/Trap/Ticket types give their kinds, else the monster kind
@@ -542,17 +496,15 @@ static inline u16 CardNumberToId(u16 n)
     return CARD_ID_FROM_NUMBER(n - CARD_NUMBER_ALT_ART) + 1;
 }
 
-/* Draw the five slot sprites of the list at 0x02015160 (hypothesis). */
-/* Matching: gCardFlipAnimTiles is an extern symbol, not a cast-address form: the ROM loads this table
- * through a constant-pool symbol_ref, which loop.c hoists in its first pass; that pushes the 0xFFFF
- * compare hoist to the second pass so it wins sl. */
-extern const u16 gCardFlipAnimTiles[];   /* 0x0808659C: per-kind sprite attribute words */
-
+/* Pack reveal: draws the five card sprites (32x32 at x = -4, y = 32 * slot). A slot whose flip animation runs
+ * (gPackOpenWork.revealFrame[i] <= PACK_REVEAL_LAST_FRAME) uses the attribute word gCardFlipAnimTiles[frame],
+ * plus the card's icon tile when that word has bit 0x1000; a settled card uses its icon tile directly. The
+ * ROM function takes no arguments (the fade-out in booster_pack.c calls it with stale r0-r2). */
 void GetPack_DrawCardSprites(void)
 {
     int i;
     for (i = 0; i <= 4; i++) {
-        if (gPackOpenWork.revealFrame[i] <= 0x17) {
+        if (gPackOpenWork.revealFrame[i] <= PACK_REVEAL_LAST_FRAME) {
             u16 tile;
             if (gCardFlipAnimTiles[gPackOpenWork.revealFrame[i]] & 0x1000)
                 tile = gCardFlipAnimTiles[gPackOpenWork.revealFrame[i]] + GetCardIconObjTile(CardNumberToId(gPackOpenWork.cardNumbers[i]));
@@ -637,37 +589,37 @@ void GetPack_DrawCardRow(int row, u16 id)
     TextCanvasInit(0x18, 2);
     /* DrawText takes a u16 colour (as declared in campaign_select); this unit's prototype says u32,
      * so call through the real signature (the u16 conversion gives the ROM's constant copy). */
-    ((void (*)(int, int, u16, const void *))TextDrawString)(2, 6, color | 0xA00, (const void *)(0x0822C720 + id * CARD_NAME_SIZE));   /* gCardNames[id] */
+    TextDrawString(2, 6, color | 0xA00, (const u8 *)(0x0822C720 + id * CARD_NAME_SIZE));   /* gCardNames[id] */
     /* Tile base 0x40 of char block 0x06004000: CSE keeps row * 0x30 for the fill loop below. */
-    TextCanvasToTiles((void *)(VRAM + 0x4000 + (row * 0x30 + 0x40) * 32), 0);
+    TextCanvasToTiles((u16 *)(VRAM + 0x4000 + (row * 0x30 + 0x40) * 32), 0);
     for (i = 0; i <= 1; i++) {
         for (k = 0; k < 24; k++) {
             /* The index in its own local puts the table base load after row * 4 in the loop body,
              * which gives the ROM's hoist order (row * 4 copy before the 0x0300045C base). */
             int idx = (row * 4 + i) * 32 + 3 + k;
-            gBgMaps[idx] = row * 0x30 + 0x40 + k + i * 24;
+            gMain.bgMapBuffer[0][idx] = row * 0x30 + 0x40 + k + i * 24;
         }
     }
     stats = &CARD_STATS_WORD(id);
     switch ((int)CARD_STATS_TYPE(*stats)) {
     case CARD_TYPE_TRAP:
-        LoadBgImage4bpp(((u16)(row * 4 + 2) << 5) + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)0x08636CD8);
+        LoadBgImage4bppWide(((u16)(row * 4 + 2) << 5) + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)0x08636CD8);
         if (GetSpellSubtype(*stats) != 0)
-            LoadBgImage4bpp((((u16)(row * 4 + 2) << 5) + 5), (row + 10) * 16, row * 4 + 0x320, (const void *)gSpellSubtypeIconImages[GetSpellSubtype(CARD_STATS_WORD(id))]);
+            LoadBgImage4bppWide((((u16)(row * 4 + 2) << 5) + 5), (row + 10) * 16, row * 4 + 0x320, (const void *)gSpellSubtypeIconImages[GetSpellSubtype(CARD_STATS_WORD(id))]);
         break;
     case CARD_TYPE_MAGIC:
-        LoadBgImage4bpp(((u16)(row * 4 + 2) << 5) + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)0x08636DA0);
+        LoadBgImage4bppWide(((u16)(row * 4 + 2) << 5) + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)0x08636DA0);
         if (GetSpellSubtype(*stats) != 0)
-            LoadBgImage4bpp((((u16)(row * 4 + 2) << 5) + 5), (row + 10) * 16, row * 4 + 0x320, (const void *)gSpellSubtypeIconImages[GetSpellSubtype(CARD_STATS_WORD(id))]);
+            LoadBgImage4bppWide((((u16)(row * 4 + 2) << 5) + 5), (row + 10) * 16, row * 4 + 0x320, (const void *)gSpellSubtypeIconImages[GetSpellSubtype(CARD_STATS_WORD(id))]);
         break;
     case CARD_TYPE_DIVINE:
         break;
     default: {
         const u32 *statsPtr;
         u32 r = (u16)(row * 4 + 2) << 5;
-        LoadBgImage4bpp(r + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)gAttributeIconImages[CARD_STATS_ATTR(*(statsPtr = &CARD_STATS_WORD(id)))]);
-        LoadBgImage4bpp(r + 5, (row + 10) * 16, row * 4 + 0x320, (const void *)gMonsterTypeIconImages[CARD_STATS_TYPE(*statsPtr)]);
-        LoadBgImage4bpp(r + 8, 0xF0, 0x340, (const void *)0x0863CA1C);
+        LoadBgImage4bppWide(r + 3, (row + 5) * 16, row * 4 + 0x300, (const void *)gAttributeIconImages[CARD_STATS_ATTR(*(statsPtr = &CARD_STATS_WORD(id)))]);
+        LoadBgImage4bppWide(r + 5, (row + 10) * 16, row * 4 + 0x320, (const void *)gMonsterTypeIconImages[CARD_STATS_TYPE(*statsPtr)]);
+        LoadBgImage4bppWide(r + 8, 0xF0, 0x340, (const void *)0x0863CA1C);
         DrawBgDecimal((u16)(((row * 4 + 2) << 5) + 9) | 0x70000, (u16)(row * 8 + 0x1A0) | 0x40000, GetCardAtk10U16(statsPtr, id), 0);
         DrawBgDecimal((u16)(((row * 4 + 3) << 5) + 9) | 0x70000, (u16)(row * 8 + 0x1C8) | 0x40000, GetCardDef10U16(id), 0);
         for (i = 0; i < GetCardLevelU8(id); i++)

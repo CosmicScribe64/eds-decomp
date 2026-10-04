@@ -18,120 +18,8 @@
 #include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK */
 #include "util.h"                   /* MemCopy16 */
 #include "save.h"                   /* SaveGame */
-
-/* ---- BEGIN pre-H0 subset of duel.h and sound.h ---- */
-/*
- * include/duel.h and sound.h still hold the legacy headers until the header switch (H0,
- * build/readability/HEADERS.md); chain.h, duel_cmd.h, duel_screen.h, duel_link.h, card_list_view.h and
- * summon.h include duel.h. Until then this block repeats the part of the new duel.h and sound.h that the unit
- * uses, with the same tags, field names, types and bitfield containers (structs are cut after the last field
- * used here and padded to their size). It defines GUARD_DUEL_H so that the headers below skip the legacy
- * file. After H0, replace the block (BEGIN to END) with the #include lines of these headers, in this order:
- *     duel.h sound.h
- * (checked: that gives the same assembly with the new headers). The unit has no include line that the H0 sed
- * rewrites.
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;
-    u32 owner:1;
-    u32 unk13:19;
-};
-
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;
-    u8 unk4[0x94 - 4];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;
-    u8 deckCount;
-    u8 graveCount;
-    u8 fusionCount;
-    u8 banishedCount;
-    u8 deckOut:1;                   /* +0x007 bit 0 */
-    u8 exodiaWin:1;                 /* +0x007 bit 1 */
-    u8 destinyBoardWin:1;           /* +0x007 bit 2 */
-    u8 unk7_3:5;
-    u8 unk8[0xD64 - 8];
-};
-
-struct CardMenu {
-    u16 open:1;
-    u16 confirmed:1;
-    u16 command:4;
-    u16 slide:4;
-    u32 available:16;
-    u32 state:8;
-    u32 step:8;
-    u8 unk6[6];
-};
-
-struct DuelState {
-    u16 serial;
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004 */
-    u8 fieldBackground:4;           /* +0x1ACC */
-    u8 duelOver:1;
-    u8 unk1ACC_5:1;
-    u8 magicNegated:1;
-    u8 trapsNegated:1;
-    u8 equipMagicNegated:1;         /* +0x1ACD */
-    u8 equipMagicNegatedThisTurn:1;
-    u8 fieldMagicNegatedThisTurn:1;
-    u8 contMagicNegatedThisTurn:1;
-    u8 contTrapNegatedThisTurn:1;
-    u8 statChangesReversed:1;
-    u8 atkDefSwapped:1;
-    u8 unk1ACD_7:1;
-    u8 unk1ACE[0x1B10 - 0x1ACE];
-    u16 turnCount;                  /* +0x1B10 */
-    u8 bgmOn:1;                     /* +0x1B12 */
-    u8 turnPlayer:1;
-    u8 phase:3;
-    u8 linkError:1;
-    u8 result:2;
-    u8 unk1B13_0:1;                 /* +0x1B13 */
-    u8 unk1B13_1:7;
-    u16 unk1B14_0:1;                /* +0x1B14 */
-    u16 interruptActive:1;
-    u16 unk1B14_2:14;
-    u8 unk1B16[0x1B20 - 0x1B16];
-    u8 phaseStep;                   /* +0x1B20 */
-    u8 phaseCounter;                /* +0x1B21 */
-    u8 unk1B22[0x1B2C - 0x1B22];
-    struct CardMenu cardMenu;       /* +0x1B2C */
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountGraveyardCardsByNumber(int player, u16 cardNo);
-int CountHandCardsByNumber(int player, u16 cardNo);
-int CountActiveCardsOnField(int player, u16 cardNo);
-
-void StopBGM(void);                             /* sound.h */
-/* ---- END pre-H0 subset ---- */
-
+#include "duel.h"                   /* gDuel, gDuelZones, struct DuelState / DuelPlayer / DuelZone, CopyDuelCard */
+#include "sound.h"                  /* StopBGM */
 #include "chain.h"                  /* gChain, struct ChainEntry, Chain_* */
 #include "duel_cmd.h"               /* gDuelCmd, DuelCmd_Push */
 #include "duel_flow.h"              /* gDuelCtrl, the duel steps defined here */
@@ -143,22 +31,26 @@ void StopBGM(void);                             /* sound.h */
 #include "card_list_view.h"         /* CardListView_Run */
 #include "summon.h"                 /* SummonAction_Update */
 
-/* ---- Local views kept for matching ---- */
-
-/* The duel-step handlers, indexed by gDuelCtrl.phase (enum DuelStep); NULL after DUEL_STEP_RESULT. */
+/* The duel-step handlers, indexed by gDuelCtrl.phase (enum DuelStep); NULL after DUEL_STEP_RESULT.
+ * ROM table used only by this unit. */
 extern u16 (*const gDuelPhaseTable[])(void);   /* 0x08198F80 */
 
-/* DuelMainStep tests these results as u16 (the definitions return int or u32); the wider return type changes
- * the tests. */
+/* ---- Local views kept for matching (build/readability/issues/duel_main.md) ---- */
+
+/* Matching: DuelMainStep tests these results as u16, but the headers declare wider returns (TextBoxUpdate and
+ * EventResponse_Update int, DuelPrompt_Run u32), and the wider type changes the tests. Each name is a
+ * u16-returning view of the same function. */
 u16 TextBoxUpdate16(void) asm("TextBoxUpdate");
 u16 DuelPrompt_Run16(void) asm("DuelPrompt_Run");
 u16 EventResponse_Update16(void) asm("EventResponse_Update");
 
-/* UpdateSpellTrapNegation is defined (void); DuelMainStep passes 1 in r0, which it ignores. */
+/* Matching: UpdateSpellTrapNegation is defined (void) (effect.h); DuelMainStep passes 1 in r0, which the
+ * function ignores. This name is a view of it with one int parameter. */
 void UpdateSpellTrapNegation1(int unused) asm("UpdateSpellTrapNegation");
 
-/* gMain +0x4870 with u16 containers (main.h: u8). DuelPhase_Init needs the wider container: with a u8 one
- * the `& 1` of firstPlayer is CSE'd with the later link-duel test. */
+/* Matching: a view of gMain (struct Main, main.h) at +0x4870 with u16 containers where main.h has u8.
+ * DuelPhase_Init needs the wider container: with a u8 one the `& 1` of firstPlayer is CSE'd with the later
+ * link-duel test. Same bits as struct Main's firstPlayer / opponent / result. */
 struct MainResultView {
     u8 unk0[0x4870];
     u16 firstPlayer:1;              /* +0x4870 bit 0 */
@@ -170,13 +62,14 @@ extern struct MainResultView gMainResultView asm("gMain");
 
 /*
  * The views below are reached through casts of the real symbol (&gDuel, &gChain), not through asm() aliases:
- * so every address is formed as base + offset like the other fields of the object and can share its base
+ * every address is then formed as base + offset like the other fields of the object and can share its base
  * register. (A byte cast such as ((u8 *)&gChain)[0x3D0] folds into one literal, and an alias symbol does not
  * share the base register of gChain.)
  */
 
-/* gDuel.cardMenu with state:8 in a u16 container (duel.h: u32). The narrower container gives DuelMainStep the
- * ROM's register allocation and lets the two step-reset tails merge. Same bits as struct CardMenu. */
+/* Matching: gDuel.cardMenu (struct CardMenu, duel.h) with state:8 in a u16 container where duel.h has u32.
+ * The narrower container gives DuelMainStep the ROM's register allocation and lets the two step-reset tails
+ * merge. Same bits as struct CardMenu. */
 struct CardMenuU16 {
     u16 open:1;
     u16 confirmed:1;
@@ -191,9 +84,9 @@ struct DuelCardMenuU16View {
 };
 #define gDuelCardMenuU16 ((*(struct DuelCardMenuU16View *)&gDuel).cardMenu)
 
-/* gChain as Chain_Resolve and Chain_Update access it: the build flags as one byte, and the saved card as a
- * plain word, whose fields are taken with shifts of the loaded word (struct DuelCard members would be read
- * with narrower loads). */
+/* Matching: gChain (struct ChainState, chain.h) as Chain_Resolve and Chain_Update access it: building and
+ * buildStep stored as one byte, and savedCard (struct DuelCard) as a plain word whose fields are taken with
+ * shifts of the loaded word (struct DuelCard members would be read with narrower loads). */
 struct ChainStateWordView {
     u8 unk0[0x3D0];
     u8 buildFlags;                  /* +0x3D0: building (bit 0) and buildStep (bits 1-7) */
@@ -204,7 +97,7 @@ struct ChainStateWordView {
 #define CARD_WORD_ID(word)      ((word) << 20 >> 20)    /* struct DuelCard.id */
 #define CARD_WORD_OWNER(word)   ((word) << 19 >> 31)    /* struct DuelCard.owner */
 
-/* The type of gChain.resolve. */
+/* The type of gChain.resolve (struct CardEffect declares its handler int-returning). */
 typedef u32 (*ChainResolveFunc)(struct ChainEntry *link, struct ChainEntry *chainedTo);
 
 #define LAST_LINK       (gChain.links[gChain.linkCount - 1])    /* the link being resolved */
@@ -218,15 +111,19 @@ struct RemoteResolvePacket {
     struct ChainEntry previous;
 };
 
-/* The zone of (player, zone), with the offsets summed before the base as in the ROM. */
+/* Address of the zone (player, zone) in gDuelZones, as bytes. Matching: the player and zone offsets are summed
+ * before the base is added, as in the ROM (array indexing adds the player term first). */
 #define ZONE_AT(player, zone) \
     ((u8 *)gDuelZones + ((player) * sizeof(struct DuelZonesPlayer) + (zone) * sizeof(struct DuelZone)))
-/* DuelZone.isDisabled (+0x91 bit 3) read as a masked byte. */
+/* DuelZone.isDisabled (+0x91 bit 3) of the zone at `zone`, read as a masked byte. Matching: the ROM tests the raw
+ * byte; the bitfield member gives other code. */
 static inline u8 IsZoneDisabled(u8 *zone) { return zone[0x91] & 8; }
 
-/* gCardStats through its constant address (the ROM reloads it per use). */
+/* gCardStats through its constant address. Matching: the ROM reloads the literal at each use, which the
+ * symbol form does not give. */
 #define CARD_STATS_C(id)    (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])
-/* gCardIdToNumber through its constant address, and through the symbol. */
+/* gCardIdToNumber through its constant address (CARD_NUMBER_C) and through the symbol (CARD_NUMBER). Matching:
+ * Chain_Resolve uses the constant form, Chain_Update the symbol form, as in the ROM. */
 #define CARD_NUMBER_C(id)   (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])
 #define CARD_NUMBER(id)     (gCardIdToNumber[(id) & CARD_ID_MASK])
 
@@ -262,7 +159,8 @@ enum ChainResolveStage {
  * negation flag covers it (Jinzo/Royal Decree, Imperial Order, the per-subtype flags); a negated monster with
  * a flip effect is skipped. Then the resolve handler runs as a step machine (gChain.effectStep, from 0x80)
  * until it returns 0; a partner's link is resolved on the partner's GBA. A card that leaves the field after
- * resolving (Chain_CardGoesToGrave) is cleared from its zone and its saved card word goes to the graveyard.
+ * resolving (Chain_CardGoesToGrave) is cleared from its zone before its effect runs, and its saved card word goes
+ * to the graveyard when the effect ends, or at once if the activation was negated and destroyIfNegated is set.
  * Returns 0 right after a negated card was sent away, else 1.
  */
 u32 Chain_Resolve(void)
@@ -371,11 +269,12 @@ u32 Chain_Resolve(void)
         }
         /* Save the card word of the link's zone before the zone may be cleared. */
         {
-            u32 *dest = (u32 *)&gChain.savedCard;
+            struct DuelCard *dest = &gChain.savedCard;
             u8 *playerZones = (u8 *)gDuelZones + LAST_LINK.player * sizeof(struct DuelZonesPlayer);
-            CopyDuelCard(dest, (u32 *)(playerZones + LAST_LINK.zone * sizeof(struct DuelZone)));
+            CopyDuelCard(dest, (struct DuelCard *)(playerZones + LAST_LINK.zone * sizeof(struct DuelZone)));
         }
-        /* The (u16) casts on these u32 results are the ROM's narrowing. */
+        /* Matching: Chain_CardGoesToGrave and Chain_IsPartnerEntry return u32 (chain.h); the (u16) casts on their
+         * results are the narrowing the ROM does before the test. */
         if ((u16)Chain_CardGoesToGrave(&LAST_LINK)) {
             {
                 u16 cmd = LAST_LINK.player ? DUEL_CMD_PLAYER | DUEL_CMD_CLEAR_ZONE_CARD : DUEL_CMD_CLEAR_ZONE_CARD;
@@ -509,8 +408,9 @@ u16 Chain_Update(void)
         }
         gChain.pendingCount = 0;
         {
-            /* building = (linkCount != 0) and buildStep = 0, stored as one byte. linkCount is u16, so the sign
-             * bit of its negation is its nonzero test. */
+            /* building = (linkCount != 0) and buildStep = 0, stored as one byte.
+             * FAKEMATCH: linkCount is u16, so the sign bit of its negation is its nonzero test; the plain
+             * `linkCount != 0` compiles to other code (checked). */
             u32 negativeCount = -(u32)gChain.linkCount;
             u8 *buildByte = &gChainWords.buildFlags;
             *buildByte = negativeCount >> 31;

@@ -8,12 +8,13 @@
  * clears gDuelCmd.running when it is done.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
-#include "legacy/main.h"                   /* gMain.heldKeys */
-#include "legacy/sound.h"                  /* PlaySE */
+#include "gba.h"                           /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_*, BLDALPHA_BLEND */
+#include "main.h"                          /* gMain.heldKeys */
+#include "sound.h"                         /* PlaySE */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_STATS_TYPE_* */
 #include "constants/duel.h"         /* DUEL_AREA_*, ZONE_*, ZONE_LINK_*, BANISH_*, DUEL_LOC */
+#include "constants/sound.h"        /* SE_END_TURN_HAND, SE_CARD_SHOWN */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_* */
 #include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_NUMBER_ALT_ART */
 #include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_* */
@@ -21,217 +22,9 @@
 #include "duel_actions.h"           /* QueueRemoveZoneLink, DestroyFieldCard, ShowCardEffect */
 #include "duel_flow.h"              /* gDuelCtrl */
 
-#ifdef DISPCNT_MODE_4
-#include "legacy/duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer / DuelState, gDuel, ... */
+#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer / DuelState, gDuel, ... */
 #include "duel_cmd.h"               /* gDuelCmd, DuelCmd_Push, gScatterScaleCurve */
-#include "duel_screen.h"            /* gDuelScreen, DuelScreen_*, GetAreaX/Y, the card-image loaders */
-#else
-/* ---- BEGIN pre-H0 subset ---- */
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
- * headers, whose duel structs have other field names, and duel_cmd.h / duel_screen.h need the new duel.h.
- * Until then this block repeats the part of the new gba.h, duel.h, duel_cmd.h, duel_screen.h and sound.h
- * that the unit uses: the same tags, field names, types and bitfield containers (truncated structs end after
- * the last field used here), and the same prototypes. With the new headers installed the block is skipped;
- * then delete it (build/readability/issues/duel_cmd_turn.md).
- */
-#define BLDCNT_TGT1_OBJ         0x0010
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_EFFECT_LIGHTEN   0x0080
-#define BLDCNT_TGT2_BG0         0x0100
-#define BLDCNT_TGT2_BG1         0x0200
-#define BLDCNT_TGT2_BG2         0x0400
-#define BLDCNT_TGT2_BG3         0x0800
-#define BLDCNT_TGT2_OBJ         0x1000
-
-struct DuelCard {
-    u32 id:12;
-    u32 owner:1;
-    u32 unk13:1;
-    u32 unk14:1;
-    u32 normalSummoned:1;
-    u32 specialSummoned:1;
-    u32 planted:1;
-    u32 graverobbed:1;
-    u32 unk19:1;
-    u32 isFusionMaterial:1;
-    u32 destroyedInBattle:1;
-    u32 destroyedByOpponent:1;
-    u32 flag23:1;
-    u32 pendingEquip:1;
-    u32 equipZone:3;
-    u32 pendingOpponentSummon:1;
-    u32 unk29:3;
-};
-struct DuelZone {
-    struct DuelCard card;
-    u16 serial;
-    u8 isDefense:1;
-    u8 isFaceUp:1;
-    u8 turnCounter:4;
-    u16 destroyCountdown:4;
-    u8 positionLocked:1;
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;
-    u8 revivedByMonsterReborn:1;
-    u8 summonedFromGraveyard:1;
-    u8 levelCheckDone:1;
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];
-    u16 linkKinds[32];
-    u16 numLinks;
-    u8 unk8C_0:1;
-    u8 destroyAfterBattle:1;
-    u32 returnAfterBattle:1;
-    u8 cannotAttackNextTurn:1;
-    u8 cannotAttack:1;
-    u8 atkHalved:1;
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:6;
-    u32 unk90_6:4;
-    u32 canActivate:1;
-    u8 isDisabled:1;
-    u32 unk91_4:1;
-    u32 declaredValue:5;
-    u32 unk92_2:14;
-};
-struct DuelPlayer {
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 graveCount;
-    u8 fusionCount;
-    u8 banishedCount;
-    u8 deckOut:1;
-    u8 exodiaWin:1;
-    u8 destinyBoardWin:1;
-    u8 noNormalSummon:1;
-    u8 noSpecialSummon:1;
-    u8 positionChangeLocked:1;
-    u8 magicTrapLockTurns:2;
-    u8 noBattleDamage:1;
-    u8 battleProtected:1;
-    u8 unk8_2:1;
-    u8 insectQueenWonBattle:1;
-    u8 normalSummonUsed:1;
-    u8 summonedThisTurn:1;
-    u8 extraBattlePhase:1;
-    u8 unk8_7:1;
-    u8 handRevealed:1;
-    u8 skipStandbyPhase:1;
-    u8 skipDrawPhase:1;
-    u8 skipTurn:1;
-    u8 battlePhaseDone:1;
-    u8 magicTrapActivatedThisTurn:1;
-    u32 lockedZones:10;
-    u8 crushCardTurns:3;
-    u8 monsterSentToGraveThisTurn:1;
-    u32 removedMask:5;
-    u8 delayedSummonCount:3;
-    u8 destroyedTriggerPending:1;
-    u8 banishCostFromField:1;
-    u8 unkC_6:2;
-    u8 unkD;
-    u16 lpPaid[11];
-    u16 attackableMask;
-    u16 attackedMask;
-    struct DuelZone zones[11];
-    struct DuelCard hand[80];
-    struct DuelCard deck[80];
-    struct DuelCard graveyard[80];
-    struct DuelCard fusionDeck[80];
-    struct DuelCard banished[80];
-    u16 banishedInfo[80];
-};
-struct DuelState {
-    u16 serial;
-    u16 unk2;
-    struct DuelPlayer players[2];
-    u8 fieldBackground:4;
-    u8 duelOver:1;
-    u8 unk1ACC_5:1;
-    u8 magicNegated:1;
-    u8 trapsNegated:1;
-    u8 equipMagicNegated:1;
-    u8 equipMagicNegatedThisTurn:1;
-    u8 fieldMagicNegatedThisTurn:1;
-    u8 contMagicNegatedThisTurn:1;
-    u8 contTrapNegatedThisTurn:1;
-    u8 statChangesReversed:1;
-    u8 atkDefSwapped:1;
-    u32 prohibitionCount:4;
-    u32 unk1ACE_3:13;
-    u16 prohibitionZones[16];
-    u16 prohibitedCards[16];
-    u16 turnCount;
-    u8 bgmOn:1;
-    u8 turnPlayer:1;
-    u8 phase:3;
-    u8 linkError:1;
-    u8 result:2;
-};
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-
-struct DuelCmdEntry {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-};
-struct DuelCmd {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-    struct DuelCmdEntry queue[256];
-    u16 queueCount;
-    u16 step:7;
-    u16 counter:7;
-    u16 unk80A_14:2;
-    u32 unk80C_0:5;
-    u32 timer:7;
-    u32 unk80C_12:1;
-    u32 running:1;
-    u32 unk80C_14:18;
-};
-extern struct DuelCmd gDuelCmd;
-extern const s32 gScatterScaleCurve[];
-void DuelCmd_Push(u16 cmd, u16 arg2, int arg4, int arg6);
-
-struct DuelScreen {
-    u8 fast:1;
-    u8 uiGfxLoaded:1;
-    u8 active:1;
-    u8 unk0_3:5;
-};
-extern struct DuelScreen gDuelScreen;
-u32 DuelScreen_FadeOutStep(void);
-void LoadDuelUiGfx(void);
-void UnloadDuelUiGfx(void);
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-s32 GetAreaX(int player, int area, int index);
-s32 GetAreaY(u32 player, int area, int index);
-void TextCellsClear(void);
-void DuelInfo_DrawCardNameCentered(u16 cardId);
-void LoadCardFrame(u16 cardId);
-void LoadCardPicture(u16 cardId);
-void DrawCardInfo(u16 cardId);
-
-void PlaySE(u32 seId);
-/* ---- END pre-H0 subset ---- */
-#endif
+#include "duel_screen.h"            /* gDuelScreen, DuelScreen_*, GetAreaX/Y, the card-image loaders, card grid */
 
 /*
  * Local views of the sprite emitters (sprite.h declares the shape and tile as u16). This unit calls them with
@@ -277,10 +70,6 @@ extern const u16 gCardNumberToId_InsectMonsterToken[];
 
 /* Fast-forward: B held, or the duel's fast mode. */
 #define FAST_FORWARD()      ((gMain.heldKeys & B_BUTTON) || gDuelScreen.fast)
-
-/* Sound effects (constants/sound.h has no names for these yet; the names say where they are played). */
-#define SE_CARD_SHOWN       0x2C    /* the presented card is complete (also DuelCmd_ShowCardUnrollSideways) */
-#define SE_END_TURN_HAND    15      /* the end-of-turn hand appears */
 
 /*
  * Effect keys without an EDS card (CARD_<n>) used here: CARD_1334 and CARD_1513 refresh like the
@@ -802,22 +591,6 @@ void DuelCmd_ShowCardDetail(void)
     }
 }
 
-/* The card grid of the presentations (see duel_cmd_presentation.c): 4 x 5 sprites of 32x32, top-left at
- * (0x44, 2), centred on (CARD_CENTER_X, CARD_CENTER_Y). */
-#define CARD_GRID_X(col)            ((col) * 32 + 0x44)
-#define CARD_GRID_Y(row)            ((row) * 32 + 2)
-#define CARD_GRID_TILE(row, col)    ((u16)((col) * 4) + ((u16)((row) * 2 + 1) << 5))
-#define CARD_CENTER_X               0x68
-#define CARD_CENTER_Y               0x40
-
-#define BLEND_CARD_OVER_BG  (BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 \
-                             | BLDCNT_TGT2_BG3)                         /* 0x0F40: card alpha-blended over BG0-3 */
-#define BRIGHTEN_SPRITES    (BLDCNT_TGT1_OBJ | BLDCNT_EFFECT_LIGHTEN | BLDCNT_TGT2_OBJ)     /* 0x1090 */
-
-/* BLDALPHA value: weight eva of the card, evb of the background. Same value as gba.h's BLDALPHA_BLEND, but
- * ORed in the ROM's operand order (the other order changes the code). */
-#define BLEND_WEIGHTS(eva, evb) ((eva) | ((evb) << 8))
-
 /*
  * Command 0x71 (DUEL_CMD_SHOW_CARD_ASSEMBLE), arg2 = card ID: the presentation of a played or summoned card.
  * Steps 0-4 scroll to player 0's monster row, free the sprite VRAM and build the card image. Step 5: the 4x5
@@ -877,7 +650,7 @@ void DuelCmd_ShowCardAssemble(void)
         tBlend = gDuelCmd.timer;
         if (tBlend < 16) {
             REG_BLDCNT = BLEND_CARD_OVER_BG;
-            REG_BLDALPHA = BLEND_WEIGHTS(tBlend, (u8)(16 - tBlend));
+            REG_BLDALPHA = BLDALPHA_BLEND(tBlend, (u8)(16 - tBlend));
         } else {
             REG_BLDY = 0;
             REG_BLDCNT = 0;
@@ -930,7 +703,7 @@ void DuelCmd_ShowCardAssemble(void)
         tFade = gDuelCmd.timer;
         if (tFade > 0x30) {
             REG_BLDCNT = BLEND_CARD_OVER_BG;
-            REG_BLDALPHA = BLEND_WEIGHTS((u8)(0x40 - tFade), (u8)(tFade - 0x30));
+            REG_BLDALPHA = BLDALPHA_BLEND((u8)(0x40 - tFade), (u8)(tFade - 0x30));
         } else {
             REG_BLDCNT = 0;
             REG_BLDALPHA = 0;

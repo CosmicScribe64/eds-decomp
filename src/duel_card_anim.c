@@ -11,85 +11,12 @@
  *    helpers draw the ATK / DEF values and the damage as sprites. BattleScene_Update (battle_scene.c) runs it.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* DISPCNT_*, BGCNT_*, REG_BG2X..REG_BG3PA, B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
-#include "legacy/main.h"                   /* gMain, IntrTable, INTR_SLOT_HBLANK, ResetBgScroll */
-#include "legacy/sound.h"                  /* PlaySE */
+#include "gba.h"                    /* DISPCNT_*, BGCNT_*, REG_BG2X..REG_BG3PA, B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
+#include "main.h"                   /* gMain, IntrTable, INTR_SLOT_HBLANK, ResetBgScroll */
+#include "sound.h"                  /* PlaySE */
+#include "duel.h"                  /* struct DuelLoc, struct DuelZone */
 #include "constants/duel.h"         /* DUEL_AREA_DECK, DUEL_AREA_HAND */
 #include "constants/sound.h"        /* SE_CARD_FLIP */
-
-/* ---- BEGIN pre-H0 block ---- */
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
- * headers: they lack the names below, and duel_screen.h / battle.h need struct DuelLoc and struct DuelZone from
- * the new duel.h. This block repeats those names with the new headers' values and layout (unused bytes are
- * padding) and defines GUARD_DUEL_H so that the legacy duel.h is not pulled in. With the new gba.h installed the
- * block is skipped; then delete it (build/readability/issues/duel_card_anim.md).
- */
-#ifndef DISPCNT_MODE_4
-#define GUARD_DUEL_H
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 unk12:20;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13: zone within the row, hand index, 0 for the piles */
-    u16 isDefense:1;                /* bit 14: drawn sideways (defense position) */
-    u16 isFaceUp:1;                 /* bit 15: drawn face up, else the card back */
-    u16 unk2;                       /* +0x02: padding, copied with the word */
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 7];
-};
-
-struct DuelPlayer;                  /* battle.h only takes pointers to it */
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern const u16 gBounceScaleCurve[];           /* 0x081A43E4 */
-
-#define DISPCNT_MODE_2          0x0002
-#define DISPCNT_OBJ_1D_MAP      0x0040
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_CHARBASE(n)       ((n) << 2)
-#define BGCNT_256COLOR          0x0080
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define BGCNT_AFF256x256        0x4000
-#define BG_VRAM                 0x06000000
-#define BG_CHAR_SIZE            0x4000
-#define BG_SCREEN_SIZE          0x800
-#define BG_CHAR_ADDR(n)         (BG_VRAM + BG_CHAR_SIZE * (n))
-#define BG_SCREEN_ADDR(n)       (BG_VRAM + BG_SCREEN_SIZE * (n))
-#define REG_BG2PA               REG16(0x020)
-#define REG_BG2X                REG32(0x028)
-#define REG_BG2Y                REG32(0x02C)
-#define REG_BG3PA               REG16(0x030)
-#define REG_BG3X                REG32(0x038)
-#define REG_BG3Y                REG32(0x03C)
-#define INTR_FLAG_HBLANK        0x0002
-#define OAM_ATTR2_PRIORITY(n)   ((n) << 10)
-#define OAM_ATTR2_PALETTE(n)    ((n) << 12)
-#define B_BUTTON                0x0002
-#define INTR_SLOT_HBLANK        1
-#define VBLANK_COPY_OAM         0x1
-
-extern void (*IntrTable[16])(void);             /* 0x03000000 */
-void ResetBgScroll(void);
-void PlaySE(u32 seId);
-#endif
-/* ---- END pre-H0 block ---- */
 
 #include "duel_screen.h"            /* gDuelScreen, DuelAnim_*, GetAreaX/Y, DuelSprAnim_*, DuelCursor_Select */
 #include "battle.h"                 /* gBattle.scene, struct BattleScene */

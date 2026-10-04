@@ -21,114 +21,7 @@
 #include "global.h"
 #include "card_data.h"              /* CARD_ID_MASK, gCardStats, gCardIdToNumber */
 #include "constants/cards.h"        /* CARD_* card numbers */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit uses, with the header's names, types
- * and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that ai.h's
- * DuelPlayer uses resolve against these declarations. After H0, replace the block (BEGIN to END) with the
- * include line of duel.h (build/readability/issues/ai_strategy.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 flag6_0:1;                   /* +0x06 bit 0: face-down? (hypothesis; units disagree on bits 0/1) */
-    u8 flag6_1:1;                   /* +0x06 bit 1 */
-    u8 counter6:4;                  /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7;                        /* +0x07 */
-    u8 unk8[2];                     /* +0x08 */
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C[8];                    /* +0x8C */
-};
-
-/* The card command menu (gDuel.cardMenu, 0xC bytes): the human's card pick in a response window. */
-struct CardMenu {
-    u16 open:1;                     /* bit 0: menu open, the caller runs CardMenu_Update */
-    u16 confirmed:1;                /* bit 1: a command was chosen */
-    u16 command:4;                  /* bits 2-5: enum CardMenuCommand */
-    u16 slide:4;                    /* bits 6-9: slide/zoom animation step 0-8 */
-    u32 available:16;               /* bits 10-25: enum CardMenuCommandMask bits */
-    u32 state:8;                    /* bits 26-33: CardMenu_Update state */
-    u32 step:8;                     /* bits 34-41: step of the command handler */
-    u8 summonSeq:4;                 /* bits 42-45 */
-    u32 tributeSources:4;           /* bits 46-49 */
-    u16 timer:7;                    /* bits 50-56: pulse timer of the selected icon */
-    u16 player:1;                   /* bit 57: player of the confirmed command */
-    u32 area:7;                     /* bits 58-64: enum DuelArea of the cursor at confirm */
-    u32 index:8;                    /* bits 65-72: zone index (field) or hand index (hand) */
-    u32 placeZone:8;                /* bits 73-80 */
-    u32 unk0A_1:15;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 countB84;                    /* +0x006: entries in listB84[] (banished? hypothesis) */
-    u8 deckOut:1;                   /* +0x007 bit 0 */
-    u8 winA:1;                      /* +0x007 bit 1 */
-    u8 winExodia:1;                 /* +0x007 bit 2 */
-    u8 flag7_3:1;                   /* +0x007 bit 3 */
-    u8 flag7_4:1;
-    u8 flag7_5:1;
-    u8 turns7_6:2;                  /* +0x007 bits 6-7 */
-    u8 unk8;                        /* +0x008 */
-    u8 unk9;                        /* +0x009 */
-    u8 unkA;                        /* +0x00A */
-    u8 unkB_0:3;                    /* +0x00B bits 0-2 */
-    u8 flagB_3:1;                   /* +0x00B bit 3 */
-    u8 unkB_4:4;
-    u8 flagsC;                      /* +0x00C */
-    u8 unkD[0x19];                  /* +0x00D */
-    u16 zoneMask;                   /* +0x026 */
-    struct DuelZone zones[11];      /* +0x028 */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 (hypothesis: deck, from deckCount) */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 (hypothesis, from fusionCount) */
-    struct DuelCard listB84[80];    /* +0xB84 */
-    u16 arrCC4[80];                 /* +0xCC4 */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 linkError:1;                 /* +0x1B12 bit 5 */
-    u8 result:2;                    /* +0x1B12 bits 6-7 */
-    u8 unk1B13[0x1B28 - 0x1B13];
-    u16 cardMenuCard;               /* +0x1B28: card ID under the cursor when the command was confirmed */
-    u16 summonTributes;             /* +0x1B2A */
-    struct CardMenu cardMenu;       /* +0x1B2C */
-    u8 unk1B38[0x1B78 - 0x1B38];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-/* ---- END duel.h stand-in ---- */
-
+#include "duel.h"               /* struct DuelState, struct DuelPlayer, struct DuelZone, gDuel, gDuelPlayers */
 #include "ai.h"                     /* struct AiState, struct AiWork, gAiState, gAiWork, enum AiStrategy,
                                        AiTryPlaySpellTrap, AiPickTributeMonster */
 
@@ -178,7 +71,6 @@ struct DuelAiView {
 
 /* gDuel access forms the matched code loads from their own literal-pool entries (see duel_response.c). */
 extern struct DuelZone gDuelZonesP1[];          /* 0x0201A070 = gDuelZones[1].zones */
-extern u32 gDuelHandP1[];                       /* 0x0201A6CC = gDuelPlayers[1].hand (card words) */
 extern u32 gCardListViewCards[];                /* 0x0201D81C = gCardListView.cards */
 
 /* Board queries, summons and the card menu, with this unit's parameter types (duel_cmd.h, chain.h,
@@ -504,7 +396,7 @@ int AiStrategyElegantEgotist(void)
     case 0:
         if (AiTryPlaySpellTrap(CARD_ELEGANT_EGOTIST) != 0)
             goto inc;
-        if ((gDuelPlayers[1].unk8 & 0x10) != 0)
+        if (gDuelPlayers[1].normalSummonUsed != 0)
             goto fail;
         if (FindFreeMonsterZone(1) == -1) {
             {

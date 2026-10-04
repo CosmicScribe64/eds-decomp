@@ -18,33 +18,10 @@
 #include "constants/card_stats.h" /* enum CardType, CARD_STATS_*_MASK, CARD_STATS_*_SHIFT */
 #include "constants/cards.h"      /* CARD_COCOON_OF_EVOLUTION, CARD_SWORDS_OF_REVEALING_LIGHT, CARD_DNA_SURGERY */
 #include "constants/duel.h"       /* enum DuelArea */
-#include "legacy/gba.h"                  /* B_BUTTON */
-#include "legacy/main.h"                 /* struct Main gMain, heldKeys / newKeys */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h does not carry struct ZoneCardStats; this block declares the part of the canonical
- * layout this unit uses, with the header's names and types (the same declarations as in
- * duel_response.c), and defines duel.h's include guard so nothing below pulls the header in. After
- * H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
- * (build/readability/issues/battle_scene.md). */
-#define GUARD_DUEL_H
-
-/* Effective stats of the card in a zone (GetZoneCardStats, 12 bytes). type / attribute stay in a
- * u8 container: with a u32, agbcc emits lsls/lsrs for the != 0 tests in DuelInfo_DrawMonsterZone. */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0: card ID */
-    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
-    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
-    u8 unk3;
-    s32 atk;                        /* +0x4 */
-    s32 def;                        /* +0x8 */
-};
-
-void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(int se);
-/* ---- END duel.h stand-in ---- */
+#include "duel.h"                 /* gDuel, duel structs, struct ZoneCardStats, GetZoneCardStats */
+#include "gba.h"                  /* B_BUTTON */
+#include "main.h"                 /* struct Main gMain, heldKeys / newKeys */
+#include "sound.h"                /* PlaySE */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view") ---- */
 
@@ -80,7 +57,7 @@ extern u8 gDuelTextTiles[0x800];            /* 0x0201CFB8 */
 
 /* gDuelZones (duel.h) read as raw bytes: the cursor and panel code walks the zones with 0x94-byte
  * strides and pinned registers, so the canonical struct DuelZonesPlayer view is not used here. */
-extern u8 gDuelZones[];                     /* 0x0201930C */
+extern u8 gDuelZoneBytes[] asm("gDuelZones");   /* 0x0201930C */
 
 /* One duel field zone (0x94 bytes; struct DuelZone in duel.h): only byte +6 and the word at +0x90
  * are used here. */
@@ -395,7 +372,7 @@ u32 DuelCursor_GetCardId(void)
     int area = sc->selArea;
     int index = sc->selIndex;
     int playerOff = (player & 1) * 0xD64;
-    u8 *zones = gDuelZones;
+    u8 *zones = gDuelZoneBytes;
     /* FAKEMATCH: pinning the base and the byte offset to r2/r0 makes agbcc emit the ROM's
      * `adds r0, r2, r0` operand order for the final zone-address add. */
     register u8 *base asm("r2") = playerOff + zones;
@@ -577,7 +554,7 @@ void DuelInfo_DrawCard(u16 cardId, u16 showStats)
 static inline struct UiZone *ZonePtr(int player, int zone)
 {
     int pl = player & 1;
-    return (struct UiZone *)(zone * 0x94 + pl * 0xD64 + (u32)gDuelZones);
+    return (struct UiZone *)(zone * 0x94 + pl * 0xD64 + (u32)gDuelZoneBytes);
 }
 /* Duel card detail (zone view): name box, a counter box for Cocoon of Evolution, Swords of
  * Revealing Light and card 1230, and the ATK/DEF/level numbers; DNA Surgery and card 1448 also

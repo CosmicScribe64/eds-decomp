@@ -16,110 +16,10 @@
  */
 #include "global.h"
 #include "constants/duel.h"     /* enum DuelArea, enum DuelPhase */
-#include "legacy/gba.h"                /* REG_DISPCNT, REG_IME, REG_IE, REG_BLDCNT, REG_BLDY */
-#include "legacy/main.h"               /* struct Main gMain (vblankFlags, vblankCallback, brightness, frameCounter) */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that duel_screen.h does not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
- * (build/readability/issues/duel_field_screen.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 countB84;                    /* +0x006: entries in listB84[] */
-    u8 unk7[0x26 - 0x7];
-    u16 zoneMask;                   /* +0x026: per-zone bitmask (DrawFieldOverlay) */
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard listB84[80];    /* +0xB84 */
-    u16 arrCC4[80];                 /* +0xCC4 */
-};
-
-/* The card command menu (gDuel.cardMenu, 0xC bytes): the human's card pick in a response window. */
-struct CardMenu {
-    u16 open:1;                     /* bit 0: menu open, the caller runs CardMenu_Update */
-    u16 confirmed:1;                /* bit 1: a command was chosen */
-    u16 command:4;                  /* bits 2-5: enum CardMenuCommand */
-    u16 slide:4;                    /* bits 6-9: slide/zoom animation step 0-8 */
-    u32 available:16;               /* bits 10-25: enum CardMenuCommandMask bits */
-    u32 state:8;                    /* bits 26-33: CardMenu_Update state */
-    u32 step:8;                     /* bits 34-41: step of the command handler */
-    u8 summonSeq:4;                 /* bits 42-45 */
-    u32 tributeSources:4;           /* bits 46-49 */
-    u16 timer:7;                    /* bits 50-56: pulse timer of the selected icon */
-    u16 player:1;                   /* bit 57: player of the confirmed command */
-    u32 area:7;                     /* bits 58-64: enum DuelArea of the cursor at confirm */
-    u32 index:8;                    /* bits 65-72: zone index (field) or hand index (hand) */
-    u32 placeZone:8;                /* bits 73-80 */
-    u32 unk0A_1:15;
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 fieldBackground:4;           /* +0x1ACC bits 0-3: field background index (DuelScreen_LoadFieldBackground) */
-    u8 unk1ACC_4:4;
-    u8 unk1ACD[0x1B12 - 0x1ACD];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 linkError:1;                 /* +0x1B12 bit 5 */
-    u8 result:2;                    /* +0x1B12 bits 6-7 */
-    u8 unk1B13[0x1B28 - 0x1B13];
-    u16 cardMenuCard;               /* +0x1B28: card ID under the cursor when the command was confirmed */
-    u16 summonTributes;             /* +0x1B2A */
-    struct CardMenu cardMenu;       /* +0x1B2C */
-    u8 unk1B38[0x1B78 - 0x1B38];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
-/* ---- END duel.h stand-in ---- */
+#include "gba.h"                       /* REG_DISPCNT, REG_IME, REG_IE, REG_BLDCNT, REG_BLDY */
+#include "main.h"                      /* struct Main gMain (vblankFlags, vblankCallback, brightness, frameCounter) */
+#include "duel.h"                      /* gDuel, gDuelPlayers, gDuelZones, gDuelHands, struct DuelCard / DuelZone */
+#include "sound.h"                     /* PlaySE */
 
 #include "bg.h"                   /* ResetVideo */
 #include "duel_screen.h"          /* struct DuelScreen gDuelScreen, gDuelZonePositions, the prototypes of the functions defined here, GetAreaX / GetAreaY, GetHandCardX, GetCardIconBgTile / GetCardIconObjTile */
@@ -163,13 +63,6 @@ struct MainTileView {
 };
 #define MAIN_TILE_VIEW ((struct MainTileView *)&gMain)
 
-/* The interrupt handler table (0x03000000); only the HBlank slot is touched here. */
-struct IntrTable {
-    u32 unk0;                       /* +0x00 */
-    void (*hblankCallback)(void);   /* +0x04: handler slot 1 */
-};
-extern struct IntrTable IntrTable;  /* 0x03000000 */
-
 extern u16 gBgMap3[];                         /* 0x03001C5C: BG2 card-layer map shadow, 32 columns */
 extern u8 gDuelFieldImage[];                        /* 0x0867BB7C: the field board image loaded by DuelScreen_Init */
 extern const u32 gZoneMarkerAnimTiles[8];           /* 0x081A427C: OBJ tile of the marker animation frames */
@@ -183,8 +76,6 @@ extern u16 FadeToBlackU16(u8 step) asm("FadeToBlack");
 extern u16 FadeFromBlackU16(u8 step) asm("FadeFromBlack");
 /* battle.h declares u16 CanMonsterAttack(int, int, u16); this unit calls it through an int result. */
 extern int CanMonsterAttack(u32 player, u32 zone, u32 checkCost);
-extern int IsMonsterZoneFree(int player, int zone);
-extern u32 IsHandRevealed(u32 player);
 extern void ResetBgScroll(void);
 
 /* Matching: ClearTileBlock4x4 / FillTileBlock4x4 are called through s32 parameters here. */
@@ -242,7 +133,7 @@ void DuelScreen_Exit(u16 full)
     REG_IME = 1;
     REG_IME = 0;
     REG_IE &= 0xFFFD;
-    IntrTable.hblankCallback = NULL;
+    IntrTable[INTR_SLOT_HBLANK] = NULL;
     REG_IME = 1;
     gMain.vblankCallback = NULL;
     if (full != 0) {

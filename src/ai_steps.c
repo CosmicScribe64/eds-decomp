@@ -24,38 +24,13 @@
 #include "debug.h"                  /* DebugPrintFlush */
 #include "duel_flow.h"              /* struct DuelCtrl, gDuelCtrl */
 
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and summon.h below use, with the
- * header's names and types, and defines duel.h's include guard so that summon.h does not pull in the
- * legacy header. DuelZone is the one deliberate divergence: the canonical header splits the +0x06 byte
- * into bitfields, but this unit loads, stores and masks that byte whole, so the byte form is kept (a
- * local view in the sense of build/readability/HEADERS.md). After H0, replace the block (BEGIN to END)
- * with the include line of duel.h and keep the DuelZone byte view as a local view
- * (build/readability/issues/ai_steps.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:7;
-    u32 flag20:1;
-    u32 unk21:11;
-};
-
-/* One field zone (0x94 bytes); each player has 11. Only the fields this unit touches are named; the
- * link tables in between are padding here. */
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 flags6;                      /* +0x06: bits 0-1 position/face state as read below; bit 1 is also
-                                     * the simulation's temporary face-up mark */
-    u8 unk7[0x91 - 0x7];
-    u8 flags91;                     /* +0x91: bit 3 = isDisabled (the duel_phases.c view) */
-    u8 unk92[2];
-};
-/* ---- END duel.h stand-in ---- */
-
+/* The unit reads gDuel and gDuelPlayers through its own byte-level views below, so duel.h's declarations of
+ * those two symbols are renamed out of the way while it is included. */
+#define gDuel gDuelCanonical
+#define gDuelPlayers gDuelPlayersCanonical
+#include "duel.h"               /* struct DuelCard, struct DuelZone, struct ZoneCardStats, gDuelZonesP1, gDuelHandP1 */
+#undef gDuel
+#undef gDuelPlayers
 #include "summon.h"                 /* QueueNormalSummon (its callee explicitly decodes both final word arguments as u16), QueueFlipSummon, CanNormalSummon, CanSummonFromHand */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
@@ -119,18 +94,7 @@ struct DuelStateView {
 extern struct DuelStateView gDuel;          /* 0x020192E0 */
 
 extern struct DuelZone gDuelZonesP1[];      /* 0x0201A070: player 1 zones */
-extern u32 gDuelHandP1[];                   /* 0x0201A6CC: player 1 hand as card words (= gDuelPlayers.hand1) */
 extern const u16 gCardNumberToId_ToonWorld[];           /* card IDs planted into empty zones by the Toon simulation (meaning unknown) */
-
-/* The effective stats of a zone card, as filled by GetZoneCardStats; this unit reads the type byte
- * whole (masked to the enum CardType bits) and the ATK. */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0 */
-    u8 type;                        /* +0x2: enum CardType in bits 0-4 */
-    u8 unk3;
-    s32 atk;                        /* +0x4 */
-    s32 def;                        /* +0x8 */
-};
 
 /* ---- Prototypes not covered by the headers above ---- */
 
@@ -145,10 +109,7 @@ int CountMonsters(int player);
 void ChangeBattlePosition(int player, int zone, u16 arg2, u16 arg3);
 u32 HasFlipEffect(u16 cardNo, int flags);
 int CountFreeMonsterZones(int player);
-int FindFusionDeckCardByNumber(int player, int cardNo);
 int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
-int IsToonMonster(int cardNo);
 int CountSpellTrapsFiltered(int player, u16 cardNo, u16 arg2, u16 arg3);
 /* card_menu.h declares CardMenu_PlaySpellTrapFromHand(u16, u16, struct ChainEntry *); the all-int
  * form here is the matching one (build/readability/proto_mismatches.txt). */
@@ -164,6 +125,9 @@ int CanEnterBattlePhase(int player);
 
 /* Card ID in the low 12 bits of a card word, kept in this shift form (table readers mask the ID
  * with CARD_ID_MASK instead). */
+/* The unit loads, stores and masks the +0x06 byte of a struct DuelZone whole (duel.h splits it into bitfields). */
+struct ZoneByteView { struct DuelCard card; u16 serial; u8 flags6; u8 unk7[0x91 - 7]; u8 flags91; u8 unk92[2]; };
+#define ZONE_FLAGS6(z) (((struct ZoneByteView *)(z))->flags6)
 #define CARD_ID(w) (((w) << 20) >> 20)
 #define CARD_STATS(id) (((const u32 *)0x08621DE0)[(id) & CARD_ID_MASK])   /* gCardStats, kept as a literal address: the symbol form generates different code (card_data.h) */
 
@@ -487,7 +451,7 @@ static inline int ZoneSpaceCount(int count)
 static inline int ZoneFace(u32 flagMask, struct DuelZone *zone)
 {
     u32 mask = flagMask;
-    register u32 flags asm("r3") = zone->flags6;
+    register u32 flags asm("r3") = ZONE_FLAGS6(zone);
     asm("" : : "r"(mask), "r"(flags));
     return mask & flags;
 }
@@ -531,7 +495,7 @@ int AiStepChangePositions(void)
                 z = (struct DuelZone *)addr;
                 id = CARD_ID(*(u32 *)&z->card);
                 ok = id != 0;
-                if (z->flags6 & 2) {
+                if (ZONE_FLAGS6(z) & 2) {
                     if (GetZoneCardType(1, index) == 1) {
                         if (CountActiveCardsOnField(0, CARD_DRAGON_CAPTURE_JAR) != 0 || CountActiveCardsOnField(1, CARD_DRAGON_CAPTURE_JAR) != 0)
                             ok = 0;
@@ -563,14 +527,14 @@ int AiStepChangePositions(void)
                         fieldBase = (u32)gDuelZonesP1;
                         {
                             struct DuelZone *z = (struct DuelZone *)(offset + fieldBase);
-                            register u32 flags asm("r1") = z->flags6;
+                            register u32 flags asm("r1") = ZONE_FLAGS6(z);
                             u8 set = 2;
                             register u32 mask asm("r0") = 2;
                             savedMask = mask;
                             if ((flags & mask) == 0) {
                                 register u32 raw asm("r0") = flags;
                                 raw |= set;
-                                z->flags6 = raw;
+                                ZONE_FLAGS6(z) = raw;
                                 attack = GetZoneCardAtk(1, AI->subState);
                                 {
                                     /* The helper may change subState, so clear the newly
@@ -632,7 +596,7 @@ int AiStepChangePositions(void)
                         off *= stride;
                         off += (u32)gDuelZonesP1;
                         z = (struct DuelZone *)off;
-                        if ((z->flags6 & 3) == 1) {
+                        if ((ZONE_FLAGS6(z) & 3) == 1) {
                             /* The original call leaves the table base in r1.
                              * HasFlipEffect explicitly consumes its low half. */
                             if (HasFlipEffect(*(const u16 *)(((*(u32 *)&z->card << 21) >> 20) + 0x08622AB4), 0x08622AB4) == 0 && ZoneSpaceCount(canSummon)) {
@@ -648,7 +612,7 @@ int AiStepChangePositions(void)
                             off *= 0x94;
                             off += (u32)gDuelZonesP1;
                             z = (struct DuelZone *)off;
-                            if ((z->flags6 & 3) == 3) {
+                            if ((ZONE_FLAGS6(z) & 3) == 3) {
                                 ChangeBattlePosition(1, index, 0, 0);
                                 AI->subState++;
                                 return 0;
@@ -663,7 +627,7 @@ int AiStepChangePositions(void)
                         off = cur->subState;
                         off *= stride;
                         z = (struct DuelZone *)(off + (u32)gDuelZonesP1);
-                        if ((z->flags6 & 3) == 2 && (gDuelCtrl.aiFlags & AI_FLAG_EXODIA) != 0) {
+                        if ((ZONE_FLAGS6(z) & 3) == 2 && (gDuelCtrl.aiFlags & AI_FLAG_EXODIA) != 0) {
                             int number = *(const u16 *)(((*(u32 *)&z->card << 21) >> 20) + 0x08622AB4);
                             switch (number) {
                             case CARD_WITCH_OF_THE_BLACK_FOREST:
@@ -843,9 +807,9 @@ int AiChooseStrategy(void)
             /* The literal zone base (0x0201A070 = gDuelZonesP1) is kept: through the extern the
              * base is hoisted out of the loop, through the literal it is reloaded each use. */
             for (j = 0; j <= 4; j++) {
-                if (((struct DuelZone *)0x0201A070)[j].flags6 & 2) {
+                if (ZONE_FLAGS6(&((struct DuelZone *)0x0201A070)[j]) & 2) {
                     GetZoneCardStats(1, j, &info);
-                    if ((info.type & 0x1F) == CARD_TYPE_MACHINE)
+                    if ((*((u8 *)&info + 2) & 0x1F)  /* whole type byte; duel.h has type:5 + attribute:3 */ == CARD_TYPE_MACHINE)
                         sum += info.atk;  /* sum is never initialized (an original bug, kept) */
                 }
             }
@@ -883,7 +847,7 @@ int AiChooseStrategy(void)
              * pointer compare. The ROM sets them up before the masks, which loop pass 1 hoists,
              * and before the end value, so the loop cannot be an indexed z loop (strength
              * reduction would put its inits after the hoisted masks). */
-            f91 = (struct ZoneSim91 *)&zones[5].flags91;
+            f91 = (struct ZoneSim91 *)&((struct ZoneByteView *)zones)[5].flags91;
             dz = &zones[5];
             do {
                 u16 cid = CARD_ID(*(u32 *)&dz->card);
@@ -1037,7 +1001,7 @@ int AiStrategyCyberStein(void)
             aiWork->strategyActive = 0;
             return 0;
         }
-        if ((z->flags6 & 2) == 0) {
+        if ((ZONE_FLAGS6(z) & 2) == 0) {
             aiWork->strategyActive = 0;
             return 0;
         }

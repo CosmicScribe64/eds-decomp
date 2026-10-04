@@ -3,6 +3,7 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* enum CardType, CardKind, SpellSubtype */
 #include "constants/duel.h"         /* enum ZoneLinkKind, DUEL_LOC */
+#include "duel.h"                   /* gDuel, gDuelPlayers, gDuelZones, struct DuelCard / DuelZone, CopyDuelCard, AddCardToFusionDeck */
 #include "duel_actions.h"           /* DestroyFieldCard */
 #include "effect_handlers.h"        /* EffectEquipTargetCheck */
 
@@ -19,85 +20,9 @@
  * or a card ID whose effect applies (ZONE_LINK_CARD_EFFECT).
  */
 
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit uses, with the header's names,
- * types and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that
- * chain.h does not pull in the legacy header. After H0, replace the block (BEGIN to END) with
- * #include "legacy/duel.h": that gives identical assembly (checked against the staged header). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:19;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 unk6[4];
-    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one, or a value / card ID */
-    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
-    u16 numLinks;                   /* +0x8A: entries in links / linkKinds */
-    u8 unk8C[5];
-    u8 unk91_0:3;
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u8 unk91_4:4;
-    u8 unk92[2];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005 */
-    u8 banishedCount;               /* +0x006: entries in banished[] and banishedInfo[] */
-    u8 unk7[2];
-    u8 handRevealed:1;              /* +0x009 bit 0: forces IsHandRevealed */
-    u8 unk9_1:7;
-    u8 unkA[0x28 - 0xA];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4: parallel to banished[]: low byte enum BanishKind, high byte zone */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 unk1B12_5:3;
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-
-void CopyDuelCard(u32 *dst, u32 *src);
-void AddCardToFusionDeck(int player, struct DuelCard *card);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountActiveCardsOnField2(int player, u16 cardNo);
-int CountOtherFaceUpSameNameMonsters(int player, int zone);
-/* ---- END duel.h stand-in ---- */
-
 #include "chain.h"                  /* struct ChainEntry (EffectEquipTargetCheck's card argument) */
 
-/* CopyDuelCard is declared with u32 * parameters; the piles here are struct DuelCard arrays. */
-#define COPY_CARD(dst, src) CopyDuelCard((u32 *)(dst), (u32 *)(src))
+#define COPY_CARD(dst, src) CopyDuelCard((dst), (src))
 
 /* The card word as one u32. Matching: the ROM always loads the whole word (ldr) for these compares and ID
  * extractions; a bitfield read of .id would load only the halfword holding it. */

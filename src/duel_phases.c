@@ -1,6 +1,6 @@
 #include "global.h"
-#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_UP, DPAD_DOWN */
-#include "legacy/main.h"                   /* gMain.newKeys */
+#include "gba.h"                           /* A_BUTTON, B_BUTTON, DPAD_UP, DPAD_DOWN */
+#include "main.h"                          /* gMain.newKeys */
 #include "util.h"                   /* Random, FormatStr, FormatInt, HalveRoundUp */
 #include "sprite.h"                 /* AddSprite */
 #include "card_data.h"              /* gCardIdToNumber, gCardNumberToId, gCardNames, CARD_ID_MASK */
@@ -8,6 +8,8 @@
 #include "constants/duel.h"         /* enum DuelArea, BattleStage, ZoneLinkKind, PromptKind, ... */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_* */
 #include "constants/sound.h"        /* SE_* */
+#include "duel.h"                   /* gDuel, gDuelPlayers, gDuelZones, struct DuelCard / DuelZone, the zone queries */
+#include "sound.h"                  /* PlaySE */
 
 /*
  * Turn start, Standby Phase and Main Phase of a duel turn (wiki/functions/duel-phases-c.md).
@@ -24,206 +26,6 @@
  * rows without handlers, and CARD_14xx names are effect keys of cards that the EDS ROM does not contain; their
  * meanings come from what the code does with them.
  */
-
-/* ---- BEGIN pre-H0 subset of duel.h and sound.h ---- */
-/*
- * The part of those headers this unit uses, with their names, types and bitfield containers (fields the
- * unit does not use keep the header's names). include/duel.h and sound.h still hold the legacy headers until
- * the header switch (H0, build/readability/HEADERS.md), and chain.h, duel_cmd.h, duel_link.h, duel_screen.h,
- * battle.h and summon.h include duel.h, so this block also defines duel.h's include guard. After H0, replace
- * this block (BEGIN to END) with the include lines of duel.h and sound.h, in that order (checked: the unit
- * compiles to the same assembly with the new headers).
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty */
-    u32 owner:1;                    /* bit 12 */
-    u32 unk13:1;
-    u32 unk14:1;
-    u32 normalSummoned:1;           /* bit 15 */
-    u32 specialSummoned:1;          /* bit 16 */
-    u32 planted:1;                  /* bit 17 */
-    u32 graverobbed:1;              /* bit 18 */
-    u32 unk19:13;
-};
-
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0 */
-    u8 isFaceUp:1;                  /* +0x06 bit 1 */
-    u8 turnCounter:4;               /* +0x06 bits 2-5: turns a face-up card has been active */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet */
-    u8 revivedByMonsterReborn:1;
-    u8 summonedFromGraveyard:1;
-    u8 levelCheckDone:1;            /* +0x08 bit 0 */
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];                  /* +0x0A */
-    u16 linkKinds[32];              /* +0x4A */
-    u16 numLinks;                   /* +0x8A */
-    u8 unk8C_0:1;                   /* +0x8C */
-    u8 destroyAfterBattle:1;
-    u32 returnAfterBattle:1;
-    u8 cannotAttackNextTurn:1;
-    u8 cannotAttack:1;              /* +0x8C bit 4 */
-    u8 atkHalved:1;
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:6;
-    u32 unk90_6:4;
-    u32 canActivate:1;
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:1;
-    u32 declaredValue:5;
-    u32 unk92_2:14;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002 */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004 */
-    u8 fusionCount;                 /* +0x005 */
-    u8 banishedCount;               /* +0x006: entries in banished[] and banishedInfo[] */
-    u8 deckOut:1;                   /* +0x007 */
-    u8 exodiaWin:1;
-    u8 destinyBoardWin:1;
-    u8 noNormalSummon:1;
-    u8 noSpecialSummon:1;
-    u8 positionChangeLocked:1;
-    u8 magicTrapLockTurns:2;
-    u8 noBattleDamage:1;            /* +0x008 */
-    u8 battleProtected:1;
-    u8 unk8_2:1;
-    u8 insectQueenWonBattle:1;
-    u8 normalSummonUsed:1;          /* +0x008 bit 4 */
-    u8 summonedThisTurn:1;          /* +0x008 bit 5 */
-    u8 extraBattlePhase:1;
-    u8 unk8_7:1;
-    u8 handRevealed:1;              /* +0x009 */
-    u8 skipStandbyPhase:1;          /* +0x009 bit 1 */
-    u8 skipDrawPhase:1;
-    u8 skipTurn:1;                  /* +0x009 bit 3 */
-    u8 battlePhaseDone:1;           /* +0x009 bit 4 */
-    u8 magicTrapActivatedThisTurn:1;/* +0x009 bit 5 */
-    u32 lockedZones:10;             /* +0x009 bit 6 .. +0x00A bit 7 */
-    u8 crushCardTurns:3;            /* +0x00B */
-    u8 monsterSentToGraveThisTurn:1;/* +0x00B bit 3 */
-    u32 removedMask:5;              /* +0x00B bit 4 .. +0x00C bit 0 */
-    u8 delayedSummonCount:3;        /* +0x00C bits 1-3 */
-    u8 destroyedTriggerPending:1;
-    u8 banishCostFromField:1;       /* +0x00C bit 5 */
-    u8 unkC_6:2;
-    u8 unkD;
-    u16 lpPaid[11];                 /* +0x00E */
-    u16 attackableMask;             /* +0x024 */
-    u16 attackedMask;               /* +0x026 */
-    struct DuelZone zones[11];      /* +0x028 */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4: parallel to banished[]: low byte enum BanishKind, high byte zone */
-};
-
-struct CardMenu {
-    u16 open:1;                     /* bit 0 */
-    u16 confirmed:1;                /* bit 1 */
-    u16 command:4;
-    u16 slide:4;
-    u32 available:16;
-    u32 state:8;
-    u32 step:8;
-    u8 summonSeq:4;
-    u32 tributeSources:4;
-    u16 timer:7;
-    u16 player:1;
-    u32 area:7;
-    u32 index:8;
-    u32 placeZone:8;
-    u32 unk0A_1:15;
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;
-    u8 linkError:1;
-    u8 result:2;
-    u8 unk1B13_0:1;
-    u8 unk1B13_1:7;
-    u16 unk1B14_0:1;                /* +0x1B14 */
-    u16 interruptActive:1;
-    u16 unk1B14_2:7;
-    u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
-    u16 battleStep:8;
-    u16 battleArg0:8;
-    u16 battleArg1:8;
-    u16 unk1B19_1:7;
-    u8 unk1B1A[2];
-    struct DuelCard battleCard;     /* +0x1B1C */
-    u8 phaseStep;                   /* +0x1B20: step of the current duel-step handler */
-    u8 phaseCounter;                /* +0x1B21: zone cursor / counter of the phase handlers */
-    u8 phaseSubStep;                /* +0x1B22: secondary step or index of the phase handlers */
-    u8 phaseSubCounter;             /* +0x1B23 */
-    u8 unk1B24[2];
-    u8 endTurnAfterBattle:1;        /* +0x1B26 bit 0 */
-    u8 unk1B26_1:7;
-    u8 unk1B27;
-    u16 cardMenuCard;               /* +0x1B28 */
-    u16 summonTributes;             /* +0x1B2A */
-    struct CardMenu cardMenu;       /* +0x1B2C */
-    u8 unk1B38[0x1B64 - 0x1B38];
-    u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-int FindFaceUpCardOnField2(int player, u16 cardNo, int skipZone);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountMonsters(int player);
-int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
-int CountGraveyardCardsByNumber(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-int CountTributableMonsters(int player, int excludeZone);
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-int CountActiveZoneLinksFromCard(int player, int zone, u16 cardNo);
-int FindMagicInHand(int player);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-
-void PlaySE(u32 seId);
-/* ---- END pre-H0 subset ---- */
 
 #include "duel_flow.h"              /* gDuelCtrl, enum *Step, the functions defined here */
 #include "duel_cmd.h"               /* DuelCmd_Push */

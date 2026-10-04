@@ -16,75 +16,7 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum ChainEntryKind, ResponseEventKind, ZoneLinkKind */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
- * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
- * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h". */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:11;
-    u32 pendingEquip:1;             /* bit 24: graveyard card waiting to be equipped at end of turn */
-    u32 equipZone:3;                /* bits 25-27: monster zone that card goes to */
-    u32 pendingOpponentSummon:1;    /* bit 28: graveyard card the opponent may Special Summon */
-    u32 unk29:3;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u8 unk0[8];
-    u8 noBattleDamage:1;            /* +0x008 bit 0 */
-    u8 battleProtected:1;           /* +0x008 bit 1 */
-    u8 unk8_2:1;
-    u8 insectQueenWonBattle:1;      /* +0x008 bit 3: set by BattleStage_DestroyMonsters */
-    u8 unk8_4:4;
-    u8 unk9[0x28 - 0x9];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 unk684[0xD64 - 0x684];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B14 - 0x1ACC];
-    u16 unk1B14_0:1;                /* +0x1B14 */
-    u16 interruptActive:1;
-    u16 unk1B14_2:7;
-    u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
-    u16 battleStep:8;               /* +0x1B16 bits 1-8: step inside the stage */
-    u16 battleArg0:8;
-    u16 battleArg1:8;
-    u16 unk1B19_1:7;
-    u8 unk1B1A[0x1B78 - 0x1B1A];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-u16 FindAbsorbedMonsterLink(int player, int zone);
-int CountHandCardsByNumber(int player, u16 cardNo);
-u32 GetZoneCardType(s32 player, s32 slot);
-/* ---- END duel.h stand-in ---- */
+#include "duel.h"                 /* gDuel, gDuelPlayers, gDuelZones, struct DuelState / DuelPlayer / DuelZone */
 
 #include "battle.h"                 /* gBattle (struct Battle), BattleStage_* defined here */
 #include "chain.h"                  /* Chain_AddPending, EventResponse_Request */

@@ -21,145 +21,9 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum DuelArea, DuelPromptKind, ChainEntryKind, ResponseEventKind, ZoneStatusFlag */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_*, DUEL_CMD_PLAYER */
-#include "legacy/gba.h"                    /* R_BUTTON */
-#include "legacy/main.h"                   /* struct Main gMain (newKeys, frameCounter) */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that battle.h, chain.h, duel_cmd.h, duel_screen.h and summon.h do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
- * (build/readability/issues/battle_phase3.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:11;
-    u32 pendingEquip:1;             /* bit 24: graveyard card waiting to be equipped at end of turn */
-    u32 equipZone:3;                /* bits 25-27: monster zone that card goes to */
-    u32 pendingOpponentSummon:1;    /* bit 28: graveyard card the opponent may Special Summon */
-    u32 unk29:3;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04: gDuel.serial when the card was placed (replay check) */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;              /* +0x07 bit 5: one-shot effect not used yet */
-    u8 unk7_6:2;
-    u8 unk8[0x91 - 0x8];
-    u8 unk91_0:3;
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u8 unk91_4:4;
-    u8 unk92[0x94 - 0x92];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 banishedCount;               /* +0x006: entries in banished[] and banishedInfo[] */
-    u8 deckOut:1;                   /* +0x007 */
-    u8 exodiaWin:1;
-    u8 destinyBoardWin:1;
-    u8 noNormalSummon:1;
-    u8 noSpecialSummon:1;
-    u8 positionChangeLocked:1;
-    u8 magicTrapLockTurns:2;
-    u8 noBattleDamage:1;            /* +0x008 */
-    u8 battleProtected:1;
-    u8 unk8_2:1;
-    u8 insectQueenWonBattle:1;
-    u8 normalSummonUsed:1;          /* +0x008 bit 4 */
-    u8 summonedThisTurn:1;          /* +0x008 bit 5 */
-    u8 extraBattlePhase:1;
-    u8 unk8_7:1;
-    u8 handRevealed:1;              /* +0x009 */
-    u8 skipStandbyPhase:1;          /* +0x009 bit 1 */
-    u8 skipDrawPhase:1;
-    u8 skipTurn:1;                  /* +0x009 bit 3 */
-    u8 battlePhaseDone:1;           /* +0x009 bit 4 */
-    u8 magicTrapActivatedThisTurn:1;/* +0x009 bit 5 */
-    u32 lockedZones:10;             /* +0x009 bit 6 .. +0x00A bit 7 */
-    u8 crushCardTurns:3;            /* +0x00B */
-    u8 monsterSentToGraveThisTurn:1;/* +0x00B bit 3 */
-    u32 removedMask:5;              /* +0x00B bit 4 .. +0x00C bit 0 */
-    u8 delayedSummonCount:3;        /* +0x00C bits 1-3 */
-    u8 destroyedTriggerPending:1;
-    u8 banishCostFromField:1;       /* +0x00C bit 5 */
-    u8 unkC_6:2;
-    u8 unkD;
-    u16 lpPaid[11];                 /* +0x00E */
-    u16 attackableMask;             /* +0x024 */
-    u16 attackedMask;               /* +0x026 */
-    struct DuelZone zones[11];      /* +0x028 */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4: parallel to banished[]: low byte enum BanishKind, high byte zone */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B14 - 0x1ACC];
-    u16 unk1B14_0:1;                /* +0x1B14 */
-    u16 interruptActive:1;
-    u16 unk1B14_2:7;
-    u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
-    u16 battleStep:8;               /* +0x1B16 bits 1-8: step inside the stage */
-    u16 battleArg0:8;               /* +0x1B17 bit 1 .. +0x1B18 bit 0: stage scratch (a zone or player) */
-    u16 battleArg1:8;               /* +0x1B18 bit 1 .. +0x1B19 bit 0 */
-    u16 unk1B19_1:7;
-    u8 unk1B1A[0x1B64 - 0x1B1A];
-    u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-/* Helpers of the duel rules with no header of their own; this unit calls them with these widths. */
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-int FindFreeSpellTrapZone(int player);
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-int FindZoneLinkFromCard(int player, int zone, u16 cardNo);
-int HasZoneCardEffectLink(int player, int zone, u16 cardNo);
-int FindFaceUpCardOnField2(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int CountMonstersFiltered(int player, int faceUpOnly, int attackPosOnly);
-void CopyDuelCard(void *dst, const void *src);
-/* ---- END duel.h stand-in ---- */
+#include "duel.h"                 /* gDuel, gDuelPlayers, gDuelZones, duel structs */
+#include "gba.h"                  /* R_BUTTON */
+#include "main.h"                 /* struct Main gMain (newKeys, frameCounter) */
 
 #include "battle.h"                 /* gBattle (struct Battle), the functions defined here */
 #include "chain.h"                  /* Chain_AddPending */
@@ -194,9 +58,9 @@ extern int (*const volatile gBattleStageHandlers[])(int);
 
 /* gDuel as bytes: this unit's step machines work on the raw step bytes and pointers into the state, and
  * read the state through the views below, so the global keeps its byte-array declaration. */
-extern u8 gDuel[];                              /* 0x020192E0: struct DuelState */
+extern u8 gDuelBytes[] asm("gDuel");            /* 0x020192E0: struct DuelState */
 /* The graveyards as raw card words (gDuel + 0x908 = gDuelPlayers[0].graveyard). */
-extern u32 gDuelGraveyards[];                   /* 0x02019BE8 */
+extern u32 gDuelGraveyardWords[] asm("gDuelGraveyards"); /* 0x02019BE8 */
 
 /* Matching: Duel_CheckWin's result is tested as an int here (duel_flow.h declares u16). */
 extern int Duel_CheckWinInt(void) asm("Duel_CheckWin");
@@ -208,6 +72,10 @@ extern u8 gDuelCtrlBytes[] asm("gDuelCtrl");
 extern void DuelCmd_PushU16(u16 cmd, u16 arg2, u16 arg4, u16 arg6) asm("DuelCmd_Push");
 /* Matching: the equip flag is passed as int here (effect.h declares u16). */
 extern void ResolvePendingGraveyardEquipInt(int player, int graveIdx, int equip) asm("ResolvePendingGraveyardEquip");
+/* Matching: this unit calls FindFaceUpCardOnField2 with two arguments (duel.h declares a third, skipZone). */
+extern int FindFaceUpCardOnField2Two(int player, u16 cardNo) asm("FindFaceUpCardOnField2");
+/* Matching: the destination is a view of the state here (duel.h declares struct DuelCard pointers). */
+extern void CopyDuelCardRaw(void *dst, const void *src) asm("CopyDuelCard");
 /* Matching: the zone is passed as u8 here (effect.h declares int). */
 extern void PlaceNextSpiritMessageU8(int player, u8 zone) asm("PlaceNextSpiritMessage");
 
@@ -273,7 +141,7 @@ int BattleStage_EndAttack(int player)
     if (CountActiveCardsOnField(player, CARD_1538) != 0 || CountActiveCardsOnField(1 - player, CARD_1538) != 0)
         found = 1;
     if (found == 0) {
-        e = gDuel;
+        e = gDuelBytes;
         ((struct BattleStageWord *)(e + 0x1B14))->stage = BATTLE_STAGE_SELECT_ATTACKER;
         ((struct BattleStepHalf *)(e + 0x1B16))->step = 0;
         return 0;
@@ -316,10 +184,10 @@ struct BattleEndState {
     u8 unk1B20[0x1B64 - 0x1B20];
     u16 promptResult;               /* +0x1B64: scratch flag of steps 6-7 */
 };
-#define BATTLE_END_STATE    ((struct BattleEndState *)gDuel)
-#define BATTLE_END_PLAYER(p) ((struct BattleEndPlayer *)(gDuel + 4) + ((p) & 1))
-#define BATTLE_END_ZONES    (gDuel + 0x2C)
-#define BATTLE_END_GRAVE    (gDuel + 0x908)
+#define BATTLE_END_STATE    ((struct BattleEndState *)gDuelBytes)
+#define BATTLE_END_PLAYER(p) ((struct BattleEndPlayer *)(gDuelBytes + 4) + ((p) & 1))
+#define BATTLE_END_ZONES    (gDuelBytes + 0x2C)
+#define BATTLE_END_GRAVE    (gDuelBytes + 0x908)
 
 /* Stage 12, end-of-Battle-Phase effects on the step byte at +0x1B16 (bits 1-8, battleStep): step 0 handles
  * key 1344 in the player's zones and CARD_SWORD_OF_DRAGONS_SOUL for both players, 1 resolves graveyard
@@ -386,7 +254,7 @@ int BattleStage_EndBattlePhase(int player)
             /* FAKEMATCH: the comma expression loads the player base first in the loop test, so loop.c
              * hoists it in pass 1 and the inner test keeps its own copy (G - 0x904). */
             u8 *y;
-            for (j = 0; j < ((struct BattleEndPlayer *)(y = gDuel + 4, y + (i & 1) * 0xD64))->graveCount; j++) {
+            for (j = 0; j < ((struct BattleEndPlayer *)(y = gDuelBytes + 4, y + (i & 1) * 0xD64))->graveCount; j++) {
                 u32 *g = (u32 *)((i & 1) * 0xD64 + BATTLE_END_GRAVE);
                 u32 card = g[j];
                 if ((s32)(card << 3) < 0) {
@@ -428,7 +296,7 @@ int BattleStage_EndBattlePhase(int player)
             if (BATTLE_END_STATE->battleArg0)
                 msg = DUEL_CMD_REMOVE_CARD_FROM_GRAVEYARD | DUEL_CMD_PLAYER;
             DuelCmd_PushU16(msg, card[0], card[1], 0);
-            CopyDuelCard(&BATTLE_END_STATE->battleCard, card);
+            CopyDuelCardRaw(&BATTLE_END_STATE->battleCard, card);
             BATTLE_END_STATE->battleStep++;
         } else {
             int pl = BATTLE_END_STATE->battleArg0;
@@ -446,7 +314,7 @@ int BattleStage_EndBattlePhase(int player)
         return 0;
     default:
         {
-            u8 *y = gDuel + 4;
+            u8 *y = gDuelBytes + 4;
             struct BattleEndPlayer *ps = (struct BattleEndPlayer *)(y + (player & 1) * 0xD64);
             if (ps->extraBattlePhase) {
                 u16 msg = DUEL_CMD_SET_EXTRA_BATTLE_PHASE;
@@ -522,7 +390,7 @@ int BattleStage_Cleanup(int player)
 int BattlePhase_Run(int player)
 {
     int (*const volatile *table)(int) = gBattleStageHandlers;
-    u8 *e = gDuel;
+    u8 *e = gDuelBytes;
     struct BattleStageWord *stageWord = (struct BattleStageWord *)(e + 0x1B14);
     u32 packed = *(u32 *)stageWord << 15;
     if (table[packed >> 24] != 0) {
@@ -626,7 +494,7 @@ int DuelPhase_Draw(void)
     default:
         if (DuelScreen_HandleInput() != 0 || (gMain.newKeys & R_BUTTON) == 0)
             return 0;
-        gDuel[0x1B20]++;
+        gDuelBytes[0x1B20]++;
         return 0;
     }
 }
@@ -665,7 +533,7 @@ void EndPhase_ReturnWickedWormBeast(int player)
 int EndPhase_TransferMushroomMan2(int player)
 {
     char buf[0x80];
-    u8 *e = gDuel;
+    u8 *e = gDuelBytes;
     u8 *st = e + 0x1B22;
     switch (*st) {
     case 0: {
@@ -675,16 +543,16 @@ int EndPhase_TransferMushroomMan2(int player)
             return 1;
         if (CountFreeMonsterZones(1 - player) == 0)
             return 1;
-        for (; gDuel[0x1B23] <= 4; gDuel[0x1B23]++) {
+        for (; gDuelBytes[0x1B23] <= 4; gDuelBytes[0x1B23]++) {
             int side = player & 1;
-            int s1 = gDuel[0x1B23] * 0x94 + side * 0xD64;
-            struct ZoneFlagsView *zn = (struct ZoneFlagsView *)(s1 + (int)(gDuel + 0x2C));
+            int s1 = gDuelBytes[0x1B23] * 0x94 + side * 0xD64;
+            struct ZoneFlagsView *zn = (struct ZoneFlagsView *)(s1 + (int)(gDuelBytes + 0x2C));
             u16 id = ZONE_ID(zn);
             if (id != 0 && (zn->flags6 & 2) != 0 && CARD_NUMBER_OF(id) == CARD_MUSHROOM_MAN_2) {
-                gDuel[0x1B22]++;
+                gDuelBytes[0x1B22]++;
                 if (player != 0) {
                     gTextBox.result = 1;
-                    gDuel[0x1B22]++;
+                    gDuelBytes[0x1B22]++;
                 }
                 return 0;
             }
@@ -706,7 +574,7 @@ int EndPhase_TransferMushroomMan2(int player)
             MoveFieldCard(player, (u8)player | e[0x1B23] << 8, (u8)(1 - player) | (u8)FindFreeMonsterZone(1 - player) << 8);
         }
         {
-            u8 *g = gDuel;
+            u8 *g = gDuelBytes;
             (*(g + 0x1B23))++;
             if (*(g + 0x1B23) <= 4)
                 *(g + 0x1B22) = 0;
@@ -830,7 +698,7 @@ struct EndPhaseState {
     u8 unk1B24[0x1B64 - 0x1B24];
     u16 promptResult;               /* +0x1B64 */
 };
-#define END_STATE           ((struct EndPhaseState *)gDuel)
+#define END_STATE           ((struct EndPhaseState *)gDuelBytes)
 #define END_STEP            (END_STATE->phaseStep)
 #define END_ZONE            (END_STATE->phaseCounter)
 /* Matching: gDuelPlayers indexed through a struct that holds the array, so its base is loaded before
@@ -861,14 +729,14 @@ static inline u16 CardIdFromNumber(u16 number)
  * register and reloaded, which keeps the ROM's reload-register rotation). */
 int DuelPhase_End(void)
 {
-    u32 player = ((u32)gDuel[0x1B12] << 30) >> 31;
+    u32 player = ((u32)gDuelBytes[0x1B12] << 30) >> 31;
     u32 kind;
-    switch (gDuel[0x1B20]) {
+    switch (gDuelBytes[0x1B20]) {
     case END_STEP_ENTER: {
         DuelCmd_PushU16(player ? DUEL_CMD_END_PHASE | DUEL_CMD_PLAYER : DUEL_CMD_END_PHASE, 0, 0, 0);
-        gDuel[0x1B22] = 0;
-        gDuel[0x1B23] = 0;
-        gDuel[0x1B20]++;
+        gDuelBytes[0x1B22] = 0;
+        gDuelBytes[0x1B23] = 0;
+        gDuelBytes[0x1B20]++;
     }
     case END_STEP_MUSHROOM_MAN_2:
         if ((u16)EndPhase_TransferMushroomMan2(player)) {
@@ -912,7 +780,7 @@ int DuelPhase_End(void)
         for (; END_ZONE <= 9; END_ZONE++) {
             int other = 1 - player;
             int side = other & 1;
-            struct EndPhaseZone *z = (struct EndPhaseZone *)(END_ZONE * 0x94 + side * 0xD64 + gDuel + 0x2C);
+            struct EndPhaseZone *z = (struct EndPhaseZone *)(END_ZONE * 0x94 + side * 0xD64 + gDuelBytes + 0x2C);
             u32 id = ZONE_ID(z);
             u8 f;
             if (id && ((f = z->flags6) & 2)) {
@@ -940,7 +808,7 @@ int DuelPhase_End(void)
                     return 0;
                 case CARD_1528:
                     if (FindFreeSpellTrapZone(other) >= 0
-                        && !(((struct EndPhaseZone *)(side * 0xD64 + END_ZONE * 0x94 + gDuel + 0x2C))->flags91 & 8)) {
+                        && !(((struct EndPhaseZone *)(side * 0xD64 + END_ZONE * 0x94 + gDuelBytes + 0x2C))->flags91 & 8)) {
                         u16 msg = DUEL_CMD_ADD_ZONE_TURN_COUNTER;
                         if (player != 1) msg = DUEL_CMD_ADD_ZONE_TURN_COUNTER | DUEL_CMD_PLAYER;
                         DuelCmd_PushU16(msg, END_ZONE, 1, 0);
@@ -967,7 +835,7 @@ int DuelPhase_End(void)
         if (END_STATE->promptResult) {
             int other = 1 - player;
             u32 kind;
-            int index = FindFaceUpCardOnField2(other, CARD_1519);
+            int index = FindFaceUpCardOnField2Two(other, CARD_1519);
             Chain_AddPending(((u32)(other & 1) << 31) | (((index & 31) << 16) | (kind = 0x6400000)) | CardIdFromNumber(CARD_1519), 0);
         }
         END_STEP = END_STEP_OWN_LINKS;
@@ -982,7 +850,7 @@ int DuelPhase_End(void)
                 u16 idx = FindZoneLinkFromCard(player, END_ZONE, CARD_1548);
                 int side = player & 1;
                 u32 off = END_ZONE * 0x94 + side * 0xD64;
-                u8 *zb = gDuel + 0x2C;
+                u8 *zb = gDuelBytes + 0x2C;
                 u16 link;
                 u32 who, slot, wb;
                 struct EndPhaseZone *lz;
@@ -1023,7 +891,7 @@ int DuelPhase_End(void)
     case END_STEP_GRAVEYARD_RETURNS: {
         int i;
         for (i = 0; i < END_PLAYERS[player & 1].graveCount; i++) {
-            u32 *row = (u32 *)((player & 1) * 0xD64 + (u32)gDuelGraveyards);
+            u32 *row = (u32 *)((player & 1) * 0xD64 + (u32)gDuelGraveyardWords);
             u32 *p = row + i;
             u32 card = *p;
             if ((s32)(card << 8) < 0) {

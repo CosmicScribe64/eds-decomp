@@ -21,68 +21,7 @@
 #include "constants/card_stats.h"   /* CARD_TYPE_*, SPELL_QUICK_PLAY, CARD_STATS_* layout */
 #include "constants/duel.h"         /* ZONE_*, CHAIN_KIND_* */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER, DUEL_CMD_MAIN1_PHASE, DUEL_CMD_FLIP_CARD, ... */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, summon.h and duel_cmd.h do not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
- * (see build/readability/issues/ai_turn_steps.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4[0x28 - 4];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    u8 unk7C4[0xD64 - 0x7C4];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHandP1[80];         /* 0x0201A6CC = gDuelPlayers[1].hand */
-
-u32 IsSpecialSummonOnly(u16 cardId);
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-int CountGraveyardCardsOfType(int player, u16 type);
-int CountHandCardsByNumber(int player, u16 cardNo);
-int FindHandCardByNumber(int player, u16 cardNo);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountActiveCardsOnField2(int player, u16 cardNo);
-int CountMonstersByNumber(int player, u16 cardNo);
-int CountMonsters(int player);
-int CountSpellTraps(int player);
-int CountFaceUpSpellTrapsOfType(int player, u16 type);
-int CountActivatableSetCards(int player, int cardNoWord);
-int CountFreeMonsterZones(int player);
-int FindFreeSpellTrapZone(int player);
-int CanPlaceSpellTrapCard(int player, u16 cardId);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-/* ---- END duel.h stand-in ---- */
-
+#include "duel.h"               /* struct DuelState, struct DuelPlayer, struct DuelZone, gDuel, gDuelPlayers */
 #include "ai.h"                     /* struct AiState, gAiState, gAiWork, the Ai* functions */
 #include "chain.h"                  /* struct ChainEntry, Chain_AddPending, CanActivateFieldCard */
 #include "duel_cmd.h"               /* DuelCmd_Push */

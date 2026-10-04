@@ -11,7 +11,7 @@
  *    selection with Left/Right, opens Card View, and leaves a confirmed command to CardMenu_Execute.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT */
+#include "gba.h"                   /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT */
 #include "constants/card_stats.h"   /* enum CardType, CardAttribute */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum DuelArea, ZoneLinkKind, CardMenuCommand */
@@ -30,198 +30,14 @@
 #include "card_menu.h"              /* the CardMenu_* functions defined here, enum CardMenuState */
 #include "duel_actions.h"           /* QueueAddZoneLink */
 #include "duel_flow.h"              /* gPulseScaleCurve */
+#include "main.h"                  /* struct Main gMain */
+#include "duel.h"                  /* gDuel, duel structs, GetZoneCardStats, ... */
+#include "sound.h"                 /* PlaySE */
+#include "battle.h"                 /* gBattle */
+#include "duel_screen.h"            /* gDuelScreen, DuelScreen_* */
+#include "duel_cmd.h"               /* gShrinkScaleSteps */
+#include "card_list_view.h"         /* CardListView_Open */
 #include "battle_scene.h"           /* struct BattleScene (gBattle.scene) */
-
-/*
- * Transitional, until H0 (build/readability/HEADERS.md) installs the new include/gba.h: the legacy gba.h
- * lacks these names. The values are the new header's; the block is skipped once it is in place.
- */
-#ifndef OAM_ATTR2_PALETTE
-#define OAM_ATTR2_PRIORITY(n)   ((n) << 10)
-#define OAM_ATTR2_PALETTE(n)    ((n) << 12)
-#endif
-
-/* ---- BEGIN header subset (pre-H0) ---- */
-/*
- * The parts of main.h, duel.h, sound.h, battle.h, duel_screen.h, duel_cmd.h and card_list_view.h this unit
- * uses, with the headers' tags, names, types and bitfield containers. include/main.h, duel.h and sound.h
- * still hold the legacy headers until the header switch (H0, build/readability/HEADERS.md), and the other
- * four headers include duel.h. After H0, replace this block (BEGIN to END) with:
- *     #include "legacy/main.h"
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- *     #include "battle.h"
- *     #include "duel_screen.h"
- *     #include "duel_cmd.h"
- *     #include "card_list_view.h"
- */
-
-/* main.h */
-struct Main {
-    u8 unk0[6];
-    u16 newKeys;                        /* +0x0006 newly pressed, plus D-pad auto-repeat */
-    u8 unk8[0x4857 - 8];
-    u8 seqIndexCampaign;                /* +0x4857 step index of the Campaign runner */
-    u8 seqState0;                       /* +0x4858 */
-    u8 seqIndex1;                       /* +0x4859 */
-    u8 seqState1;                       /* +0x485A */
-    u8 seqState2;                       /* +0x485B */
-    u8 unk485C[0x487C - 0x485C];
-    u32 events;                         /* +0x487C CalendarEvent mask of the current duel (0 = ordinary) */
-    u8 unk4880[0x488A - 0x4880];
-    u16 startField:4;                   /* +0x488A bits 0-3 */
-    u16 subStep:8;                      /* +0x488A bits 4-11: sub-state of the Campaign/Link/menu step */
-    u16 unk488A_12:4;
-};
-extern struct Main gMain;
-
-/* duel.h */
-struct DuelCard {
-    u32 id:12;                          /* bits 0-11: card ID */
-    u32 owner:1;                        /* bit 12 */
-    u32 unk13:19;
-};
-struct DuelZone {
-    struct DuelCard card;               /* +0x00 */
-    u16 serial;                         /* +0x04 */
-    u8 isDefense:1;                     /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                      /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 7];
-};
-struct DuelPlayer {
-    u8 unk0[8];
-    u8 noBattleDamage:1;                /* +0x008 bit 0 */
-    u8 battleProtected:1;               /* +0x008 bit 1 */
-    u8 unk8_2:6;
-    u8 unk9[0x28 - 9];
-    struct DuelZone zones[11];          /* +0x028: enum DuelZoneIndex */
-    u8 piles[0xD64 - 0x684];            /* +0x684: hand, deck, graveyard, fusion deck, banished */
-};
-struct CardMenu {
-    u16 open:1;                         /* bit 0: menu open, the caller runs CardMenu_Update */
-    u16 confirmed:1;                    /* bit 1: a command was chosen */
-    u16 command:4;                      /* bits 2-5: enum CardMenuCommand */
-    u16 slide:4;                        /* bits 6-9: slide/zoom animation step 0-8 */
-    u32 available:16;                   /* bits 10-25: enum CardMenuCommandMask bits */
-    u32 state:8;                        /* bits 26-33: CardMenu_Update state (enum CardMenuState) */
-    u32 step:8;                         /* bits 34-41: step of the command handler */
-    u8 summonSeq:4;                     /* bits 42-45 */
-    u32 tributeSources:4;               /* bits 46-49 */
-    u16 timer:7;                        /* bits 50-56: pulse timer of the selected icon */
-    u16 player:1;                       /* bit 57: player of the confirmed command */
-    u32 area:7;                         /* bits 58-64: enum DuelArea of the cursor at confirm */
-    u32 index:8;                        /* bits 65-72: zone index (field) or hand index (hand) */
-    u32 placeZone:8;                    /* bits 73-80 */
-    u32 unk0A_1:15;
-};
-struct DuelState {
-    u16 serial;                         /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];       /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                         /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                    /* +0x1B12 bit 1 */
-    u8 phase:3;                         /* +0x1B12 bits 2-4 */
-    u8 linkError:1;                     /* +0x1B12 bit 5 */
-    u8 result:2;                        /* +0x1B12 bits 6-7: enum DuelResult */
-    u8 unk1B13[0x1B28 - 0x1B13];
-    u16 cardMenuCard;                   /* +0x1B28: card ID under the cursor when the command was confirmed */
-    u16 summonTributes;                 /* +0x1B2A */
-    struct CardMenu cardMenu;           /* +0x1B2C */
-};
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-int CountActiveCardsOnFieldExcept(int player, u16 cardNo, int skipZone);
-int CountActiveZoneLinksFromCard(int player, int zone, u16 cardNo);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardDef(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-u32 GetZoneCardAttribute(s32 player, s32 slot);
-
-/* sound.h */
-void PlaySE(u32 seId);
-void PlayBGM(u32 songId);
-
-/* battle.h */
-struct BattleSide {
-    u16 slot:3;                         /* +0x0 bits 0-2: monster zone of this side's monster */
-    u8 destroyed:1;                     /* +0x0 bit 3: destroyed by the battle */
-    u8 defensePos:1;                    /* +0x0 bit 4: in defense position */
-    u16 destroyedCopy:1;                /* +0x0 bit 5: copy of destroyed made at the end of CalcBattle */
-    u8 effectDestroy:1;                 /* +0x0 bit 6: destroyed after the battle */
-    u8 unk0_7:1;
-    u8 unk1;
-    u16 cardId;                         /* +0x2 */
-    u16 atk;                            /* +0x4: effective ATK, including the battle boosts */
-    u16 def;                            /* +0x6: effective DEF */
-    u16 battleValue;                    /* +0x8: value compared */
-    u16 damage;                         /* +0xA: life-point damage this side's player takes */
-};
-struct Battle {
-    u16 attacker:1;                     /* +0x0 bit 0: attacking player */
-    u16 direct:1;                       /* +0x0 bit 1: direct attack */
-    u16 flipEffectPending:1;
-    u16 attackDeclared:1;
-    u16 attackCostsPaid:1;
-    u16 zeroAttackerAtk:1;              /* +0x0 bit 5: the attacker's ATK counts as 0 */
-    u16 atkSlot:3;                      /* +0x0 bits 6-8: attacking monster's zone */
-    u16 defSlot:3;                      /* +0x0 bits 9-11: target monster's zone */
-    u16 unk0_12:4;
-    u16 flipCardId;                     /* +0x2 */
-    u8 calculated:1;                    /* +0x4 bit 0: set by CalcBattle */
-    u8 unk4_1:7;
-    u8 unk5[3];
-    struct BattleSide side[2];          /* +0x08: per player */
-    struct DuelZone zones[2];           /* +0x20: copies of both battling zones, per player */
-    u16 monsterCountSnapshot[2];        /* +0x148 */
-    u16 zoneSerialSnapshot[2];          /* +0x14C */
-    u16 destroyedLoc[2];                /* +0x150 */
-    struct BattleScene scene;           /* +0x154 */
-};
-extern struct Battle gBattle;
-
-/* duel_screen.h */
-struct DuelScreen {
-    u8 fast:1;                          /* +0x000 bit 0 */
-    u8 uiGfxLoaded:1;                   /* bit 1: the duel UI OBJ tiles and palettes are in VRAM */
-    u8 active:1;                        /* bit 2: the screen runs its per-frame update */
-    u8 unk0_3:5;
-    u8 unk1[0x808 - 1];
-    u16 textTilesDirty:1;               /* +0x808 bit 0 */
-    u16 textMapReset:1;
-    u16 cursorDone:1;
-    u16 showCursor:1;                   /* bit 3: draw the cursor sprite */
-    u16 unk808_4:12;
-    u16 unk80A;
-    s32 cursorX;                        /* +0x80C */
-    s32 cursorY;                        /* +0x810 */
-    s32 cursorFromX;                    /* +0x814 */
-    s32 cursorFromY;                    /* +0x818 */
-    s32 cursorToX;                      /* +0x81C */
-    s32 cursorToY;                      /* +0x820 */
-    s32 selPlayer;                      /* +0x824: player of the cursor selection */
-    s32 selArea;                        /* +0x828: enum DuelArea of the selection */
-    s32 selIndex;                       /* +0x82C: index inside the area */
-};
-extern struct DuelScreen gDuelScreen;
-void DuelScreen_Init(void);
-u16 DuelScreen_FadeInStep(void);
-u32 DuelScreen_FadeOutStep(void);
-u32 DuelCursor_GetCardId(void);
-void DrawZoneTiles(u32 player, u32 zone);
-void ClearZoneTiles(u32 player, u32 area);
-s32 GetAreaX(int player, int area, int index);
-s32 GetAreaY(u32 player, int area, int index);
-void DuelScreen_DrawCursorInfo(void);
-int GetCardIconObjTile(u16 cardId);
-
-/* duel_cmd.h */
-extern const u16 gShrinkScaleSteps[];
-
-/* card_list_view.h */
-void CardListView_Open(int player, int area, int cardNumber, int arg);
-/* ---- END header subset ---- */
 
 /* ---- Local data and views ---- */
 

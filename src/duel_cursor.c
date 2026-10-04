@@ -1,9 +1,11 @@
 #include "global.h"
-#include "legacy/gba.h"                    /* A_BUTTON, DPAD_*, L_BUTTON, R_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys, gMain.frameCounter */
+#include "gba.h"                           /* A_BUTTON, DPAD_*, L_BUTTON, R_BUTTON */
+#include "main.h"                          /* gMain.newKeys, gMain.frameCounter */
 #include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_32x32 */
 #include "text_box.h"               /* TextBoxOpen, TextBoxSetMenu */
 #include "constants/duel.h"         /* enum DuelArea, enum FieldPickMask */
+#include "duel.h"                   /* gDuel, struct DuelCard / DuelLoc, SwapDuelCards */
+#include "sound.h"                  /* PlaySE */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CARD_FLIP, SE_ERROR */
 
 /*
@@ -24,46 +26,6 @@
  * Player 0 is the human at the bottom of the screen; player 1's rows are mirrored, so Left and Right
  * (and the slot order along a row) are swapped for it.
  */
-
-/* ---- BEGIN pre-H0 subset of duel.h ---- */
-/*
- * The part of the staged duel.h that this unit and the headers it includes need (names, types and bitfield
- * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
- * header switch (H0, build/readability/HEADERS.md), and chain.h and duel_screen.h include it, so this block
- * also defines its include guard. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h".
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 unk12:20;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u8 unk4[0x94 - 4];              /* not used here; chain.h embeds a whole zone */
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 unk3[0xD64 - 3];             /* the rest of the player's 0xD64 bytes */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];   /* 0x020192E4 = gDuel.players */
-
-void SwapDuelCards(u32 *a, u32 *b);         /* swap two duel card words */
-void PlaySE(u32 seId);                      /* legacy sound.h lacks it */
-/* ---- END pre-H0 subset ---- */
 
 #include "chain.h"                  /* gChain.scratch.deckReorder (struct DeckReorderState) */
 #include "card_data.h"              /* CARD_ID_MASK */
@@ -963,7 +925,7 @@ int DeckReorder_HandleInput(void)
         if (DECK_REORDER.phase <= REORDER_SWAP_LAST_PHASE) {
             DECK_REORDER.phase++;
         } else {
-            SwapDuelCards(&DECK_REORDER.cards[DECK_REORDER.cursor - 1], &DECK_REORDER.cards[DECK_REORDER.cursor]);
+            SwapDuelCards((struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor - 1], (struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor]);
             DECK_REORDER.cursor--;
             DECK_REORDER.mode = DECK_REORDER_SELECT;
         }
@@ -972,7 +934,7 @@ int DeckReorder_HandleInput(void)
         if (DECK_REORDER.phase <= REORDER_SWAP_LAST_PHASE) {
             DECK_REORDER.phase++;
         } else {
-            SwapDuelCards(&DECK_REORDER.cards[DECK_REORDER.cursor + 1], &DECK_REORDER.cards[DECK_REORDER.cursor]);
+            SwapDuelCards((struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor + 1], (struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor]);
             DECK_REORDER.cursor++;
             DECK_REORDER.mode = DECK_REORDER_SELECT;
         }
@@ -1084,7 +1046,7 @@ int DeckReorder_Run(int arg0)
             DeckReorder_DrawSwap(arg0, DECK_REORDER.cursor - 1, DECK_REORDER.cursor);
             DECK_REORDER.phase++;
         } else {
-            SwapDuelCards(&DECK_REORDER.cards[DECK_REORDER.cursor - 1], &DECK_REORDER.cards[DECK_REORDER.cursor]);
+            SwapDuelCards((struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor - 1], (struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor]);
             DECK_REORDER.mode = DECK_REORDER_SELECT;
             DeckReorder_DrawCards(arg0);
         }
@@ -1096,7 +1058,7 @@ int DeckReorder_Run(int arg0)
             DeckReorder_DrawSwap(arg0, DECK_REORDER.cursor, DECK_REORDER.cursor + 1);
             DECK_REORDER.phase++;
         } else {
-            SwapDuelCards(DECK_REORDER.cards + (DECK_REORDER.cursor + 1), &DECK_REORDER.cards[DECK_REORDER.cursor]);
+            SwapDuelCards((struct DuelCard *)(DECK_REORDER.cards + (DECK_REORDER.cursor + 1)), (struct DuelCard *)&DECK_REORDER.cards[DECK_REORDER.cursor]);
             DECK_REORDER.mode = DECK_REORDER_SELECT;
             DeckReorder_DrawCards(arg0);
         }

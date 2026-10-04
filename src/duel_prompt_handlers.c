@@ -1,6 +1,6 @@
 #include "global.h"
-#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT, OBJ_PLTT, OBJ_VRAM0 */
-#include "legacy/main.h"                   /* gMain.newKeys, gMain.heldKeys */
+#include "gba.h"                           /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT, OBJ_PLTT, OBJ_VRAM0 */
+#include "main.h"                          /* gMain.newKeys, gMain.heldKeys */
 #include "util.h"                   /* StrCopy, StrCat, Random, MemCopy16 */
 #include "sprite.h"                 /* AddSprite, SPRITE_SHAPE_* */
 #include "text.h"                   /* TextCanvasInit, TextDrawString, TextCanvasToTiles, gSystemFontPal */
@@ -11,6 +11,8 @@
 #include "constants/duel.h"         /* enum DuelArea, enum FieldPickMask */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_POINT_AT_CARD, ... */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
+#include "duel.h"                   /* gDuel, gDuelPlayers, struct DuelCard / DuelZone, IsSpecialSummonOnly, FindFreeMonsterZone */
+#include "sound.h"                  /* PlaySE */
 
 /*
  * Duel prompt handlers (wiki/functions/duel-prompt-handlers-c.md).
@@ -28,87 +30,6 @@
  * Players: 0 is the human, 1 the CPU (or the link partner). The picks for the CPU are made at once; the human
  * gets a text box and a cursor.
  */
-
-/* ---- BEGIN pre-H0 subset of duel.h ---- */
-/*
- * The part of the staged duel.h that this unit and the headers it includes need (names, types and bitfield
- * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
- * header switch (H0, build/readability/HEADERS.md), and chain.h, duel_screen.h, summon.h, card_list_view.h and
- * duel_cmd.h include it, so this block also defines its include guard. After H0, replace the block (BEGIN to
- * END) with #include "legacy/duel.h".
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7[3];                     /* +0x07 */
-    u16 links[32];                  /* +0x0A: DUEL_LOC of a card affecting this one, or a value */
-    u16 linkKinds[32];              /* +0x4A: low byte enum ZoneLinkKind */
-    u16 numLinks;                   /* +0x8A: entries in links / linkKinds */
-    u8 unk8C[8];                    /* +0x8C */
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 unk3[6];                     /* +0x003 */
-    u8 handRevealed:1;              /* +0x009 bit 0: forces IsHandRevealed */
-    u8 unk9_1:7;
-    u8 unkA[0x28 - 0xA];            /* +0x00A */
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    u8 unk7C4[0xD64 - 0x7C4];       /* deck, graveyard, fusion deck, banished */
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 unk1B12_2:6;
-    u8 unk1B13[0x1B50 - 0x1B13];
-    u8 promptLinked:1;              /* +0x1B50 bit 0: the prompt is mirrored over the link */
-    u8 promptActive:1;              /* +0x1B50 bit 1: a prompt is pending */
-    u8 promptPlayer:1;              /* +0x1B50 bit 2: player who answers (1 = CPU or link partner) */
-    u8 unk1B50_3:1;
-    u16 promptKind:6;               /* +0x1B50 bits 4-9: enum DuelPromptKind */
-    u16 unk1B51_2:6;
-    u16 promptArgs[8];              /* +0x1B52: [0] argument, [1] value (DuelPrompt_Post); all 8 for PostData */
-    u8 promptStep;                  /* +0x1B62: step of the running prompt handler */
-    u8 unk1B63;
-    u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID, an attribute - 1) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-
-u32 IsSpecialSummonOnly(u16 cardId);                    /* Fusion, Ritual and some effect monsters */
-int FindFreeMonsterZone(int player);                    /* first free monster zone, or -1 */
-int CountTributableMonsters(int player, int excludeZone); /* excludeZone -1 = none */
-void PlaySE(u32 seId);                                  /* legacy sound.h lacks it */
-/* ---- END pre-H0 subset ---- */
 
 #include "chain.h"                  /* gChain.handPickTimer, gChain.handPickCount */
 #include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget, DuelCursor_Select, ... */

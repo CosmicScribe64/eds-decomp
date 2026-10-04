@@ -17,55 +17,14 @@
  * gDuelCmd.running at the end. Fast-forward (B held, or gDuelScreen.fast) skips timer frames.
  */
 #include "global.h"
-#include "legacy/gba.h"            /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
-#include "legacy/main.h"           /* gMain.heldKeys */
-#include "legacy/sound.h"          /* PlaySE */
+#include "gba.h"            /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
+#include "main.h"           /* gMain.heldKeys */
+#include "sound.h"          /* PlaySE */
 #include "sprite.h"         /* SPRITE_SHAPE_32x32 */
 #include "duel_flow.h"      /* gPulseScaleCurve */
 #include "duel_cmd.h"       /* gDuelCmd, gDuelCmdT16, gScatterScaleCurve */
 
-#ifdef DISPCNT_MODE_4
 #include "duel_screen.h"    /* gDuelScreen, DuelScreen_ScrollToZone, the card-image loaders */
-#else
-/* ---- BEGIN pre-H0 subset ---- */
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
- * headers, and duel_screen.h cannot be included (it needs the new duel.h). This block repeats what the unit
- * uses from the new gba.h, sound.h and duel_screen.h, with the same names, values and prototypes (truncated
- * structs end after the last field used here). With the new headers installed the block is skipped; then
- * delete it (build/readability/issues/duel_cmd_presentation.md).
- */
-#define BLDCNT_TGT1_BG0         0x0001
-#define BLDCNT_TGT1_BG1         0x0002
-#define BLDCNT_TGT1_BG2         0x0004
-#define BLDCNT_TGT1_OBJ         0x0010
-#define BLDCNT_TGT1_BD          0x0020
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_EFFECT_LIGHTEN   0x0080
-#define BLDCNT_TGT2_BG0         0x0100
-#define BLDCNT_TGT2_BG1         0x0200
-#define BLDCNT_TGT2_BG2         0x0400
-#define BLDCNT_TGT2_BG3         0x0800
-#define BLDCNT_TGT2_OBJ         0x1000
-#define BLDCNT_TGT2_BD          0x2000
-void PlaySE(u32 seId);
-struct DuelScreen {
-    u8 fast:1;              /* +0x000 bit 0: fast-forward card animations, as if B were held */
-    u8 uiGfxLoaded:1;
-    u8 active:1;
-    u8 unk0_3:5;
-};
-extern struct DuelScreen gDuelScreen;
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void LoadDuelUiGfx(void);
-void UnloadDuelUiGfx(void);
-void TextCellsClear(void);
-void DuelInfo_DrawCardNameCentered(u16 cardId);
-void LoadCardFrame(u16 cardId);
-void LoadCardPicture(u16 cardId);
-void DrawCardInfo(u16 cardId);
-/* ---- END pre-H0 subset ---- */
-#endif
 
 /*
  * Local views of the sprite emitters (sprite.h declares the shape and tile as u16). This unit calls them with

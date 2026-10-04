@@ -27,74 +27,8 @@
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* enum SoundEffect */
 
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, summon.h and duel_screen.h do not pull in the legacy header. After H0, replace the
- * block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/duel_ritual.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003 */
-    u8 graveCount;                  /* +0x004 */
-    u8 fusionCount;                 /* +0x005 */
-    u8 banishedCount;               /* +0x006 */
-    u8 unk7[0x28 - 0x7];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4 */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    struct DuelCard banished[80];   /* +0xB84 */
-    u16 banishedInfo[80];           /* +0xCC4 */
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
-extern struct DuelCard gDuelGraveyards[];       /* 0x02019BE8 = gDuelPlayers[0].graveyard */
-
-u32 IsSpecialSummonOnly(u16 cardId);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountHandCardsByNumber(int player, u16 cardNo);
-int CountMonsters(int player);
-void CopyDuelCard(u32 *dst, u32 *src);
-/* ---- END duel.h stand-in ---- */
-
+#include "duel.h"                  /* gDuel, gDuelPlayers, struct DuelZone, CountMonsters, CopyDuelCard */
+#include "sound.h"                 /* PlaySE */
 #include "chain.h"                  /* struct ChainEntry, gChain */
 #include "debug.h"                  /* DebugPrintf, DebugPrintFlush */
 #include "duel_actions.h"           /* ShowCardEffect, TributeMonster, DiscardHandCard */
@@ -105,10 +39,6 @@ void CopyDuelCard(u32 *dst, u32 *src);
 #include "sprite.h"                 /* AddSprite */
 #include "summon.h"                 /* CanSpecialSummon, QueueSpecialSummonChoosePosition */
 #include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
-
-/* Pre-H0: the staged sound.h declares PlaySE, the legacy include/sound.h does not. After H0, replace this
- * line with #include "legacy/sound.h". */
-void PlaySE(u32 seId);
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view") ---- */
 
@@ -727,7 +657,7 @@ int EffectRitualSummonResolve(struct ChainEntry *link)
             if (gCardIdToNumber[(*(u32 *)(offset + ((u32)gDuelPlayers + 0x684)) << 21) >> 21]
                 == gRitualRecipes[FindRitualRecipe(link->card)].monster) {
                 u32 *handCard = (u32 *)&gDuelPlayers[link->player & 1].hand[i];
-                CopyDuelCard(gChainEffectCard, handCard);
+                CopyDuelCard((struct DuelCard *)gChainEffectCard, (struct DuelCard *)handCard);
                 /* the card word as two halves */
                 DuelCmd_Push(link->player ? DUEL_CMD_PLAYER | DUEL_CMD_REMOVE_CARD_FROM_HAND
                                           : DUEL_CMD_REMOVE_CARD_FROM_HAND,

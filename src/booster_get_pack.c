@@ -14,66 +14,16 @@
  * the league checks into a tier, and IsCardCollectionComplete tests for a full collection.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_DISPCNT, REG_BG0CNT to REG_BG3CNT, REG_IE, REG_IME, REG_MOSAIC,
+#include "gba.h"                   /* REG_DISPCNT, REG_BG0CNT to REG_BG3CNT, REG_IE, REG_IME, REG_MOSAIC,
                                      * REG_BLDCNT, REG_BLDALPHA, A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
 #include "card_data.h"              /* CARD_NUMBER_ALT_ART; gCardNumberToId is read through CARD_ID_OF below */
 #include "constants/game.h"         /* enum DuelistId, enum BoosterPackId */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
-#include "legacy/main.h"                   /* struct Main gMain: newKeys, vblankFlags, vblankCallback, seqIndex1,
+#include "main.h"                  /* struct Main gMain: newKeys, vblankFlags, vblankCallback, seqIndex1,
                                      * seqState1, seqState2, rewardPack */
+#include "save.h"                  /* gSaveData (trunk, duelRecords, championshipWins), InitSaveData, SaveGame */
+#include "sound.h"                 /* PlaySE */
 #include "sprite.h"                 /* AddSprite */
-
-/* ---- BEGIN header subset (pre-H0) ----
- * The parts of save.h and sound.h this unit uses, with the headers' names and layouts. include/save.h and
- * include/sound.h still hold the legacy headers until the header switch (H0,
- * build/readability/HEADERS.md): the legacy sound.h does not declare PlaySE, and save.h's struct
- * DuelRecord declares the win count in a u32 container where the checks below load it from the low
- * halfword, so the record keeps the u16 view. After H0, replace the block (BEGIN to END) with the include
- * lines of save.h and sound.h, in that order (build/readability/issues/booster_get_pack.md). */
-
-/* One card of the collection, gSaveData.trunk[cardId] (4 bytes per card id): the trunk copies plus the
- * copies placed in the three saved decks. */
-struct TrunkEntry {
-    u16 count:10;                   /* +0x0 bits 0-9: copies in the trunk */
-    u16 deckCopies:2;               /* +0x0 bits 10-11: copies in the saved Deck */
-    u16 sideCopies:2;               /* +0x0 bits 12-13: copies in the saved Side Deck */
-    u16 fusionCopies:2;             /* +0x0 bits 14-15: copies in the saved Fusion Deck */
-    u8 flag0:1;                     /* +0x2 bit 0: no reader found */
-    u8 passwordUsed:1;              /* +0x2 bit 1: this card's password was redeemed */
-    u8 unk2_2:6;                    /* +0x2 bits 2-7 */
-    u8 unk3;                        /* +0x3 */
-};
-
-/* Win/loss/draw counts against one opponent, gSaveData.duelRecords[DuelistId] (4 bytes). The canonical
- * struct DuelRecord splits one u32 as wins:11, losses:11, draws:10; this view keeps the same fields in
- * u16 containers (see the block comment above). */
-struct DuelRecord {
-    u16 wins:11;                    /* bits 0-10: duels won against this opponent */
-    u16 lossesLow:5;                /* bits 11-15: low half of losses */
-    u16 unk2;                       /* +0x02: high half of losses and the draws */
-};
-
-/* The save image fields this unit reads. */
-struct SaveData {
-    u8 unk0[8];                             /* +0x0000 */
-    struct TrunkEntry trunk[0x800];         /* +0x0008: the collection, indexed by card id */
-    u8 unk2008[0x20D0 - 0x2008];
-    struct DuelRecord duelRecords[32];      /* +0x20D0: indexed by enum DuelistId */
-    u8 unk2150[0x2162 - 0x2150];
-    u8 championshipWins;                    /* +0x2162: National Championship titles (saturating) */
-    u8 unk2163[0x2170 - 0x2163];
-};
-
-extern struct SaveData gSaveData;           /* 0x02011C20 */
-
-/* Reset gSaveData to a new game (save.h). */
-void InitSaveData(void);
-/* Write gSaveData to SRAM and verify it (save.h). */
-void SaveGame(void);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END header subset ---- */
 
 #include "booster.h"                /* struct PackOpenWork, PackListWork, StarterDeckSelectWork, PackInfo,
                                      * gPackOpenWork, gPackInfo, and the prototypes of the functions
@@ -114,7 +64,7 @@ struct IntrTable {
     u32 unk0;                           /* +0x00 */
     void (*hblankCallback)(void);       /* +0x04 */
 };
-extern struct IntrTable IntrTable;      /* 0x03000000 */
+extern struct IntrTable gIntrTableView asm("IntrTable"); /* 0x03000000 */
 
 /* ---- Local views kept for matching (build/readability/issues/booster_get_pack.md) ---- */
 
@@ -568,7 +518,7 @@ void PackList_InitVideo(void) {
     REG_IME = 0;
     REG_IE &= 0xFFFD;
     {
-        struct IntrTable *irq = &IntrTable;
+        struct IntrTable *irq = &gIntrTableView;
         irq->hblankCallback = 0;
     }
     REG_IME = 1;

@@ -9,9 +9,9 @@
  * into OBJ palette 15 and the OBJ tiles from BANNER_OBJ_TILE on (VRAM 0x06016C80).
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
-#include "legacy/main.h"                   /* gMain.heldKeys */
-#include "legacy/sound.h"                  /* PlaySE, PlayJingle, SoundIsBGMPlaying */
+#include "gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
+#include "main.h"                   /* gMain.heldKeys */
+#include "sound.h"                  /* PlaySE, PlayJingle, SoundIsBGMPlaying */
 #include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_STATS_TYPE_* */
 #include "constants/duel.h"         /* DUEL_AREA_* */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_* */
@@ -20,215 +20,9 @@
 #include "sprite.h"                 /* AddSprite, AddAffineSprite, SPRITE_SHAPE_* */
 #include "duel_flow.h"              /* gPulseScaleCurve */
 
-#ifdef DISPCNT_MODE_4
-#include "legacy/duel.h"                   /* struct DuelCard / DuelLoc / DuelZone / DuelPlayer, gDuel, gDuelPlayers */
+#include "duel.h"                   /* struct DuelCard / DuelLoc / DuelZone / DuelPlayer, gDuel, gDuelPlayers */
 #include "duel_cmd.h"               /* gDuelCmd, struct DuelResultBanner, the banner and digit graphics */
 #include "duel_screen.h"            /* gDuelScreen, card animations, field cells, DrawLifePoints */
-#else
-/* ---- BEGIN pre-H0 subset ---- */
-/*
- * Before H0 (build/readability/HEADERS.md) include/gba.h, main.h, sound.h and duel.h still hold the legacy
- * headers, whose duel structs have other field names, and duel_cmd.h / duel_screen.h need the new duel.h.
- * Until then this block repeats the part of the new duel.h, duel_cmd.h, duel_screen.h and sound.h that the
- * unit uses: the same tags, field names, types and bitfield containers (truncated structs end after the last
- * field used here), and the same prototypes. With the new headers installed the block is skipped; then
- * delete it (build/readability/issues/duel_cmd_moves.md).
- */
-struct DuelCard {
-    u32 id:12;
-    u32 owner:1;
-    u32 unk13:1;
-    u32 unk14:1;
-    u32 normalSummoned:1;
-    u32 specialSummoned:1;
-    u32 planted:1;
-    u32 graverobbed:1;
-    u32 unk19:1;
-    u32 isFusionMaterial:1;
-    u32 destroyedInBattle:1;
-    u32 destroyedByOpponent:1;
-    u32 flag23:1;
-    u32 pendingEquip:1;
-    u32 equipZone:3;
-    u32 pendingOpponentSummon:1;
-    u32 unk29:3;
-};
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-struct DuelZone {
-    struct DuelCard card;
-    u16 serial;
-    u8 isDefense:1;
-    u8 isFaceUp:1;
-    u8 turnCounter:4;
-    u16 destroyCountdown:4;
-    u8 positionLocked:1;
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;
-    u8 revivedByMonsterReborn:1;
-    u8 summonedFromGraveyard:1;
-    u8 levelCheckDone:1;
-    u8 unk8_1:7;
-    u8 unk9;
-    u16 links[32];
-    u16 linkKinds[32];
-    u16 numLinks;
-    u8 unk8C_0:1;
-    u8 destroyAfterBattle:1;
-    u32 returnAfterBattle:1;
-    u8 cannotAttackNextTurn:1;
-    u8 cannotAttack:1;
-    u8 atkHalved:1;
-    u8 unk8C_6:2;
-    u8 unk8D[3];
-    u32 unk90_0:6;
-    u32 unk90_6:4;
-    u32 canActivate:1;
-    u8 isDisabled:1;
-    u32 unk91_4:1;
-    u32 declaredValue:5;
-    u32 unk92_2:14;
-};
-struct DuelPlayer {
-    u16 lifePoints;
-    u8 handCount;
-    u8 deckCount;
-    u8 graveCount;
-    u8 fusionCount;
-    u8 banishedCount;
-    u8 unk7;                        /* bits not used here */
-    u8 unk8;
-    u8 unk9_0:6;
-    u32 lockedZones:10;
-    u8 crushCardTurns:3;
-    u8 monsterSentToGraveThisTurn:1;
-    u32 removedMask:5;
-    u8 delayedSummonCount:3;
-    u8 destroyedTriggerPending:1;
-    u8 banishCostFromField:1;
-    u8 unkC_6:2;
-    u8 unkD;
-    u16 lpPaid[11];
-    u16 attackableMask;
-    u16 attackedMask;
-    struct DuelZone zones[11];
-    struct DuelCard hand[80];
-    struct DuelCard deck[80];
-    struct DuelCard graveyard[80];
-    struct DuelCard fusionDeck[80];
-    struct DuelCard banished[80];
-    u16 banishedInfo[80];
-};
-struct DuelState {
-    u16 serial;
-    u16 unk2;
-    struct DuelPlayer players[2];
-    u8 fieldBackground:4;
-    u8 duelOver:1;
-    u8 unk1ACC_5:1;
-    u8 magicNegated:1;
-    u8 trapsNegated:1;
-    u8 equipMagicNegated:1;
-    u8 equipMagicNegatedThisTurn:1;
-    u8 fieldMagicNegatedThisTurn:1;
-    u8 contMagicNegatedThisTurn:1;
-    u8 contTrapNegatedThisTurn:1;
-    u8 statChangesReversed:1;
-    u8 atkDefSwapped:1;
-    u32 prohibitionCount:4;
-    u32 unk1ACE_3:13;
-};
-extern struct DuelState gDuel;
-extern struct DuelPlayer gDuelPlayers[2];
-extern const u16 gBounceScaleCurve[];
-void CopyDuelCard(u32 *dst, u32 *src);
-void SubtractLifePoints(struct DuelPlayer *players, u32 player, s32 amount);
-void SendZoneCardToGraveyardOrBanished(int player, int zone, u16 banish);
-void AddCardToBanishedTemporarily(struct DuelCard *card, int zone);
-void ReturnTemporarilyBanishedCard(int player, int zone);
-
-struct DuelCmdEntry {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-};
-struct DuelCmd {
-    u16 cmd;
-    u16 arg2;
-    u16 arg4;
-    u16 arg6;
-    struct DuelCmdEntry queue[256];
-    u16 queueCount;
-    u16 step:7;
-    u16 counter:7;
-    u16 unk80A_14:2;
-    u32 unk80C_0:5;
-    u32 timer:7;
-    u32 unk80C_12:1;
-    u32 running:1;
-    u32 unk80C_14:18;
-    u16 *hofsTable;
-    struct DuelCard card;
-};
-struct DuelResultBanner {
-    const u8 *pal;
-    const u8 *gfx;
-    u16 jingle;
-};
-extern struct DuelCmd gDuelCmd;
-extern const u16 gBannerSlideOffsets[];
-extern const u16 gLpDigitsPal[];
-extern const u16 gLpDigitsGfx[];
-extern const u8 gDuelBannerPal[];
-extern const u8 gSmokePuffAnim[];
-
-struct DuelScreen {
-    u8 fast:1;
-    u8 uiGfxLoaded:1;
-    u8 active:1;
-    u8 unk0_3:5;
-    u8 unk1;
-    u16 fieldBgScroll;
-    u8 scroll;
-    u8 scrollFrom;
-    u8 scrollTo;
-    u8 scrollSteps:4;
-    u8 fieldBackground:4;
-    u8 textTiles[0x800];
-    u16 textTilesDirty:1;
-    u16 textMapReset:1;
-    u16 cursorDone:1;
-    u16 showCursor:1;
-    u16 cursorRotate180:1;
-    u16 cursorAltTile:1;
-    u16 cursorSteps:4;
-    u16 unk808_10:6;
-    u8 unk80A[0x85C - 0x80A];       /* +0x80A..+0x85B: fields not used here */
-    void (*overlayCallback)(void);
-};
-extern struct DuelScreen gDuelScreen;
-void DuelScreen_ScrollToZone(u32 player, u32 area);
-void DuelCursor_Refresh(void);
-void DuelAnim_MoveCard(u16 cardId, struct DuelLoc *from, struct DuelLoc *to);
-void DuelAnim_PlayZoneEffect(struct DuelLoc *loc, u32 anim, u32 dx, u32 dy);
-void ClearZoneTiles(u32 player, u32 area);
-void DrawAllAreaTiles(void);
-void DrawLifePoints(int player, int lifePoints);
-void DrawLpChangeAmount(u32 x, u32 y, s32 value, u32 colorSet);
-
-void PlaySE(u32 seId);
-void PlayJingle(u32 songId);
-int SoundIsBGMPlaying(s32 song);
-/* ---- END pre-H0 subset ---- */
-#endif
 
 /*
  * Local view of PlaceMonsterCard (duel.h: int, int, struct DuelCard *, u16 defense, u16 faceUp). This unit
@@ -360,7 +154,7 @@ void DuelCmd_BanishMonsterUntilEndPhase(void)
          * takes player first (r7), then zone evicts the local in r6 and step the
          * local in r5, as in the ROM. */
         asm("" :: "r"(player), "r"(zone));
-        CopyDuelCard((u32 *)&gDuelCmd.card, (u32 *)&gDuelPlayers[player & 1].zones[zone].card);
+        CopyDuelCard(&gDuelCmd.card, &gDuelPlayers[player & 1].zones[zone].card);
         /* FAKEMATCH: pointer arithmetic, not zones[zone]: the array form compiles to other code */
         (gDuelPlayers[player & 1].zones + zone)->card.id = 0;
         ClearZoneTiles(player, zone);
@@ -440,7 +234,7 @@ void DuelCmd_SendFusionMaterialToGrave(void)
     case 0:
         ClearZoneTiles(player, zone);
         ZONE(player & 1, zone)->card.isFusionMaterial = 1;
-        CopyDuelCard((u32 *)&gDuelCmd.card, (u32 *)&gDuelPlayers[player & 1].zones[zone].card);
+        CopyDuelCard(&gDuelCmd.card, &gDuelPlayers[player & 1].zones[zone].card);
         SendZoneCardToGraveyardOrBanished(player, zone, banish);
         from.player = player;
         from.area = DUEL_AREA_MONSTER;

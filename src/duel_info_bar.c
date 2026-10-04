@@ -21,8 +21,8 @@
  * is tile | palette << 12; a BG map entry is the same.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_*, BG_PLTT, OBJ_PLTT, VRAM, OBJ_VRAM0, key masks */
-#include "legacy/main.h"                   /* gMain: keys, frame counter, BG map buffers */
+#include "gba.h"                           /* REG_*, BG_PLTT, OBJ_PLTT, VRAM, OBJ_VRAM0, key masks */
+#include "main.h"                          /* gMain: keys, frame counter, BG map buffers */
 #include "util.h"                   /* CopyDoubleWords, StrLen */
 #include "bg.h"                     /* LoadBgImage4bpp, LoadSystemGfx */
 #include "sprite.h"                 /* AddSprite, AddAffineSprite, SPRITE_SHAPE_*, gHandCursorPal/Gfx */
@@ -31,85 +31,12 @@
 #include "card_data.h"              /* gCardIconPal, gCardIcon*Gfx */
 #include "duel_flow.h"              /* gPulseScaleCurve */
 #include "constants/duel.h"         /* enum DuelArea */
+#include "duel.h"                   /* gDuelPlayers, gDuelZones, gDuelSpellTrapZones, gDuelFieldZone, IsHandRevealed */
+#include "sound.h"                  /* PlaySE */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ---- */
-/*
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
- * and duel_screen.h includes it. This block declares the part of the canonical duel.h that this unit and
- * duel_screen.h use, with the header's names, types and bitfield containers (unused bytes are padding), and
- * defines duel.h's include guard so the legacy header stays out. PlaySE is declared here too: the legacy
- * sound.h lacks it. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h"
- * (see build/readability/issues/duel_info_bar.md).
- */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 unk12:20;
-};
-
-/* A card location on the duel screen (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {                   /* one field zone, 0x94 bytes */
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0 */
-    u8 isFaceUp:1;                  /* +0x06 bit 1 */
-    u8 unk6_2:6;
-    u8 unk7[0x94 - 7];
-};
-
-struct DuelPlayer {                 /* one player's side, 0xD64 bytes */
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002 */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 banishedCount;               /* +0x006: entries in banished[] */
-    u8 unk7[0xD64 - 7];
-};
-
-struct DuelZonesPlayer {            /* gDuelZones: the zones of each player with the player stride */
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuelPlayers[0].zones */
-extern struct DuelZone gDuelSpellTrapZones;     /* 0x020195F0 = gDuelPlayers[0].zones[ZONE_SPELL_0] */
-extern struct DuelZone gDuelFieldZone;          /* 0x020198D4 = gDuelPlayers[0].zones[ZONE_FIELD] */
-
-/* 1 if the player's hand is shown (handRevealed, The Eye of Truth, Ceremonial Bell, ...). */
-int IsHandRevealed(int player);
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
 
 #include "duel_screen.h"            /* gDuelScreen, DuelInfo_*, TextCellsClear, DuelCursor_GetCardId */
 #include "text_box.h"               /* gTextBox, the TextBox* functions defined here */
-
-/*
- * Transitional, until H0 installs the new include/gba.h: the legacy gba.h lacks these names. The values are
- * the new header's; the block is skipped once it is in place.
- */
-#ifndef BGCNT_PRIORITY
-#define DISPCNT_OBJ_1D_MAP      0x0040  /* OBJ tiles in 1D mapping */
-#define BGCNT_PRIORITY(n)       (n)             /* 0 = front, 3 = back */
-#define BGCNT_CHARBASE(n)       ((n) << 2)      /* tile data at VRAM + n * 0x4000 */
-#define BGCNT_SCREENBASE(n)     ((n) << 8)      /* map at VRAM + n * 0x800 */
-#define BGCNT_TXT256x512        0x8000          /* map size: 256 x 512 */
-#endif
-#ifndef OAM_ATTR2_PALETTE
-#define OAM_ATTR2_PALETTE(n)    ((n) << 12)     /* 16-colour palette 0-15 */
-#endif
 
 /*
  * Local views kept on purpose (matching choices, see build/readability/HEADERS.md):

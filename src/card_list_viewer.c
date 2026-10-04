@@ -17,89 +17,18 @@
  * packed as pos = zone << 8 | player, to find the legal targets of the card in `entry`.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* keys */
-#include "legacy/main.h"                   /* gMain.newKeys, gMain.bgVofs */
+#include "gba.h"                    /* keys */
+#include "main.h"                   /* gMain.newKeys, gMain.bgVofs */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* enum CardType, CardAttribute, SpellSubtype */
 #include "constants/duel.h"         /* enum DuelArea, DuelZoneIndex, BanishKind, ZoneLinkKind */
 #include "constants/sound.h"        /* enum SoundEffect */
+#include "duel.h"                   /* struct DuelZone, gDuelPlayers, the Zone/Count helpers */
+#include "sound.h"                  /* PlaySE */
 #include "util.h"                   /* MemClear16 */
 #include "text.h"                   /* TextCanvasToTiles */
 #include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_* */
 #include "card_detail.h"            /* CardDetail_Init, CardDetail_Run */
-
-/* ---- BEGIN header subset (pre-H0) ----
- * The parts of duel.h and sound.h this unit and the headers below need, with the canonical headers' tags,
- * names, types and bitfield containers (unused bytes are padding). include/duel.h and sound.h still hold the
- * legacy headers until the header switch (H0, build/readability/HEADERS.md); chain.h, duel_screen.h and
- * card_list_view.h include duel.h, so this block also defines duel.h's include guard. After H0, replace the
- * block (BEGIN to END) with
- *     #include "legacy/duel.h"
- *     #include "legacy/sound.h"
- * which gives identical assembly (checked against the staged headers). */
-
-/* duel.h */
-#define GUARD_DUEL_H
-struct DuelCard {
-    u32 id:12;                          /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                        /* bit 12: owning player */
-    u32 unk13:19;
-};
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-struct DuelZone {
-    struct DuelCard card;               /* +0x00 */
-    u16 serial;                         /* +0x04 */
-    u8 isDefense:1;                     /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                      /* +0x06 bit 1: face up */
-    u8 turnCounter:4;                   /* +0x06 bits 2-5: turns a face-up card has been active */
-    u8 unk6_6:2;
-    u8 unk7[3];
-    u16 links[32];                      /* +0x0A: DUEL_LOC of a card affecting this one, or a value / card ID */
-    u16 linkKinds[32];                  /* +0x4A: low byte enum ZoneLinkKind, high byte stack count / value */
-    u16 numLinks;                       /* +0x8A: entries in links / linkKinds */
-    u8 unk8C[8];
-};
-struct DuelPlayer {
-    u16 lifePoints;                     /* +0x000 */
-    u8 handCount;                       /* +0x002 */
-    u8 deckCount;                       /* +0x003: entries in deck[] */
-    u8 graveCount;                      /* +0x004: entries in graveyard[] */
-    u8 fusionCount;                     /* +0x005: entries in fusionDeck[] */
-    u8 banishedCount;                   /* +0x006: entries in banished[] and banishedInfo[] */
-    u8 unk7[0x28 - 0x7];
-    struct DuelZone zones[11];          /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];           /* +0x684 */
-    struct DuelCard deck[80];           /* +0x7C4: deck[0] is the top card */
-    struct DuelCard graveyard[80];      /* +0x904 */
-    struct DuelCard fusionDeck[80];     /* +0xA44 */
-    struct DuelCard banished[80];       /* +0xB84 */
-    u16 banishedInfo[80];               /* +0xCC4: parallel to banished[]: low byte enum BanishKind */
-};
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountFaceUpMonstersByNumber(int player, u16 cardNo);
-int GetFaceUpFieldMagicNumber(void);
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-u32 GetZoneCardAttribute(s32 player, s32 slot);
-
-/* sound.h */
-void PlaySE(u32 seId);
-/* ---- END header subset ---- */
 
 #include "chain.h"                  /* struct ChainEntry (the effect checks' card) */
 #include "effect.h"                 /* CanCardTargetZone, IsZoneTargetable */

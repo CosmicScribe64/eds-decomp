@@ -19,84 +19,9 @@
 #include "constants/card_stats.h"   /* enum CardType, CARD_STATS_* layout */
 #include "constants/duel.h"         /* MONSTER_ZONE_COUNT */
 #include "constants/game.h"         /* enum DuelistId */
-#include "legacy/gba.h"                    /* REG_BASE */
-#include "legacy/main.h"                   /* gMain.opponent */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that battle.h and card_list_view.h do not pull in the legacy header. After H0, replace the
- * block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/ai_picks.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 unk6_2:6;
-    u8 unk7_0:2;
-    u8 positionLocked:1;            /* +0x07 bit 2: cannot change position */
-    u8 unk7_3:1;                    /* +0x07 bit 3: blocks AiCanChangePosition; meaning unknown */
-    u8 unk7_4:4;
-    u8 unk8[0x94 - 0x8];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 graveCount;                  /* +0x004: entries in graveyard[] */
-    u8 unk5[0x26 - 0x5];
-    u16 attackedMask;               /* +0x026: monster zones that have attacked this turn */
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    struct DuelCard graveyard[80];  /* +0x904 */
-    u8 unkA44[0xD64 - 0xA44];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-/* Effective stats of the card in a zone (GetZoneCardStats). */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0: card ID */
-    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
-    u8 attribute:3;                 /* +0x2 bits 5-7 */
-    u8 unk3;
-    s32 atk;                        /* +0x4: effective ATK */
-    s32 def;                        /* +0x8: effective DEF */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-/* 1 if card number cardNo has a flip effect that applies (inBattle: flipped face up by an attack). */
-u32 HasFlipEffect(u16 cardNo, int inBattle);
-/* Number of occupied monster zones. */
-int CountMonsters(int player);
-/* Number of active copies of the card in zones 0-10: is the card in effect for this player. */
-int CountActiveCardsOnField2(int player, u16 cardNo);
-/* Number of links on (player, zone) that come from card number cardNo. */
-int CountZoneLinksFromCard(int player, int zone, u16 cardNo);
-/* Card ID, effective type, attribute, ATK and DEF of the card in (player, zone). */
-void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
-/* Effective ATK / DEF / card type of the card in (player, slot). */
-u32 GetZoneCardAtk(u32 player, u32 slot);
-u32 GetZoneCardDef(u32 player, u32 slot);
-u32 GetZoneCardType(s32 player, s32 slot);
-/* ---- END duel.h stand-in ---- */
-
+#include "gba.h"                /* REG_BASE */
+#include "main.h"               /* gMain.opponent */
+#include "duel.h"               /* struct DuelState, struct DuelPlayer, struct DuelZone, gDuel, gDuelPlayers */
 #include "ai.h"                     /* struct AttackPlan, gAiWork, AI_FLAG_EXODIA, the Ai* functions defined here */
 #include "battle.h"                 /* CanAttackDirectly, CanMonsterAttack */
 #include "card_list_view.h"         /* gCardListViewCards */

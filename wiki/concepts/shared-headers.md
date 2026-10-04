@@ -4,7 +4,7 @@ type: concept
 status: draft
 confidence: high
 sources: [rom-analysis]
-updated: 2026-10-03
+updated: 2026-10-04
 ---
 # Shared headers
 
@@ -49,9 +49,8 @@ compiles differently.
 - Eleven writer groups wrote the headers; one integrator pass made them consistent: all 47 pass
   `tools/hdrcheck.py --all` with 0 errors and 0 warnings, and one TU that includes all of them (in order, twice, and
   in reverse order) compiles with old_agbcc and agbcc at `-W -Wall` with no diagnostics.
-- Step H0 has not run yet: `include/gba.h`, `main.h`, `duel.h`, `duel_ui.h` and `sound.h` are still the legacy
-  headers above, which most units include. The new versions of `gba.h`, `main.h`, `duel.h` and `sound.h` are
-  staged under `build/readability/hcheck/` until H0 moves the legacy files to `include/legacy/`.
+- Step H0 is done (2026-10-04, see below): the canonical `gba.h`, `main.h`, `duel.h` and `sound.h` are in
+  `include/`, every unit includes them, and `include/legacy/` has been deleted.
 - `src/text_render.c` is the first unit migrated to the new headers (palette.h, bg.h, sprite.h, text.h, plus gba.h):
   `unit bytes MATCH`, and the same assembly with the legacy and the staged gba.h. See [[text-render-c]].
 - The migration guide (which header for what, how to keep a deliberate local view, per-unit notes from the header
@@ -83,8 +82,19 @@ keep a pre-H0 stand-in block (`/* ---- BEGIN ... stand-in (pre-H0) ---- */`) dec
 use; each unit's stand-in coverage, kept local views and H0 swap steps are recorded in
 `build/readability/issues/<unit>.md`. Where a symbolic form broke the match (literal ROM table addresses are the
 common case), the literal stays with a comment naming the table. Step H0 itself (moving the staged headers into
-`include/` and deleting the stand-ins) has not run yet. Verified at this state: `tools/dr make -j8 compare`
+`include/` and deleting the stand-ins) ran on 2026-10-04 (next section). Verified at this state: `tools/dr make -j8 compare`
 (`eds.gba: OK`, ROM byte-identical) and `tools/dr python3 tools/check_all.py` (112/112 units match).
+
+## H0 complete (2026-10-04)
+- The canonical headers were installed in `include/` (e1c3f56) and the old ones moved to `include/legacy/`.
+- Every pre-H0 stand-in block is deleted (35 units on the desktop, 57 more, then the last 22 units that still
+  included `include/legacy/`, among them the `deck_edit*` family, `main`, `sound_driver` and `sprite`).
+- Where a unit's code needs a different view of a symbol than the header gives (a byte view, a wider argument
+  type), the view stays local under a distinct name bound to the real symbol with `asm("symbol")`.
+- No unit includes `include/legacy/` any more, so the directory is deleted.
+- Each `register T x asm("rN")` pin sits under a `/* FAKEMATCH: */` comment (CLAUDE.md).
+- Verified: `tools/dr python3 tools/check_all.py` (112/112 units match). `make compare` was not run, because the
+  cloud session has no ROM.
 
 ## Migration
 Units move to the headers one at a time: `tools/launch_headers.sh <unit>` runs a DeepSeek agent that includes the

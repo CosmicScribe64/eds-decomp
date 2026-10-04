@@ -843,3 +843,11 @@ updated: 2026-09-29
 - Working tree only, not committed: 31 files changed, 10,991 insertions, 10,135 deletions.
 - Verified for this entry: per-unit `tools/dr python3 tools/check.py <unit>` green for all 31;
   `tools/dr make -j8 compare` (`eds.gba: OK`); `tools/dr python3 tools/check_all.py` (112/112 units match).
+
+## [2026-10-04] progress | Header step H0 complete: stand-ins gone, include/legacy/ deleted
+- All 112 units now include the canonical shared headers. The pre-H0 stand-in blocks and the `legacy/` includes
+  are gone, and `include/legacy/` is deleted.
+- Every register pin is now covered by a `/* FAKEMATCH: */` comment. `booster_get_pack` had 3 pins relabelled
+  `Matching:`, and a few other units had pins with no tag at all.
+- Pages: [[shared-headers]].
+- Verified: `tools/dr python3 tools/check_all.py` (112/112). `make compare` was not run (no ROM in the cloud session).

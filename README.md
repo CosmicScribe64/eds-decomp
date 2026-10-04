@@ -12,9 +12,11 @@ not a translation of this game: its duel engine and data model were reworked, it
 821, and it links a Mobile Adapter GB library the USA build lacks. A matching Japanese build would be a
 separate project; [`wiki/rom/rom-versions.md`](wiki/rom/rom-versions.md) has the full comparison.
 
-As of October 2026 the decompilation is complete: all 1,976 of the game's functions are written in
-matching C, and the built ROM is byte-for-byte identical to the original. The work now is readability:
-shared headers, harmonized symbol names and per-unit cleanup, all while keeping the match.
+As of October 2026 the decompilation is complete: all 1,976 of the game's functions match. 1,970 are written
+in C; the other 6 are hand-written assembly, as they most likely were originally: the 3 ARM routines of the
+sound mixer and the 3 BIOS call stubs from Nintendo's SDK library. The built ROM is byte-for-byte identical to
+the original. The work now is readability: shared headers, harmonized symbol names and per-unit cleanup, all
+while keeping the match.
 
 **This repository contains no game data.** You supply your own copy of the game, and a setup step extracts
 its graphics, text, card data, fonts and sound into a local `assets/` folder that the build reads.
@@ -75,8 +77,9 @@ The report doesn't need the ROM. CI generates it on every push (`.github/workflo
 
 ## Working on it
 
-The code is split into units, listed in link order in `units.txt`. Each unit is `src/<unit>.c`, and every
-unit is now matching C (no `INCLUDE_ASM` remains). The original disassembly stays in
+The code is split into units, listed in link order in `units.txt`. A game unit is `src/<unit>.c`; the start-up
+code (`asm/crt0.s`, `asm/veneer.s`), the ARM sound mixer (`src/sound_mixer_arm.s`) and the BIOS call stubs
+(`src/sdk/libagbsyscall.s`) are authored assembly. No `INCLUDE_ASM` remains. The original disassembly stays in
 `asm/nonmatching/` as the comparison target. Shared types and constants live in `include/` and
 `include/constants/`; `wiki/concepts/shared-headers.md` explains how units use them and which local
 views remain.

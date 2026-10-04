@@ -230,7 +230,7 @@ u16 IsCampaignLevel5Unlocked(void) {
 u16 IsCardCollectionComplete(void)
 {
     s32 have = 0;
-    /* Matching: retain ROM counter registers and rematerialized loop bound. */
+    /* FAKEMATCH: register pins retain ROM counter registers and rematerialized loop bound. */
     register s32 total __asm__("r4") = 0;
     register s32 id __asm__("r3") = 1;
     u16 key = gCardIdToNumber_821[0];
@@ -705,7 +705,7 @@ last:
  * then clear the redraw flag. */
 void PackList_FlushVram(void)
 {
-    /* Matching: retain ROM iterator, DMA temporaries, and constant scheduling. */
+    /* FAKEMATCH: register pin retains ROM iterator, DMA temporaries, and constant scheduling. */
     register s32 i __asm__("r4") = 0;
     struct PackListWork *s = &gSceneWork;
     vu32 *dma = (vu32 *)0x040000D4;
@@ -916,7 +916,7 @@ void PackList_LoadCoverGfx(u16 slot, u16 packId) {
 void PackList_DrawCoverTiles(u32 a, u32 bArg, u32 cArg)
 {
     u32 b = (u16)bArg;
-    /* Matching: retain the ROM's tile-value and inner-loop counter registers. */
+    /* FAKEMATCH: register pins retain the ROM's tile-value and inner-loop counter registers. */
     register u32 c __asm__("r4") = (u16)cArg;
     u32 shifted;
     s32 next;

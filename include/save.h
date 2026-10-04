@@ -24,6 +24,7 @@ enum SavedDeckCapacity {
     SIDE_DECK_MAX_CARDS = 15,
     FUSION_DECK_MAX_CARDS = 20,
     DECK_MAX_CARDS = 60,
+    DECK_MIN_CARDS = 40,        /* a smaller deck cannot duel (text 401: LinkBattle_Init, Campaign_StartDay) */
 };
 
 /* gSaveData.options bits (Options screen; read by IsSeEnabled / IsBgmEnabled). */

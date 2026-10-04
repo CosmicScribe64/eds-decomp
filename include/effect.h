@@ -39,8 +39,9 @@ struct ChainEntry;
 /* --- Effect table --------------------------------------------------------------------------------------- */
 
 /* One row of gCardEffects (0x0819A9D4, 426 rows, sorted by number for FindCardEffect's binary search).
- * Units view the rows through partial local structs today (TargetRule, EffEntry, EffEnt, Ent42BE0) whose
- * handler pointer types differ; a migrated unit keeps its view where the call's codegen needs it. */
+ * The handler pointers are declared as the handlers are defined (int results); struct ChainState declares its
+ * copies as Chain_Build / Chain_Resolve call them (u16 / u32 results), so copying a handler from a row into
+ * gChain.resolve, chainA or chainB needs a cast (no code change). */
 struct CardEffect {
     u16 number;     /* +0x00: card number, or an effect key (1211-1552: no EDS card) */
     u16 flags;      /* +0x02: 0 in every row */
@@ -63,8 +64,8 @@ typedef char effect_h_check_card_effect_size[sizeof(struct CardEffect) == 0x18 ?
 typedef char effect_h_check_card_effect_check[(u32)&((struct CardEffect *)0)->check == 0x08 ? 1 : -1];
 typedef char effect_h_check_card_effect_chain_b[(u32)&((struct CardEffect *)0)->chainB == 0x14 ? 1 : -1];
 
-/* The effect table. Declared as const u32[] or as partial row structs in the units today; a migrated
- * unit that needs its old view for codegen keeps a commented local alias. */
+/* The effect table. duel_response also reads it through an address alias of the same type
+ * (gAlias_0819A9D4), for a separate literal-pool entry. */
 extern const struct CardEffect gCardEffects[];
 
 /* Return value of a multi-step resolve handler, kept in gChain.effectStep: Chain_Resolve calls the
@@ -140,6 +141,16 @@ struct FusionRecipe {
 
 typedef char effect_h_check_fusion_recipe_size[sizeof(struct FusionRecipe) == 0x8 ? 1 : -1];
 
+/* The recipe tables; gFusionRecipes2 is followed directly by gFusionRecipes3. */
+extern const struct FusionRecipe gFusionRecipes2[];     /* 0x0819A7C8: 52 recipes of 2 materials + terminator */
+extern const struct FusionRecipe gFusionRecipes3[];     /* 0x0819A970: 3 recipes of 3 materials + terminator */
+/* Index of each table's terminator: the fixed-length scans (IsMaterialOfFusion, FindFusionMaterials) visit it
+ * too, which is harmless since no card has the result 0x3E7. */
+#define FUSION_RECIPES2_LAST    0x34
+#define FUSION_RECIPES3_LAST    3
+#define FUSION_END              0x3E7       /* result and materials of a table's terminator recipe */
+#define FUSION_END_WORD         0x03E703E7  /* result and materials[0] of the terminator, read as one word */
+
 /* One row of gRitualRecipes (src/duel_ritual.c); the table ends at ritualSpell == 0. */
 struct RitualRecipe {
     u32 monster:13;     /* bits 0-12: card number of the ritual monster */
@@ -191,6 +202,11 @@ u16 CanChainHandCard(struct ChainEntry *chainLink, int player, int handIdx);
 int CanPlayerChain(struct ChainEntry *chainLink, int player);
 
 /* --- Targets -------------------------------------------------------------------------------------------- */
+
+/* TextBoxOpen rectangle of the ChainB target prompts ('Select ...', effect_targets1-4): cell (6, 2), 18 x 7
+ * cells. */
+#define TARGET_PROMPT_POS 0x206
+#define TARGET_PROMPT_SIZE 0x712
 
 /* May the effect of card cardId target the card in (player, zone)? 0 for an empty zone, 1 for a face-down
  * card; Lord of D. protects face-up Dragons, Umi protects keys 1326/1329 from Magic. */

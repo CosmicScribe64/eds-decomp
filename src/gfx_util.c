@@ -130,7 +130,7 @@ void FillMapRectSeqPal(u16 *dst, u16 tile, u8 pal, u8 w, u8 h)
     }
 }
 /* Copies h rows of w halfwords from a packed source to a 32-entry-wide map. */
-void CopyMapRect(void *src, void *dst, u8 w, u8 h)
+void CopyMapRect(const void *src, void *dst, u8 w, u8 h)
 {
     u8 i;
 
@@ -138,12 +138,12 @@ void CopyMapRect(void *src, void *dst, u8 w, u8 h)
         s32 size = w * 2;
 
         CpuSet(src, dst, (size / 2) & 0x1FFFFF);
-        src = (u8 *)src + size;
+        src = (const u8 *)src + size;
         dst = (u8 *)dst + 0x40;
     }
 }
 /* Same with an explicit destination row stride (in halfwords). */
-void CopyMapRectStride(void *src, void *dst, u8 w, u8 h, u8 dstStride)
+void CopyMapRectStride(const void *src, void *dst, u8 w, u8 h, u8 dstStride)
 {
     u8 i;
 
@@ -151,7 +151,7 @@ void CopyMapRectStride(void *src, void *dst, u8 w, u8 h, u8 dstStride)
         u32 size = w * 2;
 
         CpuSet(src, dst, (size / 2) & 0x1FFFFF);
-        src = (u8 *)src + size;
+        src = (const u8 *)src + size;
         dst = (u8 *)dst + dstStride * 2;
     }
 }

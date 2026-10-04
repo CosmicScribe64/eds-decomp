@@ -72,6 +72,11 @@ struct TextBox {
 
 extern struct TextBox gTextBox;         /* 0x0201AE60 */
 
+/* The pos and size arguments of TextBoxOpen, in cells: x / width in the low byte, y / height in the high byte.
+ * Units that spell the packed number out (0x206, 0x712) give the same code. */
+#define TEXTBOX_POS(x, y)   ((x) | (y) << 8)
+#define TEXTBOX_SIZE(w, h)  ((w) | (h) << 8)
+
 /* Open, menus and update */
 /* Open the box: pos = x | y << 8, size = width | height << 8 (cells), flags = enum TextBoxFlags. */
 void TextBoxOpen(u16 pos, u16 size, u16 flags, const u8 *text);

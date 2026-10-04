@@ -14,8 +14,10 @@ map build/readability/cards_aliases.json (CARDNO_X -> CARD_Y) for the units that
 Naming: the card name in upper snake case ("Alligator's Sword" -> CARD_ALLIGATORS_SWORD, "Mystical Sheep #1" ->
 CARD_MYSTICAL_SHEEP_1, "Master & Expert" -> CARD_MASTER_AND_EXPERT). A name used by several card numbers (the
 alternate-art copies at 2000 + n, the second Polymerization) gets _ALT, _ALT2... on the higher numbers. Effect
-keys and other numbers the code uses that have no EDS card keep a numeric CARD_<number>. Card IDs (the
-alphabetical index of gCardStats/gCardNames) are a different number space and are not in this enum.
+keys and other numbers the code uses that have no EDS card keep a numeric CARD_<number>: every row of the
+effect table (with or without handlers; a key's comment names its resolve handler), the types.json values and
+CODE_NUMBERS below. Card IDs (the alphabetical index of gCardStats/gCardNames) are a different number space and
+are not in this enum.
 """
 import argparse
 import collections
@@ -26,6 +28,40 @@ import sys
 
 OUT = 'include/constants/cards.h'
 ALIASES = 'build/readability/cards_aliases.json'
+
+# Card numbers with no EDS card that the matched code compares, with what the code does with each (from the
+# sources and the readability notes, build/readability/issues/, 2026-10). Some are effect-table rows without
+# handlers; the others are in no table at all. The note goes into the constant's comment.
+CODE_NUMBERS = {
+    1231: 'CalcBattle: when it attacks it is not destroyed, takes no damage and links its -500 ATK effect to the '
+          'defender',
+    1249: 'counts as Harpie Lady: IsSameCardName, Cyber Shield, Harpie\'s Pet Dragon, Elegant Egotist',
+    1250: 'CanSummonFromHand: Normal Summon at once when it is the only hand card, else with two Tributes',
+    1251: 'CalcBattle: not destroyed by a monster with 1900 ATK or more',
+    1252: 'GetZoneCardStats: Plants gain 500 ATK/DEF per face-up defense-position copy',
+    1253: 'CalcBattle: +2000 ATK/DEF when it battles a Warrior',
+    1329: 'like CARD_1326, Magic cannot target it while Umi is the face-up Field Magic',
+    1339: 'GetZoneCardStats: the equip CARD_1540 gives it +300 ATK',
+    1341: 'CalcBattle: piercing battle damage',
+    1351: 'EquipCard destroys an equip put on it; Snatch Steal cannot take it',
+    1404: 'a Fusion monster of gFusionRecipes2',
+    1410: 'one of the two Tributes named by key 1257, CanSummonKey1257',
+    1412: 'one of the two Tributes named by key 1257, CanSummonKey1257',
+    1413: 'destroyed when summoned; GetZoneCardStats: -200 ATK per opponent monster',
+    1431: 'Standby Phase upkeep: Tribute one of the other monsters to keep it, like The Regulation of Tribe',
+    1434: 'GainLifePoints: the opponent loses 500 LP per face-up copy when its controller gains LP',
+    1437: '+1000 LP in its controller\'s Standby Phase while in attack position',
+    1438: '+1000 LP in its controller\'s Standby Phase while in defense position',
+    1441: '+800 LP in its controller\'s Standby Phase',
+    1445: 'a Fusion monster of gFusionRecipes2',
+    1446: '+200 LP per copy in the graveyard in its owner\'s Standby Phase',
+    1515: 'Special Summon by banishing two LIGHT monsters; the opponent\'s monsters lose 300 ATK in their Battle '
+          'Phase while it is face up',
+    1516: 'Special Summon by banishing a FIRE monster; +300 ATK in its controller\'s Battle Phase',
+    1518: 'Special Summon by banishing an EARTH monster; +300 ATK in the opponent\'s Battle Phase',
+    1526: 'a Fusion monster of gFusionRecipes2; when Special Summoned it destroys its controller\'s other monsters; '
+          'no summons while it is active; IsEffectMonster counts it',
+}
 
 
 def ident(name):
@@ -72,27 +108,38 @@ def build():
                 note += f' (gCardNumberToId[{num}] = {n2i[num]})'
             entries[num] = (sym, note)
 
-    # numbers without an EDS card that the code uses: effect keys and the types.json CardNumber values
+    # numbers without an EDS card that the code uses: the effect-table rows (keys), the types.json CardNumber
+    # values and CODE_NUMBERS
     tj_vals = {}
     if tj:
         for e in tj['enums']:
             if e['name'] == 'CardNumber':
                 for v in e['values']:
                     tj_vals[int(str(v['value']), 0)] = v
+    rows = set()
     handlers = collections.defaultdict(list)
     for e in effects:
-        for slot in ('prepare', 'check', 'chain_a', 'chain_b', 'resolve'):
+        rows.add(e['number'])
+        for slot in ('resolve', 'prepare', 'check', 'chain_a', 'chain_b'):
             if e.get(slot):
-                handlers[e['number']].append(e[slot])
-    for num in sorted(set(handlers) | set(tj_vals)):
+                handlers[e['number']].append((slot, e[slot]))
+    for num in sorted(rows | set(tj_vals) | set(CODE_NUMBERS)):
         if num in entries:
             continue
         v = tj_vals.get(num)
         note = 'no EDS card'
         if num in handlers:
-            note += ': effect key'
+            slot, func = handlers[num][0]      # the resolve handler, or the first other one
+            note += f': effect key, {func}' if slot == 'resolve' else f': effect key, {slot} {func}'
+        elif num in rows:
+            note += ': effect-table row without handlers'
+        extra = []
         if v and v.get('comment'):
-            note += f" ({v['comment'][:100]})"
+            extra.append(v['comment'][:100])
+        if num in CODE_NUMBERS:
+            extra.append(CODE_NUMBERS[num])
+        if extra:
+            note += f" ({'; '.join(extra)})"
         entries[num] = (f'CARD_{num}', note)
 
     # collisions with other enum values of types.json

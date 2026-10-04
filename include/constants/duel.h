@@ -134,10 +134,18 @@ enum ZoneLinkKind {
     ZONE_LINK_ADD_CARD_STATS = 8,
     ZONE_LINK_STATS_DOWN_500 = 9,
     ZONE_LINK_EQUIP_ATK_200 = 10,       /* repeatable +200 ATK equip: always a new entry */
-    ZONE_LINK_ATK_300_PER_VALUE = 11,
+    ZONE_LINK_ATK_300_PER_VALUE = 11,   /* +300 ATK per unit of the high byte: key 1344's banish effect
+                                         * (effect_resolve11); DuelCmd_TurnStart removes the kind-11 link of
+                                         * the card's own ID from several monsters every turn (Time Wizard,
+                                         * Goddess of Whim, Patrol Robo, ...; meaning there not checked) */
     ZONE_LINK_ATK_DOWN_200 = 12,
     ZONE_LINK_STATS_UP_100 = 13,
 };
+
+/* linkKinds[i] value: a kind with its stack count or value in the high byte (key 1523's self link is
+ * ZONE_LINK_KIND(ZONE_LINK_ATK_DOWN_200, 1)). Units that build the value with the count first keep their
+ * operand order: it can change the generated code. */
+#define ZONE_LINK_KIND(kind, count) ((kind) | (count) << 8)
 
 /* Bit mask (arg4) of DUEL_CMD_SET_ZONE_STATUS_FLAGS / DUEL_CMD_CLEAR_ZONE_STATUS_FLAGS and of the summon
  * action record: bits 0-3 map to card-word bits 14-17 (struct DuelCard), bits 4-5 to DuelZone +0x07
@@ -209,12 +217,16 @@ enum ResponseEventKind {
     RESPONSE_POSITION_CHANGED = 10,
     RESPONSE_FLIPPED = 11,
     RESPONSE_CONTROL_SWITCHED = 12,
-    RESPONSE_BATTLE_DAMAGE = 13,            /* the player controls the defender */
-    RESPONSE_BATTLE_DEFLECTED_DAMAGE = 14,  /* the player controls the attacker */
+    RESPONSE_BATTLE_DAMAGE = 13,            /* battle damage to the defender's player (BattleStage_InflictDamage
+                                             * step 2; the attacking card is the chained card) */
+    RESPONSE_BATTLE_DEFLECTED_DAMAGE = 14,  /* battle damage to the attacker's player (step 0; the defending
+                                             * card is the chained card) */
     RESPONSE_LP_CHANGE = 15,
     RESPONSE_ATTACK_DECLARED = 16,
     RESPONSE_DAMAGE_STEP = 17,              /* prompt text: 'The target for attack is ...' */
-    RESPONSE_BATTLE_FLIP_EFFECT = 18,
+    RESPONSE_BATTLE_FLIP_EFFECT = 18,       /* a flip effect in battle; BattleStage_DestroyMonsters also queues it
+                                             * for the battle effects of Dimensional Warrior and Wall of Illusion
+                                             * (hypothesis: a general "this monster battled" trigger) */
     RESPONSE_BATTLE_DESTROYED = 19,
     RESPONSE_MAGIC_TO_GRAVE = 20,
     RESPONSE_TRAP_TO_GRAVE = 21,
@@ -268,7 +280,7 @@ enum SummonActionKind {
  * effect may pick. Bits 0-7 are player 0's positions, the same bits << 16 player 1's (PICK_PLAYER1).
  * A monster zone needs one face bit (0x10/0x20) and one position bit (0x40/0x80). Examples from the
  * effects: 0xE0 face-up monster, 0xB0 defense-position monster, 0xD2 face-down card, 0xA trap or set
- * card, 0x6 magic or set card. */
+ * card, 0x6 magic or set card, 0x90 face-down defense-position monster (Acid Trap Hole). */
 enum FieldPickMask {
     PICK_HAND = 0x01,
     PICK_FACE_DOWN_SPELL_TRAP = 0x02,
@@ -280,12 +292,18 @@ enum FieldPickMask {
     PICK_DEFENSE_POSITION = 0x80,
 };
 
-/* Any monster, face up or down, in either position (0xF0). */
+/* Any monster, face up or down, in either position (0xF0); also the mask of the tribute picks. */
 #define PICK_ANY_MONSTER        (PICK_FACE_DOWN_MONSTER | PICK_FACE_UP_MONSTER \
                                  | PICK_ATTACK_POSITION | PICK_DEFENSE_POSITION)
+/* Any face-up monster, in either position (0xE0). */
+#define PICK_FACE_UP_MONSTER_ANY (PICK_FACE_UP_MONSTER | PICK_ATTACK_POSITION | PICK_DEFENSE_POSITION)
+/* Any Magic or Trap card, face up or set (0xE). */
+#define PICK_ANY_SPELL_TRAP (PICK_FACE_DOWN_SPELL_TRAP | PICK_FACE_UP_MAGIC | PICK_FACE_UP_TRAP)
 /* The same positions on player 1's side. */
 #define PICK_PLAYER1_SHIFT      16
 #define PICK_PLAYER1(mask)      ((mask) << PICK_PLAYER1_SHIFT)
+/* The positions of mask on both sides of the field. */
+#define PICK_BOTH_SIDES(mask) ((mask) | PICK_PLAYER1(mask))
 
 /* Start field of a duel (gMain.startField, +0x488A bits 0-3): 0 none, else the Field Magic that the duel
  * setup puts into play (SetupStartFieldCard maps the value to the card number). */

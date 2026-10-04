@@ -65,10 +65,12 @@ enum LinkQueryStep {
  * response window. Effect handlers (include/effect.h) get the link they run for as their first argument and
  * the link it responds to (chainedTo) as the second. Chain_Add builds an entry from two words:
  *   packed = card | zone << 16 | kind << 21 | event << 25 | player << 31,   locs = loc0 | loc1 << 16.
- * Many matched handlers read the player bit as the raw byte `((u8 *)entry)[2] & 1`.
- * Bitfield containers: player and kind are u8, zone and event u16, which is how the 26 effect/response units
- * declare them (the container changes the loads agbcc emits). duel_main and duel_setup access an all-u16 view
- * (u16 player:1; u16 kind:3) and keep it as a local view.
+ * Some matched handlers read the player bit as the raw byte `((u8 *)entry)[2] & 1`; the bitfields (player,
+ * kind, negated, numTargets) usually give the same code (effect_prepare3 replaced most of its byte tests).
+ * Bitfield containers: player and kind are u8, zone and event u16, which is how the effect/response units
+ * declare them (the container changes the loads agbcc emits); duel_main and duel_setup match with them too.
+ * duel_link_receive keeps an all-u16 view (u16 player:1; u16 kind:3) for gChain.queryEntry / queryLink and
+ * gLinkState.remoteEntries, where the u8 container turns `1 - player` into `player ^ 1`.
  */
 struct ChainEntry {
     u16 card;                   /* +0x00: card ID (card number: gCardIdToNumber[card & 0x7FF]) */
@@ -106,6 +108,11 @@ struct ChainList {
  * Big Eye's top-of-deck reorder (DeckReorder_* in duel_prompt.h), in gChain.scratch.deckReorder. The first
  * eight bytes are one bitfield group; timer and unk36 cross byte boundaries, which agbcc allows (it packs
  * bitfields without moving them to the next container). The cards are written back to the deck in order.
+ * Matching: the reorder functions (duel_cursor) reach these fields through a cast of &gChain to a struct with
+ * this layout at the top level after OFFSET_OF(struct ChainState, scratch) bytes of padding, and read the
+ * cards as u32 words. The member path gChain.scratch.deckReorder.mode folds gChain + 0x53C into one literal
+ * and changes DeckReorder_Draw / DeckReorder_Run (the ROM keeps the state pointer in r8); a cast to a struct
+ * holding struct DeckReorderState as a member does too.
  */
 struct DeckReorderState {
     u32 cursor:8;               /* +0x0 bits 0-7: selected card 0-4 */
@@ -142,11 +149,13 @@ struct ChainState {
     /* +0x3D8: resolve handler of the resolving link, called with (last link, previous link or NULL) */
     u32 (*resolve)(struct ChainEntry *link, struct ChainEntry *chainedTo);
     struct DuelCard savedCard;          /* +0x3DC: card word of the resolving link's zone, saved before the
-                                         * zone is cleared (alias gUnk_02017E1C, unused) */
+                                         * zone is cleared */
     u8 effectStep;                      /* +0x3E0: step of the running resolve handler (enum EffectStep);
                                          * Chain_Resolve starts it at 0x80 (also the symbol gChainEffectWork) */
     u8 effectSubStep;                   /* +0x3E1: resolve scratch: cards or discards left, side being swept,
-                                         * index into scratch.effect.effectCards */
+                                         * index into scratch.effect.effectCards; list entries and picks left
+                                         * (Fusion: graveyard candidates, banished picks, an index into
+                                         * gCardListView.cards) */
     u8 effectCounter;                   /* +0x3E2: resolve scratch counter (the roulette's current pick) */
     u8 unk3E3;
     u8 costStep;                        /* +0x3E4: step of the running chainA (cost) handler */
@@ -155,7 +164,8 @@ struct ChainState {
                                          * EffectProhibitionChainB runs */
     u8 targetWork2;                     /* +0x3E7: second chainB scratch byte */
     struct DuelCard effectCard;         /* +0x3E8: card word kept between handler steps (the ritual monster,
-                                         * Parasite Paracide taken from the deck) */
+                                         * Parasite Paracide taken from the deck, Magical Hats' swap
+                                         * temporary) */
     struct DuelZone effectSavedZone;    /* +0x3EC: copy of a whole zone (Magical Hats' target) */
     /* +0x480 / +0x484: cost and target handlers of the link Chain_Build is setting up */
     u16 (*chainA)(struct ChainEntry *link, struct ChainEntry *chainedTo);
@@ -190,7 +200,8 @@ struct ChainState {
     u8 handPickCount;                   /* +0x4FD: hand cards still to discard or banish */
     u16 unk4FE;
     u16 fusionResult;                   /* +0x500: card ID of the Fusion monster picked in the Fusion Deck */
-    u8 fusionMaterialCount:2;           /* +0x502 bits 0-1: 2 or 3 materials (the CPU counts it down) */
+    u8 fusionMaterialCount:2;           /* +0x502 bits 0-1: 2 or 3 materials (the CPU counts it down);
+                                         * IsPendingFusionMaterial reads it as u32:2 (a local view) */
     u8 fusionPicksLeft:2;               /* +0x502 bits 2-3: material picks left minus one (human) */
     u8 fusionSubstitutesUsed:4;         /* +0x502 bits 4-7: substitutes picked; only one is allowed */
     u8 unk503;
@@ -204,7 +215,8 @@ struct ChainState {
             u8 unk53C[6];
             u16 savedValue;                 /* +0x542: value kept across steps (Widespread Ruin's top ATK) */
             struct DuelCard effectCards[8]; /* +0x544: cards taken by a handler (Painful Choice's five picks,
-                                             * the card taken from the graveyard or deck) */
+                                             * the card taken from the graveyard or deck, Magical Hats' three
+                                             * hats: two deck cards and the attacked monster) */
         } effect;
         struct DeckReorderState deckReorder; /* +0x53C: Big Eye's reorder; cards overlaps effectCards */
     } scratch;                          /* +0x53C: per-effect scratch views of the same bytes */
@@ -216,6 +228,10 @@ extern struct ChainState gChain;                    /* 0x02017A40 */
 /*
  * Symbols for addresses inside gChain. The matched code accesses these through their own names, so they stay
  * separate symbols; the access form (symbol or gChain member) is a matching choice.
+ * Some units also declare address-suffixed aliases of single members, with the type their code needs: of
+ * links (duel_setup), effectCounter (effect_resolve10), effectCard (duel_ritual), scratch.deckReorder.cursor
+ * (duel_cursor) and scratch.effect.effectCards (effect_resolve9). duel_field_moves replaced its alias of
+ * responseEvent with the member access and still matches; other units can try the same fold.
  */
 extern u8 gChainEffectWork[];                       /* 0x02017E20 = &gChain.effectStep (byte view) */
 extern struct ChainEntry gEventResponseEntry;       /* 0x02017EE8 = gChain.responseEntry */
@@ -257,7 +273,8 @@ u32 Chain_CardGoesToGrave(struct ChainEntry *entry);
 /* ---- Activation tests outside a chain ---- */
 
 /* Can the Magic/Trap in (player, zone 5-9) be activated now? Fills ref; returns the CanActivateEffect
- * result narrowed to u16. */
+ * result narrowed to u16. A face-up card passes only for Ultimate Offering and keys 1324, 1428 and 1532;
+ * a Trap is refused while Jinzo is active on either side. */
 int CanActivateFieldCard(struct ChainEntry *ref, int player, int zone);
 /* Can hand card handIdx (a Magic) be activated now? Fills ref; returns the CanActivateEffect result
  * narrowed to u16. */
@@ -279,8 +296,8 @@ int EventResponse_CanPlayerRespond(int player);
 int EventResponse_GetCommands(struct ChainEntry *ref, int player, int area, int index);
 /* Write the event's description and 'Do you wish to activate a Quick-play Magic or Trap card?' into buf. */
 void EventResponse_BuildPromptText(struct ChainEntry *ev, u8 *buf);
-/* Dead code: 1 if one of list's entries (a struct ChainList) is at (player, zone). */
-int IsZoneInChainList(u8 *list, int player, int zone);
+/* Dead code: 1 if one of list's entries is at (player, zone). */
+int IsZoneInChainList(struct ChainList *list, int player, int zone);
 
 /* Compile-time layout checks (agbcc pads every struct to a multiple of 4 bytes). */
 typedef char chain_h_check_entry[sizeof(struct ChainEntry) == 0x14 ? 1 : -1];

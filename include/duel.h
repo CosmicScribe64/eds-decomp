@@ -27,7 +27,11 @@
 #include "constants/duel.h"
 
 /* A card in a zone or pile: one 32-bit word. id 0 is an empty slot. Bits 14-17 are the summon status
- * bits that enum ZoneStatusFlag (bits 0-3) sets and clears. */
+ * bits that enum ZoneStatusFlag (bits 0-3) sets and clears.
+ * Matching hazard: a direct member read of a card inside a bigger object, such as
+ * gDuelPlayers[p].zones[z].card.id, makes old_agbcc load the 12-bit id with ldrh, while the ROM loads the
+ * whole word (ldr; lsl #20; lsr #20). Reading through a struct DuelCard pointer (card->id, DUEL_CARD_ID)
+ * gives the word load; in duel_zones 32 of 34 functions differ with the direct form. */
 struct DuelCard {
     u32 id:12;                      /* bits 0-11: card ID */
     u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
@@ -48,6 +52,10 @@ struct DuelCard {
     u32 pendingOpponentSummon:1;    /* bit 28: graveyard card the opponent may Special Summon at end of turn */
     u32 unk29:3;
 };
+
+/* Card ID of the struct DuelCard at ptr (or of the zone at ptr: its card word comes first), read through a
+ * pointer so that the whole word is loaded, as the ROM does (see the hazard above). */
+#define DUEL_CARD_ID(ptr) (((struct DuelCard *)(ptr))->id)
 
 /* The status bits of a card word as single-bit u8 fields: ClearCardStatusFlags clears them one byte
  * access at a time, which struct DuelCard (u32 container) cannot express. It is applied to a whole zone,
@@ -123,7 +131,9 @@ struct DuelZone {
     u32 unk91_4:1;
     u32 declaredValue:5;            /* +0x91 bits 5-9: value chosen when the card resolved (DNA Surgery type,
                                      * an ATK/DEF choice, an attribute) */
-    u32 unk92_2:14;
+    u32 unk92_2:8;                  /* +0x92 bit 2 .. +0x93 bit 1: cleared by PlaceSpellTrapCard (the ROM ANDs
+                                     * the halfword at +0x92 with 0xFC03); meaning unknown */
+    u32 unk93_2:6;                  /* +0x93 bits 2-7 */
 };
 
 /* One player's side of the duel (0xD64 bytes; gDuelPlayers = gDuel.players). */
@@ -182,7 +192,10 @@ struct DuelPlayer {
 
 /* The card command menu (gDuel.cardMenu, 0xC bytes). CardMenu_Update runs it while open; the human and
  * AI paths set confirmed and the chosen command, player, area and index, and CardMenu_Execute acts on them.
- * The bitfields cross byte and halfword boundaries; the container types are the ones the code uses. */
+ * The bitfields cross byte and halfword boundaries; the container types are the ones most of the code uses.
+ * Units that read some fields in other containers keep a local view: card_command_menu (open and confirmed
+ * as a byte, step and index as halfwords, player as a byte or a word), duel_cmd_queue, duel_response and
+ * duel_setup (index as u16:8; ai_deck writes it through the u32 container). */
 struct CardMenu {
     u16 open:1;                     /* bit 0: menu open, the caller runs CardMenu_Update */
     u16 confirmed:1;                /* bit 1: a command was chosen (the AI sets it directly) */
@@ -244,7 +257,9 @@ struct DuelState {
     u16 unk1B14_2:7;
     u32 battleStage:8;              /* +0x1B15 bit 1 .. +0x1B16 bit 0: enum BattleStage */
     u16 battleStep:8;               /* +0x1B16 bits 1-8: step inside the stage */
-    u16 battleArg0:8;               /* +0x1B17 bit 1 .. +0x1B18 bit 0: stage scratch (a zone or player) */
+    u16 battleArg0:8;               /* +0x1B17 bit 1 .. +0x1B18 bit 0: stage scratch (a zone or player; in
+                                     * step 33 of BattleStage_DamageCalc the zone that key 1243's substitute
+                                     * target was moved to, then copied into gBattle.defSlot) */
     u16 battleArg1:8;               /* +0x1B18 bit 1 .. +0x1B19 bit 0: stage scratch (a graveyard index) */
     u16 unk1B19_1:7;
     u8 unk1B1A[2];
@@ -284,11 +299,14 @@ struct DuelState {
     u8 unk1B63;
     u16 promptResult;               /* +0x1B64: the answer (a hand slot, a card ID); the link partner's 16-byte
                                      * result is copied here */
-    u8 unk1B66[0x1B78 - 0x1B66];
+    u16 promptResult2;              /* +0x1B66: the second answer: DuelPrompt_SelectTwoAttributes' second
+                                     * attribute, the high half of DuelPrompt_SelectGraveyardMonster's card word */
+    u8 unk1B68[0x1B78 - 0x1B68];
 };
 
-/* The word at gDuel+0x1B14 read as one u32 (battleStage and battleStep in a u32 container): the view
- * duel_stat_queries uses for the battle-stage tests. Same bits as the DuelState members of that name. */
+/* The word at gDuel+0x1B14 read as one u32 (battleStage and battleStep in a u32 container): the view through
+ * which DuelCmd_EndBattlePhase (duel_stat_queries) writes the stage, reaching the word from gDuelPlayers +
+ * 0x1B10; the other battle-stage accesses use the DuelState members. Same bits as those members. */
 struct DuelStateBattleWord {
     u32 unk0_0:9;                   /* +0x1B14 bits 0-8: unk1B14_0, interruptActive, unk1B14_2 */
     u32 battleStage:8;              /* bits 9-16: enum BattleStage */
@@ -355,6 +373,7 @@ STATIC_ASSERT(OFFSET_OF(struct DuelState, unk1B44) == 0x1B44, DuelStateUnk1B44);
 STATIC_ASSERT(OFFSET_OF(struct DuelState, promptArgs) == 0x1B52, DuelStatePromptArgs);
 STATIC_ASSERT(OFFSET_OF(struct DuelState, promptStep) == 0x1B62, DuelStatePromptStep);
 STATIC_ASSERT(OFFSET_OF(struct DuelState, promptResult) == 0x1B64, DuelStatePromptResult);
+STATIC_ASSERT(OFFSET_OF(struct DuelState, promptResult2) == 0x1B66, DuelStatePromptResult2);
 STATIC_ASSERT(sizeof(struct DuelStateBattleWord) == 4, DuelStateBattleWordSize);
 STATIC_ASSERT(sizeof(struct DuelZonesPlayer) == 0xD64, DuelZonesPlayerSize);
 STATIC_ASSERT(sizeof(struct ZoneCardStats) == 0xC, ZoneCardStatsSize);
@@ -383,14 +402,15 @@ extern struct DuelCard gDuelDeckP1[80];         /* 0x0201A80C = gDuelPlayers[1].
 /*
  * Alias symbols. Some units reach single fields of gDuel through address-suffixed symbols (declared
  * locally, with the type the matched code needs): gUnk_0201A04A = gDuelPlayers[1].handCount,
- * gUnk_0201ADAC / gUnk_0201ADAD = the rule flags at +0x1ACC / +0x1ACD, gUnk_0201ADF2 = +0x1B12
- * (turnPlayer), gUnk_0201ADF6 = battleStep (+0x1B16), gUnk_0201AE0C = cardMenu, gUnk_0201AE42 =
- * promptStep, gUnk_0201AE44 = promptResult. Keep the access form a unit uses; only rename or annotate.
+ * gUnk_0201ADAD = the rule flags at +0x1ACD, gUnk_0201ADF2 = +0x1B12 (turnPlayer), gUnk_0201ADF6 =
+ * battleStep (+0x1B16), gUnk_0201AE44 = promptResult. Keep the access form a unit uses; only rename or
+ * annotate.
  */
 
 /* ROM data shared by several units. */
-extern const u16 gBounceScaleCurve[];           /* 0x081A43E4: [16] OBJ affine scale per step of a card
-                                                 * move: shrinks to half size with a small rebound */
+extern const u16 gBounceScaleCurve[];           /* 0x081A43E4: [32] OBJ affine scale 0x100 -> 0x80 -> 0xF7:
+                                                 * a card move uses the first 16 steps (shrinks to half size
+                                                 * with a small rebound), the Surrender banner all 32 */
 
 /* --- Card identity (card IDs unless the parameter says cardNo) --- */
 
@@ -412,9 +432,9 @@ u32 GetFieldMagicIndex(u16 cardNo);
 /* --- Card words and life points --- */
 
 /* *dst = *src for a duel card word. */
-void CopyDuelCard(u32 *dst, u32 *src);
+void CopyDuelCard(struct DuelCard *dst, const struct DuelCard *src);
 /* Swap two duel card words. */
-void SwapDuelCards(u32 *a, u32 *b);
+void SwapDuelCards(struct DuelCard *a, struct DuelCard *b);
 /* Clear the transient status bits 14-18, 20, 21, 23, 24 and 28 of a card word. */
 void ClearCardStatusFlags(struct DuelCardStatusBytes *card);
 /* ClearCardStatusFlags on the card in (player, zone). */

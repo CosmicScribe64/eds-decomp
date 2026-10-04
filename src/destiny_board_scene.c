@@ -424,8 +424,8 @@ void Scroller_StopAtEnds(struct Scroller *scroller)
  * largest (its matrix angle is 0x8000, half a turn). Cards in the back half (0x40 <= a < 0xC0), or all of them when blendMask has BLEND_CAROUSEL, go to
  * OAM layer 1 and are semi-transparent. As the opponent's card slides in (`lift`), the selected card rises by
  * lift and the others sink by 2 * lift. */
-void TurnOrder_DrawHandCarousel(u16 *tileNums, u8 *palNums, u8 angle, u8 selected, u8 lift, u16 blendMask,
-                                u8 spread)
+void TurnOrder_DrawHandCarousel(const u16 *tileNums, const u8 *palNums, u8 angle, u8 selected, u8 lift,
+                                u16 blendMask, u8 spread)
 {
     u8 liftY[3];
     u8 backAngle = 0xFF - spread;

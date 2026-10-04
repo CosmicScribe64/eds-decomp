@@ -200,9 +200,8 @@ extern const u8 gStrInvalidated[];  /* "Invalidated": ChainEntry.negated */
  * casts decide which register holds the 0xF constant. */
 #define PACK_LOC(loc) ((u8)((loc) & 0xF) | (u8)(((loc) >> 8) & 0xF) << 4)
 
-/* Font size and colour index packed for the sizeColor argument of the TextDraw* functions (text.h). */
-#define TEXT_SIZE(size) ((size) << 8)
-#define TEXT_SIZE_COLOR(size, color) (TEXT_SIZE(size) | (color))
+/* Font size and colour index packed for the sizeColor argument of the TextDraw* functions: TEXT_SIZE and
+ * TEXT_SIZE_COLOR come from text.h. */
 
 /* Return the first graveyard card with card number cardNo to the hand
  * (DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_HAND with its card word); 1 if there was one. */

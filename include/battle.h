@@ -18,7 +18,9 @@
 #include "battle_scene.h"   /* struct BattleScene (gBattle.scene) */
 
 /* One side of a battle (0xC bytes): gBattle.side[player], filled by CalcBattle. The bitfield container
- * types (u16 or u8) are the ones the code accesses them with. */
+ * types (u16 or u8) are the ones most of the code accesses them with. CalcBattle (campaign) only matches with
+ * u16 containers for destroyed, defensePos and effectDestroy too, and battle_phase1 reads and sets the flag
+ * byte as a byte; both keep a local view. */
 struct BattleSide {
     u16 slot:3;                 /* +0x0 bits 0-2: monster zone of this side's monster */
     u8 destroyed:1;             /* +0x0 bit 3: destroyed by the battle (the damage step clears the zone) */
@@ -37,6 +39,8 @@ struct BattleSide {
 /*
  * gBattle (0x02018450, 0x160 bytes, cleared by Duel_Setup): the current attack. The attacking monster is
  * (gDuel.turnPlayer, atkSlot) and the target (1 - turnPlayer, defSlot); defSlot 5 means a direct attack.
+ * The BattleStage_* handlers of battle_phase1 test and set the flags of the first word, the defender slot and
+ * each side's flag byte, damage and card ID as bytes, so that unit keeps a u8 view (BATTLE_BYTES).
  */
 struct Battle {
     u16 attacker:1;             /* +0x0 bit 0: attacking player */

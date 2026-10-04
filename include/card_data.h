@@ -77,21 +77,21 @@ extern const u16 gCardNumberToId[];
 
 /* ---- Card icons and frames ---- */
 
-/* 0x08198950: 16x16 icon palette pointers (const u8 *[11]): attribute 1-6, then 8 Magic, 9 Trap,
- * 10 Divine (0 and 7 NULL). */
-extern const u32 gCardIconPals[];
+/* 0x08198950: 16x16 icon palettes, 11 pointers: attribute 1-6, then 8 Magic, 9 Trap, 10 Divine (0 and 7
+ * NULL). */
+extern const u8 *const gCardIconPals[];
 
-/* 0x0819897C: 16x16 4bpp icon tile pointers (const u8 *[11]), same indexing as gCardIconPals. */
-extern const u32 gCardIconGfx[];
+/* 0x0819897C: 16x16 4bpp icon tiles, 11 pointers, same indexing as gCardIconPals. */
+extern const u8 *const gCardIconGfx[];
 
-/* 0x081989A8: image-pack pointers [10]: 0 none, 1-6 Light..Wind, 7 Trap, 8 Magic, 9 Divine. */
-extern const u32 gAttributeIconImages[];
+/* 0x081989A8: image packs (include/bg.h) [10]: 0 none, 1-6 Light..Wind, 7 Trap, 8 Magic, 9 Divine. */
+extern const u16 *const gAttributeIconImages[];
 
-/* 0x081989D0: image-pack pointers [7] indexed by enum SpellSubtype (0 none; 3 is the equip cross). */
-extern const u32 gSpellSubtypeIconImages[];
+/* 0x081989D0: image packs [7] indexed by enum SpellSubtype (0 none; 3 is the equip cross). */
+extern const u16 *const gSpellSubtypeIconImages[];
 
-/* 0x081989EC: image-pack pointers indexed by enum CardType 1-20 (1 = Dragon); 0 and 21-24 NULL. */
-extern const u32 gMonsterTypeIconImages[];
+/* 0x081989EC: image packs indexed by enum CardType 1-20 (1 = Dragon); 0 and 21-24 NULL. */
+extern const u16 *const gMonsterTypeIconImages[];
 
 /* 0x0863840C: OBJ palette of the small stat digits and ATK/DEF labels (the battle scene loads it to OBJ
  * palette 2). */
@@ -160,7 +160,7 @@ extern const u8 gCardFrameTicketGfx[];  /* 0x08633BF0: Ticket (type 23) */
  *   gUnk_08624758   gCardNumberToId[CARD_DARK_SAGE]                     effect_resolve8
  *   gUnk_08624768   gCardNumberToId[CARD_1210] (0 in EDS)               collection
  *   gUnk_086247AA   gCardNumberToId[CARD_1243] (0 in EDS)               battle_phase1
- *   gUnk_086247B6   gCardNumberToId[1249] (0 in EDS)                    collection
+ *   gUnk_086247B6   gCardNumberToId[CARD_1249] (0 in EDS)               collection
  *   gUnk_086247C8   gCardNumberToId[CARD_1258] (0 in EDS)               effect_resolve9, effect_resolve10
  *   gUnk_08624848   gCardNumberToId[CARD_1322] (0 in EDS)               battle_phase3
  *   gUnk_0862486C   gCardNumberToId[CARD_1340] (0 in EDS)               battle_phase3

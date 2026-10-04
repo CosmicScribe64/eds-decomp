@@ -134,8 +134,7 @@ typedef char ai_h_check_attack_plan_size[sizeof(struct AttackPlan) == 0x8 ? 1 : 
 typedef char ai_h_check_attack_plan_damage[(u32)&((struct AttackPlan *)0)->damage == 0x4 ? 1 : -1];
 
 /* Counters of one simulated battle phase, the halfword at gAiWork + 0x1B20 (struct AiWork declares the
- * same bits inline). ai_summon reads parts of it through byte-wide bitfield views (the alias symbols
- * gUnk_02017A20 / gUnk_02017A21); those views stay local to that unit because they change the code. */
+ * same bits inline; ai_summon uses those members). */
 struct AiSimResult {
     u16 simAttackersLost:3;     /* bits 0-2: CPU monsters destroyed in AiSimBattlePhase */
     u16 simTargetsDestroyed:3;  /* bits 3-5: human monsters destroyed in AiSimBattlePhase */
@@ -145,9 +144,8 @@ struct AiSimResult {
 };
 
 /* CPU work area, gAiWork (0x02015F00, 0x1B28 bytes; AiStepStartMainPhase clears it every main phase).
- * Some units reach parts of it through address-suffixed alias symbols (gUnk_02015F0C = &bestAttack,
- * gUnk_02017A20 / gUnk_02017A21 = the sim counters at +0x1B20 / +0x1B21) or integer addresses
- * (0x02015F14 = duelBackup, 0x02017A22 = listPick); those access forms are matching choices and stay. */
+ * Some units reach parts of it through integer addresses (0x02015F14 = duelBackup in ai_picks' DMA copies) or
+ * a byte pointer plus an offset (+0x1B24 in ai_strategy); those access forms are matching choices and stay. */
 struct AiWork {
     u8 unk0[0xC];                   /* +0x0000: not used by the AI */
     struct AttackPlan bestAttack;   /* +0x000C: plan chosen by AiChooseAttack (outside duelBackup, so it
@@ -283,7 +281,7 @@ int AiRiskSetCounter(u16 counterNo);
 /* 1 if the human's monsters threaten the CPU's LP or outclass its strongest monster. */
 int AiIsOpponentThreatening(void);
 /* Should the CPU activate the set card described by entry (a response window)? Decided per card number; 0
- * for NULL. */
+ * for NULL. duel_response's CPU search passes a second argument (0) through a local two-parameter view. */
 int AiShouldActivateSetCard(struct ChainEntry *entry);
 /* Activate the CPU's first set, activatable copy of card number `number` in answer to the same event as
  * entry; 1 if found. */
@@ -367,6 +365,15 @@ int AiPickStrongestHandMonster(struct DuelPlayer *players, int player);
 /* Index of the human's hand card the CPU picks: the first one in gAiHandPickPriority order, else a random
  * one. */
 int AiPickOpponentHandCard(void);
+
+/* Card numbers of the Magic/Trap cards the CPU values most (AiPickCardListEntry): Raigeki, Dark Hole, Change
+ * of Heart, Pot of Greed, Harpie's Feather Duster, Monster Reborn, Snatch Steal, Graceful Charity, Mirror
+ * Force, Magic Jammer, Seven Tools of the Bandit, Swords of Revealing Light, Heavy Storm. */
+#define AI_POWER_CARD_COUNT         13
+extern const u16 gAiPowerCards[];               /* 0x0819D2FC: [AI_POWER_CARD_COUNT] */
+/* Card numbers in the order the CPU takes cards from the human's hand (AiPickOpponentHandCard). */
+#define AI_HAND_PICK_PRIORITY_COUNT 26
+extern const u16 gAiHandPickPriority[];         /* 0x0819D316: [AI_HAND_PICK_PRIORITY_COUNT] */
 /* Index of player's first hand card with card number (u16)number, or -1 (the AI's own copy of
  * FindHandCardByNumber). */
 int AiFindHandCardByNumber(int player, int number);

@@ -108,7 +108,7 @@ enum CoinLaunchMode {
     COIN_LAUNCH_STAGGERED = 1   /* one coin every 16 frames after a wait (CoinToss_RunStaggered) */
 };
 
-/* One coin of the toss (12 bytes; struct TossSlot in duel_field_view.c and coin_toss_scene.c). */
+/* One coin of the toss (12 bytes). */
 struct Coin {
     u8 spinTimer;           /* +0x0: frames until the next spin frame (reload 3) */
     u8 frame;               /* +0x1: spin frame 0-7; after landing the face (enum CoinFaceFrame) */
@@ -294,8 +294,8 @@ enum DestinyBoardSceneStep {
 
 /* gSceneWork.u.destinyBoard.animPhase in DestinyBoardScene_Update (medium confidence). */
 enum DestinyBoardAnimPhase {
-    DESTINY_PHASE_ANIM0 = 0,    /* anims[0] plays, then anims[1] */
-    DESTINY_PHASE_ANIM1 = 1,    /* anims[3] */
+    DESTINY_PHASE_ANIM0 = 0,    /* anims[0] plays; anims[1] starts when it ends */
+    DESTINY_PHASE_ANIM1 = 1,    /* anims[1] plays; anims[3] and the pause start when it ends */
     DESTINY_PHASE_PAUSE = 2,    /* 30 frames */
     DESTINY_PHASE_LETTERS = 3   /* the F-I-N-A-L letters fly off */
 };

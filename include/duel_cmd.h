@@ -89,6 +89,13 @@ extern const u16 gLpDigitsGfx[];            /* 16x16 4bpp digit sprites, four co
 extern const u8 gDuelBannerPal[];           /* 16-colour OBJ palette shared by the duel banners */
 extern const u8 gSmokePuffAnim[];           /* smoke-puff sprite animation of a card set face down */
 
+/* The VRAM slot of the duel banners (Surrender, Just a moment, Chain, Start Duel, the phase and attack banners):
+ * gDuelBannerPal goes to OBJ palette 15 (0x050003E0), the banner tiles to OBJ tile 0x364 (0x06016C80). The units
+ * spell the addresses out in their matched forms; these name the slot. */
+#define DUEL_BANNER_PAL_SLOT        15
+#define DUEL_BANNER_OBJ_TILE        0x364
+#define DUEL_BANNER_ATTR2           ((DUEL_BANNER_PAL_SLOT << 12) | DUEL_BANNER_OBJ_TILE)  /* 0xF364 */
+
 /* Queue and runner */
 /* Queue a command; arg4 and arg6 are truncated to u16 inside. Callers that pass through a u16 view keep it. */
 void DuelCmd_Push(u16 cmd, u16 arg2, int arg4, int arg6);

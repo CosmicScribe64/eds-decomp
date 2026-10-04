@@ -154,14 +154,6 @@ extern const s32 gCardListViewCursorSlide[][4];
 #define ZONE_FLAGS(zone) (((u8 *)(zone))[6])
 #define ZONE_FLAG_DEFENSE 1
 
-/* gCardListView.cursorMoveDir, and the length of the cursor-box slide (cursorMoveTimer counts it down). */
-enum CardListCursorMove {
-    CARDLIST_CURSOR_IDLE = 0,
-    CARDLIST_CURSOR_UP = 1,
-    CARDLIST_CURSOR_DOWN = 2,
-};
-#define CARDLIST_CURSOR_SLIDE_FRAMES 4
-
 /* Player and zone of a packed u16 location (DUEL_LOC: zone << 8 | player), such as the `pos` of the target
  * checks and a zone link. */
 #define LOC_PLAYER(loc) ((u8)(loc))

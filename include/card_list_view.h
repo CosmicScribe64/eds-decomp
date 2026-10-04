@@ -10,13 +10,13 @@
  * Wiki: wiki/functions/turn-order-steps-c.md, wiki/functions/card-list-viewer-c.md.
  *
  * Matching notes for units that migrate to this header:
- *  - About 20 units declare gCardListView with their own local struct (ListView, SelBlk, PickCursor, ...); the
- *    viewer's own unit declares cards[] as u32[0xC0], covering sources[] too. Keep a local view where the
- *    canonical one changes the code.
+ *  - About 20 units declare gCardListView with their own local struct (ListView, SelBlk, PickCursor, ...); keep a
+ *    local view where the canonical one changes the code. card_list_viewer itself uses struct CardListView.
  *  - gCardListViewCards is a second symbol for gCardListView.cards (0x0201D81C); units read it as u32[], u16[] or
  *    local structs. Keep each unit's access form.
- *  - CardListView_Open is called with u16/u32 views of its parameters and CardListView_DrawButtons with an int
- *    mask; those units keep a commented local alias prototype (build/readability/proto_mismatches.txt).
+ *  - CardListView_Open is called with u16/u32 views of its parameters; those units keep a commented local alias
+ *    prototype (build/readability/proto_mismatches.txt). CardListView_DrawButtons matches through the header
+ *    prototype in card_list_viewer.
  */
 
 #include "global.h"
@@ -55,6 +55,18 @@ enum CardListViewButton {
     CARDLIST_BUTTON_ARRANGE = 2,            /* only plays a sound */
     CARDLIST_BUTTON_DECIDE = 3,             /* target lists */
 };
+
+/* gCardListView.cursorMoveDir, and the length of the cursor-box slide (cursorMoveTimer counts it down). */
+enum CardListCursorMove {
+    CARDLIST_CURSOR_IDLE = 0,
+    CARDLIST_CURSOR_UP = 1,
+    CARDLIST_CURSOR_DOWN = 2,
+};
+#define CARDLIST_CURSOR_SLIDE_FRAMES 4
+
+/* The area argument of CardListView_Open for a list of effect targets (CollectEffectTargets of cardNumber)
+ * instead of a pile. */
+#define CARDLIST_AREA_EFFECT_TARGETS (-1)
 
 /* Where an effect target comes from (gCardListView.sources[], written by the effect target collector). These are
    masks, not the viewer's area numbers 12-15. */
@@ -103,9 +115,16 @@ typedef char card_list_view_h_check_count[(u32)&((struct CardListView *)0)->coun
 extern struct CardListView gCardListView;          /* 0x0201D810 */
 extern struct DuelCard gCardListViewCards[0x80];   /* 0x0201D81C: the same memory as gCardListView.cards */
 
+/* 0x0819A7B8: the viewer's steps (enum CardListViewStep), NULL-terminated. */
+extern u16 (*const gCardListViewSteps[])(void);
+/* 0x0819A788: BG1 scroll offsets of the cursor-box slide, [cursorMoveDir][cursorMoveTimer]: up 15, 13, 10, 5;
+ * down -15, -13, -10, -5 (row 0 unused). */
+extern const s32 gCardListViewCursorSlide[][4];
+
 /* Opening and running the viewer. */
-void CardListView_Open(int player, int area, int cardNumber, int arg); /* area 12-15 = a pile (enum DuelArea), -1 =
-                                                      effect targets collected for card number cardNumber */
+void CardListView_Open(int player, int area, int cardNumber, int arg); /* area 12-15 = a pile (enum DuelArea),
+                                                      CARDLIST_AREA_EFFECT_TARGETS = the effect targets collected
+                                                      for card number cardNumber */
 u16 CardListView_Run(void);                         /* per frame while active: update, then the current step */
 u16 CardListView_InitScreen(void);                  /* step 0: screen setup state machine, 1 when faded in */
 u16 CardListView_HandleInput(void);                 /* step 1: cursor, buttons, Card View; 1 = close */

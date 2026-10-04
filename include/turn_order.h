@@ -14,6 +14,7 @@
 
 #include "global.h"
 
+struct AnimSeq;
 struct Scroller;
 struct ChoiceBob;
 
@@ -59,13 +60,16 @@ enum TurnOrderBlendBit {
 
 /* Link handshake message ids (LinkHandshakeStep) exchanged during the turn-order phases. */
 enum TurnOrderLinkMsg {
-    LINKMSG_RPS_HAND = 0x51,    /* the player's hand (enum RpsHand) */
+    LINKMSG_RPS_HAND = 0x51,    /* the player's hand (enum RpsHand); TurnOrder_ChoiceMain also sends its turn
+                                 * choice with this id (only reachable from TurnOrder_RunPlayerChoiceLink, which
+                                 * has no callers) */
     LINKMSG_TURN_CHOICE = 0x52, /* the winner's choice (enum TurnChoice) */
     LINKMSG_RPS_REMATCH = 0x53, /* ready for another round after a draw */
 };
 
-/* TurnOrderSceneWork.phase: index of the phase table run by TurnOrder_RpsMain (the choice-only table
- * gTurnOrderChoiceSubsteps puts TurnOrder_ShowChoice at index 3). */
+/* TurnOrderSceneWork.phase: index of the phase table run by TurnOrder_RpsMain. The choice-only table
+ * gTurnOrderChoiceSubsteps puts TurnOrder_ShowChoice at index 3, so from 3 on its values name other phases
+ * (turn_order_steps numbers them locally). */
 enum TurnOrderPhase {
     TURN_ORDER_CHOOSE_HAND = 0,
     TURN_ORDER_SHOW_RESULT = 1,
@@ -87,8 +91,15 @@ enum TurnOrderScroller {
 extern const u16 gHandCardTileNums[];           /* 0x080826E0: {0x200, 0x204, 0x208} rock, scissors, paper cards */
 extern const u16 gTurnChoiceBannerTileNums[];   /* 0x080826E6: {0x300, 0x308} "FIRST to go", "SECOND to go" */
 extern const u16 gDuelLogoTileNums[];           /* 0x08082706: {0x210, 0x218, 0x310} the three 64x64 DUEL pieces */
-/* 0x0819A780: NULL-terminated AnimSeq * list: the flashing link "Wait" sign. */
-extern const u8 gTurnOrderWaitAnimList[];
+extern const u8 gHandCarouselStops[];           /* 0x080826DC: {0, 86, 171} carousel angles at which rock, scissors
+                                                 * and paper face the player */
+extern const u8 gHandCardPalNums[];             /* 0x08082703: {0, 1, 2} OBJ palette of each hand card */
+extern const u16 gTurnOrderBannerTileNums[];    /* 0x080826EA: [5][2] the two 64x32 halves (OBJ tiles) of each
+                                                 * banner (enum TurnOrderBanner) */
+extern const u8 gTurnOrderBannerPalNums[];      /* 0x080826FE: {4, 5, 6, 8, 7} OBJ palette of each banner (8 is never
+                                                 * loaded: entry 3 is unused) */
+/* 0x0819A780: NULL-terminated AnimSeq * list (AnimBlockInit): the flashing link "Wait" sign. */
+extern struct AnimSeq *gTurnOrderWaitAnimList[];
 
 /* 240x160 Mode-4 bitmap of the hieroglyph corridor (backdrop of the coin toss, dice and turn-order
  * screens) and its 256-colour palette. */
@@ -197,8 +208,8 @@ void Scroller_SnapToStop(struct Scroller *scroller);
 void Scroller_StopAtEnds(struct Scroller *scroller);
 /* Draws the three hand cards on a ring seen from the side; the selected card rises and the others sink as
  * the opponent's card slides in (`lift`). */
-void TurnOrder_DrawHandCarousel(u16 *tileNums, u8 *palNums, u8 angle, u8 selected, u8 lift, u16 blendMask,
-                                u8 spread);
+void TurnOrder_DrawHandCarousel(const u16 *tileNums, const u8 *palNums, u8 angle, u8 selected, u8 lift,
+                                u16 blendMask, u8 spread);
 /* Draws a 128x32 banner (enum TurnOrderBanner) from its two 64x32 halves. */
 void TurnOrder_DrawBanner(u8 banner, u16 blendMask);
 /* Draws the opponent's card for `hand`, `slide` steps into the screen. */

@@ -78,8 +78,8 @@ struct BustupTextBox {
 /* Bust-up module state at 0x02013DE0 (0x1380 bytes), cleared by Bustup_InitState. */
 struct BustupState {
     u8 unk0[0x810];             /* +0x0000: only touched by the clear */
-    u8 unk810[20][0x14];        /* +0x0810: 20 AnimState-sized entries; only byte +0x12 of each is set to
-                                 * 0xFF by Bustup_ResetBlink, and nothing reads them */
+    struct AnimState unk810[20]; /* +0x0810: only unk12 of each is set to 0xFF (Bustup_ResetBlink), and nothing
+                                 * reads them; Bustup_ResetBlink matches only with this array type */
     u8 pad9A0[4];
     u8 animCount:3;             /* +0x09A4: animation tracks built by the scene loaders (AnimBlockInit) */
     u8 pad9A5;
@@ -157,7 +157,8 @@ enum BustupTextState {
     TEXT_STATE_NEXT_PAGE = 3,           /* `$p`: page flip */
 };
 
-/* The same states under the names bustup_runner used (Bustup_Update and its text box switch). */
+/* Unused duplicate of enum BustupTextState (bustup_runner now uses the TEXT_STATE_* names). The header plan
+ * still lists it (types.json); delete it together with that entry. */
 enum TextBoxState {
     TEXTBOX_BOX_FULL = -3,
     TEXTBOX_END = -2,
@@ -201,8 +202,8 @@ u16 GetDialogueSpeaker(u32 index);
 /* Selects the dialogue of an event: gMain.dialogueIndex, gMain.speaker, gMain.seqIndex1 = 0. Does nothing
  * if the event has no record. */
 void StartDialogue(u16 eventId);
-/* The scene set of a speaker (a const struct SceneSet *); unknown ids and 1 give Yugi's set 6. */
-const void *GetSceneSet(u32 charId);
+/* The scene set of a speaker (&gSceneSets[n]); unknown ids and 1 give Yugi's set 6. */
+const struct SceneSet *GetSceneSet(u32 charId);
 /* Full (full != 0, `$q`) or short (`$Q`) name of character `id` from gDuelists; entry 0 (" ") if absent. */
 char *GetDuelistName(u32 id, u16 full);
 
@@ -276,7 +277,7 @@ void DrawGlyph8bpp(u8 *dest, u32 color, u16 glyph);
 void AnimStateStart(struct AnimState *st);
 /* Counts gBustup.blinkTimer down; when it wraps, loads the next gBlinkIntervals entry and restarts `eyes`. */
 void Bustup_TickBlink(struct AnimState *eyes);
-/* blinkTimer = blinkIndex = 0 (blink on the next tick); sets byte +0x12 of the gBustup.unk810 entries. */
+/* blinkTimer = blinkIndex = 0 (blink on the next tick); sets unk12 of the gBustup.unk810 entries. */
 void Bustup_ResetBlink(void);
 /* Byte-identical, uncalled copy of Bustup_ResetBlink. */
 void Bustup_ResetBlinkUnused(void);

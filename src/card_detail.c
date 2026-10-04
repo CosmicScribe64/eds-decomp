@@ -584,15 +584,15 @@ u32 IsSameCardName(u32 cardId1, u32 cardId2)
 }
 
 /* *dst = *src for a card word. */
-void CopyDuelCard(u32 *dst, u32 *src)
+void CopyDuelCard(struct DuelCard *dst, const struct DuelCard *src)
 {
     *dst = *src;
 }
 
 /* Swaps two card words. */
-void SwapDuelCards(u32 *a, u32 *b)
+void SwapDuelCards(struct DuelCard *a, struct DuelCard *b)
 {
-    u32 tmp = *a;
+    struct DuelCard tmp = *a;
     *a = *b;
     *b = tmp;
 }

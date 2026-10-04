@@ -28,6 +28,7 @@
 #define VRAM        0x06000000  /* 96 KiB video RAM */
 #define BG_VRAM     0x06000000
 #define OBJ_VRAM0   0x06010000  /* OBJ tiles (tile modes) */
+#define OBJ_VRAM1   0x06014000  /* OBJ tiles 0x200-0x3FF: the only OBJ tiles in the bitmap modes 3-5 */
 #define OAM         0x07000000  /* 128 OAM entries (struct OamEntry) */
 #define SRAM        0x0E000000  /* 32 KiB battery SRAM (save game) */
 
@@ -40,6 +41,11 @@
 
 #define BG_CHAR_ADDR(n)   (BG_VRAM + BG_CHAR_SIZE * (n))
 #define BG_SCREEN_ADDR(n) (BG_VRAM + BG_SCREEN_SIZE * (n))
+
+/* Mode 4: two 240x160 8bpp frames; DISPCNT_FRAME_SELECT shows the second. */
+#define MODE4_FRAME0        (VRAM)
+#define MODE4_FRAME1        (VRAM + 0xA000)
+#define MODE4_FRAME_SIZE    (240 * 160)
 
 /* BIOS work RAM at the top of IWRAM: the IRQ handler address (GameInit points it at gMain.intrMainBuf). */
 #define INTR_VECTOR (*(void **)0x03007FFC)
@@ -73,12 +79,20 @@
 #define REG_BG2PB     REG16(0x022)
 #define REG_BG2PC     REG16(0x024)
 #define REG_BG2PD     REG16(0x026)
+#define REG_BG2X_L    REG16(0x028)  /* 16-bit halves of the BG2/BG3 reference points (written as halfwords */
+#define REG_BG2X_H    REG16(0x02A)  /* by the bust-up and Destiny Board scenes); the REG32 names come last */
+#define REG_BG2Y_L    REG16(0x02C)  /* so that tools/xref.py names 0x028 / 0x02C after them */
+#define REG_BG2Y_H    REG16(0x02E)
 #define REG_BG2X      REG32(0x028)
 #define REG_BG2Y      REG32(0x02C)
 #define REG_BG3PA     REG16(0x030)
 #define REG_BG3PB     REG16(0x032)
 #define REG_BG3PC     REG16(0x034)
 #define REG_BG3PD     REG16(0x036)
+#define REG_BG3X_L    REG16(0x038)
+#define REG_BG3X_H    REG16(0x03A)
+#define REG_BG3Y_L    REG16(0x03C)
+#define REG_BG3Y_H    REG16(0x03E)
 #define REG_BG3X      REG32(0x038)
 #define REG_BG3Y      REG32(0x03C)
 #define REG_WIN0H     REG16(0x040)
@@ -176,6 +190,7 @@
 #define DISPCNT_MODE_3          0x0003
 #define DISPCNT_MODE_4          0x0004
 #define DISPCNT_MODE_5          0x0005
+#define DISPCNT_FRAME_SELECT    0x0010  /* modes 4/5: display frame 1 (VRAM + 0xA000) */
 #define DISPCNT_HBLANK_INTERVAL 0x0020  /* OAM accessible during HBlank */
 #define DISPCNT_OBJ_1D_MAP      0x0040
 #define DISPCNT_FORCED_BLANK    0x0080
@@ -247,8 +262,10 @@
 #define BLDCNT_TGT2_BD          0x2000
 #define BLDCNT_TGT2_ALL         0x3F00
 
-/* BLDALPHA: EVA (1st target weight) bits 0-4, EVB (2nd target weight) bits 8-12, each 0..16 */
-#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
+/* BLDALPHA: EVA (1st target weight) bits 0-4, EVB (2nd target weight) bits 8-12, each 0..16. The operand
+ * order is the ROM's for variable weights (eva first); with constants either order folds to the same value.
+ * duel_cmd_screen narrows each weight to u8 as well and keeps its own macro. */
+#define BLDALPHA_BLEND(eva, evb) ((eva) | ((evb) << 8))
 
 /* DMA control (CNT_H) */
 #define DMA_DEST_INC            0x0000
@@ -400,5 +417,19 @@ void CpuSet(const void *src, void *dest, u32 control);
 void CpuFastSet(const void *src, void *dest, u32 control);
 /* SWI 0x06: signed division, returns num / denom (used by the 8.8 fixed-point helpers in util.h). */
 s32 Div(s32 num, s32 denom);
+
+/* Fill size bytes at dest with value through a CpuSet fill, as the SDK macros do. The source has to be a
+ * volatile stack temporary: with a plain local the compiler moves the store of the value ahead of the
+ * address computation (duel_field_view checked this for CpuFill16). */
+#define CpuFill16(value, dest, size)                                \
+    {                                                               \
+        vu16 fill_ = (value);                                       \
+        CpuSet((void *)&fill_, (dest), CPU_SET_SRC_FIXED | (size) / 2); \
+    }
+#define CpuFill32(value, dest, size)                                \
+    {                                                               \
+        vu32 fill_ = (value);                                       \
+        CpuSet((void *)&fill_, (dest), CPU_SET_SRC_FIXED | CPU_SET_32BIT | (size) / 4); \
+    }
 
 #endif /* GUARD_GBA_H */

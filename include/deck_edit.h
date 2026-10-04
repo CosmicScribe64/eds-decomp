@@ -286,7 +286,7 @@ struct DeckEdit {
                                        passed as a trailing argument that some drawers ignore. Alias gUnk_0201E160 */
     struct DeckEditListRow lists[2]; /* +0x0644: card IDs [row]; row 0 = full lists, row 1 = filtered/sorted copy.
                                        Read through DeckEdit_GetListCard / DeckEdit_SetListCard */
-    u16 listCount[2][3];            /* +0x1494: [row][list] number of cards. Alias gUnk_0201EFB4 */
+    u16 listCount[2][3];            /* +0x1494: [row][list] number of cards */
     u8 listRow[3];                  /* +0x14A0: row shown per list: 0 full, 1 filtered/sorted. Alias gUnk_0201EFC0 */
     u8 unk14A3;
     u16 sortScratch[(0x1710 - 0x14A4) / 2]; /* +0x14A4: non-monsters held back during a sorted 'All' filter; the

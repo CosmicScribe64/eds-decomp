@@ -84,13 +84,17 @@ def main():
             changed += 1
 
     # RAM / absolute symbols need a symbols.ld entry
+    fn_addrs = set(fnames)
     syms = open('symbols.ld').read()
     add = []
     for old, new in pairs:
         m = re.search(r'_([0-9A-F]{8})$', old)
-        # Only RAM/IO symbols need one: ROM functions and data are defined by their C, asm or data source
-        # (an absolute ROM entry would override that definition and lose a Thumb function's bit 0).
-        if m and int(m.group(1), 16) < 0x08000000 and new not in defined \
+        # A symbol needs an absolute entry only when nothing defines it: RAM/IO symbols, and ROM aliases that are
+        # neither a function (defined by its C/asm; an absolute entry would also lose a Thumb function's bit 0)
+        # nor a label in asm/data .s files (e.g. an alias into the middle of a ROM table).
+        # Reserved names (__udivsi3 and other libgcc/libc symbols) come from the libraries: an absolute entry would
+        # keep the library object out of the link.
+        if m and new not in defined and int(m.group(1), 16) not in fn_addrs and not new.startswith('__') \
                 and not re.search(rf'^\s*{re.escape(new)}\s*=', syms, re.M):
             add.append(f'{new} = 0x{m.group(1)};')
     if add:

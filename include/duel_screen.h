@@ -464,6 +464,19 @@ void DrawLpChangeAmount(u32 x, u32 y, s32 value, u32 colorSet);
 /* The card image (104x144) is drawn into OBJ VRAM in 2D mapping as 8bpp tiles: LoadCardFrame +
  * LoadCardPicture + DrawCardInfo, after UnloadDuelUiGfx. */
 
+/* The card grid of the card presentations (duel_cmd_presentation, duel_cmd_turn): 4 columns x 5 rows of 32x32
+ * sprites, top-left at (0x44, 2), so the card is centred on (CARD_CENTER_X, CARD_CENTER_Y). CARD_GRID_TILE is
+ * the tile argument of the AddSprite8bpp* calls for cell (row, col) of the card image. */
+#define CARD_GRID_X(col)        ((col) * 32 + 0x44)
+#define CARD_GRID_Y(row)        ((row) * 32 + 2)
+#define CARD_GRID_TILE(row, col) ((u16)((col) * 4) + ((u16)((row) * 2 + 1) << 5))
+#define CARD_CENTER_X           0x68
+#define CARD_CENTER_Y           0x40
+/* BLDCNT values of the presentations (gba.h names). Their BLDALPHA weights are BLDALPHA_BLEND(eva, evb). */
+#define BLEND_CARD_OVER_BG      (BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 \
+                                 | BLDCNT_TGT2_BG3)                     /* 0x0F40: card alpha-blended over BG0-3 */
+#define BRIGHTEN_SPRITES        (BLDCNT_TGT1_OBJ | BLDCNT_EFFECT_LIGHTEN | BLDCNT_TGT2_OBJ) /* 0x1090 */
+
 /* Writes one 8bpp pixel of the canvas (read-modify-write of its word). */
 void PlotCardImagePixel(u32 x, u32 y, u32 color);
 /* Draws an 8x8 4bpp tile at yx (y << 16 | x) with colours pal + palBase (colour 0 transparent); nothing when
@@ -486,9 +499,10 @@ const u8 *GetCardIconGfx(u16 cardId);
 
 /* ---- Chain-list overlay (link_battle.c, duel_card_actions.c) ---- */
 
-/* Arms the chain-list overlay: chain = (struct ChainList *)list, header resolving = player & 1. The
- * definition takes the chain pointer as a u32. */
-void ChainListScreen_Start(u32 list, u16 player);
+/* Arms the chain-list overlay: chain = (struct ChainList *)list; the header shows resolving & 1 (duel_main
+ * passes 1 while the chain resolves, duel_setup 0 while it is built). The definition takes the chain pointer
+ * as a u32. */
+void ChainListScreen_Start(u32 list, u16 resolving);
 /* One frame of the overlay (enum ChainListScreenState); returns 1 when it has closed. */
 int ChainListScreen_Run(void);
 /* Adds the eight 32x16 sprites of the header text across the top of the screen. */

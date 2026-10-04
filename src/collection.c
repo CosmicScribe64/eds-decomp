@@ -734,9 +734,9 @@ void OffsetNonZeroPixelsAndCopy(u8 *src, u8 *dst, u16 n, u8 add) {
 }
 /* Copy a tile image: mode 0x100 is one flat block, mode 0x10 copies 16 rows of
  * 0x200 bytes into a 0x400-byte stride. */
-void CopyTileSheetTo2D(u8 *srcArg, u8 *dstArg, u16 mode) {
+void CopyTileSheetTo2D(const u8 *srcArg, u8 *dstArg, u16 mode) {
     u16 i;
-    u8 *src = srcArg;
+    const u8 *src = srcArg;
     u8 *dst = dstArg;
     if (mode != 0x10) {
         if (mode == 0x100)
@@ -749,9 +749,9 @@ void CopyTileSheetTo2D(u8 *srcArg, u8 *dstArg, u16 mode) {
         }
     }
 }
-void CopyTileSheetRowsTo2D(u8 *srcArg, u8 *dstArg, u16 mode, u8 rows) {
+void CopyTileSheetRowsTo2D(const u8 *srcArg, u8 *dstArg, u16 mode, u8 rows) {
     u16 i;
-    u8 *src = srcArg;
+    const u8 *src = srcArg;
     u8 *dst = dstArg;
     if (mode != 0x10) {
         if (mode == 0x100)
@@ -764,9 +764,9 @@ void CopyTileSheetRowsTo2D(u8 *srcArg, u8 *dstArg, u16 mode, u8 rows) {
         }
     }
 }
-void CopyTileRectTo2D(u8 *srcArg, u8 *dstArg, u16 a, u16 b, u16 c, u16 mode) {
+void CopyTileRectTo2D(const u8 *srcArg, u8 *dstArg, u16 a, u16 b, u16 c, u16 mode) {
     u16 i;
-    u8 *src = srcArg;
+    const u8 *src = srcArg;
     u8 *dst = dstArg;
     if (mode != 0x10) {
         if (mode == 0x100) {

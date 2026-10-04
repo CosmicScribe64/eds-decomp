@@ -30,7 +30,7 @@ struct ObjAffine; /* sprite.h */
  *     struct ImagePackCount colorCount;  u16 palette[colorCount.count];               BGR555
  *     struct ImagePackCount tileCount;   u8 tiles[tileCount.count][64];                [32] for 4bpp packs
  *     struct ImagePackCount cellCount;   struct ImagePackCell cells[cellCount.count];
- * The loaders take the pack as a u16 * and walk it section by section.
+ * The loaders take the pack as a const u16 * and walk it section by section.
  */
 struct ImagePackCount {
     u16 count;      /* +0x0: element count; the loaders read only this copy */
@@ -68,23 +68,23 @@ extern u8 gBgTileBuffer[0x1C00];
  * 4bpp packs: the entries are (tile + tileBase) | (palStart >> 4) << 12. */
 
 /* 8bpp image pack into gMain.bgMapBuffer[0]. */
-u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* 8bpp image pack into gMain.bgMapBuffer[1]; otherwise the same code as LoadBgImage. */
-u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* 4bpp image pack into gMain.bgMapBuffer[0]. */
-u16 LoadBgImage4bpp(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bpp(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* 4bpp image pack into gMain.bgMapBuffer[1]. */
-u16 LoadBgImage4bppMap1(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bppMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* 4bpp image pack into gMain.bgMapBuffer[map]. */
-u16 LoadBgImage4bppToMap(u32 map, u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bppToMap(u32 map, u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* 4bpp image pack: palette and tiles only, no map entries. */
-u16 LoadBgImage4bppGfx(u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bppGfx(u16 palStart, u16 tileBase, const u16 *pack);
 /* Unused. 4bpp pack into gMain.bgMapBuffer[1] with each pos taken minus the first cell's pos, so the first cell
  * lands at mapOffset. The packed subtraction makes a cell left of the first one borrow from y. */
-u16 LoadBgImage4bppMap1Rel(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bppMap1Rel(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 /* Unused. 4bpp pack into gMain.bgMapBuffer[4] with cell positions relative to the first cell; positions break
  * (u16 wrap) when a later cell has a smaller x than the first. */
-u16 LoadBgImage4bppMap4Rel(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack);
+u16 LoadBgImage4bppMap4Rel(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack);
 
 /* ---- Map buffers (gMain.bgMapBuffer) and video setup ---- */
 
@@ -118,9 +118,9 @@ void ClearMapRect(u16 *map, u8 w, u8 h);
 /* Unused. Writes ascending entries (tile & 0x3FF)++ | (pal & 0xF) << 12 into a w x h rectangle at dst. */
 void FillMapRectSeqPal(u16 *dst, u16 tile, u8 pal, u8 w, u8 h);
 /* Copies h rows of w entries from a packed w-wide source (u16 entries) into a 32-wide map. */
-void CopyMapRect(void *src, void *dst, u8 w, u8 h);
+void CopyMapRect(const void *src, void *dst, u8 w, u8 h);
 /* Unused. CopyMapRect with an explicit destination stride in entries. */
-void CopyMapRectStride(void *src, void *dst, u8 w, u8 h, u8 dstStride);
+void CopyMapRectStride(const void *src, void *dst, u8 w, u8 h, u8 dstStride);
 /* Copies a w x h block (source stride srcStride) adding pal << 12 + tileHi << 8 to every entry. */
 void CopyMapRectAddOffset(u16 *src, u16 *dst, u8 w, u8 h, u8 srcStride, u8 pal, u8 tileHi);
 /* Copies a w x h block keeping only the source tile number (& 0x3FF), ORed with pal << 12 | tileHi << 8. */
@@ -178,13 +178,13 @@ void DrawVramMapNumber3(u8 screenBlock, u16 digitTile, u8 x, u8 y, u16 num, u8 p
  * size bytes to dst with CpuFastSet. */
 void OffsetNonZeroPixelsAndCopy(u8 *buf, u8 *dst, u16 size, u8 add);
 /* Copies a 16 x 16-tile (128 x 128 px) sheet into a 32-tile-wide 2D OBJ layout (dst rows 0x400 bytes apart). */
-void CopyTileSheetTo2D(u8 *src, u8 *dst, u16 colors);
+void CopyTileSheetTo2D(const u8 *src, u8 *dst, u16 colors);
 /* CopyTileSheetTo2D for the first `rows` tile rows only. */
-void CopyTileSheetRowsTo2D(u8 *src, u8 *dst, u16 colors, u8 rows);
+void CopyTileSheetRowsTo2D(const u8 *src, u8 *dst, u16 colors, u8 rows);
 /* Copies a width x height pixel image (row-major tile rows) to tile `tileIndex` of a 32-tile-wide 2D layout. */
-void CopyTileRectTo2D(u8 *src, u8 *dst, u16 tileIndex, u16 width, u16 height, u16 colors);
+void CopyTileRectTo2D(const u8 *src, u8 *dst, u16 tileIndex, u16 width, u16 height, u16 colors);
 /* Copies rowCount rows of tilesPerRow tiles; source rows are 0x200 bytes apart, destination rows 0x400. */
-void CopyTileRows(u8 *src, u8 *dst, u16 colors, u8 rowCount, u8 tilesPerRow);
+void CopyTileRows(const u8 *src, u8 *dst, u16 colors, u8 rowCount, u8 tilesPerRow);
 /* Okumura LZSS (N = 4096, F = 18, threshold 2) with a zero-filled ring at gScratchBuffer (0x02030000).
  * srcSize is the compressed size; the loop ends only when it reaches exactly 0. */
 void LZSSDecompress(u8 *src, u8 *dst, s32 srcSize);

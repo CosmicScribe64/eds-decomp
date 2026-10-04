@@ -98,7 +98,9 @@ struct AnimState {
     u16 y;                               /* +0x0A */
     u8 pieceCount;                       /* +0x0C: templates in the current step */
     u8 stepIdx;                          /* +0x0D: current step */
-    u8 active;                           /* +0x0E: enum AnimActive */
+    u8 active;                           /* +0x0E: enum AnimActive; some tests read it as a signed byte
+                                            (ldrsb): bustup_runner, destiny_board_scene and turn_order_steps
+                                            cast it to s8 */
     u8 timer;                            /* +0x0F: ticks left in the step; counts down through 0 */
     u8 layer;                            /* +0x10: OAM layer, 0x13 - index after AnimBlockInit; AnimBlockDraw
                                             uses its own layer argument instead */

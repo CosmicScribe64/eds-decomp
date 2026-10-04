@@ -437,7 +437,7 @@ void StartDialogue(u16 eventId)
 
 /* The scene set of a speaker (character id: enum DuelistId for 1-24; 32-39 are scene-only ids). Unknown
  * ids and Yugi give set 6. */
-const void *GetSceneSet(u32 charId)
+const struct SceneSet *GetSceneSet(u32 charId)
 {
     switch (charId) {
     case DUELIST_TEA:

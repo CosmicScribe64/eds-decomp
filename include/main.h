@@ -180,9 +180,8 @@ extern struct OamEntry gMain_oamBuffer[128];    /* 0x03004470 = gMain.oamBuffer 
 
 /*
  * Address-named views inside gMain that units declare locally with their own element types (u8[] or u16[]),
- * so they are not declared here: gUnk_0300045C = gMain.bgMapBuffer[0] (also gBgMaps), gUnk_03000C5C =
- * bgMapBuffer[1], gUnk_03001C5C = bgMapBuffer[3], gUnk_03002C5C = bgMapBuffer[5], gUnk_03004876 =
- * hblankScroll, gUnk_0300489E = frameCounter. Fold them into the field only where the code still matches.
+ * so they are not declared here: gUnk_0300045C = gMain.bgMapBuffer[0] (also gBgMaps) and gUnk_03001C5C =
+ * bgMapBuffer[3]. Fold them into the field only where the code still matches.
  */
 
 /* ------------------------------------------------------------------------------------------------------ */

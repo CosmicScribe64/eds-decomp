@@ -794,7 +794,7 @@ int EffectPrincessOfTsurugiResolve(struct ChainEntry *link)
  * 7 Completed has a second target, the chosen stat (enum SevenCompletedStat), stored as the zone's
  * declaredValue. Always returns 0.
  */
-u16 EffectEquipResolve(struct ChainEntry *link)
+u16 EffectEquipResolve(struct ChainEntry *link, struct ChainEntry *chainedTo)
 {
     int p = 1 & link->player;
     struct DuelZone *equip = ZONE_AT(p, link->zone);
@@ -822,12 +822,12 @@ u16 EffectEquipResolve(struct ChainEntry *link)
  *   EFFECT_STEP_3      pick the monster to tribute (EffectTributeTargetChainB) until done
  *   EFFECT_STEP_4      tribute it; on success return the Axe from the graveyard to the top of the deck
  */
-u16 EffectAxeOfDespairResolve(struct ChainEntry *link)
+u16 EffectAxeOfDespairResolve(struct ChainEntry *link, struct ChainEntry *chainedTo)
 {
     char text[0x100];
 
     if (link->kind != CHAIN_KIND_OFF_FIELD)
-        return EffectEquipResolve(link);
+        return EffectEquipResolve(link, chainedTo);
     switch (gChain.effectStep) {
     case EFFECT_STEP_START:
         if (link->player)
@@ -879,31 +879,13 @@ u16 EffectAxeOfDespairResolve(struct ChainEntry *link)
 
 /* Black Pendant. On the field: EffectEquipResolve. Sent to the graveyard: unless negated, the opponent
  * loses 500 LP. */
-u16 EffectBlackPendantResolve(struct ChainEntry *link)
+u16 EffectBlackPendantResolve(struct ChainEntry *link, struct ChainEntry *chainedTo)
 {
-    u8 byte2 = LINK_BYTE2(link);
-
-    /* FAKEMATCH: the empty asm clobbering r1 keeps byte +2 out of r1 (it goes to r3, as in the ROM). It
-     * stands in for the handler's second parameter, chainedTo, which the ROM keeps in r1 and passes on to
-     * EffectEquipResolve; effect_handlers.h declares this handler and EffectEquipResolve with one parameter
-     * (see build/readability/issues/effect_prepare3.md). */
-    __asm__("" : : : "r1");
-    if ((byte2 & BYTE2_KIND_MASK) != BYTE2_KIND_OFF_FIELD)
-        return EffectEquipResolve(link);
+    if (link->kind != CHAIN_KIND_OFF_FIELD)
+        return EffectEquipResolve(link, chainedTo);
     if (!link->negated)
         LoseLifePoints(1 - link->player, 500);
     return EFFECT_STEP_DONE;
-}
-
-/* The player bit (bit 0) of a link's byte +2. */
-static inline u32 PlayerBitFromByte2(u8 byte2)
-{
-    /* FAKEMATCH: the shifted value is pinned to r0 and kept by an empty asm input, so the ROM's
-     * lsl #31; lsr #31 is not turned into an and (see EffectHornOfLightResolve). */
-    register u32 shifted __asm__("r0") = (u32)byte2 << 31;
-
-    __asm__("" : : "r"(shifted));
-    return shifted >> 31;
 }
 
 /*
@@ -912,20 +894,15 @@ static inline u32 PlayerBitFromByte2(u8 byte2)
  *   EFFECT_STEP_START  less than 500 LP: done; else ask Yes/No
  *   EFFECT_STEP_2      Yes: pay 500 LP and return the card from the graveyard to the top of the deck; end
  */
-u16 EffectHornOfLightResolve(struct ChainEntry *link)
+u16 EffectHornOfLightResolve(struct ChainEntry *link, struct ChainEntry *chainedTo)
 {
     char text[0x100];
-    /* FAKEMATCH: byte +2 is pinned to r3 for the kind test and the first command, and PlayerBitFromByte2
-     * shifts it in r0. Both stand in for the second parameter, chainedTo, which the ROM keeps in r1 and
-     * passes on to EffectEquipResolve; with it this handler is plain C (see
-     * build/readability/issues/effect_prepare3.md). */
-    register u8 byte2 __asm__("r3") = LINK_BYTE2(link);
 
-    if ((byte2 & BYTE2_KIND_MASK) != BYTE2_KIND_OFF_FIELD)
-        return EffectEquipResolve(link);
+    if (link->kind != CHAIN_KIND_OFF_FIELD)
+        return EffectEquipResolve(link, chainedTo);
     switch (gChain.effectStep) {
     case EFFECT_STEP_START:
-        if (gDuelPlayers[PlayerBitFromByte2(byte2)].lifePoints < 500)
+        if (gDuelPlayers[link->player].lifePoints < 500)
             return EFFECT_STEP_DONE;
         FormatStr(text, gStrPayLpToReturnToDeckPrompt, (const char *)gCardNames + link->card * CARD_NAME_SIZE);
         TextBoxOpen(PROMPT_POS, PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
@@ -933,8 +910,7 @@ u16 EffectHornOfLightResolve(struct ChainEntry *link)
         return EFFECT_STEP_2;
     case EFFECT_STEP_2:
         if (gTextBox.result != 0) {
-            DuelCmd_Push(PLAYER_CMD(BYTE2_PLAYER_MASK & byte2, DUEL_CMD_LOSE_LP), 500, 1, 0);
-            /* link->player is read again from memory after the first call, as in the ROM. */
+            DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_LOSE_LP), 500, 1, 0);
             DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_TOP), link->card,
                          0, 0);
         }
@@ -945,24 +921,10 @@ u16 EffectHornOfLightResolve(struct ChainEntry *link)
 
 /* Horn of the Unicorn. On the field: EffectEquipResolve. Sent to the graveyard: it goes back on top of the
  * deck, without a prompt. */
-u16 EffectHornOfTheUnicornResolve(struct ChainEntry *link)
+u16 EffectHornOfTheUnicornResolve(struct ChainEntry *link, struct ChainEntry *chainedTo)
 {
-    u8 byte2 = LINK_BYTE2(link);
-
-    /* FAKEMATCH: the empty asm clobbering r1 and the pins below stand in for the second parameter,
-     * chainedTo, which the ROM keeps in r1 and passes on to EffectEquipResolve; with it this handler is
-     * plain C (see build/readability/issues/effect_prepare3.md). */
-    __asm__("" : : : "r1");
-    if ((byte2 & BYTE2_KIND_MASK) != BYTE2_KIND_OFF_FIELD)
-        return EffectEquipResolve(link);
-    {
-        /* FAKEMATCH: the player bit and the command id are pinned to r0 and r3. */
-        register int player __asm__("r0") = byte2 & BYTE2_PLAYER_MASK;
-        register int cmd __asm__("r3") = DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_TOP;
-
-        if (player)
-            cmd = DUEL_CMD_PLAYER | DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_TOP;
-        DuelCmd_PushInt(cmd, link->card, 0, 0);
-    }
+    if (link->kind != CHAIN_KIND_OFF_FIELD)
+        return EffectEquipResolve(link, chainedTo);
+    DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_RETURN_GRAVEYARD_CARD_TO_DECK_TOP), link->card, 0, 0);
     return EFFECT_STEP_DONE;
 }

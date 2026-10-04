@@ -3,8 +3,11 @@
 
 /*
  * The card effect handlers: every function that gCardEffects (include/effect.h, struct CardEffect) points to.
- * Nothing calls them by name; the chain code calls them through the table. These declarations document the
- * table and give each handler's exact signature as defined today. The signatures differ from the table's
+ * The chain code calls them through the table. Some are also called by name, to re-check a target or to reuse
+ * another card's step (EffectEquipTargetCheck, EffectDragonSeekerCheck, EffectTailorOfTheFickleCheck,
+ * EffectAttackResponsePrepare, EffectPolymerizationPrepare / Resolve, EffectEquipResolve, ...); such a caller
+ * may pass more arguments than the definition takes, through a local alias prototype. These declarations
+ * document the table and give each handler's exact signature as defined today. The signatures differ from the table's
  * slot types (int or u16 returns, unused trailing parameters, a u16 * for a link); the table stores them as
  * plain function pointers.
  *
@@ -34,7 +37,7 @@ struct ChainEntry;
 /* --- Shared handlers ------------------------------------------------------------------------------------ */
 
 /* Prepare (activation conditions) */
-/* On the field with its once-per-turn effect unused (Goddess of Whim, Barrel Dragon, key 1112). */
+/* On the field with its once-per-turn effect unused (Goddess of Whim, Barrel Dragon, Karate Man). */
 int EffectOncePerTurnPrepare(struct ChainEntry *card, int chainLink, u16 fromHand);
 /* Ritual spells: can Special Summon, the ritual monster is in the hand and hand plus field cover its
  * level. */
@@ -125,8 +128,9 @@ int EffectSpellTrapTargetChainB(struct ChainEntry *link);
 /* Resolve of continuous and passive cards whose effect lives in hooks elsewhere: returns EFFECT_STEP_DONE
  * at once (38 rows). */
 int EffectNopResolve(void);
-/* Equip spells: equip the card to targets[0]; 7 Completed also stores the chosen stat (45 rows). */
-u16 EffectEquipResolve(struct ChainEntry *link);
+/* Equip spells: equip the card to targets[0]; 7 Completed also stores the chosen stat (45 rows). chainedTo is
+ * unused; the four equip handlers below that call this one pass theirs on (the ROM keeps it in r1). */
+u16 EffectEquipResolve(struct ChainEntry *link, struct ChainEntry *chainedTo);
 /* Dream Clown, Man-Eater Bug, Mystical Space Typhoon, Gust, ...: destroy the single target (Magic cannot
  * hit Magic-immune monsters; a set Big Shield Gardna is only flipped). */
 int EffectDestroyTargetResolve(struct ChainEntry *link);
@@ -249,20 +253,20 @@ int EffectPrincessOfTsurugiResolve(struct ChainEntry *link);
 
 /* 303 Axe of Despair */
 /* EffectEquipResolve; sent to the graveyard: tribute a monster to put it on top of the deck (human only). */
-u16 EffectAxeOfDespairResolve(struct ChainEntry *link);
+u16 EffectAxeOfDespairResolve(struct ChainEntry *link, struct ChainEntry *chainedTo);
 
 /* 310 Black Pendant */
 /* EffectEquipResolve; sent to the graveyard: the opponent loses 500 LP. */
-u16 EffectBlackPendantResolve(struct ChainEntry *link);
+u16 EffectBlackPendantResolve(struct ChainEntry *link, struct ChainEntry *chainedTo);
 
 /* 312 Horn of Light */
 /* EffectEquipResolve; sent to the graveyard: pay 500 LP to put it on top of the deck (also Malevolent
  * Nuzzler). */
-u16 EffectHornOfLightResolve(struct ChainEntry *link);
+u16 EffectHornOfLightResolve(struct ChainEntry *link, struct ChainEntry *chainedTo);
 
 /* 313 Horn of the Unicorn */
 /* EffectEquipResolve; sent to the graveyard: it goes on top of the deck. */
-u16 EffectHornOfTheUnicornResolve(struct ChainEntry *link);
+u16 EffectHornOfTheUnicornResolve(struct ChainEntry *link, struct ChainEntry *chainedTo);
 
 /* 317 Elegant Egotist */
 /* Can Special Summon, has a free zone, Harpie Lady (or key 1249) is on the field and there is a candidate. */
@@ -563,10 +567,12 @@ int EffectMagicArmShieldResolve(struct ChainEntry *link, int chainedTo);
 int EffectFissureResolve(struct ChainEntry *link);
 
 /* 1003 Polymerization */
-/* Special Summons allowed and materials for some Fusion Deck monster (also 1034 Polymerization). */
+/* Special Summons allowed and materials for some Fusion Deck monster (also 1034 Polymerization). The resolve
+ * handler and the card menu also call it by name, with the three Prepare arguments. */
 int EffectPolymerizationPrepare(struct ChainEntry *card);
 /* Pick a Fusion monster and its materials, send them to the graveyard (key 1547: banish) and Special
- * Summon it (also 1034 Polymerization). */
+ * Summon it (also 1034 Polymerization). The card menu's Fusion command (card_command_menu) also runs it as
+ * key 1547, on a stack entry with only card, player and negated set. */
 int EffectPolymerizationResolve(struct ChainEntry *link, int chainedTo);
 
 /* 1004 Remove Trap */
@@ -959,7 +965,7 @@ int EffectDarkMagicianOnFieldPrepare(struct ChainEntry *card);
 int EffectDarkMagicianInDeckPrepare(struct ChainEntry *card);
 /* Activation cost: pay half your LP (rounded up). */
 int EffectPayHalfLifePointsChainA(struct ChainEntry *link);
-/* Special Summon Dark Magician from the deck, then lock summons for the turn. */
+/* Special Summon Dark Magician from the deck, then DUEL_CMD_SET_SUMMON_LOCKS (1, 1) for the activating player. */
 int EffectSummonDarkMagicianFromDeckResolve(struct ChainEntry *link);
 
 /* 1213 (key, no EDS card) */
@@ -1102,7 +1108,8 @@ int EffectBanishOwnMonsterUntilEndPhaseResolve(struct ChainEntry *link);
 /* 1320 (key, no EDS card) */
 /* At least 2 free monster zones on the field (hypothesis: OCG Ground Collapse). */
 int EffectTwoFreeMonsterZonesPrepare(void);
-/* Pick two empty monster zones (no CPU branch). */
+/* Pick two empty monster zones (no CPU branch), with the unfiltered cursor (DuelCursor_PickAny) instead of a
+ * FieldPickMask. */
 int EffectBlockMonsterZonesChainB(struct ChainEntry *link);
 /* Link the two empty zones to the card so that nothing can be placed there. */
 int EffectBlockTwoMonsterZonesResolve(struct ChainEntry *link);
@@ -1260,7 +1267,8 @@ int EffectChangeOpponentPositionResolve(struct ChainEntry *link);
 int EffectOpponentGraveSummonResolve(struct ChainEntry *link);
 
 /* 1521 (key, no EDS card) */
-/* At least two cards in the spell/trap and field zones. */
+/* At least two cards in the spell/trap and field zones. EffectReturnTwoSpellTrapsChainB calls it again with the
+ * three Prepare arguments. */
 int EffectTwoSpellTrapsOnFieldPrepare(void);
 /* Pick two Magic/Trap cards (no CPU branch). */
 int EffectReturnTwoSpellTrapsChainB(struct ChainEntry *link, int prevLink);
@@ -1333,7 +1341,8 @@ int EffectReturnFusionToDeckChainB(struct ChainEntry *link);
 int EffectSplitFusionResolve(struct ChainEntry *link);
 
 /* 1549 (key, no EDS card) */
-/* No face-up Banisher of the Light and at least 5 banished monsters. */
+/* No face-up Banisher of the Light and at least 5 banished monsters. The resolve handler calls it again with
+ * the three Prepare arguments. */
 int EffectReturnBanishedToGravePrepare(struct ChainEntry *card);
 /* Return up to 3 banished monsters to the graveyard. */
 int EffectReturnBanishedToGraveResolve(struct ChainEntry *link, int chainedTo);

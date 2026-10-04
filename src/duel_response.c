@@ -928,7 +928,7 @@ int EventResponse_Update(void)
  * Dead code (no callers): is one of the entries of the chain list `list` (a struct ChainList: 16 entries and
  * a count at +0x140) at (player, zone)?
  */
-int IsZoneInChainList(u8 *list, int player, int zone)
+int IsZoneInChainList(struct ChainList *list, int player, int zone)
 {
     int i;
     for (i = 0; i < ((struct ChainList *)list)->count; i++) {

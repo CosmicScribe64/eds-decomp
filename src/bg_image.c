@@ -55,9 +55,9 @@ extern u16 gMapFillTile[];                  /* 0x081A7760 */
 
 /* 8bpp pack into map buffer 0: palStart is added to every non-zero pixel byte on the way to VRAM,
  * and the map entries are tile + tileBase / 2 with no palette bits. Returns the tile count. */
-u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
-    u16 *base = pack;
+    const u16 *base = pack;
     u16 *tileCount = (u16 *)((u8 *)base + 8 + base[0] * 2);
     u16 *tiles = (u16 *)((u8 *)base + 0x10 + base[0] * 2);
     u16 *dst = (u16 *)(VRAM + 0x4000 + tileBase * 32);
@@ -91,7 +91,7 @@ u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
 
 /* Unused. 4bpp pack into map buffer 4 with cell positions relative to the first cell (a later cell
  * left of or above the first one wraps). Returns the tile count. */
-u16 LoadBgImage4bppMap4Rel(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bppMap4Rel(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);
     u16 *tiles = (u16 *)((u8 *)pack + 0x10 + pack[0] * 2);
@@ -126,7 +126,7 @@ u16 LoadBgImage4bppMap4Rel(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
 }
 
 /* 4bpp pack, palette and tiles only (no map entries). Returns the tile count. */
-u16 LoadBgImage4bppGfx(u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bppGfx(u16 palStart, u16 tileBase, const u16 *pack)
 {
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);
     u16 *tiles = (u16 *)((u8 *)pack + 0x10 + pack[0] * 2);
@@ -136,7 +136,7 @@ u16 LoadBgImage4bppGfx(u16 palStart, u16 tileBase, u16 *pack)
 }
 
 /* 4bpp pack into map buffer 1 (tiles and palette via LoadBgImage4bppGfx). */
-u16 LoadBgImage4bppMap1(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bppMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
     u8 *map;
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);
@@ -159,7 +159,7 @@ u16 LoadBgImage4bppMap1(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
 }
 
 /* 4bpp pack into map buffer 0, tiles copied inline. */
-u16 LoadBgImage4bpp(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bpp(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);
     u16 *tiles = (u16 *)((u8 *)pack + 0x10 + pack[0] * 2);
@@ -186,7 +186,7 @@ u16 LoadBgImage4bpp(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
 /* 4bpp pack into map buffer `map` (gBgMaps[map]).
  * FAKEMATCH: the row binding is declared inside the guarded block (permuter); the register pins and the
  * empty asm keep row in sl and the mask in ip like the ROM */
-u16 LoadBgImage4bppToMap(u32 map, u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bppToMap(u32 map, u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);
     u16 *tiles = (u16 *)((u8 *)pack + 0x10 + pack[0] * 2);
@@ -221,7 +221,7 @@ u16 LoadBgImage4bppToMap(u32 map, u16 mapOffset, u16 palStart, u16 tileBase, u16
 
 /* Unused. 4bpp pack into map buffer 1 with each cell pos taken minus the first cell's pos, so the
  * first cell lands at mapOffset (a cell left of the first one borrows from its row). */
-u16 LoadBgImage4bppMap1Rel(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImage4bppMap1Rel(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
     u8 *map;
     u16 *tileCount = (u16 *)((u8 *)pack + 8 + pack[0] * 2);

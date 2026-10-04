@@ -47,15 +47,20 @@ enum LinkMsgId {
     LINKMSG_COMMAND = 0xF041,               /* a duel command {cmd, arg2, arg4, arg6} to run on this side */
     LINKMSG_COMMAND_RUNNING = 0xF042,       /* sent every 16 frames while it runs (resets cmdAckTimer) */
     LINKMSG_COMMAND_DONE = 0xF043,
-    LINKMSG_ACTIVATE_QUERY = 0xF051,        /* chain entry: does the partner respond? (activateQueryPending) */
+    LINKMSG_ACTIVATE_QUERY = 0xF051,        /* a game event (EventResponse_Run: the open window's responseEntry):
+                                             * does the partner respond? (activateQueryPending; the receiver
+                                             * sets gChain.queryIsChainLink = 0) */
     LINKMSG_QUERY_REPLY = 0xF052,
     LINKMSG_ACTIVATE_CARD = 0xF053,         /* the partner's responding card (chain entry) */
-    LINKMSG_CHAIN_QUERY = 0xF054,           /* event query: does the partner respond? */
+    LINKMSG_CHAIN_QUERY = 0xF054,           /* a chain link (Chain_AskResponse): does the partner chain to it?
+                                             * (activateQueryPending; queryIsChainLink = 1) */
     LINKMSG_QUERY_DECLINED = 0xF055,
     LINKMSG_CHAIN_CARD = 0xF056,            /* the partner's chained card (chain entry) */
     LINKMSG_CARD_PROMPT = 0xF057,           /* {card, arg1, arg2}: ask a Yes/No card question (cardPromptPending) */
     LINKMSG_CARD_PROMPT_ANSWER = 0xF058,    /* args[0]: the answer (cardPromptAnswer) */
-    LINKMSG_TRIGGER_EVENT = 0xF059,         /* {player, kind, from, to}: queue an event response request */
+    LINKMSG_TRIGGER_EVENT = 0xF059,         /* {1 - player, event, arg low half, arg high half}: open a response
+                                             * window on the partner's side (EventResponse_Request; the block
+                                             * sent is 0xA bytes, the receiver reads four halfwords) */
     LINKMSG_QUEUED_ACTION = 0xF05A,         /* 0x14-byte summon action to start on this side */
     LINKMSG_QUEUED_ACTION_DONE = 0xF05B,
     LINKMSG_CHAIN_LIST_COUNT = 0xF061,      /* args[0]: number of entries (rxChainListCount) */
@@ -75,10 +80,13 @@ enum LinkMsgId {
     LINKMSG_ADD_ACTION_A = 0xF0B1           /* add a pending chain action (Chain_AddPending) */
 };
 
-/* A short link message: the id and three argument halfwords (DuelLink_SendMessage). */
+/* A short link message: the id and three argument halfwords (DuelLink_SendMessage). The u32 containers are
+ * the ROM's: it builds the message as two words with mask-and-or stores (u16 members give four strh). */
 struct LinkMessage {
-    u16 id;                             /* enum LinkMsgId */
-    u16 args[3];
+    u32 id:16;                          /* +0x0: enum LinkMsgId */
+    u32 arg1:16;                        /* +0x2 */
+    u32 arg2:16;                        /* +0x4 */
+    u32 arg3:16;                        /* +0x6 */
 };
 
 /*

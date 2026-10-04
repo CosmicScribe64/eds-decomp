@@ -415,6 +415,14 @@ ENUM_HOME = {
     'LinkMsgId': 'duel_link.h',
 }
 
+# Enums that exist only in the headers (added after the naming pass, so types.json does not list them):
+# name -> (owner, why). They are owned like the ENUM_HOME ones; nothing else is checked.
+HEADER_ONLY_ENUMS = {
+    'Song': ('constants/sound.h', 'song ids the code passes as literals (header fix-up, 2026-10-04)'),
+    'CardListCursorMove': ('card_list_view.h', 'gCardListView.cursorMoveDir; moved from card_list_viewer.c '
+                                               '(header fix-up, 2026-10-04)'),
+}
+
 # header -> hazards and decisions the writer must know (in addition to NOTES and the types.json notes)
 HEADER_NOTES = {
     'global.h': ['Existing file included by every unit: only add macros/typedefs that no unit defines (grep src/), '
@@ -494,7 +502,8 @@ NOTES = [
     'Struct fields: use types.json names/types/offsets; add STATIC_ASSERT (typedef char ...[cond ? 1 : -1]) checks '
     'for the size and key offsets like the legacy headers. Bitfield containers (u8/u16/u32) are codegen-relevant: '
     'keep the container type types.json gives. Keep packed/aligned attributes where a unit needs them (see '
-    'src/duel_main.c, duel_response.c, sound_driver.c, duel_field_screen.c, duel_card_lists.c).',
+    'src/sound_driver.c and duel_field_screen.c; duel_main, duel_response and duel_card_lists matched without '
+    'theirs in the readability pass).',
     'Globals: declare RAM globals with the canonical type ("canonical_type"); "declared_as" lists how units declare '
     'them today. ROM data is declared in a header only when >= 2 units reference it by symbol ("rom_data"); data '
     'used by one unit stays a local extern in that unit ("local_rom_data", for reference). Never turn an '
@@ -877,6 +886,13 @@ def build():
     for name in ENUM_HOME:
         if name not in E:
             errors.append(f'ENUM_HOME has {name}, which is not in types.json')
+    for name, (path, why) in HEADER_ONLY_ENUMS.items():
+        if name in E:
+            errors.append(f'HEADER_ONLY_ENUMS has {name}, which types.json lists: move it to ENUM_HOME')
+            continue
+        own(name, path, 'enum')
+        H[path]['enums'].append({'name': name, 'values': 0, 'confidence': None, 'context': None,
+                                 'used_by_units': [], 'note': f'header only: {why}'})
 
     tagmap, tagmap_any = {}, collections.defaultdict(set)
     for name_, s_ in S.items():

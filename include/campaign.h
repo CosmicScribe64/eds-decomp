@@ -87,6 +87,11 @@ struct OpponentResultTexts {
     u16 pad;             /* +0xE always 0 */
 };
 
+/* Opponent-select pages: five portraits per page (gOpponentSelectDuelists[page * 5 + slot]); slot 0 of the
+ * last page (4) is empty. */
+#define OPPONENTS_PER_PAGE  5
+#define OPPONENT_SELECT_LAST_PAGE 4
+
 /*
  * gOpponentSelect (0x0201F7E0, 0x34 bytes): the Campaign opponent-select screen. Cleared by
  * OpponentSelect_Init (page 0, slot 0). Slots are a ring of five portraits (gOpponentSelectSlotPos).

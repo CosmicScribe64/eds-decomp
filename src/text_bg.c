@@ -734,9 +734,9 @@ void SetBgMapEntry(u16 screenBlock, u16 cell, u16 entry)
 /* Load an image pack (see wiki data/graphics-formats): palette to 0x05000000 + palStart*2,
    8bpp tiles to 0x06004000 + tileBase*32 (palStart added to non-zero pixel bytes), cells to
    map buffer 1 (gBgMaps[1] at 0x03000C5C). Returns the tile count. */
-u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, u16 *pack)
+u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
 {
-    u16 *h = pack;
+    const u16 *h = pack;
     u16 *hdrT = (u16 *)((u8 *)h + 8 + h[0] * 2);
     u16 *tiles = (u16 *)((u8 *)h + 0x10 + h[0] * 2);
     u16 *dst = (u16 *)(0x06004000 + tileBase * 32);

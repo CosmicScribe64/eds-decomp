@@ -51,7 +51,8 @@ u16 CB_License(void);
 
 /* ---- Title screen: callbacks and drawing ---- */
 
-/* HBlank handler: wavy logo, REG_BG1HOFS = gMain.hblankScroll[(VCOUNT + frameCounter) & 15]. */
+/* HBlank handler: the waving flames on BG1, REG_BG1HOFS = gMain.hblankScroll[(VCOUNT + frameCounter) & 15]
+ * (gMain.hblankScroll holds the 16 values of gTitleLogoWave, which despite its name moves the flames). */
 void Title_HBlank(void);
 /* VBlank callback: decrements gTitleState.bgScroll and scrolls BG3 diagonally (VOFS = scroll >> 2). */
 void Title_VBlank(void);
@@ -70,7 +71,8 @@ void Title_DrawDeletePrompt(void);
 u16 Title_Init(void);
 /* TITLE_STEP_SETUP: video/BG reset, Title_LoadGraphics, title song. */
 u16 Title_Setup(void);
-/* TITLE_STEP_FADE_IN: fade in from black with the wavy logo, then flash to white and show the menu. */
+/* TITLE_STEP_FADE_IN: fade in from black with the waving flames (BG1) and the coin (BG2), then flash to white,
+ * show the logo (BG0) and the menu. */
 u16 Title_FadeIn(void);
 /* TITLE_STEP_HANDLE_INPUT: Left/Right toggle New Game/Continue when a save exists; A confirms. */
 u16 Title_HandleInput(void);

@@ -160,7 +160,9 @@ enum DuelCmdId {
     DUEL_CMD_FUSION_MATERIAL_TO_GRAVE = 0xA5,       /* arg2: zone, arg4: banish instead */
     DUEL_CMD_SET_ZONE_LEVEL_CHECK_FLAG = 0xA6,      /* arg2: zone, arg4: flag (zone +0x08 bit 0) */
     DUEL_CMD_MOVE_MONSTER_FACE_DOWN = 0xA7,         /* arg2: source zone, arg4: destination zone */
-    DUEL_CMD_SET_MAGICAL_HATS_CARD = 0xA8,          /* arg2: zone | faceUp << 8, arg4 | arg6 << 16: card word */
+    DUEL_CMD_SET_MAGICAL_HATS_CARD = 0xA8,          /* arg2: zone | faceUp << 8, arg4 | arg6 << 16: card word;
+                                                     * Magical Hats always sets bit 9 of arg2 too (hypothesis:
+                                                     * defense position, as in DUEL_CMD_PLACE_CARD) */
     DUEL_CMD_BANISH_UNTIL_END_PHASE = 0xA9,         /* arg2: zone */
     DUEL_CMD_RETURN_BANISHED_MONSTER = 0xAA,        /* arg2: zone */
     DUEL_CMD_NEGATE_ACTIVATION = 0xB0,              /* arg2: also destroy the negated card */

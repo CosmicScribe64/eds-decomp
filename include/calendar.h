@@ -99,6 +99,9 @@ struct Date {
     u32 weekday:3;   /* bits 21-23: enum Weekday */
 };
 
+/* gCalendar.monthNameState once the month-name tiles are loaded. */
+#define MONTH_NAME_LOADED   3
+
 /* gCalendar (0x0201F7D0, 0xC bytes): state of the Calendar screen, cleared by Calendar_Init. */
 struct Calendar {
     u16 today;               /* +0x00 today's day count (gSaveData.days); that cell gets the today marker */
@@ -107,9 +110,10 @@ struct Calendar {
     u32 shownEvents;         /* +0x04 CalendarEvent bits (within 0x3F700000) of the cursor cell whose names
                               *       are drawn; redrawn only when the cell's bits differ */
     u16 monthNameState:2;    /* +0x08 bits 0-1: 0-2 = month-name tiles loading (copied at 1 by
-                              *       Calendar_DrawCursorAndHeader), 3 = loaded; L/R wait for 3 */
+                              *       Calendar_DrawCursorAndHeader), MONTH_NAME_LOADED; L/R wait for it */
     u16 secondHalf:1;        /* bit 2: showing rows 3-5 of the month (cells 21+) instead of rows 0-2 */
-    u16 displayFrame:1;      /* bit 3: Mode-4 frame on screen (DISPCNT bit 4); drawing goes to the other */
+    u16 displayFrame:1;      /* bit 3: Mode-4 frame on screen (DISPCNT_FRAME_SELECT); drawing goes to the
+                              *       other */
     u16 cursorCol:3;         /* bits 4-6: cursor column = enum Weekday */
     u16 cursorRow:3;         /* bits 7-9: cursor row 0-2 within the shown half */
 };
@@ -143,7 +147,8 @@ u32 GetDaysInMonth(u32 year, u32 month);
 s32 GetDayOfWeek(u32 year, u32 month, u32 day);
 /* 1-based week of the month, (day - 1) / 7 + 1. Unreferenced out-of-line copy of an inline helper. */
 u32 GetWeekOfMonth(u32 year, u32 month, u32 day);
-/* Unpacks a day count (day 0 = 2001-01-01; skips the non-leap 2100-02-29) into *date. */
+/* Unpacks a day count (day 0 = 2001-01-01) into *date. From day 36524 (2101-01-01) the count is moved on by
+ * one: the 1461-day cycles would give 2100, which is not a leap year, a 366th day. */
 void DayCountToDate(struct Date *date, u16 days);
 /* Today's in-game date: DayCountToDate(date, gSaveData.days). */
 void GetCurrentDate(struct Date *date);

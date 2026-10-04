@@ -16,7 +16,8 @@
  * take the 2-byte Shift-JIS path and the kanji fonts instead; the USA game always clears it (SetTextModeLatin).
  *
  * sizeColor arguments pack the font size (8, 10, 12 or 16 px) in the high byte and the colour index in the
- * low byte. Defined in text_canvas, text_render, text_bg, bitmap_text, main, sprite and deck_edit_panel.
+ * low byte (TEXT_SIZE_COLOR). Defined in text_canvas, text_render, text_bg, bitmap_text, main, sprite and
+ * deck_edit_panel.
  *
  * Every prototype is the function's definition as compiled. Some units call these functions through a
  * different local declaration (other widths, fewer or more arguments); they keep that view as a commented
@@ -25,12 +26,16 @@
 
 #include "global.h"
 
+/* The sizeColor argument: font size in the high byte, colour index in the low byte. TEXT_SIZE alone is for
+ * places where the ROM ORs the colour in first (colour | TEXT_SIZE(12)); the operand order can matter. */
+#define TEXT_SIZE(size) ((size) << 8)
+#define TEXT_SIZE_COLOR(size, color) (((size) << 8) | (color))
+
 /* ---- The text canvas ---- */
 
 /* gTextCanvas (0x02000000): the canvas the TextDraw* functions plot into. One byte per pixel, 64 bytes per
  * 8 x 8 tile, tiles in row-major order `width` tiles per row. The matched code reaches the header through
- * the byte view gTextCanvas[0x10000 + n] (a struct view folds base + offset into one literal). text_canvas
- * also declares gUnk_02010000 (unused), which is &gTextCanvas.width: drop it rather than name it. */
+ * the byte view gTextCanvas[0x10000 + n] (a struct view folds base + offset into one literal). */
 struct TextCanvas {
     u8 pixels[0x10000];   /* +0x00000: colour index per pixel, tile-ordered */
     u8 width;             /* +0x10000: width in tiles (TextCanvasInit) */

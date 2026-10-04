@@ -144,7 +144,7 @@ void AnimBlockTick(u8 *block)
         AnimStateTick(&((struct AnimBlock *)block)->anims[i]);
 }
 
-void CopyTileRows(u8 *src, u8 *dst, u16 colors, u8 rowCount, u8 tilesPerRow)
+void CopyTileRows(const u8 *src, u8 *dst, u16 colors, u8 rowCount, u8 tilesPerRow)
 {
     u16 i;
 

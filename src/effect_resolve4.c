@@ -371,6 +371,7 @@ int EffectTwoProngedAttackResolve(struct ChainEntry *link)
         int i;
 
         for (i = 0; i < link->numTargets; i++) {
+            /* FAKEMATCH: offset and base pinned to r1/r0, as in the ROM. */
             register int offset __asm__("r1") = i * 2;
             register u8 *base __asm__("r0") = (u8 *)link;
             u16 *target;
@@ -392,6 +393,7 @@ int EffectTwoProngedAttackResolve(struct ChainEntry *link)
                 return EFFECT_STEP_DONE;
         }
         for (i = 0; i < link->numTargets; i++) {
+            /* FAKEMATCH: offset and base pinned to r1/r0, as in the ROM. */
             register int offset __asm__("r1") = i * 2;
             register u8 *base __asm__("r0") = (u8 *)link;
             u16 *target;

@@ -11,23 +11,12 @@
  * text-mode byte, InitSaveData and the debug "get all cards" helper.
  */
 #include "global.h"   /* u8/u16/u32/s16/s32, vu16/vu32 */
-#include "legacy/gba.h"      /* REG_DISPCNT, OBJ_PLTT, OBJ_VRAM0 */
-#include "legacy/main.h"     /* struct Main gMain (rngState, oamBuffer, oamCount, affineCount) */
+#include "gba.h"      /* REG_DISPCNT, OBJ_PLTT, OBJ_VRAM0 */
+#include "main.h"     /* struct Main gMain (rngState, oamBuffer, oamCount, affineCount) */
 #include "util.h"     /* MemCopy16, MemClear16, gSineTable128 */
 #include "sprite.h"   /* struct SprAnim, enum SpriteShape, the AddSprite and SprAnim prototypes */
 #include "card_data.h" /* CARD_ID_MASK, gCardIdToNumber */
 #include "save.h"      /* struct SaveData gSaveData, gSaveDataSignature, AddCardToTrunk, the signature/checksum prototypes */
-
-/* One entry of the OAM shadow buffer gMain.oamBuffer (main.h): the affine matrices live in the
- * fourth halfword of entries 4n..4n+3 (pa, pb, pc, pd of matrix n). */
-struct OamEntry {
-    u16 attr0;              /* +0x0 */
-    u16 attr1;              /* +0x2 */
-    u16 attr2;              /* +0x4 */
-    u16 affine;             /* +0x6: affine parameter of the entry's matrix */
-};
-extern struct OamEntry gMain_oamBuffer[];   /* 0x03004470 (= gMain.oamBuffer) */
-
 
 /* ---- Local views kept for matching ---- */
 
@@ -93,10 +82,10 @@ void SetOamAffineRotScale(u16 idx, u16 scale, u16 angle) {
     s >>= 8;
     c >>= 8;
     ns >>= 8;
-    o[0].affine = c;
-    o[1].affine = s;
-    o[2].affine = ns;
-    o[3].affine = c;
+    o[0].affineParam = c;
+    o[1].affineParam = s;
+    o[2].affineParam = ns;
+    o[3].affineParam = c;
 }
 
 /* Affine matrix `idx` = scale with a shear (PB = shear, PC = -shear). */
@@ -104,11 +93,11 @@ void SetOamAffineShear(u16 idx, u16 scale, u16 shear) {
     struct OamEntry *o = gMain_oamBuffer;
     s16 t;
     o += (u32)idx << 2;
-    o[0].affine = scale;
-    o[1].affine = shear;
+    o[0].affineParam = scale;
+    o[1].affineParam = shear;
     t = shear;
-    o[2].affine = -t;
-    o[3].affine = scale;
+    o[2].affineParam = -t;
+    o[3].affineParam = scale;
 }
 
 /* Append one OAM entry (AddSprite): yx = y << 16 | x, shape = attr0/attr1 high bits, attr2 = tile/palette. */

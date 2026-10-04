@@ -23,7 +23,7 @@
  * always draws Latin.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_SIOCNT, REG_TM3CNT_L/H, REG_IE, REG_IF, REG_IME, REG_DISPCNT,
+#include "gba.h"                           /* REG_SIOCNT, REG_TM3CNT_L/H, REG_IE, REG_IF, REG_IME, REG_DISPCNT,
                                    REG_BG0CNT, CpuSet, A_BUTTON, B_BUTTON, DPAD_UP/DOWN/LEFT/RIGHT,
                                    R_BUTTON, L_BUTTON */
 #include "calendar.h"               /* struct Date, GetCurrentDate, GetHolidayFlags, GetCalendarEvents, GetDayOfWeek */
@@ -31,7 +31,7 @@
 #include "debug.h"                  /* struct DebugMenuItem, struct CalendarEventName, CB_Debug* / DebugMenu_* (defined here) */
 #include "link.h"                   /* struct LinkSio gLinkSio, enum LinkSioPacketType / LinkSioType / LinkSioStatus,
                                    LinkSioMain / LinkSioStartTransfer / LinkSioSetSendData / LinkSioCheckRecvData (defined here) */
-#include "legacy/main.h"                   /* struct Main gMain (newKeys, vblankFlags, seqIndexCampaign, seqIndex1, seqState0..2) */
+#include "main.h"                          /* struct Main gMain (newKeys, vblankFlags, seqIndexCampaign, seqIndex1, seqState0..2) */
 #include "save.h"                   /* struct SaveData gSaveData (language, sjisText, days), InitSaveData, RecordDuelWin */
 
 /* The debug menu's tables (debug.h: used by one unit each, so they stay local externs here). */
@@ -63,7 +63,6 @@ extern void ResetBgScroll(void);
 extern void SetBrightnessBlack(void);
 extern void LoadSystemGfx(void);
 extern void ClearBgMapBuffer0(void);
-extern void SetMainCallback(void *);
 /* Matching: text.h declares these with u16 cell/colors/tile and a u32 SetTextArea pair of
  * cells; the debug menu passes packed full-width arguments (e.g. 0x08070033), so the wide
  * views stay here (build/readability/issues/text_canvas.md). */
@@ -127,23 +126,8 @@ void TextDrawString(s32 x, s32 y, u16 sc, const u8 *str);
 void TextDrawSjisNumber(s32 x, s32 y, u16 sc, s32 value);
 void TextDrawLatinNumber(s32 x, s32 y, u16 sc, s32 value);
 
-/* SIOCNT in multi-player mode (+ SIOMLT_SEND), as the SDK's SioMultiCnt bitfield struct.
- * The bitfield form is load-bearing: it reproduces the ROM's folded bit tests in
- * LinkSioMain (wiki/functions/text-canvas-c.md). LINK_SIOCNT_BAK is gLinkSio.sioCnt
- * (link.h) seen in that layout. */
-struct SioMultiCnt {
-    u16 baudRate : 2;
-    u16 si : 1;
-    u16 sd : 1;
-    u16 id : 2;
-    u16 error : 1;
-    u16 enable : 1;
-    u16 unused : 4;
-    u16 mode : 2;
-    u16 ifEnable : 1;
-    u16 unused2 : 1;
-    u16 data;
-};
+/* gLinkSio.sioCnt (link.h) seen as the SDK bitfield layout (gba.h struct SioMultiCnt); the bitfield form
+ * reproduces the ROM's folded bit tests in LinkSioMain (wiki/functions/text-canvas-c.md). */
 #define LINK_SIOCNT_BAK (*(struct SioMultiCnt *)&gLinkSio.sioCnt)
 
 /* Link main step (MultiSioMain-like): stage 0 snapshots SIOCNT; when SD is high and no transfer runs it

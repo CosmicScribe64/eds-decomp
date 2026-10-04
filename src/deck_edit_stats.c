@@ -17,9 +17,9 @@
 #include "constants/card_stats.h" /* enum CardType */
 #include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/sound.h"      /* SE_CANCEL */
-#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_BG*HOFS, REG_BG*VOFS, REG_BLDCNT,
+#include "gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_BG*HOFS, REG_BG*VOFS, REG_BLDCNT,
                                        VRAM, OBJ_VRAM0, BG_PLTT, OBJ_PLTT, A_BUTTON, B_BUTTON, CpuFastSet, CpuSet */
-#include "legacy/main.h"                 /* struct Main gMain (newKeys, seqState1, vblankFlags) */
+#include "main.h"                 /* struct Main gMain (newKeys, seqState1, vblankFlags) */
 #include "bg.h"                   /* CopyMapRect, CopyMapRectAddOffset, CopyTileSheetTo2D, CropMapBlock */
 #include "deck_edit.h"            /* struct DeckEdit gDeckEdit, enum DeckEditList, enum DeckStatsCategory,
                                        struct DeckStatsRow, DeckEdit_BuildCardLists, DeckEdit_SetListCard,
@@ -27,12 +27,10 @@
                                        gDeckEditDigitSprites, gDeckEditObjTiles, gDeckEditObjPal, gListFilterSortPageMap */
 #include "palette.h"              /* struct Fade, enum FadeState, FadeStart, FadeTick, SetBldAlpha */
 #include "save.h"                 /* struct SaveData gSaveData */
+#include "sound.h"                /* PlaySE */
 #include "sprite.h"               /* DrawNumberSprites, enum NumberSpriteMode, OamListFlush, OamListClear, ObjAffineInit */
 #include "text.h"                 /* ClearKatakanaFlag */
 #include "util.h"                 /* MemClear16, DivFix8, Ease_Init, gScratchBuffer */
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u16 seId);
 
 /* Step table of the Statistics screen, run by DeckEdit_RunStatistics on gMain.seqState1. */
 extern u16 (*const gDeckStatsSteps[])(void);   /* 0x081A724C */
@@ -398,6 +396,7 @@ int DeckStats_Init(void)
     REG_BG2HOFS = 0; REG_BG2VOFS = 0;
     REG_BG3HOFS = 0; REG_BG3VOFS = 0;
     {
+        /* FAKEMATCH: the pin keeps the alpha constant 16 in r0 for the store. */
         register int speed asm("r0") = 16;
         gDeckEditPanelAlpha = speed;
     }

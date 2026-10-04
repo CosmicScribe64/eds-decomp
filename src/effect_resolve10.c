@@ -251,6 +251,7 @@ int EffectPlaceParasiteParacideOnDeckResolve(struct ChainEntry *link)
             return 0x7F;
         } else {
             u16 *card;
+            /* FAKEMATCH: chain/offset pinned to r1/r2 (see the comment below). */
             register u8 *chain __asm__("r1");
             register int offset __asm__("r2");
 
@@ -639,12 +640,14 @@ int EffectTributeTwoMonstersResolve(struct ChainEntry *link)
     if (!link->negated && CountActiveCardsOnField(0, CARD_1418) <= 0 && CountActiveCardsOnField(1, CARD_1418) <= 0
         && link->numTargets == 2) {
         int i;
+        /* FAKEMATCH: targets pinned to r3 as the indexed-check base (see below). */
         register u16 *targets __asm__("r3");
         u16 *target;
 
         i = 0;
         targets = link->targets;
         for (; i <= 1; i++) {
+            /* FAKEMATCH: offset pinned to r0 (see below). */
             register int offset __asm__("r0") = i * 2;
             u16 *loc;
             int targetPlayer, targetZone;

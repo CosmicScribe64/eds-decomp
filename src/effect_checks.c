@@ -314,6 +314,7 @@ int EffectDarknessApproachesCheck(struct ChainEntry *card, u16 pos)
  * card->loc0 (the attacker, hypothesis). Returns its isFaceUp bit. */
 int EffectMagicArmShieldCheck(struct ChainEntry *card, u16 pos)
 {
+    /* FAKEMATCH: pos pinned to r0 so the narrowed position stays in the ROM register. */
     register u16 normalized __asm__("r0") = pos;
     int player;
     int zone;

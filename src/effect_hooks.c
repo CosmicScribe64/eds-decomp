@@ -952,10 +952,11 @@ enum TributePrompt {
 
 /*
  * Format into dstBuf the prompt fmtStr (one of the gStrTributeFrom* formats) with the name of the card with
- * number `number`. Matching (FAKEMATCH): the lookup is spelled out as an inlined CardNumberToId (gCardNumberToId,
+ * number `number`. FAKEMATCH: the lookup is spelled out as an inlined CardNumberToId (gCardNumberToId,
  * then the 0x40-byte name record) with every temporary pinned to the register the ROM's reload rotation chose.
  * The alternate-art arm is dead (the numbers are below 2000) but is part of the ROM's code.
  */
+/* FAKEMATCH: every temporary below is pinned to the register the ROM chose. */
 #define FORMAT_TRIBUTE_PROMPT(dstBuf, fmtStr, number) { \
     register char *dst asm("r3") = (dstBuf); \
     register const char *fmt asm("r4") = (fmtStr); \

@@ -18,14 +18,12 @@
 #include "constants/card_stats.h"   /* enum CardType, enum CardKind, CARD_STATS_TYPE_*, CARD_STATS_KIND_* */
 #include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL */
-#include "legacy/gba.h"                    /* REG_BG0CNT..., REG_DISPCNT, A_BUTTON, B_BUTTON, DPAD_*, CpuSet, CpuFastSet */
+#include "gba.h"        /* REG_BG0CNT..., REG_DISPCNT, A_BUTTON, B_BUTTON, DPAD_*, CpuSet, CpuFastSet */
 #include "deck_edit.h"              /* struct DeckEdit gDeckEdit, struct SpriteDef, enum ListFilter, enum ListSort, enum ListFilterPhase, the screen prototypes */
-#include "legacy/main.h"                   /* struct Main gMain */
+#include "main.h"       /* struct Main gMain */
 #include "palette.h"                /* struct Fade, FadeStart, FadeTick, SetBldAlpha, enum FadeState */
+#include "sound.h"                  /* PlaySE */
 #include "sprite.h"                 /* struct AnimBlock, struct AnimState, AnimBlockInit, AnimBlockTick, AnimBlockDraw, OamListFlush, OamListClear (OamListAddSpriteGroup: word form below) */
-
-/* sound.h does not declare PlaySE; the units declare it themselves. */
-void PlaySE(u32 seId);
 
 /* ---- ROM data used only here ---- */
 extern u16 gDeckEditSortScratch[];   /* 0x0201EFC4 = gDeckEdit.sortScratch: base of the list-row

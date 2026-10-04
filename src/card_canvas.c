@@ -296,6 +296,7 @@ static inline int GetCardDef10(u16 id)
 static inline int CardLevelCached(u16 id, u32 stats)
 {
     /* Reuse the type already read by the caller; every arm assigns the result. */
+    /* FAKEMATCH: level pinned to r0, the ROM result register. */
     register int level asm("r0");
     switch ((int)CARD_STATS_TYPE(stats)) {
     case CARD_TYPE_TRAP: case CARD_TYPE_MAGIC: case CARD_TYPE_TICKET: level = 0; break;
@@ -313,6 +314,7 @@ void DrawCardInfo(u16 id)
     int v;
     int x;
     /* The subtype is assigned only in the non-monster arm, before its use. */
+    /* FAKEMATCH: sub pinned to r2, as in the ROM. */
     register int sub asm("r2");
     u32 stats = CARD_STATS_WORD(id);
     switch ((int)CARD_STATS_TYPE(stats)) {

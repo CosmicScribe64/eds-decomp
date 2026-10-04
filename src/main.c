@@ -9,69 +9,10 @@
  * (SetOamMatrixPacked). This unit defines most of the helpers declared in util.h.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* REG_* registers, SRAM/EWRAM/IWRAM/VRAM/OAM, BG_PLTT/OBJ_PLTT/OBJ_VRAM0 */
+#include "gba.h"                    /* REG_* registers, SRAM/EWRAM/IWRAM/VRAM/OAM, BG_PLTT/OBJ_PLTT/OBJ_VRAM0, struct OamEntry */
+#include "main.h"                   /* struct Main gMain, IntrTable, enum VBlankFlag, the handlers defined here */
 #include "link.h"                   /* struct LinkSio gLinkSio, struct LinkBuf gLinkBuf (timer2Ticks), gSioMultiRecv */
 #include "util.h"                   /* MemClear16/MemCopy16/CopyDoubleWords, StrCopy/StrCat/FormatStr/FormatInt, Random */
-
-/* One 8-byte OAM entry, as staged in gMain.oam before the flush to hardware OAM. */
-struct OamEntry {
-    u32 w0;
-    u32 w1;
-};
-
-/*
- * gMain, the game's main state (0x03000040). Local view of include/main.h, kept for matching
- * (build/readability/issues/main.md): main.h declares callback as void (*)(void) but MainLoop
- * tests its return value (the scene callbacks return nonzero when done), intrCheck must stay
- * vu16 for the volatile discard read in MainLoop, and oam is an array of 8-byte entries here
- * rather than main.h's byte buffer. Field names and offsets are main.h's.
- */
-struct Main {
-    u32 rngState;                   /* +0x0000 */
-    u16 heldKeys;                   /* +0x0004 */
-    u16 newKeys;                    /* +0x0006 */
-    u16 prevKeys;                   /* +0x0008 */
-    u16 keyRepeatTimer;             /* +0x000A */
-    u8 intrMainBuf[0x400];          /* +0x000C: IntrMain is copied here */
-    vu16 intrCheck;                 /* +0x040C: bit 0: VBlank happened */
-    u16 vblankFlags;                /* +0x040E */
-    u16 (*callback)(void);          /* +0x0410: scene; returns nonzero when done */
-    void (*vblankCallback)(void);   /* +0x0414 */
-    void (*vblankCallbackEarly)(void); /* +0x0418 */
-    u16 bgMapBuffer[8][0x400];      /* +0x041C */
-    u16 unk441C;                    /* +0x441C */
-    u16 unk441E;                    /* +0x441E */
-    u16 bgVofs[4];                  /* +0x4420 */
-    u16 bgHofs[4];                  /* +0x4428 */
-    struct OamEntry oam[128];       /* +0x4430 */
-    u8 oamCount;                    /* +0x4830 */
-    u8 affineCount;                 /* +0x4831 */
-    u8 brightness:6;                /* +0x4832 bits 0..5: fade level 0..0x1F */
-    u8 brightnessFlags:2;           /* +0x4832 bits 6..7 */
-    u8 unk4833;                     /* +0x4833 */
-    s16 hblankY;                    /* +0x4834 */
-    u16 hblankScroll[16];           /* +0x4836 */
-    u8 unk4856;                     /* +0x4856 */
-    u8 seqIndexCampaign;            /* +0x4857 */
-    u8 seqState0;                   /* +0x4858 */
-    u8 seqIndex1;                   /* +0x4859 */
-    u8 seqState1;                   /* +0x485A */
-    u8 seqState2;                   /* +0x485B */
-    u16 currentBgm;                 /* +0x485C */
-    u16 frameCounter;               /* +0x485E */
-    u8 frameCounter8;               /* +0x4860 */
-    u8 vblankCounter8;              /* +0x4861 */
-    u16 lastVcount;                 /* +0x4862 */
-    u16 vblankCounter;              /* +0x4864 */
-    u16 lagCounter;                 /* +0x4866 */
-    u16 lastSeFrame;                /* +0x4868 */
-    u8 unk486A[6];                  /* +0x486A */
-    u8 unk4870[8];                  /* +0x4870: bitfields and rewardPack in main.h */
-    u8 seqIndexTop;                 /* +0x4878 */
-    u8 seq4879;                     /* +0x4879 */
-    u8 seq487A;                     /* +0x487A */
-};
-extern struct Main gMain;           /* 0x03000040 */
 
 /*
  * The save image (0x02011C20). Local view of include/save.h, kept for matching
@@ -85,15 +26,8 @@ struct SaveData {
 };
 extern struct SaveData gSaveData;   /* 0x02011C20 */
 
-extern void (*IntrTable[16])(void); /* the SDK interrupt handler table */
-
-struct ScrollReg {
-    vu16 *reg;
-    u16 mask;
-    u16 pad;
-};
-extern const struct ScrollReg gBgHofsRegs[4]; /* 0x081A7764: HOFS registers, mask bits 4-7 */
-extern const struct ScrollReg gBgVofsRegs[4]; /* 0x081A7784: VOFS registers, mask bits 8-11 */
+extern const struct BgScrollReg gBgHofsRegs[4]; /* 0x081A7764: HOFS registers, mask bits 4-7 */
+extern const struct BgScrollReg gBgVofsRegs[4]; /* 0x081A7784: VOFS registers, mask bits 8-11 */
 
 /*
  * Cross-unit functions with no shared-header declaration usable here, plus this unit's own
@@ -108,31 +42,22 @@ void WriteSram(const void *src, void *dst, u32 size);
 u32 VerifySram(const void *src, void *dst, u32 size);
 void SoundVBlank(void);
 void SoundMain(void);
-void ReadKeys(void);
 void ClearBlend(void);
-void FlushOamBuffer(void);
 void SaveGame(void);
 u16 CB_MainMenu(void);
-void GamepakIntr(void);
-void Timer2Intr(void);
-void VBlankIntr(void);
 void SoundDma1Intr(void);
 u16 CB_License(void);
 void ReadSram(const void *src, void *dst, u32 size);
 void SoundInit(u32 a);
-void ResetBgScroll(void);
 void SetBrightnessWhite(void);
 void SetSeEnabled(u32 a);
 void SetBgmEnabled(u32 a);
 void SetTextModeLatin(void);
 void DebugHook_Nop(void);
-void FrameSyncUpdate(void);
-void MainLoop(void);
-void GameInit(void);
 
 void TextDrawNumber(u32 a, u32 b, u16 c)
 {
-    /* Matching: the empty barrier clobbering r3 keeps a and b in the callee-saved
+    /* FAKEMATCH: the empty barrier clobbering r3 keeps a and b in the callee-saved
      * registers r4/r5, as in the ROM. */
     __asm__ __volatile__("" : : : "r3");
     if (gSaveData.flags4 & 0x80)
@@ -678,12 +603,12 @@ void FlushOamBuffer(void)
     u8 *q;
 
     if (gMain.vblankFlags & 1) {
-        CopyDoubleWords((void *)OAM, gMain.oam, 0x400);
+        CopyDoubleWords((void *)OAM, gMain.oamBuffer, 0x400);
         gMain.oamCount = 0;
         gMain.affineCount = 0;
         for (i = 0; i < 128; i++) {
             q = (u8 *)&gMain + i * 8;
-            p = (u32 *)&gMain.oam[i];
+            p = (u32 *)&gMain.oamBuffer[i];
             *p++ = 0;
             *p = 0;
             q[0x4435] |= 0xC;
@@ -695,10 +620,10 @@ void FrameSyncUpdate(void)
     s32 i;
 
     for (i = 0; i < 4; i++) {
-        if (gMain.vblankFlags & gBgHofsRegs[i].mask) {
+        if (gMain.vblankFlags & gBgHofsRegs[i].syncMask) {
             *gBgHofsRegs[i].reg = gMain.bgHofs[i];
         }
-        if (gMain.vblankFlags & gBgVofsRegs[i].mask) {
+        if (gMain.vblankFlags & gBgVofsRegs[i].syncMask) {
             *gBgVofsRegs[i].reg = gMain.bgVofs[i];
         }
     }
@@ -851,7 +776,7 @@ extern const u16 gSineTable128U16[] asm("gSineTable128");
  * (low 7 bits, 0x80 = full turn) and a scale in the top nibble. */
 void SetOamMatrixPacked(u16 idx, u16 angle)
 {
-    u8 *oam = (u8 *)gMain.oam;
+    u8 *oam = (u8 *)gMain.oamBuffer;
     u16 a = gSineTable128U16[angle & 0x7F];
     u16 b = gSineTable128U16[(angle + 0x20) & 0x7F];
     u16 c = gSineTable128U16[(angle + 0x40) & 0x7F];

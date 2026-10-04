@@ -298,7 +298,7 @@ int LinkRecvMessage(u8 *dest)
                     *loopRd = (*loopRd + 1) & 0x3F;
                     return len;
                 }
-                {
+                { /* FAKEMATCH: pin keeps the ring offset in r0 */
                     register u32 off asm("r0") = (u32)*loopRd * 12;
                     u32 addr = (u32)loopQ;
                     p = (u8 *)(off + addr);
@@ -744,7 +744,7 @@ u16 LoadBgImageMap1(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
     for (i = 0; i < hdrT[0] * 32; i++) {
         u16 w = *tiles;
         v = w;
-        /* barrier: keeps w in the loaded register (old_agbcc otherwise merges
+        /* FAKEMATCH: barrier keeps w in the loaded register (old_agbcc otherwise merges
            the *tiles load into v and the test/add register roles swap) */
         __asm__ __volatile__("" : : "r"(w));
         if (w & 0xFF00)

@@ -8,8 +8,8 @@
  * clears its box. See wiki/functions/bustup-scene-c.md and wiki/game/text-system.md.
  */
 #include "global.h"
-#include "legacy/gba.h"        /* REG_DISPCNT, REG_BG1HOFS..REG_BG3VOFS, REG16, VRAM, BG_PLTT, OBJ_PLTT */
-#include "legacy/main.h"       /* gMain */
+#include "gba.h"               /* REG_DISPCNT, REG_BG1HOFS..REG_BG3VOFS, REG16, VRAM, BG_PLTT, OBJ_PLTT */
+#include "main.h"              /* gMain */
 #include "bustup.h"     /* gBustup, struct BustupTextBox / SceneSet / Duelist / BytePos, the functions defined here */
 #include "bg.h"         /* LZSSDecompress, CopyTileSheetTo2D, TILE_COLORS_16 */
 #include "sprite.h"     /* struct AnimState / OamList / OamListEntry, ANIM_PLAYING, OamListAlloc, OamListClear */
@@ -17,27 +17,6 @@
 #include "text.h"       /* ParseTwoDigits, ParseDigits */
 #include "debug.h"      /* DebugPrintf, DebugPrintFlush */
 #include "card_data.h"  /* CARD_NUMBER_COUNT, CARD_NUMBER_ALT_ART, CARD_NAME_SIZE */
-
-/* ---- Names of the new gba.h and main.h ----
- * include/ holds the legacy gba.h and main.h until step H0 of build/readability/header_plan.json installs the
- * new ones, which define these with the same values. Delete this block after H0. */
-#ifndef CPU_SET_SRC_FIXED
-#define CPU_SET_SRC_FIXED       0x01000000
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define OAM_ATTR0_BLEND         0x0400
-#define OAM_ATTR0_H_RECTANGLE   0x4000
-#define OAM_ATTR1_SIZE(n)       ((n) << 14)
-#define OAM_ATTR2_PALETTE(n)    ((n) << 12)
-#define VBLANK_COPY_OAM         0x1     /* enum VBlankFlag in the new main.h */
-void CpuSet(const void *src, void *dest, u32 control);
-#endif
-
-/* The 16-bit halves of the BG2 reference point (gba.h names only the 32-bit REG_BG2X / REG_BG2Y). */
-#define REG_BG2X_L          REG16(0x028)
-#define REG_BG2X_H          REG16(0x02A)
-#define REG_BG2Y_L          REG16(0x02C)
-#define REG_BG2Y_H          REG16(0x02E)
 
 /* ---- Mode-4 screen layout of the bust-up scene ---- */
 #define SCREEN_WIDTH        240

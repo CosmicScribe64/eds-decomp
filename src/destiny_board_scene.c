@@ -17,54 +17,15 @@
  * the rock/scissors/paper carousel, the result banners, the opponent's card and the FIRST/SECOND banners.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_*, CpuSet, CpuFastSet, VRAM addresses */
-#include "legacy/main.h"               /* gMain */
-#include "legacy/sound.h"              /* PlaySE, PlayBGM (new sound.h) */
+#include "gba.h"                       /* REG_*, CpuSet, CpuFastSet, VRAM addresses */
+#include "main.h"                      /* gMain */
+#include "sound.h"                     /* PlaySE, PlayBGM */
 #include "util.h"               /* gSineTable */
 #include "palette.h"            /* struct Fade, FadeStart, FadeTick */
 #include "bg.h"                 /* CopyMapRect, CopyTileSheetTo2D, TILE_COLORS_16 */
 #include "sprite.h"             /* struct AnimSeq / AnimState / ObjAffine, OamList*, AnimBlock*, ObjAffine* */
 #include "duel_scenes.h"        /* gDuelScene, gSceneWork, struct DestinyBoardSceneWork, Destiny Board steps */
 #include "turn_order.h"         /* turn-order enums, sprite helpers defined here, tile tables */
-
-/* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
-
-/* Values and prototypes as in the new headers; this block compiles away once they are installed. */
-#ifndef INTR_FLAG_HBLANK
-#define BG_VRAM                 0x06000000
-#define BG_CHAR_SIZE            0x4000
-#define BG_SCREEN_SIZE          0x800
-#define BG_CHAR_ADDR(n)         (BG_VRAM + BG_CHAR_SIZE * (n))
-#define BG_SCREEN_ADDR(n)       (BG_VRAM + BG_SCREEN_SIZE * (n))
-#define DISPCNT_MODE_0          0x0000
-#define DISPCNT_BG0_ON          0x0100
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define BLDCNT_TGT1_BG0         0x0001
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_TGT2_ALL         0x3F00
-#define BLDALPHA_BLEND(eva, evb) (((evb) << 8) | (eva))
-#define INTR_FLAG_HBLANK        0x0002
-#define CPU_SET_SRC_FIXED       0x01000000
-#define CPU_SET_16BIT           0x00000000
-#define CPU_FAST_SET_SRC_FIXED  0x01000000
-#define OAM_ATTR0_AFFINE_DOUBLE 0x0300
-#define OAM_ATTR0_BLEND         0x0400
-#define OAM_ATTR1_MATRIX(n)     ((n) << 9)
-#define INTR_SLOT_HBLANK        1
-#define VBLANK_COPY_OAM         0x1
-extern void (*IntrTable[16])(void);
-void PlaySE(u32 seId);
-void PlayBGM(u32 songId);
-#endif
-
-/* The two 16-bit halves of the BG2X and BG3Y reference points (gba.h names them only as 32-bit registers). */
-#define REG_BG2X_L REG16(0x028)
-#define REG_BG2X_H REG16(0x02A)
-#define REG_BG3Y_L REG16(0x03C)
-#define REG_BG3Y_H REG16(0x03E)
 
 /* OamListAddSprite returns the entry; these drawers OR attr0 and attr1 into its first word in one go. */
 #define OAM_ATTR01(attr0, attr1) (((attr1) << 16) | (attr0))

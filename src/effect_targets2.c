@@ -850,6 +850,7 @@ int EffectTwoProngedAttackChainB(struct ChainEntry *link)
         TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, gStrDesignateSecondOwnMonster);
         {
             u8 *e = CHAIN_BYTES;
+            /* FAKEMATCH: the step offset pinned to r2 (see below). */
             register int offset __asm__("r2") = TARGET_STEP;
             u8 *p;
             /* FAKEMATCH: retain this initialized offset in r2 so this arm keeps its address setup. The

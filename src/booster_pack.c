@@ -16,31 +16,15 @@
 #include "constants/card_stats.h" /* enum CardType, CARD_STATS_DEF_MASK, CARD_STATS_POINTS_SCALE */
 #include "constants/game.h"       /* enum BoosterPackId: PACK_RANDOM_TRAP, PACK_RANDOM_MAGIC, PACK_RANDOM_ANY */
 #include "constants/sound.h"      /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR, SE_CARD_FLIP */
-#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_MOSAIC, REG_IE, REG_IME, OBJ_PLTT, BG_PLTT, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON, DPAD_* */
-#include "legacy/main.h"                 /* struct Main, gMain */
+#include "gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_MOSAIC, REG_IE, REG_IME, OBJ_PLTT, BG_PLTT, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON, DPAD_* */
+#include "main.h"                 /* struct Main, gMain */
 #include "booster.h"              /* struct PackSlots, struct PackOpenWork, struct PackInfo, struct PackContentsEntry, struct PackListWork, gPackOpenWork, gPackInfo, enum GetPackDetailState, enum PackRevealFrame, enum PackCursorAnim */
 #include "card_detail.h"          /* struct CardDetail, gCardDetail, CardDetail_Reset, CardDetail_InitVideo, CardDetail_DrawCard */
 #include "save.h"                 /* struct SaveData, gSaveData, SaveGame, AddCardToTrunk */
+#include "sound.h"                /* PlaySE */
 #include "util.h"                 /* Random, MemClear16, MemCopy16 */
 #include "bg.h"                   /* ResetVideo, ClearBgMapBuffers, LoadSystemGfx */
 #include "palette.h"              /* SetBrightnessBlack, FadeFromBlack, FadeToBlack */
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-
-/* Not declared by bg.h; the scene units declare it locally (as in card_detail.c). */
-void ResetBgScroll(void);
-
-/*
- * Before H0 (build/readability/HEADERS.md) the legacy include/gba.h lacks the interrupt
- * names below. The new headers define them with the same values, so this block compiles
- * away with them. Delete it once the new headers are installed.
- */
-#ifndef INTR_FLAG_HBLANK
-#define INTR_FLAG_HBLANK 0x0002 /* REG_IE bit: HBlank interrupt enable */
-#define INTR_SLOT_HBLANK 1      /* IntrTable slot of the HBlank handler */
-extern void (*IntrTable[16])(void);
-#endif
 
 /* -------------------------------------------------------------------------- */
 /* Local views kept for matching                                              */
@@ -50,8 +34,7 @@ extern void (*IntrTable[16])(void);
  * the detail steps with u16 returns. This unit calls them through int returns and tests
  * the results as (value << 16) != 0, which only reproduces the ROM if the upper half of
  * the returned register is treated as unknown, so the calls go through these aliased
- * views. At H0, delete the views and call the headers' declarations directly
- * (build/readability/issues/booster_pack.md).
+ * views.
  */
 extern int PackList_InitInt(void) asm("PackList_Init");
 extern int PackList_HandleInputInt(void) asm("PackList_HandleInput");

@@ -15,8 +15,9 @@
 #include "constants/card_stats.h"   /* enum CardType, enum CardKind, enum CardFrame, CARD_STATS_* */
 #include "constants/cards.h"        /* CARD_THE_MONARCHY, CARD_SET_SAIL_FOR_THE_KINGDOM, CARD_OBELISK_THE_TORMENTOR, ... */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
-#include "legacy/gba.h"                    /* REG_DISPCNT, REG_DMA3SAD, PLTT, VRAM, DPAD_LEFT, DPAD_RIGHT, A_BUTTON, CpuSet */
-#include "legacy/main.h"                   /* struct Main gMain, newKeys, bgMapBuffer, bgHofs */
+#include "gba.h"        /* REG_DISPCNT, REG_DMA3SAD, PLTT, VRAM, DPAD_LEFT, DPAD_RIGHT, A_BUTTON, CpuSet */
+#include "main.h"       /* struct Main gMain, newKeys, bgMapBuffer, bgHofs */
+#include "sound.h"                 /* PlaySE */
 #include "booster.h"                /* struct PackListWork, struct PackInfo gPackInfo, PackList_* prototypes */
 #include "deck_edit.h"              /* struct DeckEdit gDeckEdit, prototypes of the DeckEdit_* functions defined here */
 
@@ -36,8 +37,6 @@ extern u16 DeckEdit_GetCursorRowTileU16(void) asm("DeckEdit_GetCursorRowTile");
  * result, so the ROM's narrowing stays visible. */
 extern u16 FadeFromBlackU16(u32 step) asm("FadeFromBlack");
 extern u16 FadeToBlackU16(u32 step) asm("FadeToBlack");
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
 
 extern s32 __modsi3(s32 num, s32 denom);
 extern void *memset(void *dst, int c, unsigned int n);
@@ -62,7 +61,7 @@ void PackList_DebugNop(u32 value) {}
 /* Pack-list scene step: video setup, draw the covers, then fade in and enable the cover blend. */
 u16 PackList_Init(void)
 {
-    /* Preserve the initialized scene base across the state-handler calls. */
+    /* FAKEMATCH: pin the scene base in r4 so it survives the state-handler calls. */
     register struct PackListWork *s asm("r4") = &gSceneWork;
     u32 f = 1 & s->flags;
     if (f != 0) {

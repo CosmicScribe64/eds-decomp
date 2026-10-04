@@ -14,7 +14,7 @@
  * Clear* tilemap helpers.
  */
 #include "global.h"
-#include "legacy/gba.h"                    /* VRAM, CpuSet */
+#include "gba.h"                           /* VRAM, CpuSet */
 #include "bg.h"                     /* FillMapRectWrap, ClearMapRect, GetTilemapOffset, FillScreenblock*, LZSSDecompress (defined here) */
 #include "sprite.h"                 /* struct OamList / OamListEntry, OamListFlush / Clear / Alloc / LinkEntry (defined here) */
 #include "util.h"                   /* struct Line, enum LineState, LineInit / LineStep (defined here) */
@@ -541,7 +541,7 @@ void OamListClear(u8 *list)
     for (; i < 0x14; i++) {
         u8 *p = list + i;
         u8 w = *p;
-        /* Keep the byte load as the OR accumulator used by the ROM. */
+        /* FAKEMATCH: keeps the byte load as the OR accumulator used by the ROM. */
         __asm__ __volatile__("" : : "r"(w));
         *p = w | f;
     }
@@ -575,7 +575,7 @@ void LineInit(s16 x0, s16 y0, s16 x1, s16 y1, struct Line *line)
     } else {
         int n;
         line->stepX = -1;
-        /* Preserve the ROM's signed reload after storing the direction. */
+        /* FAKEMATCH: preserves the ROM's signed reload after storing the direction. */
         __asm__ __volatile__("" : : : "memory");
         n = line->dx;
         __asm__ __volatile__("" : : "r"(n));
@@ -587,6 +587,7 @@ void LineInit(s16 x0, s16 y0, s16 x1, s16 y1, struct Line *line)
     } else {
         int n;
         line->stepY = -1;
+        /* FAKEMATCH: same signed reload of dy as for dx above. */
         __asm__ __volatile__("" : : : "memory");
         n = line->dy;
         __asm__ __volatile__("" : : "r"(n));

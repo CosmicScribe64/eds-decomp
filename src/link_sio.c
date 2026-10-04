@@ -21,11 +21,11 @@
 #include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/card_stats.h" /* CARD_STATS_KIND_MASK/SHIFT, enum CardType */
 #include "constants/sound.h"      /* SE_CANCEL, SE_PASSWORD_CURSOR, SE_PASSWORD_PRESS */
-#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG1CNT..REG_BG3CNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY,
+#include "gba.h"  /* REG_DISPCNT, REG_BG1CNT..REG_BG3CNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY,
                                    REG_WIN0H, REG_WIN0V, REG_WININ, REG_WINOUT, REG_DMA3SAD/DAD/CNT,
                                    REG_RCNT, REG_SIOCNT, A_BUTTON, B_BUTTON, SELECT_BUTTON, START_BUTTON,
                                    DPAD_UP/DOWN/LEFT/RIGHT, R_BUTTON, L_BUTTON */
-#include "legacy/main.h"                 /* struct Main gMain (newKeys, seqIndex1, frameCounter, vblankFlags, bgMapBuffer) */
+#include "main.h"  /* struct Main gMain (newKeys, seqIndex1, frameCounter, vblankFlags, bgMapBuffer) */
 #include "sprite.h"               /* struct OamList, struct OamListEntry, OamListAlloc, AddSprite,
                                    enum NumberSpriteMode; OamListAddSprite and DrawNumberSprites (defined here) */
 #include "util.h"                 /* struct Tween, enum TweenMode, enum TweenState, TweenInit/TweenUpdate (defined
@@ -36,9 +36,6 @@
                                    enum PasswordKeyId; the Password helpers (defined here) */
 
 
-/* IntrTable (0x03000000): LinkSioInit installs the serial handler in slot 0 and the Timer3
- * handler in slot 7 (+0x1C). */
-extern u8 IntrTable[];          /* 0x03000000 */
 /* Matching: MulFix8 called through int parameters (util.h declares s16; the tween easing passes
  * full-width products of the phase and the sine value). */
 extern int MulFix8Int(int a, int b) asm("MulFix8");
@@ -417,9 +414,8 @@ u16 LinkSyncOpen(void *tx_, void *rx)
 {
     u8 i;
     u16 *p = tx_;
-    u8 *base = IntrTable;
 
-    LinkSioInit(base, base + 0x1C);
+    LinkSioInit((u32 *)&IntrTable[INTR_SLOT_SERIAL], (u32 *)&IntrTable[INTR_SLOT_TIMER3]);
     for (i = 0; i < 2; i++) {
         p[1] = 0;
         p += 2;
@@ -651,6 +647,7 @@ void Password_DrawCard(u16 id)
     }
 load:
     {
+        /* FAKEMATCH: pins the map offset and palette start in r0/r1 for the wide LoadBgImageMap1 call. */
         register u32 a asm("r0") = 0x420;
         register u32 b asm("r1") = 0x20;
         LoadBgImageMap1(a, b, 0x100, tbl);

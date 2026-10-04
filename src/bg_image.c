@@ -52,7 +52,7 @@ u16 LoadBgImage(u16 mapOffset, u16 palStart, u16 tileBase, const u16 *pack)
     for (i = 0; i < tileCount[0] * 32; i++) {
         u16 w = *tiles;
         v = w;
-        /* Matching: the empty asm keeps w in the loaded register; without it old_agbcc merges the
+        /* FAKEMATCH: the empty asm keeps w in the loaded register; without it old_agbcc merges the
            *tiles load into v and the test/add register roles swap. */
         __asm__ __volatile__("" : : "r"(w));
         if (w & 0xFF00)

@@ -16,8 +16,8 @@
 #include "card_data.h"          /* CARD_ID_MASK, gCardIdToNumber, gCardNumberToId */
 #include "constants/cards.h"    /* enum CardNumber: CARD_POLYMERIZATION, CARD_DARK_MAGICIAN, the alt-art numbers */
 #include "debug.h"              /* DebugPrintf, DebugPrintFlush */
-#include "legacy/gba.h"                /* CpuSet, CpuFastSet */
-#include "legacy/main.h"               /* struct Main gMain: currentBgm, frameCounter, lastSeFrame */
+#include "gba.h"                /* CpuSet, CpuFastSet */
+#include "main.h"               /* struct Main gMain: currentBgm, frameCounter, lastSeFrame */
 #include "save.h"               /* struct SaveData gSaveData, struct TrunkEntry, struct CardCopyLimit,
                                    DECK_MAX_CARDS, SIDE_DECK_MAX_CARDS, FUSION_DECK_MAX_CARDS,
                                    OPTION_SE_ON, OPTION_BGM_ON, the collection prototypes */

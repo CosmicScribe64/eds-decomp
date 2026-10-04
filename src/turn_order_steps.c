@@ -495,6 +495,7 @@ void CardListView_DrawCursorFrame(u32 isOpponent)
 {
     u16 tile = 0x169;
     u16 *cell;
+    /* FAKEMATCH: base pinned to r0, as in the ROM. */
     register u8 *base asm("r0");
     s32 i;
 

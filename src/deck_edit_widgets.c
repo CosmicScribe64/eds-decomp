@@ -15,30 +15,17 @@
  * DeckEdit_UpdateCardMove runs the enum CardMoveStep machine that flies the card sprite to the
  * destination list icon and finally moves one copy in gSaveData.
  *
- * The state is gDeckEdit (0x0201DB20, struct DeckEdit in deck_edit.h), reached through the local
- * views below: each function only matches with its own declared field types and access forms, so
- * the views stay local instead of including deck_edit.h (build/readability/issues/deck_edit_widgets.md).
+ * The state is gDeckEdit (0x0201DB20, struct DeckEdit in deck_edit.h); the raw views below are the
+ * access forms the matched functions need (build/readability/issues/deck_edit_widgets.md).
  */
 #include "global.h"
 #include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE / CARD_STATS_KIND / CARD_STATS_LEVEL */
 #include "constants/card_stats.h"   /* enum CardType, enum CardKind, enum CardFrame */
 #include "constants/cards.h"        /* CARD_THE_MONARCHY, CARD_SET_SAIL_FOR_THE_KINGDOM, CARD_GLORY_OF_THE_KINGS_HAND, CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
-#include "legacy/gba.h"                    /* CpuSet */
-
-/* ---- BEGIN deck_edit.h stand-in (pre-H0) ----
- * include/deck_edit.h cannot be included here: it pulls in sprite.h, util.h and palette.h, whose
- * prototypes conflict with the wide caller views this unit's matched code uses (see the local
- * prototypes below). The enums the state machines switch on are copied unchanged from
- * include/deck_edit.h so they read semantically; swap to the real header at the H0 milestone.
- * (build/readability/issues/deck_edit_widgets.md) */
-enum DeckEditList { DECKEDIT_LIST_TRUNK = 0, DECKEDIT_LIST_MAIN_DECK = 1, DECKEDIT_LIST_SIDE_DECK = 2 };
-enum CardMoveStep { CARD_MOVE_IDLE = 0, CARD_MOVE_CHECK = 1, CARD_MOVE_PICK_UP = 2, CARD_MOVE_FLY = 3, CARD_MOVE_LAND = 4, CARD_MOVE_COMMIT = 5 };
-enum CommandMenuAnim { CMDMENU_IDLE = 0, CMDMENU_OPEN = 1, CMDMENU_CLOSE = 2, CMDMENU_REFRESH = 3 };
-/* ---- END deck_edit.h stand-in ---- */
-
-/* sound.h does not declare PlaySE; the units declare it themselves. */
-void PlaySE(u32 seId);
+#include "gba.h"                    /* CpuSet */
+#include "sound.h"                 /* PlaySE */
+#include "deck_edit.h"              /* enum DeckEditList / CardMoveStep / CommandMenuAnim, struct DeckEdit */
 
 /* ---- ROM data used only here ---- */
 extern const void *gCardFrameSprites[];         /* 0x081A7144: frame sprite templates by frame index */
@@ -46,7 +33,6 @@ extern u16 gFrameSlotY[];                       /* 0x08087464: sprite y of ring 
 extern u16 gFrameSlotScale[];                   /* 0x08087472: 8.8 scale of ring positions 0..6 */
 extern u8 gCardFrameAnimIds[];                  /* 0x08087480: pick-up animation index per enum CardFrame */
 extern const u8 gCardMoveSprite[];              /* 0x081A6D84: flying card sprite of DeckEdit_UpdateCardMove */
-extern u16 gDeckEditEaseCurve[];                /* 0x080875D2: [7] ease-in-out factors in 8.8 */
 extern const u8 gScrollArrowTiles[];            /* 0x08087450: scroll-bar arrow tiles */
 /* The 12 card-row BG tile blocks copied by DeckEdit_LoadCardBoxTiles. */
 extern const u8 gDeckEditCardBoxTiles0[];
@@ -65,13 +51,12 @@ extern const u8 gDeckEditSmallCardBoxTiles5[];
 /* Wide caller views of helpers whose headers declare narrower prototypes (util.h has
  * MulFix8(s16, s16) and struct Ease * forms of Ease_Start / Ease_Tick; sprite.h has its own
  * OamListAddSprite* and ObjAffineApply shapes); the matched code calls them this way. */
-extern int DivFix8(int a, int b);
-extern int MulFix8(int a, int b);
-extern u16 *OamListAddSpriteGroup(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
-extern void OamListAddSprite(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l, int m);
-extern void ObjAffineApply(void *p);
-extern void Ease_Start(int a, int b, int c, void *d);
-extern void Ease_Tick(void *p);
+extern int MulFix8S32(int a, int b) asm("MulFix8");
+extern u16 *OamListAddSpriteGroupWide(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l) asm("OamListAddSpriteGroup");
+extern void OamListAddSpriteWide(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l, int m) asm("OamListAddSprite");
+extern void ObjAffineApplyWide(void *p) asm("ObjAffineApply");
+extern void Ease_StartWide(int a, int b, int c, void *d) asm("Ease_Start");
+extern void Ease_TickWide(void *p) asm("Ease_Tick");
 
 /* Card collection in gSaveData (declared in save.h; IsBelowCardCopyLimit returns u32 there, but
  * this unit only tests the result as a boolean and matches with the u16 view). */
@@ -84,25 +69,8 @@ extern void AddCardToTrunk(u16 id);
 extern void AddCardToSavedFusionDeck(u16 id);
 extern void AddCardToSavedDeck(u16 id);
 extern void AddCardToSavedSideDeck(u16 id);
-extern void DeckEdit_BuildCardLists(void);
-extern void DeckEdit_StartListSlide(u32 a);     /* deck_edit.h declares (u8); this unit pushes a u32 */
-extern void DeckEdit_CountSideDeckMonsters(void);
-extern u8 GetCardFrameIndex(u16 id);
-extern u16 DeckEdit_GetListCard(u8 list, u8 row, u16 index);
 
 /* ---- Local views kept for matching (build/readability/issues/deck_edit_widgets.md) ---- */
-
-/* gDeckEdit list cursors (DeckEdit_DrawLevelStars, DeckEdit_BeginCardMove): canonical names from
- * deck_edit.h; only the fields read here are declared. */
-struct ListCursorView {
-    u8 pad0[0x620];
-    u16 listPos[15];                /* +0x620: listPos[3], the rest of the array covers the scroll state */
-    u16 bg0Vofs;                    /* +0x63E */
-    u8 pad640[0x14A0 - 0x640];
-    u8 listRow[0x1C1C - 0x14A0];    /* +0x14A0: listRow[3], padded out to curList */
-    u8 curList;                     /* +0x1C1C: enum DeckEditList shown */
-};
-extern struct ListCursorView gDeckEdit;
 
 /* The anim cells and the frame-slot ring head, as raw-byte views of gDeckEdit: the cells are the
  * 20-byte struct AnimState entries at +0x1726 (byte 0 = active), the ring head is
@@ -124,19 +92,6 @@ struct ScrollBarAffine {
     u16 scaleY;                     /* +0x18B2 */
 };
 extern struct ScrollBarAffine gDeckEditScrollBarAffine asm("gDeckEdit");
-
-/* The scroll bar at the right edge of the list (deck_edit.h struct DeckEditScrollBar): thumb
- * extents in 8.8 and the two arrow cells' dirty flags and frame indices. */
-struct ScrollBarView {
-    u16 thumbLen;                   /* +0x0 */
-    u16 thumbPos;                   /* +0x2 */
-    u8 upArrowDirty : 1;            /* +0x4 bit 0: redraw the up-arrow cell */
-    u8 unk4_1 : 7;
-    u8 upArrowFrame;                /* +0x5: gScrollArrowTiles index */
-    u8 downArrowDirty : 1;          /* +0x6 bit 0: redraw the down-arrow cell */
-    u8 unk6_1 : 7;
-    u8 downArrowFrame;              /* +0x7: gScrollArrowTiles index - 3 */
-};
 
 /* Deck sizes of gSaveData (save.h: deckSize +0x20C8, sideDeckSize +0x20CA, fusionDeckSize +0x20CC),
  * the per-category limits DeckEdit_UpdateCardMove checks before a move. */
@@ -239,7 +194,7 @@ void DeckEdit_CalcScrollBar(u16 count, u16 pos, u16 *bar)
 }
 /* Draw the scroll-bar thumb sprites for cursor position `pos` in a list of `count` cards, and
  * flush the arrow cells whose dirty flags are set (BG2 map cells (29, 0) and (29, 13)). */
-void DeckEdit_DrawScrollBar(u16 pos, u16 count, struct ScrollBarView *bar)
+void DeckEdit_DrawScrollBar(u16 pos, u16 count, struct DeckEditScrollBar *bar)
 {
     int len = bar->thumbLen >> 8;
     int top = bar->thumbPos >> 8;
@@ -249,23 +204,23 @@ void DeckEdit_DrawScrollBar(u16 pos, u16 count, struct ScrollBarView *bar)
     if (len != 0 && count > 3) {
         int scale = len * 8;
         int arrowY;
-        int shrink = MulFix8(0x10, 0x100 - scale);
+        int shrink = MulFix8S32(0x10, 0x100 - scale);
         arrowY = top - 4;
         arrowY -= shrink;
-        OamListAddSprite(0, 0x89, 0xE4, arrowY & 0xFF, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
+        OamListAddSpriteWide(0, 0x89, 0xE4, arrowY & 0xFF, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
         gDeckEditScrollBarAffine.scaleY = scale + 0x10;
-        ObjAffineApply(&gDeckEditScrollBarAffine.scaleX);
+        ObjAffineApplyWide(&gDeckEditScrollBarAffine.scaleX);
     } else if (count <= 3) {
-        OamListAddSprite(0, 0x89, 0xE4, 0xC, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
-        OamListAddSprite(0, 0x89, 0xE4, 0x24, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
+        OamListAddSpriteWide(0, 0x89, 0xE4, 0xC, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
+        OamListAddSpriteWide(0, 0x89, 0xE4, 0x24, 8, 0x20, 4, 7, 0, 0x300, 0, 0, (int)&gDeckEditScrollBarAffine);
         gDeckEditScrollBarAffine.scaleY = 0x200;
-        ObjAffineApply(&gDeckEditScrollBarAffine.scaleX);
+        ObjAffineApplyWide(&gDeckEditScrollBarAffine.scaleX);
         top = 0;
         len = 0x58;
     }
-    OamListAddSprite(0, 0xF, 0xE8, (top + 8) & 0xFF, 8, 8, 4, 7, 0, 0, 0, 0, (int)&gDeckEditScrollBarAffine);
+    OamListAddSpriteWide(0, 0xF, 0xE8, (top + 8) & 0xFF, 8, 8, 4, 7, 0, 0, 0, 0, (int)&gDeckEditScrollBarAffine);
     botY = top + 0xC;
-    OamListAddSprite(0, 0x2F, 0xE8, (botY + len) & 0xFF, 8, 8, 4, 7, 0, 0, 0, 0, (int)&gDeckEditScrollBarAffine);
+    OamListAddSpriteWide(0, 0x2F, 0xE8, (botY + len) & 0xFF, 8, 8, 4, 7, 0, 0, 0, 0, (int)&gDeckEditScrollBarAffine);
     if (bar->upArrowDirty) {
         bar->upArrowDirty = 0;
         *(u16 *)0x0600E03A = 0x5000 | gScrollArrowTiles[bar->upArrowFrame];
@@ -325,7 +280,7 @@ void DeckEdit_TweenFrameSlots(u8 step, u8 easeState, u8 dir, u8 *affines, u8 *ri
             u8 *slot = ring + i * 16;
             if (slot[0xC] != 0) {
                 u16 *cell;
-                *(u16 *)(slot + 6) = *(u16 *)(slot + 8) + MulFix8(*(s16 *)(slot + 0xA), gDeckEditEaseCurve[step]);
+                *(u16 *)(slot + 6) = *(u16 *)(slot + 8) + MulFix8S32(*(s16 *)(slot + 0xA), gDeckEditEaseCurve[step]);
                 cell = (u16 *)(affines + (i + 1) * 24);
                 cell[0] = cell[1] = *(u16 *)(slot + 0xE) + *(u16 *)(slot + 0x10) * m;
             }
@@ -336,7 +291,7 @@ void DeckEdit_TweenFrameSlots(u8 step, u8 easeState, u8 dir, u8 *affines, u8 *ri
             u8 *slot = ring + i * 16;
             if (slot[0xC] != 0) {
                 s16 *cell;
-                *(u16 *)(slot + 6) = *(u16 *)(slot + 8) + MulFix8(*(s16 *)(slot + 0xA), gDeckEditEaseCurve[step]);
+                *(u16 *)(slot + 6) = *(u16 *)(slot + 8) + MulFix8S32(*(s16 *)(slot + 0xA), gDeckEditEaseCurve[step]);
                 cell = (s16 *)(affines + (i + 1) * 24);
                 cell[0] = cell[1] = *(u16 *)(slot + 0xE) + *(u16 *)(slot + 0x10) * m;
                 {
@@ -477,7 +432,7 @@ void DeckEdit_DrawFrameSlots(u8 *slots, int oamList)
     for (i = 0; i <= 5; i++) {
         u8 *slot = (u8 *)(i * 16 + (u32)slots);
         if (slot[8] != 0) {
-            u16 *o = OamListAddSpriteGroup(gCardFrameSprites[slot[1]], 5, 1, -3, *(s16 *)(slot + 2), 4, 0, 0, 0, 0, 0, oamList);
+            u16 *o = OamListAddSpriteGroupWide(gCardFrameSprites[slot[1]], 5, 1, -3, *(s16 *)(slot + 2), 4, 0, 0, 0, 0, 0, oamList);
             o[0] |= 0x100;
             o[1] |= slot[0xE] << 9;
         }
@@ -773,14 +728,14 @@ void DeckEdit_UpdateCardMove(u8 *move)
                 return;
             ((struct AnimCellActive *)cell)->active |= 0xFF;
         }
-        Ease_Start(0, 6, 1, move + 4);
+        Ease_StartWide(0, 6, 1, move + 4);
         move[0]++;
     case CARD_MOVE_FLY: {
         int x, y;
-        x = (MulFix8(*(s16 *)(move + 0xE) << 8, gDeckEditEaseCurve[*(s16 *)(move + 6)]) >> 8) - 3;
-        y = (MulFix8(*(s16 *)(move + 0x10) << 8, gDeckEditEaseCurve[*(s16 *)(move + 6)]) >> 8) + 0x28;
-        OamListAddSpriteGroup(gCardMoveSprite, 0, 1, x, y, 4, 0, 0, 0, 0, 0, (int)&DE);
-        Ease_Tick(move + 4);
+        x = (MulFix8S32(*(s16 *)(move + 0xE) << 8, gDeckEditEaseCurve[*(s16 *)(move + 6)]) >> 8) - 3;
+        y = (MulFix8S32(*(s16 *)(move + 0x10) << 8, gDeckEditEaseCurve[*(s16 *)(move + 6)]) >> 8) + 0x28;
+        OamListAddSpriteGroupWide(gCardMoveSprite, 0, 1, x, y, 4, 0, 0, 0, 0, 0, (int)&DE);
+        Ease_TickWide(move + 4);
         if (move[4] != 2)
             return;
         move[0]++;

@@ -23,8 +23,9 @@
 #include "card_data.h"              /* CARD_ID_MASK, CARD_STATS_TYPE, gCardStats (read by literal address below) */
 #include "constants/card_stats.h"   /* enum CardType (CARD_TYPE_TRAP, CARD_TYPE_MAGIC) */
 #include "constants/sound.h"        /* SE_CURSOR */
-#include "legacy/gba.h"                    /* R_BUTTON, L_BUTTON */
-#include "legacy/main.h"                   /* struct Main gMain, newKeys, vblankCallback */
+#include "gba.h"        /* R_BUTTON, L_BUTTON */
+#include "sound.h"                 /* PlaySE */
+#include "main.h"       /* struct Main gMain, newKeys, vblankCallback */
 
 /* Deck-edit scene state at 0x0201DB20 (see deck_edit_panel / deck_edit_widgets / deck_edit_cards). Several views of the same
    symbol are declared with asm() names so that each function sees only the fields it uses. */
@@ -159,7 +160,6 @@ extern const u8 gDeckEditCommandLabelSprites[][40];
 extern void CopyMapRectAddOffset(const void *src, u32 dst, int a, int b, int c, int d, int e);
 extern u16 *OamListAddSpriteGroup(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
 extern void DeckEdit_CommandLabelVBlank(void);
-extern void PlaySE(u16 id);
 extern void DeckEdit_StartListSlide(u8 a);
 extern void DeckEdit_DrawStatementLabels(u8 x);
 

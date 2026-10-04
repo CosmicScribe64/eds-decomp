@@ -12,8 +12,9 @@
  * swapSelector state machine that commits the exchange in SideDeckSwap_ExchangeCards.
  */
 #include "global.h"
-#include "legacy/gba.h"          /* A_BUTTON .. L_BUTTON, REG_DISPCNT, REG_BG0HOFS .. REG_BG3VOFS, REG_BLDCNT */
-#include "legacy/main.h"         /* struct Main gMain (newKeys, seqState1, vblankFlags) */
+#include "gba.h"        /* A_BUTTON .. L_BUTTON, REG_DISPCNT, REG_BG0HOFS .. REG_BG3VOFS, REG_BLDCNT */
+#include "main.h"       /* struct Main gMain (newKeys, seqState1, vblankFlags) */
+#include "sound.h"       /* PlaySE */
 #include "chain.h"        /* struct ChainState gChain (targetWork2) */
 #include "save.h"         /* struct SaveData gSaveData, AddCardToSavedDeck / SideDeck / FusionDeck, Remove... */
 #include "bg.h"           /* FillMapRectWrap, LoadCardArt8bpp */
@@ -22,11 +23,6 @@
 
 /* List Filter sub-screen step table (served by the two runners above). */
 extern u16 (*const gListFilterSteps[])(void);   /* 0x081A723C */
-
-/* sound.h does not declare the staged PlaySE (see duel_response.c). */
-void PlaySE(u32 seId);
-
-void ResetBgScroll(void);
 
 /* ---- Local views and aliases kept for matching ---- */
 

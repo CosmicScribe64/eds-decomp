@@ -658,6 +658,7 @@ int EffectCyberSteinPrepare(struct ChainEntry *card)
         return FALSE;
     case CARD_CYBER_STEIN: {
         struct DuelPlayer *players = gDuelPlayers;
+        /* FAKEMATCH: the shifted player byte pinned to r3. */
         register u32 playerBit __asm__("r3") = (u32)((u8 *)card)[2] << 31;   /* card->player in bit 31 */
         int one = 1;
 
@@ -678,6 +679,7 @@ int EffectCyberSteinPrepare(struct ChainEntry *card)
     }
     case CARD_GALE_DOGRA: {
         struct DuelPlayer *players = gDuelPlayers;
+        /* FAKEMATCH: the shifted player byte pinned to r3. */
         register u32 playerBit __asm__("r3") = (u32)((u8 *)card)[2] << 31;
         int one = 1;
 

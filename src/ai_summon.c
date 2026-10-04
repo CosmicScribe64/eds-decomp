@@ -92,6 +92,7 @@ void AiSimSummon(int handIndex, u16 tributeMask)
 {
     struct DuelZone *zone;
     int i;
+    /* FAKEMATCH: pin the free-zone counter to r2 as in the ROM. */
     register int freeZone __asm__("r2");
 
     /* FAKEMATCH: keep the mask out of r2, which the ROM uses for the counter. */

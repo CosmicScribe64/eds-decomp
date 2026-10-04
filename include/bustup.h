@@ -25,7 +25,7 @@ struct BytePos {
 };
 
 /* One record of the dialogue table gDialogueTable (0x0813ADF4, DIALOGUE_COUNT records + terminator).
- * bustup_runner also reads the text through gUnk_0813ADF8 = gDialogueTable[0].text (index * 0x304). */
+ * bustup_runner also reads the text through gDialogueTableText = gDialogueTable[0].text (index * 0x304). */
 struct DialogueEntry {
     u16 eventId;                /* +0x000: duelist * 1000 + n, or < 1000 for story/system events */
     u16 speakerId;              /* +0x002: portrait character id when the record opens */

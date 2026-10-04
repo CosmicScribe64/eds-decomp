@@ -285,7 +285,7 @@ void ShowCardDetail(int player, u16 cardId)
  * animations. The names say how card effects use them; the uses overlap. */
 
 /* DUEL_CMD_SHOW_CARD_ZOOM_IN: the picture zooms in, holds and fades (the card an effect targets). */
-void sub_080197C0(int player, u16 arg)
+void ShowActivatedCard(int player, u16 arg)
 {
     DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_SHOW_CARD_ZOOM_IN), arg, 1, 0);
 }
@@ -303,7 +303,7 @@ void ShowDestroyedCard(int player, u16 cardId)
 }
 
 /* DUEL_CMD_SHOW_CARD_UNROLL_DOWN: the picture's rows grow from the top (a card the player picked). */
-void sub_08019820(int player, u16 arg)
+void ShowPickedCard(int player, u16 arg)
 {
     DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_SHOW_CARD_UNROLL_DOWN), arg, 1, 0);
 }

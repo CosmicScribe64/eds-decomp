@@ -243,19 +243,19 @@ void ChainListScreen_Start(u32 list, u16 resolving)
 }
 
 /* Empty stubs without callers (compiled-out debug code). */
-void sub_0801A7CC(void)
+void DebugDrawValue(void)
 {
 }
 
-void sub_0801A7D0(void)
+void DebugUnusedNop1(void)
 {
 }
 
-void sub_0801A7D4(void)
+void DebugUnusedNop2(void)
 {
 }
 
-void sub_0801A7D8(void)
+void DebugPrint(void)
 {
 }
 
@@ -264,7 +264,7 @@ void DebugPrintf(const char *fmt, ...)
 {
 }
 
-void sub_0801A7E4(void)
+void DebugUnusedNop3(void)
 {
 }
 
@@ -273,11 +273,11 @@ void DebugPrintFlush(void)
 {
 }
 
-void sub_0801A7EC(void)
+void DebugUnusedNop4(void)
 {
 }
 
-void sub_0801A7F0(void)
+void DebugUnusedNop5(void)
 {
 }
 

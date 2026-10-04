@@ -145,7 +145,7 @@ void FadeOutBGM(void);
 #include "summon.h"                 /* gSummonAction */
 #include "battle.h"                 /* gBattle */
 #include "effect.h"                 /* gCardEffects, FindCardEffect, CanPlayerChain, CanChain*Card */
-#include "duel_actions.h"           /* sub_080197C0 */
+#include "duel_actions.h"           /* ShowActivatedCard */
 #include "ai.h"                     /* gAiState, AiTryChainResponse */
 
 /* ---- Local views kept for matching ---- */
@@ -621,7 +621,7 @@ u32 Chain_GetResponseCommands(struct ChainEntry *link, int player, int area, int
 
 /* Unreferenced: wait for the partner's reply to a response request (gLinkState.queryReplyReceived), then 60
  * frames; the steps are gTextBox.menuState and menuTimer. Returns 1 when done. */
-u32 sub_0801FE54(void)
+u32 Chain_WaitPartnerReply(void)
 {
     struct TextBox *box = &gTextBox;
     u8 *stepPtr;
@@ -820,7 +820,7 @@ s32 Chain_AskResponse(struct ChainEntry *link, u32 player)
     return 1;
 }
 
-/* gChain.links followed by the build flags, through the symbol gUnk_02017CC0 (= gChain + 0x280), which the
+/* gChain.links followed by the build flags, through the symbol gChainLinks (= gChain + 0x280), which the
  * ROM uses here for the list passed to ChainListScreen_Start and for one buildStep++ (+0x150 = gChain +0x3D0). */
 struct ChainLinksView {
     struct ChainEntry links[16];
@@ -829,7 +829,7 @@ struct ChainLinksView {
     u8 building:1;                  /* +0x150 */
     u8 buildStep:7;
 };
-extern struct ChainLinksView gUnk_02017CC0;
+extern struct ChainLinksView gChainLinks;
 
 /* gChain +0x3D2 as one byte: Chain_Build sets resolving = 1 and resolveStep = 0 with a single store. */
 struct ChainResolveByteView {
@@ -894,7 +894,7 @@ int Chain_Build(void)
             gChain.chainA = NULL;
         if (BUILD_LINK.skipChainB)
             gChain.chainB = NULL;
-        sub_080197C0(BUILD_LINK.player, BUILD_LINK.card);     /* show the card (DUEL_CMD_SHOW_CARD_ZOOM_IN) */
+        ShowActivatedCard(BUILD_LINK.player, BUILD_LINK.card);     /* show the card (DUEL_CMD_SHOW_CARD_ZOOM_IN) */
         gLinkState.remoteChainBDone = 0;
         gLinkState.remoteChainADone = 0;
         gChain.costStep = 0;
@@ -983,8 +983,8 @@ int Chain_Build(void)
         gChain.buildStep++;
         return 1;
     case BUILD_SHOW_LIST:
-        ChainListScreen_Start((u32)&gUnk_02017CC0, 0);
-        gUnk_02017CC0.buildStep++;
+        ChainListScreen_Start((u32)&gChainLinks, 0);
+        gChainLinks.buildStep++;
         return 1;
     case BUILD_WAIT_LIST:
         if (ChainListScreen_Run())

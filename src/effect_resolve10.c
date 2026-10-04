@@ -124,9 +124,9 @@ int CollectEffectTargetsInt(int player, int cardNumber, int param) asm("CollectE
 
 /* Alias symbols (address-suffixed; card_data.h lists them). Matching: the ROM loads these addresses from
  * their own literals. */
-extern const u16 gUnk_086243E8[];   /* &gCardNumberToId[CARD_PARASITE_PARACIDE] */
-extern const u16 gUnk_086248EE[];   /* &gCardNumberToId[CARD_1405] (0: no EDS card) */
-extern u8 gUnk_02017E22[];          /* &gChain.effectCounter */
+extern const u16 gCardNumberToId_ParasiteParacide[];   /* &gCardNumberToId[CARD_PARASITE_PARACIDE] */
+extern const u16 gCardNumberToId_1405[];   /* &gCardNumberToId[CARD_1405] (0: no EDS card) */
+extern u8 gChainEffectCounter[];          /* &gChain.effectCounter */
 
 /* Prompts used only by this unit. */
 extern const u8 gStrPlaceOnDeckTopPrompt[];         /* 0x08083604 "Do you wish to place %s at the top of the
@@ -324,7 +324,7 @@ int EffectPlaceParasiteParacideOnDeckResolve(struct ChainEntry *link)
                 return 0x7F;
             }
             FormatStr(text, (const char *)gStrPlaceOnDeckTopPrompt,
-                      (const char *)gCardNames + gUnk_086243E8[0] * CARD_NAME_SIZE);   /* Parasite Paracide */
+                      (const char *)gCardNames + gCardNumberToId_ParasiteParacide[0] * CARD_NAME_SIZE);   /* Parasite Paracide */
             TextBoxOpen(PROMPT_POS, PROMPT_SIZE_19x6, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             return 0x7F;
@@ -443,7 +443,7 @@ int EffectPayToReviveNextStandbyResolve(struct ChainEntry *link)
     if (!link->negated) {
         if (gChain.effectStep == 0x80) {
             FormatStr(text, (const char *)gStrPayToReviveNextStandbyPrompt,
-                      (const char *)gCardNames + gUnk_086248EE[0] * CARD_NAME_SIZE);   /* key 1405's name */
+                      (const char *)gCardNames + gCardNumberToId_1405[0] * CARD_NAME_SIZE);   /* key 1405's name */
             TextBoxOpen(PROMPT_POS, PROMPT_SIZE_19x6, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             return 0x7F;
@@ -539,7 +539,7 @@ int EffectHandRouletteSummonResolve(struct ChainEntry *link, struct ChainEntry *
 
             do {
                 i = Random() % 3;
-            } while (i == gUnk_02017E22[0]);    /* gChain.effectCounter: the previous pick */
+            } while (i == gChainEffectCounter[0]);    /* gChain.effectCounter: the previous pick */
             gChain.effectCounter = i;
             if (gChain.effectSubStep != 0) {
                 gChain.effectSubStep--;
@@ -555,7 +555,7 @@ int EffectHandRouletteSummonResolve(struct ChainEntry *link, struct ChainEntry *
 
             /* Matching: pick is set after i = 0, like a hoisted invariant. Discard the two cards that were not
              * picked (compactHand FALSE: the hand indices must stay valid). */
-            for (i = 0, pick = gUnk_02017E22; i <= 2; i++) {
+            for (i = 0, pick = gChainEffectCounter; i <= 2; i++) {
                 if (i != *pick)
                     DiscardHandCard(link->player, link->targets[i], FALSE, FALSE);
             }

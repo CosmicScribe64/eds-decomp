@@ -41,7 +41,7 @@ The unit covers `0x08069284`-`0x0806A92B` (Thumb, `old_agbcc -O2`), and its sour
 - **`u16` loop counters** (`for (i = 0; i <= 3; i++)`) give the `add; lsl #16; lsr #16` narrowing and the hoisted zero register used for the BG scroll stores (`0x08069AE0`).
 - **8-bit bitfield `struct { u8 f : 8; }` with `|= 0xFF`** at `(u8 *)&state + offset` gives the ROM's `ldr =off; add r2,r5,r0; ldrb; orr; strb` sequence (as in [[deck-edit-c]]).
 - A `switch` on a `u8` with cases 1..8 gives the 8-entry jump table with the `sub #1; cmp #7; bhi` guard (`0x08069EA4`).
-- **Unfolded base + negative offset**: a local `u16 *base = gUnk_0201EFC4;` assigned before the `switch` (then `base - 0x730`) makes gcc keep `base` in a register / rematerialise the literal and add the pooled negative offset, as in the ROM; `&sym[-N]` or `(u32)sym - N` fold to `sym+-N`.
+- **Unfolded base + negative offset**: a local `u16 *base = gDeckEditSortScratch;` assigned before the `switch` (then `base - 0x730`) makes gcc keep `base` in a register / rematerialise the literal and add the pooled negative offset, as in the ROM; `&sym[-N]` or `(u32)sym - N` fold to `sym+-N`.
 
 ## Near-misses
 

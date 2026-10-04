@@ -504,12 +504,12 @@ LAYOUTS['bank_a'] = """
 08706E68 pal
 08706E88 tiles cols=2 pal=08706E68
 08706F08 pal
-08706F28 tiles cols=4 pal=0870B5E0            # sub_08066164
-087070A8 tiles cols=4 pal=0870B5E0            # sub_08066164
-08707228 tiles cols=4 pal=0870B5E0            # sub_08066164
-087073A8 tiles cols=4 pal=0870B5E0            # sub_08066164
-08707528 tiles cols=4 pal=0870B5E0            # sub_08066164
-087076A8 tiles cols=4 pal=0870B5E0            # sub_08066164
+08706F28 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
+087070A8 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
+08707228 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
+087073A8 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
+08707528 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
+087076A8 tiles cols=4 pal=0870B5E0            # DeckEdit_LoadCardBoxTiles
 08707828 tiles cols=2 pal=0870B5E0
 087078A8 tiles cols=2 pal=0870B5E0
 08707928 tiles cols=2 pal=0870B5E0

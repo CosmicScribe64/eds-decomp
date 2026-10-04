@@ -74,7 +74,7 @@ extern u16 *OamListAddSpriteGroup(const void *tmpls, int layer, int count, int x
                                   int priority, int sheetX, int sheetY, int format, int attr0Flags, int list);
 extern const u8 gNameIndexTabSprite[];      /* 0x081A70F4 */
 extern const u8 gNameIndexLettersSprite[];  /* 0x080874A0 */
-extern u16 gNameIndexCache asm("gUnk_0201F775"); /* 0x0201F775: gDeckEdit.nameIndexCache read as a u16
+extern u16 gNameIndexCache asm("gDeckEditNameIndexCache"); /* 0x0201F775: gDeckEdit.nameIndexCache read as a u16
                                                     (the odd address makes the cache never hit) */
 
 /* gSaveData's trunk entries read through the save base as u32 words (the ROM's access form):
@@ -88,9 +88,9 @@ extern u32 gSaveDataWords[] asm("gSaveData");   /* 0x02011C20: gSaveData as u32 
 
 /* gDeckEdit.listRow and the two save-deck sizes, reached through their own symbols as the ROM
  * loads them. */
-extern u8 gDeckEditListRow[] asm("gUnk_0201EFC0");          /* 0x0201EFC0: &gDeckEdit.listRow */
-extern u16 gSaveDeckSize[] asm("gUnk_02013CE8");            /* 0x02013CE8: &gSaveData.deckSize */
-extern u16 gSaveFusionDeckSize[] asm("gUnk_02013CEC");      /* 0x02013CEC: &gSaveData.fusionDeckSize */
+extern u8 gDeckEditListRow[] asm("gDeckEditListRow");          /* 0x0201EFC0: &gDeckEdit.listRow */
+extern u16 gSaveDeckSize[] asm("gSaveDataDeckSize");            /* 0x02013CE8: &gSaveData.deckSize */
+extern u16 gSaveFusionDeckSize[] asm("gSaveDataFusionDeckSize");      /* 0x02013CEC: &gSaveData.fusionDeckSize */
 extern const u8 gDeckEditDigitSprites[];                    /* 0x081A6EB4: digit sprite descriptors */
 extern void DrawNumberSprites(int value, int numDigits, int mode, int x, int y,
                               const void *digitTemplates, int unused, int spacing, int sheetX,

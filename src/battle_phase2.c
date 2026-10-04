@@ -102,7 +102,7 @@ extern const char gStrAskKuribohFmt[];      /* 0x08085B7C: "You've suffered dama
                                              * reduce the damage to 0 by discarding %s?" */
 /* Matching: Kuriboh's card ID read through its own alias symbol (= &gCardNumberToId[CARD_KURIBOH]); indexing
  * gCardNumberToId instead changes the code. */
-extern const u16 gUnk_08623E66[];
+extern const u16 gCardNumberToId_Kuriboh[];
 
 /* Matching: byte view of gLinkState; byte +0x450 holds cardPromptPending (bit 0) and cardPromptAnswered
  * (bit 1), duel_link.h's u32 bitfield container would load a word. The answer is the halfword at +0x45A. */
@@ -302,7 +302,7 @@ int BattleStage_InflictDamage(int player)
          * CPU always says yes, and the link partner is asked over the link. */
         if (player != 0) {
             /* Matching: the name table is a cast constant, reloaded into the next rotation register (r5). */
-            FormatStr(question, gStrAskKuribohFmt, (const char *)0x0822C720 + (gUnk_08623E66[0] << 6));
+            FormatStr(question, gStrAskKuribohFmt, (const char *)0x0822C720 + (gCardNumberToId_Kuriboh[0] << 6));
             TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(21, 9), TEXTBOX_FLAGS_DEFAULT, (u8 *)question);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             gDuel.battleStep++;
@@ -310,7 +310,7 @@ int BattleStage_InflictDamage(int player)
             gTextBox.result = 1;
             gDuel.battleStep++;
         } else {
-            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, gUnk_08623E66[0], 0, 0);
+            DuelLink_SendMessage(LINKMSG_CARD_PROMPT, gCardNumberToId_Kuriboh[0], 0, 0);
             LINK_CARD_PROMPT->answered = 0;
         }
         gDuel.battleStep++;
@@ -328,7 +328,7 @@ int BattleStage_InflictDamage(int player)
     case 12:
         /* Yes: show Kuriboh and discard it; the defender takes no damage. Back to step 2 either way. */
         if (gTextBox.result != 0) {
-            sub_080197C0(1 - player, gUnk_08623E66[0]);
+            ShowActivatedCard(1 - player, gCardNumberToId_Kuriboh[0]);
             if (DiscardHandCardByNumber(1 - player, CARD_KURIBOH) != 0)
                 gBattle.side[1 - player].damage = 0;
         }
@@ -524,7 +524,7 @@ int BattleStage_DestroyMonsters(int player)
                 case CARD_1254:
                 case CARD_1255:
                 case CARD_1256:
-                    sub_080197C0(player, gBattle.side[player].cardId);
+                    ShowActivatedCard(player, gBattle.side[player].cardId);
                     QueueAddZoneLink(player, gBattle.side[player].cardId,
                                      LOC((1 - player), gBattle.defSlot), ZONE_LINK_STATS_DOWN_500);
                     break;
@@ -633,7 +633,7 @@ int BattleStage_DestroyMonsters(int player)
                 case CARD_1255:
                 case CARD_1256:
                     /* (sic) player, as in the ROM. */
-                    sub_080197C0(player, gBattle.side[1 - player].cardId);
+                    ShowActivatedCard(player, gBattle.side[1 - player].cardId);
                     QueueAddZoneLink(1 - player, gBattle.side[1 - player].cardId,
                                      LOC(player, gBattle.atkSlot), ZONE_LINK_STATS_DOWN_500);
                     break;

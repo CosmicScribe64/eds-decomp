@@ -37,7 +37,7 @@ EffectPayToReviveNextStandbyResolve: @ 0x0803AB78
 	.align 2, 0
 _0803ABC4: .4byte 0x02017A40
 _0803ABC8: .4byte gStrPayToReviveNextStandbyPrompt
-_0803ABCC: .4byte gUnk_086248EE
+_0803ABCC: .4byte gCardNumberToId_1405
 _0803ABD0: .4byte gCardNames
 _0803ABD4: .4byte 0x00000206
 _0803ABD8: .4byte 0x00000613

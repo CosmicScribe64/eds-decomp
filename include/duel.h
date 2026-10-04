@@ -401,9 +401,9 @@ extern struct DuelCard gDuelDeckP1[80];         /* 0x0201A80C = gDuelPlayers[1].
 
 /*
  * Alias symbols. Some units reach single fields of gDuel through address-suffixed symbols (declared
- * locally, with the type the matched code needs): gUnk_0201A04A = gDuelPlayers[1].handCount,
- * gUnk_0201ADAD = the rule flags at +0x1ACD, gUnk_0201ADF2 = +0x1B12 (turnPlayer), gUnk_0201ADF6 =
- * battleStep (+0x1B16), gUnk_0201AE44 = promptResult. Keep the access form a unit uses; only rename or
+ * locally, with the type the matched code needs): gDuelHandCountP1 = gDuelPlayers[1].handCount,
+ * gDuelNegationFlags = the rule flags at +0x1ACD, gDuelTurnFlags = +0x1B12 (turnPlayer), gDuelBattleStep =
+ * battleStep (+0x1B16), gDuelPromptResult = promptResult. Keep the access form a unit uses; only rename or
  * annotate.
  */
 

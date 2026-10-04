@@ -29,7 +29,7 @@ The unit uses the shared header `include/duel.h` (`#include "duel.h"` after `glo
 | Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
 |---|---|---|---|
 | `0x08031BC8` | 0x4C | matching | one target accepted by `EffectDragonSeekerCheck(ref, pos)`: `DestroyFieldCardByEffect(tp, tz)`, `OnCardDestroyedByEffect(player, tp, tz)` |
-| `0x08031C14` | 0x11C | matching | one target holding a card: for card numbers 0x3FF / 0x4BB, a set (flag `& 3 == 1`) card 0x4B1: message 0x7F + `sub_080197C0`; else (trap type 0x16 in a monster zone needs `IsZoneTargetable`), message 0x8B if the target is on the other side, `DestroyFieldCardByEffect` + `OnCardDestroyedByEffect` |
+| `0x08031C14` | 0x11C | matching | one target holding a card: for card numbers 0x3FF / 0x4BB, a set (flag `& 3 == 1`) card 0x4B1: message 0x7F + `ShowActivatedCard`; else (trap type 0x16 in a monster zone needs `IsZoneTargetable`), message 0x8B if the target is on the other side, `DestroyFieldCardByEffect` + `OnCardDestroyedByEffect` |
 | `0x08031D30` | 0x50 | matching | one target holding a card -> `ReturnFieldCardToHand(tp, tz, 0)` |
 | `0x08031D80` | 0x28 | matching | `SendTopDeckCardsToGraveyard(1 - p, 5, 1)` |
 | `0x08031DA8` | 0xB8 | matching | one target holding a face-down card on the other side: message 0x7F, `ShowCardDetail(tp, id)`, message 0x92, message 0x7F again |

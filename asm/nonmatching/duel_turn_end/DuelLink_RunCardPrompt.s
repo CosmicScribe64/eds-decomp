@@ -82,7 +82,7 @@ _08050EDC:
 	b _08050F1C
 	.align 2, 0
 _08050EF8: .4byte gStrKuribohDiscardFmt
-_08050EFC: .4byte gUnk_08623E66
+_08050EFC: .4byte gCardNumberToId_Kuriboh
 _08050F00: .4byte gCardNames
 _08050F04: .4byte 0x00000915
 _08050F08:

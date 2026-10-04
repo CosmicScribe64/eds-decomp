@@ -52,7 +52,7 @@ ProhibitCardSelect_InitListView: @ 0x0806F404
 	mov r2, #0x10
 	bl CopyTileSheetTo2D
 	ldr r0, _0806F7B0 @ =0x06006000
-	bl sub_08066164
+	bl DeckEdit_LoadCardBoxTiles
 	ldr r0, _0806F7B4 @ =0x081A70FC
 	ldr r5, _0806F7B8 @ =0x0201F238
 	add r1, r5, #0
@@ -439,7 +439,7 @@ _0806F7D8: .4byte 0x05000200
 _0806F7DC: .4byte 0x05000044
 _0806F7E0: .4byte 0x00007758
 _0806F7E4: .4byte 0x06002000
-_0806F7E8: .4byte gUnk_08704EE8
+_0806F7E8: .4byte gDeckEditStatIconPal
 _0806F7EC: .4byte 0xFFFFE8E8
 _0806F7F0: .4byte 0x0201F73C
 _0806F7F4: .4byte 0x0600D000

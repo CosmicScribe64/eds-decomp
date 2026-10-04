@@ -91,7 +91,7 @@ extern const u8 gMagicIconPal[];                /* 0x08636368 */
 extern const u8 gMagicIconGfx[];                /* 0x08636728 */
 extern const u8 gDivineIconPal[];               /* 0x08636388 */
 extern const u8 gDivineIconGfx[];               /* 0x086367A8 */
-extern const u8 gUnk_08637394[];                /* 8x8 4bpp icons of SpellSubtype 1-6, one tile each */
+extern const u8 gSpellTrapSubtypeIconGfx_1[];                /* 8x8 4bpp icons of SpellSubtype 1-6, one tile each */
 extern const u8 gSpellTrapSubtypeIconPal[];     /* 0x08637454 */
 extern const char *const gCardTypeNames[];      /* 0x081988D0: by enum CardType */
 extern const char *const gSpellTrapSubtypeSuffixes[]; /* 0x08198934: by enum SpellSubtype */
@@ -498,7 +498,7 @@ void CardDetail_DrawInfo(u16 cardId)
         CopyDoubleWords((void *)(OBJ_VRAM0 + 0x400), gTrapIconGfx, 0x80);
         if (GetSpellSubtype(cardId)) {
             /* The base is loaded before the inline runs, so it is assigned first. */
-            const u8 *icon = gUnk_08637394;
+            const u8 *icon = gSpellTrapSubtypeIconGfx_1;
             icon += (GetSpellSubtype(cardId) - 1) * 32;
             CopyDoubleWords((void *)(OBJ_PLTT + 0x40), gSpellTrapSubtypeIconPal, 0x20);
             CopyDoubleWords((void *)(OBJ_VRAM0 + 0x480), icon, 0x20);
@@ -508,7 +508,7 @@ void CardDetail_DrawInfo(u16 cardId)
         CopyDoubleWords((void *)(OBJ_PLTT + 0x20), gMagicIconPal, 0x20);
         CopyDoubleWords((void *)(OBJ_VRAM0 + 0x400), gMagicIconGfx, 0x80);
         if (GetSpellSubtype(cardId)) {
-            const u8 *icon = gUnk_08637394;
+            const u8 *icon = gSpellTrapSubtypeIconGfx_1;
             icon += (GetSpellSubtype(cardId) - 1) * 32;
             CopyDoubleWords((void *)(OBJ_PLTT + 0x40), gSpellTrapSubtypeIconPal, 0x20);
             CopyDoubleWords((void *)(OBJ_VRAM0 + 0x480), icon, 0x20);

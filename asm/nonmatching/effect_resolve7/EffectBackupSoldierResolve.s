@@ -161,7 +161,7 @@ _08037840:
 	ldr r1, [r1]
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
-	bl sub_08019820
+	bl ShowPickedCard
 	ldr r0, _080378A8 @ =0x02017A40
 	ldr r1, _080378AC @ =0x000003E1
 	add r0, r0, r1

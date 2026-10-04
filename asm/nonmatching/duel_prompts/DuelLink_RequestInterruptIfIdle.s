@@ -1,5 +1,5 @@
-	thumb_func_start sub_08022914
-sub_08022914: @ 0x08022914
+	thumb_func_start DuelLink_RequestInterruptIfIdle
+DuelLink_RequestInterruptIfIdle: @ 0x08022914
 	push {r4, lr}
 	ldr r0, _08022948 @ =0x02017FB0
 	ldr r1, _0802294C @ =0x00000306
@@ -32,5 +32,5 @@ _0802294C: .4byte 0x00000306
 _08022950: .4byte 0x020192E0
 _08022954: .4byte 0x00001B14
 _08022958: .4byte 0xFFFFFE03
-	thumb_func_end sub_08022914
+	thumb_func_end DuelLink_RequestInterruptIfIdle
 

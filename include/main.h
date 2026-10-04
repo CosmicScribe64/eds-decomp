@@ -180,7 +180,7 @@ extern struct OamEntry gMain_oamBuffer[128];    /* 0x03004470 = gMain.oamBuffer 
 
 /*
  * Address-named views inside gMain that units declare locally with their own element types (u8[] or u16[]),
- * so they are not declared here: gUnk_0300045C = gMain.bgMapBuffer[0] (also gBgMaps) and gUnk_03001C5C =
+ * so they are not declared here: gBgMaps = gMain.bgMapBuffer[0] (also gBgMaps) and gBgMap3 =
  * bgMapBuffer[3]. Fold them into the field only where the code still matches.
  */
 

@@ -118,7 +118,7 @@ _08005B40:
 	cmp r0, #0x15
 	bge _08005BD0
 	b _08005BE8
-_08005B60: .4byte gUnk_08637394
+_08005B60: .4byte gSpellTrapSubtypeIconGfx_1
 _08005B64: .4byte 0x000007FF
 _08005B68: .4byte gCardStats
 _08005B6C:
@@ -175,7 +175,7 @@ _08005BD0:
 	lsr r0, r1, #0x11
 	b _08005BEA
 	.align 2, 0
-_08005BDC: .4byte gUnk_08637394
+_08005BDC: .4byte gSpellTrapSubtypeIconGfx_1
 _08005BE0: .4byte 0x000007FF
 _08005BE4: .4byte gCardStats
 _08005BE8:

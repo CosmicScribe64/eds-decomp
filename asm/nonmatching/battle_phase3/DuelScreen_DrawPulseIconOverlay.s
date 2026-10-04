@@ -1,5 +1,5 @@
-	thumb_func_start sub_0804E3C0
-sub_0804E3C0: @ 0x0804E3C0
+	thumb_func_start DuelScreen_DrawPulseIconOverlay
+DuelScreen_DrawPulseIconOverlay: @ 0x0804E3C0
 	push {r4, r5, lr}
 	ldr r1, _0804E400 @ =0x0201CFB0
 	mov r2, #0x81
@@ -40,5 +40,5 @@ _0804E410: .4byte 0x0000F364
 _0804E414: .4byte gPulseScaleCurve
 _0804E418: .4byte 0x03000040
 _0804E41C: .4byte 0x0000485E
-	thumb_func_end sub_0804E3C0
+	thumb_func_end DuelScreen_DrawPulseIconOverlay
 

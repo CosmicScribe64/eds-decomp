@@ -14,7 +14,7 @@
 	.include "asm/nonmatching/text_render/ClearKatakanaFlag.s"
 	.include "asm/nonmatching/text_render/RenderShadowedGlyph.s"
 	.include "asm/nonmatching/text_render/ParseSignedDecimal.s"
-	.include "asm/nonmatching/text_render/sub_08078CA8.s"
+	.include "asm/nonmatching/text_render/UnusedObjectInit.s"
 	.include "asm/nonmatching/text_render/TextCanvasRowsToTiles.s"
 	.include "asm/nonmatching/text_render/TextDrawGlyphShadowed.s"
 	.include "asm/nonmatching/text_render/ParseDecimal.s"

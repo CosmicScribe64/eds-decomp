@@ -90,10 +90,10 @@ extern u16 (*const gGetPackSteps[])(void);          /* 0x081A572C: the Get-a-pac
 extern const u16 gUnlockablePackIds[];              /* 0x081A5758: the 27 unlockable packs, in list order */
 /* = gCardNumberToId[CARD_TOON_WORLD] (card_data.h): IsOpponentUnlocked reads Toon World's card ID through
  * its own symbol, as the ROM loads it. */
-extern const u16 gUnk_08624568[];
+extern const u16 gCardNumberToId_ToonWorld[];
 /* = gCardIdToNumber[821], the padding entry (card_data.h): IsCardCollectionComplete loads it once as its
  * gate value, as the ROM does. */
-extern const u16 gUnk_0862311E[];
+extern const u16 gCardIdToNumber_821[];
 extern const u8 gStarterDeckBgImage[];              /* 0x0863CF3C */
 extern const u8 gStarterDeckBoxBlackImage[];        /* 0x0863D12C */
 extern const u8 gStarterDeckBoxRedImage[];          /* 0x0863E39C */
@@ -102,11 +102,11 @@ extern const u8 gHandCursorPal[];                   /* 0x0867793C */
 extern const u8 gHandCursorGfx[];                   /* 0x0867797C */
 /* = &gSceneWork.packCount: PackList_DrawCovers loads the count through its own symbol, as the ROM does
  * (see the local views below). */
-extern u16 gUnk_0202037C;                           /* 0x0202037C */
+extern u16 gPackListPackCount;                           /* 0x0202037C */
 /* BG tilemap buffer in IWRAM, 32 columns (= &gMain.bgMapBuffer[3][0]; other units read it by this name). */
-extern u16 gUnk_03001C5C[];                         /* 0x03001C5C */
+extern u16 gBgMap3[];                         /* 0x03001C5C */
 /* Tile map at the start of gMain.bgMapBuffer, written by PackList_DrawCoverTiles. */
-extern u16 gUnk_0300045C[];                         /* 0x0300045C */
+extern u16 gBgMaps[];                         /* 0x0300045C */
 
 /* The interrupt vector table at the start of IWRAM; entry 1 is the HBlank handler (cleared while the
  * interrupt registers are rewritten, as in booster_pack.c). */
@@ -283,7 +283,7 @@ u16 IsCardCollectionComplete(void)
     /* Matching: retain ROM counter registers and rematerialized loop bound. */
     register s32 total __asm__("r4") = 0;
     register s32 id __asm__("r3") = 1;
-    u16 key = gUnk_0862311E[0];
+    u16 key = gCardIdToNumber_821[0];
     u32 limit = 0x77F;
     struct SaveData *s = &gSaveData;
     struct TrunkEntry *e = &s->trunk[1];
@@ -342,7 +342,7 @@ u16 IsOpponentUnlocked(u16 id) {
     case DUELIST_PEGASUS: {
         /* Toon World owned, the same trunk test as IsCardCollectionComplete. */
         u8 *base = (u8 *)&gSaveData;
-        u8 *p = base + gUnk_08624568[0] * 4;
+        u8 *p = base + gCardNumberToId_ToonWorld[0] * 4;
         u32 v = *(u16 *)(p + 8);
         u32 b;
         if ((v << 22) != 0)
@@ -586,7 +586,7 @@ void StarterDeckSelect_DrawBackground(s32 rowStart, s32 rowEnd, u16 tileBase, co
         x = i;
         i++;
         for (; j <= 0x1F; j++)
-            gUnk_03001C5C[(u16)j + (x << 5)] = tileBase >> 1;
+            gBgMap3[(u16)j + (x << 5)] = tileBase >> 1;
     }
 }
 
@@ -913,9 +913,9 @@ void PackList_DrawBackground(s32 rowStart, s32 rowEnd, u16 tile) {
         next = i + 1;
         for (j = 0; j <= 0x1F; j++) {
             if (rowStart <= i && i < rowEnd)
-                gUnk_03001C5C[(u16)j + (x << 5)] = tile;
+                gBgMap3[(u16)j + (x << 5)] = tile;
             else
-                gUnk_03001C5C[(u16)j + (x << 5)] = tile + 1;
+                gBgMap3[(u16)j + (x << 5)] = tile + 1;
         }
     }
 }
@@ -975,7 +975,7 @@ void PackList_DrawCoverTiles(u32 a, u32 bArg, u32 cArg)
     u16 t = c * 0x62;
     t += 0x10;
     for (i = 0; i <= 0xD; i = next) {
-        u16 *p = (u16 *)((a << 11) + (u32)&gUnk_0300045C + (b << 1));
+        u16 *p = (u16 *)((a << 11) + (u32)&gBgMaps + (b << 1));
         b += 0x20;
         next = i + 1;
         j = 6;
@@ -1016,7 +1016,7 @@ void PackList_DrawCovers(s32 arg) {
       while (dma[2] & 0x80000000) ;
     }
     packMainMaps.bgHofs1 = 0;
-    cnt = &gUnk_0202037C;   /* hoisted: the ROM rematerialises it in the loop */
+    cnt = &gPackListPackCount;   /* hoisted: the ROM rematerialises it in the loop */
     for (i = 0; i <= 2; i++) {
         PackList_LoadCoverGfx(i, gPackInfo[gSceneWork.packRows[sel]].id);
         PackList_DrawCoverTiles(1, (u16)(i * 10 + 0x62), (u16)i);

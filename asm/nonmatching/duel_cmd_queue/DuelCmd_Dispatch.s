@@ -386,7 +386,7 @@ _0801F174:
 	bl DuelCmd_AdjustDelayedSummonCount
 	b _0801F44A
 _0801F17A:
-	bl sub_08014B5C
+	bl DuelCmd_SetDestroyedTriggerPending
 	b _0801F44A
 _0801F180:
 	mov r0, #0
@@ -610,7 +610,7 @@ _0801F334:
 	bl DuelCmd_SendFusionMaterialToGrave
 	b _0801F44A
 _0801F33A:
-	bl sub_08013104
+	bl DuelCmd_SetZoneLevelCheckFlag
 	b _0801F44A
 _0801F340:
 	bl DuelCmd_MoveMonsterFaceDown
@@ -709,10 +709,10 @@ _0801F3FA:
 	bl DuelCmd_EquipGraveyardCardToOpponent
 	b _0801F44A
 _0801F400:
-	bl sub_080106BC
+	bl DuelCmd_ClearPendingOpponentSummon
 	b _0801F44A
 _0801F406:
-	bl sub_08010708
+	bl DuelCmd_MarkGraveyardCard
 	b _0801F44A
 _0801F40C:
 	bl DuelCmd_RemoveCardFromFusionDeck

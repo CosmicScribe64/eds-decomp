@@ -169,7 +169,7 @@ int EffectDestroyTargetResolve(struct ChainEntry *link)
             case CARD_1211:
                 if (CARD_NUMBER(id) == CARD_BIG_SHIELD_GARDNA && zone->isDefense && !zone->isFaceUp) {
                     DuelCmd_Push(CMD_FOR(targetPlayer, DUEL_CMD_FLIP_CARD), targetZone, 0, 0);
-                    sub_080197C0(targetPlayer, CARD_ID(CARD_WORD(zone->card)));
+                    ShowActivatedCard(targetPlayer, CARD_ID(CARD_WORD(zone->card)));
                     return EFFECT_STEP_DONE;
                 }
                 break;

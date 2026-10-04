@@ -39,7 +39,7 @@ _080221A8: .4byte 0x020192E0
 _080221AC: .4byte 0x00001B62
 _080221B0: .4byte 0x00001B64
 _080221B4: .4byte gStrPromptOpponentSpecialSummonedFmt
-_080221B8: .4byte gUnk_086249D4
+_080221B8: .4byte gCardNumberToId_1520
 _080221BC: .4byte gCardNames
 _080221C0: .4byte 0x00000206
 _080221C4: .4byte 0x00000713

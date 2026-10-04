@@ -128,7 +128,7 @@ typedef char save_h_check_checksum[(u32)&((struct SaveData *)0)->checksum == 0x2
 
 /* The save image. Units that match only with another view keep it locally (u8[], u32[], or a struct with
  * the fields they use); a few reach single fields through address aliases instead of gSaveData:
- *   gUnk_02013CE8 = &gSaveData.deckSize, gUnk_02013CEC = &gSaveData.fusionDeckSize (deck_edit_cards);
+ *   gSaveDataDeckSize = &gSaveData.deckSize, gSaveDataFusionDeckSize = &gSaveData.fusionDeckSize (deck_edit_cards);
  *   collection.c uses the integer addresses 0x02013CE6 (trunkSize), 0x02013D72 (options),
  *   0x02013D78 (lastOpponent) and 0x02013D82 (championshipWins).
  * These forms are matching choices: keep them. */

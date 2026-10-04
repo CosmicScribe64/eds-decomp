@@ -49,7 +49,7 @@ _0803A8CC:
 	mov r0, #0x7F
 	b _0803A968
 _0803A8F8: .4byte gStrPlaceOnDeckTopPrompt
-_0803A8FC: .4byte gUnk_086243E8
+_0803A8FC: .4byte gCardNumberToId_ParasiteParacide
 _0803A900: .4byte gCardNames
 _0803A904: .4byte 0x00000206
 _0803A908: .4byte 0x00000613

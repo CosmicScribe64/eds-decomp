@@ -242,7 +242,7 @@ _0804BE3A:
 	add r4, r0, #0
 	ldrh r1, [r5, #2]
 	add r0, r7, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r0, #1
 	sub r0, r0, r7
 	lsl r0, r0, #0x18

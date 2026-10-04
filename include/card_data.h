@@ -126,56 +126,56 @@ extern const u8 gCardFrameTicketGfx[];  /* 0x08633BF0: Ticket (type 23) */
  * because that is how the ROM's code loads it (a literal-pool address of the element, not base + index).
  * They stay unit-local externs; this is what each one is:
  *
- *   gUnk_0862311E   gCardIdToNumber[821] (padding)      booster_get_pack
- *   gUnk_08623326   gCardIdToNumber[0x439] (out of range, inside gCardPasswords)  deck_edit_stats
- *   gUnk_08623E10   gCardNumberToId[CARD_FLAME_SWORDSMAN]               collection
- *   gUnk_08623E1E   gCardNumberToId[CARD_SUMMONED_SKULL]                effect_targets3
- *   gUnk_08623E38   gCardNumberToId[CARD_DARK_MAGICIAN]                 collection, effect_resolve8
- *   gUnk_08623E3E   gCardNumberToId[CARD_GAIA_THE_FIERCE_KNIGHT]        collection
- *   gUnk_08623E44   gCardNumberToId[CARD_CELTIC_GUARDIAN]               collection
- *   gUnk_08623E66   gCardNumberToId[CARD_KURIBOH]                       battle_phase2, duel_turn_end,
+ *   gCardIdToNumber_821   gCardIdToNumber[821] (padding)      booster_get_pack
+ *   gCardIdToNumber_1081   gCardIdToNumber[0x439] (out of range, inside gCardPasswords)  deck_edit_stats
+ *   gCardNumberToId_FlameSwordsman   gCardNumberToId[CARD_FLAME_SWORDSMAN]               collection
+ *   gCardNumberToId_SummonedSkull   gCardNumberToId[CARD_SUMMONED_SKULL]                effect_targets3
+ *   gCardNumberToId_DarkMagician   gCardNumberToId[CARD_DARK_MAGICIAN]                 collection, effect_resolve8
+ *   gCardNumberToId_GaiaTheFierceKnight   gCardNumberToId[CARD_GAIA_THE_FIERCE_KNIGHT]        collection
+ *   gCardNumberToId_CelticGuardian   gCardNumberToId[CARD_CELTIC_GUARDIAN]               collection
+ *   gCardNumberToId_Kuriboh   gCardNumberToId[CARD_KURIBOH]                       battle_phase2, duel_turn_end,
  *                                                                       effect_activation
- *   gUnk_08623E6E   gCardNumberToId[CARD_HARPIE_LADY]                   collection
- *   gUnk_08623E72   gCardNumberToId[CARD_TIGER_AXE]                     collection
- *   gUnk_08623E7C   gCardNumberToId[CARD_THOUSAND_DRAGON]               collection
- *   gUnk_08623F3E   gCardNumberToId[CARD_MYSTERIOUS_PUPPETEER]          effect_hooks
- *   gUnk_0862401E   gCardNumberToId[CARD_PETIT_MOTH]                    effect_hooks
- *   gUnk_08624052   gCardNumberToId[CARD_AXE_OF_DESPAIR]                effect_prepare3
- *   gUnk_08624084   gCardNumberToId[CARD_DRAGON_CAPTURE_JAR]            effect_hooks
- *   gUnk_086240CE   gCardNumberToId[CARD_LABYRINTH_WALL]                effect_hooks
- *   gUnk_086240FA   gCardNumberToId[CARD_PENDULUM_MACHINE]              collection
- *   gUnk_086240FE   gCardNumberToId[CARD_LAUNCHER_SPIDER]               collection
- *   gUnk_086241A8   gCardNumberToId[CARD_SINISTER_SERPENT]              effect_hooks
- *   gUnk_08624244   gCardNumberToId[CARD_MUSHROOM_MAN_2]                battle_phase3
- *   gUnk_086243C8   gCardNumberToId[CARD_GAZELLE_THE_KING_OF_MYTHICAL_BEASTS]  effect_resolve9, effect_resolve10
- *   gUnk_086243E8   gCardNumberToId[CARD_PARASITE_PARACIDE]             effect_resolve10
- *   gUnk_0862448E   gCardNumberToId[CARD_VALKYRION_THE_MAGNA_WARRIOR]   ai_strategy
- *   gUnk_08624568   gCardNumberToId[CARD_TOON_WORLD]                    ai_steps, booster_get_pack
- *   gUnk_0862457C   gCardNumberToId[CARD_LIGHTFORCE_SWORD]              duel_phases
- *   gUnk_086245CA   gCardNumberToId[CARD_POLYMERIZATION]                collection
- *   gUnk_0862467A   gCardNumberToId[CARD_GRAVEROBBER]                   card_command_menu, duel_cmd_queue,
+ *   gCardNumberToId_HarpieLady   gCardNumberToId[CARD_HARPIE_LADY]                   collection
+ *   gCardNumberToId_TigerAxe   gCardNumberToId[CARD_TIGER_AXE]                     collection
+ *   gCardNumberToId_ThousandDragon   gCardNumberToId[CARD_THOUSAND_DRAGON]               collection
+ *   gCardNumberToId_MysteriousPuppeteer   gCardNumberToId[CARD_MYSTERIOUS_PUPPETEER]          effect_hooks
+ *   gCardNumberToId_PetitMoth   gCardNumberToId[CARD_PETIT_MOTH]                    effect_hooks
+ *   gCardNumberToId_AxeOfDespair   gCardNumberToId[CARD_AXE_OF_DESPAIR]                effect_prepare3
+ *   gCardNumberToId_DragonCaptureJar   gCardNumberToId[CARD_DRAGON_CAPTURE_JAR]            effect_hooks
+ *   gCardNumberToId_LabyrinthWall   gCardNumberToId[CARD_LABYRINTH_WALL]                effect_hooks
+ *   gCardNumberToId_PendulumMachine   gCardNumberToId[CARD_PENDULUM_MACHINE]              collection
+ *   gCardNumberToId_LauncherSpider   gCardNumberToId[CARD_LAUNCHER_SPIDER]               collection
+ *   gCardNumberToId_SinisterSerpent   gCardNumberToId[CARD_SINISTER_SERPENT]              effect_hooks
+ *   gCardNumberToId_MushroomMan2   gCardNumberToId[CARD_MUSHROOM_MAN_2]                battle_phase3
+ *   gCardNumberToId_GazelleTheKingOfMythicalBeasts   gCardNumberToId[CARD_GAZELLE_THE_KING_OF_MYTHICAL_BEASTS]  effect_resolve9, effect_resolve10
+ *   gCardNumberToId_ParasiteParacide   gCardNumberToId[CARD_PARASITE_PARACIDE]             effect_resolve10
+ *   gCardNumberToId_ValkyrionTheMagnaWarrior   gCardNumberToId[CARD_VALKYRION_THE_MAGNA_WARRIOR]   ai_strategy
+ *   gCardNumberToId_ToonWorld   gCardNumberToId[CARD_TOON_WORLD]                    ai_steps, booster_get_pack
+ *   gCardNumberToId_LightforceSword   gCardNumberToId[CARD_LIGHTFORCE_SWORD]              duel_phases
+ *   gCardNumberToId_Polymerization   gCardNumberToId[CARD_POLYMERIZATION]                collection
+ *   gCardNumberToId_Graverobber   gCardNumberToId[CARD_GRAVEROBBER]                   card_command_menu, duel_cmd_queue,
  *                                                                       duel_turn_end
- *   gUnk_086246BC   gCardNumberToId[CARD_KOTODAMA]                      effect_hooks
- *   gUnk_08624730   gCardNumberToId[CARD_SWORD_OF_DRAGONS_SOUL]         battle_phase2, battle_phase3
- *   gUnk_08624758   gCardNumberToId[CARD_DARK_SAGE]                     effect_resolve8
- *   gUnk_08624768   gCardNumberToId[CARD_1210] (0 in EDS)               collection
- *   gUnk_086247AA   gCardNumberToId[CARD_1243] (0 in EDS)               battle_phase1
- *   gUnk_086247B6   gCardNumberToId[CARD_1249] (0 in EDS)               collection
- *   gUnk_086247C8   gCardNumberToId[CARD_1258] (0 in EDS)               effect_resolve9, effect_resolve10
- *   gUnk_08624848   gCardNumberToId[CARD_1322] (0 in EDS)               battle_phase3
- *   gUnk_0862486C   gCardNumberToId[CARD_1340] (0 in EDS)               battle_phase3
- *   gUnk_086248EE   gCardNumberToId[CARD_1405] (0 in EDS)               effect_resolve10, effect_targets4
- *   gUnk_086249C8   gCardNumberToId[CARD_1514] (0 in EDS)               battle_phase3
- *   gUnk_086249D4   gCardNumberToId[CARD_1520] (0 in EDS)               duel_prompts
- *   gUnk_086249EE   gCardNumberToId[CARD_1533] (0 in EDS)               effect_hooks
- *   gUnk_086249F4   gCardNumberToId[CARD_1536] (0 in EDS)               duel_phases
- *   gUnk_086249F8   gCardNumberToId[CARD_1538] (0 in EDS)               battle_phase3
- *   gUnk_08624A0A   gCardNumberToId[CARD_1547] (0 in EDS)               card_command_menu
- *   gUnk_08624A0C   gCardNumberToId[CARD_1548] (0 in EDS)               battle_phase3
- *   gUnk_08624CCE   gCardNumberToId[CARD_THE_MONARCHY]                  campaign_steps
- *   gUnk_08624CD0   gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]      campaign_steps
- *   gUnk_08624CD2   gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]       campaign_steps
- *   gUnk_08624CF4   gCardNumberToId[CARD_INSECT_MONSTER_TOKEN]          duel_cmd_turn
+ *   gCardNumberToId_Kotodama   gCardNumberToId[CARD_KOTODAMA]                      effect_hooks
+ *   gCardNumberToId_SwordOfDragonsSoul   gCardNumberToId[CARD_SWORD_OF_DRAGONS_SOUL]         battle_phase2, battle_phase3
+ *   gCardNumberToId_DarkSage   gCardNumberToId[CARD_DARK_SAGE]                     effect_resolve8
+ *   gCardNumberToId_1210   gCardNumberToId[CARD_1210] (0 in EDS)               collection
+ *   gCardNumberToId_1243   gCardNumberToId[CARD_1243] (0 in EDS)               battle_phase1
+ *   gCardNumberToId_1249   gCardNumberToId[CARD_1249] (0 in EDS)               collection
+ *   gCardNumberToId_1258   gCardNumberToId[CARD_1258] (0 in EDS)               effect_resolve9, effect_resolve10
+ *   gCardNumberToId_1322   gCardNumberToId[CARD_1322] (0 in EDS)               battle_phase3
+ *   gCardNumberToId_1340   gCardNumberToId[CARD_1340] (0 in EDS)               battle_phase3
+ *   gCardNumberToId_1405   gCardNumberToId[CARD_1405] (0 in EDS)               effect_resolve10, effect_targets4
+ *   gCardNumberToId_1514   gCardNumberToId[CARD_1514] (0 in EDS)               battle_phase3
+ *   gCardNumberToId_1520   gCardNumberToId[CARD_1520] (0 in EDS)               duel_prompts
+ *   gCardNumberToId_1533   gCardNumberToId[CARD_1533] (0 in EDS)               effect_hooks
+ *   gCardNumberToId_1536   gCardNumberToId[CARD_1536] (0 in EDS)               duel_phases
+ *   gCardNumberToId_1538   gCardNumberToId[CARD_1538] (0 in EDS)               battle_phase3
+ *   gCardNumberToId_1547   gCardNumberToId[CARD_1547] (0 in EDS)               card_command_menu
+ *   gCardNumberToId_1548   gCardNumberToId[CARD_1548] (0 in EDS)               battle_phase3
+ *   gCardNumberToId_TheMonarchy   gCardNumberToId[CARD_THE_MONARCHY]                  campaign_steps
+ *   gCardNumberToId_SetSailForTheKingdom   gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]      campaign_steps
+ *   gCardNumberToId_GloryOfTheKingsHand   gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]       campaign_steps
+ *   gCardNumberToId_InsectMonsterToken   gCardNumberToId[CARD_INSECT_MONSTER_TOKEN]          duel_cmd_turn
  */
 
 #endif /* GUARD_CARD_DATA_H */

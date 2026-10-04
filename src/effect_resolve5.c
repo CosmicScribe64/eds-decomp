@@ -264,7 +264,7 @@ int EffectCallOfTheDarkResolve(struct ChainEntry *link)
 /*
  * Change of Heart (1027): take control of the opponent's monster targets[0] for the turn: move it into a
  * free monster zone of the player and link the card to it (ZONE_LINK_CARD_EFFECT). A face-down Defense
- * Position Big Shield Gardna negates the Magic: it is flipped face up and shown (sub_080197C0) instead.
+ * Position Big Shield Gardna negates the Magic: it is flipped face up and shown (ShowActivatedCard) instead.
  */
 int EffectChangeOfHeartResolve(struct ChainEntry *link)
 {
@@ -285,7 +285,7 @@ int EffectChangeOfHeartResolve(struct ChainEntry *link)
                     if (CARD_NUMBER(cardId) == CARD_BIG_SHIELD_GARDNA
                         && (ZONE_POSITION_BYTE(z) & ZONE_POSITION_MASK) == ZONE_POSITION_DEFENSE) {
                         DuelCmd_Push(PLAYER_CMD(targetPlayer, DUEL_CMD_FLIP_CARD), targetZone, 0, 0);
-                        sub_080197C0(targetPlayer, CARD_ID(CARD_WORD(z->card)));
+                        ShowActivatedCard(targetPlayer, CARD_ID(CARD_WORD(z->card)));
                         return EFFECT_STEP_DONE;
                     } else {
                         MoveFieldCard(link->player, link->targets[0], link->player | (u8)freeZone << 8);

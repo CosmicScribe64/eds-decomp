@@ -195,7 +195,7 @@ _080363D6:
 	ldrb r2, [r5, #2]
 	lsl r0, r2, #0x1F
 	lsr r0, r0, #0x1F
-	bl sub_08019820
+	bl ShowPickedCard
 	mov r0, #1
 	ldrb r3, [r5, #2]
 	and r0, r3

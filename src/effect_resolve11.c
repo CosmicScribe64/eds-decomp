@@ -146,7 +146,7 @@ extern u16 CanActivateEffectU16(struct ChainEntry *card, struct ChainEntry *chai
  * register allocation. */
 extern void ShowRevealedCardInt(int player, int cardId) asm("ShowRevealedCard");
 extern void ShowDestroyedCardInt(int player, int cardId) asm("ShowDestroyedCard");
-extern void sub_080197C0Int(int player, int cardId) asm("sub_080197C0");
+extern void ShowActivatedCardInt(int player, int cardId) asm("ShowActivatedCard");
 
 /* The command id for the acting player: player 1's commands carry DUEL_CMD_PLAYER. */
 #define PLAYER_CMD(isPlayer1, cmd) ((isPlayer1) ? DUEL_CMD_PLAYER | (cmd) : (cmd))
@@ -864,7 +864,7 @@ int EffectForceActivateTrapResolve(struct ChainEntry *link)
                 entry.event = RESPONSE_NONE;
                 if (CanActivateEffectU16(&entry, NULL, 0) == 0)
                     goto destroyTarget;
-                sub_080197C0Int(targetPlayer, id);
+                ShowActivatedCardInt(targetPlayer, id);
                 /* Chain_AddPending word: card | zone << 16 | kind << 21 | player << 31 */
                 playerBit = targetPlayer << 31;
                 zoneBits = (targetZone & 0x1F) << 16;

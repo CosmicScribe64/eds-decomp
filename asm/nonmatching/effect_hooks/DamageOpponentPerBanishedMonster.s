@@ -67,6 +67,6 @@ _08046F0C: .4byte 0x00000D64
 _08046F10: .4byte 0x00000B84
 _08046F14: .4byte 0x000007FF
 _08046F18: .4byte gCardStats
-_08046F1C: .4byte gUnk_086249EE
+_08046F1C: .4byte gCardNumberToId_1533
 	thumb_func_end DamageOpponentPerBanishedMonster
 

@@ -211,7 +211,7 @@ struct ChainEntry {
 /* ---- END header subset ---- */
 
 /* gDuel +0x1ACD as a byte (alias symbol): bit 0 equipMagicNegated, bit 1 equipMagicNegatedThisTurn. */
-extern u8 gUnk_0201ADAD;
+extern u8 gDuelNegationFlags;
 
 extern const u8 gAttackBannerGfx[];         /* "Attack" banner: 4bpp tiles of a 64x32 sprite (0x400 bytes) */
 extern const u8 gDirectAttackBannerGfx[];   /* "Direct Attack" banner: 4bpp tiles of a 64x32 sprite */
@@ -344,7 +344,7 @@ u32 GetZoneCardType(s32 player, s32 slot)
 
     {
         /* Pointer set outside the loop: reloaded before its ldrb, after the #3 mask. */
-        u8 *equipNegated = &gUnk_0201ADAD;
+        u8 *equipNegated = &gDuelNegationFlags;
 
         for (i = 0; i < ZONE_AT_PLAYER_FIRST(player & 1, slot)->numLinks; i++) {
             u16 link;
@@ -402,7 +402,7 @@ u32 GetZoneCardAttribute(s32 player, s32 slot)
         return attribute;
     {
         /* Pointer set outside the loop: reloaded before its ldrb, after the #3 mask. */
-        u8 *equipNegated = &gUnk_0201ADAD;
+        u8 *equipNegated = &gDuelNegationFlags;
 
         for (i = 0; i < ZONE_AT(player & 1, slot)->numLinks; i++) {
             u16 link;

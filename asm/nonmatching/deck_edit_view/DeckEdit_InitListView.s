@@ -66,7 +66,7 @@ DeckEdit_InitListView: @ 0x0806D644
 	mov r1, #0xEA
 	bl ClearTile4bpp
 	ldr r0, _0806DA08 @ =0x06006000
-	bl sub_08066164
+	bl DeckEdit_LoadCardBoxTiles
 	ldr r0, _0806DA0C @ =0x081A70FC
 	ldr r5, _0806DA10 @ =0x0201F238
 	add r1, r5, #0
@@ -447,7 +447,7 @@ _0806DA30: .4byte 0x05000200
 _0806DA34: .4byte 0x05000044
 _0806DA38: .4byte 0x00007758
 _0806DA3C: .4byte 0x06002000
-_0806DA40: .4byte gUnk_08704EE8
+_0806DA40: .4byte gDeckEditStatIconPal
 _0806DA44: .4byte 0xFFFFE8E8
 _0806DA48: .4byte 0x0201F73C
 _0806DA4C: .4byte 0x0600D000

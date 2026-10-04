@@ -34,8 +34,8 @@ extern u8 gLinkPacketResend[];              /* 0x081A7390 */
 extern s8 gLinkPartnerSlot[];               /* 0x08087600 */
 extern u8 gStrDebugLinkReceiveRetry[];      /* 0x08087604 */
 extern u8 gStrDebugLinkRecvTimeout[];       /* 0x08087614 */
-extern u8 gUnk_03005204[];                  /* 0x03005204 = &gLinkBuf.sendBuf; LinkSendPacket reaches sendSeq and lastSentPacket at negative offsets from it (matching choice, see link.h) */
-extern u32 sub_0807F0AC(u32 a, u32 b);      /* 0x0807F0AC: the game's unsigned divide (the linked __udivsi3) */
+extern u8 gLinkSendBuf[];                  /* 0x03005204 = &gLinkBuf.sendBuf; LinkSendPacket reaches sendSeq and lastSentPacket at negative offsets from it (matching choice, see link.h) */
+extern u32 __udivsi3(u32 a, u32 b);      /* 0x0807F0AC: the game's unsigned divide (the linked __udivsi3) */
 
 /* ---- Local views kept for matching ---- */
 
@@ -55,7 +55,7 @@ struct MainTextAreaView {
 extern struct MainTextAreaView gMainTextArea asm("gMain");
 /* The eight 0x800-byte BG map buffers (gMain.bgMapBuffer at 0x0300045C), under the symbol
  * they have always used (same form as bg_image.c). */
-extern u8 gBgMaps[8][0x800] asm("gUnk_0300045C");
+extern u8 gBgMaps[8][0x800] asm("gBgMaps");
 struct MainBgMapView {
     u8 pad[0x41C];
     u16 bgMapBuffer[0x2000];                /* flat view of gMain.bgMapBuffer at 0x0300045C */
@@ -73,12 +73,12 @@ extern u32 gDecimalDigitChars[];           /* 0x08087634 */
 int LinkSendPacket(void *pkt)
 {
     int ok;
-    MemCopy16(gUnk_03005204, pkt, 12);
-    /* gUnk_03005204 - 0x31A is gLinkBuf.sendSeq, - 0x532 is gLinkBuf.lastSentPacket. */
-    *(u16 *)gUnk_03005204 = (*(u16 *)gUnk_03005204 & 0xF0FF) | (*(u16 *)(gUnk_03005204 - 0x31A) << 8);
-    if (LinkSioSend(gUnk_03005204, 12)) {
-        MemCopy16(gUnk_03005204 - 0x532, gUnk_03005204, 12);
-        *(u16 *)(gUnk_03005204 - 0x31A) = (*(u16 *)(gUnk_03005204 - 0x31A) + 1) & 0xF;
+    MemCopy16(gLinkSendBuf, pkt, 12);
+    /* gLinkSendBuf - 0x31A is gLinkBuf.sendSeq, - 0x532 is gLinkBuf.lastSentPacket. */
+    *(u16 *)gLinkSendBuf = (*(u16 *)gLinkSendBuf & 0xF0FF) | (*(u16 *)(gLinkSendBuf - 0x31A) << 8);
+    if (LinkSioSend(gLinkSendBuf, 12)) {
+        MemCopy16(gLinkSendBuf - 0x532, gLinkSendBuf, 12);
+        *(u16 *)(gLinkSendBuf - 0x31A) = (*(u16 *)(gLinkSendBuf - 0x31A) + 1) & 0xF;
         ok = 1;
     } else {
         ok = 0;
@@ -227,7 +227,7 @@ int LinkIsRecvMessageComplete(int ringIndex)
     /* FAKEMATCH: the wide value retains the per-iteration literal reload. */
     unsigned long long mask = 0xF0FF;
     b = root;
-    for (; i < sub_0807F0AC(len, 5) + 3; i++) {
+    for (; i < __udivsi3(len, 5) + 3; i++) {
         u32 slot = (ringIndex + i) & 0x3F;
         u32 off = slot * 12;
         /* FAKEMATCH: keep the ring base separate from the packet offset. */

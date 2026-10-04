@@ -14,19 +14,19 @@ Unit status: `unit bytes MATCH`, **23/23 functions in C**, the whole unit (2026-
 
 | Address | Size | Status | Proposed name | Purpose (hypotheses about role) |
 |---|---|---|---|---|
-| `0x08046738` | 0x78 | matching |  | `(player, zone)`: if the face-down zone card (flag 2) exists and card 0x52 is present for either side, `sub_080197C0(player, id)` then `QueueAddZoneLink(player, id, player \| zone<<8, 0xD)`. Zone address uses a separate symbol-backed byte base |
+| `0x08046738` | 0x78 | matching |  | `(player, zone)`: if the face-down zone card (flag 2) exists and card 0x52 is present for either side, `ShowActivatedCard(player, id)` then `QueueAddZoneLink(player, id, player \| zone<<8, 0xD)`. Zone address uses a separate symbol-backed byte base |
 | `0x080467B0` | 0x58 | matching |  | life-point effect of card 0xA5: `GainLifePoints(p, 500 * n_p)` and `(1-p, 500 * n_other)` |
 | `0x08046808` | 0x114 | matching C |  | if card 0x148 is present: for monster zones 0-4 of both players with face-down flag pattern `(flags6 & 3) == 2` and `GetZoneCardType(p,z)==1`, message 0x73 (`\|0x8000` for player 1) then `ChangeBattlePosition(p,z,0,0)` on each. FAKEMATCH next-player local in r6 |
 | `0x0804691C` | 0xC0 | matching C |  | 2-step state machine on byte `0x020192E0+0x1B22` (step 0: needs `CountGraveyardCardsByNumber(p, 0x1DA)`, sets `0x0201AE60+0x14` or prints a card-name text via `FormatStr`+`TextBoxOpen`; step 1: `ShowCardEffect`, `ReturnGraveyardCardToHand(p, 0x1DA)`) |
 | `0x080469DC` | 0x98 | matching C |  | for both players, spell/trap zones 5-9 holding a face-down card of type 0x15: send message 0xB1 (`\|0x8000` p1). Narrow ID local and inline lookup argument reproduce the allocation |
 | `0x08046A74` | 0x5C | matching |  | card 0x436: `n` = count for both sides, message 0x43 (`\|0x8000`) with arg `(u16)(n*500)` |
-| `0x08046AD0` | 0x84 | matching |  | card 0x464: if `CountOtherFaceUpSameNameMonsters(p,z)>0` for any monster zone, `ShowCardEffect(0, gUnk_086246BC[0])` and `DestroyFieldCard(p,z,1)` for each |
+| `0x08046AD0` | 0x84 | matching |  | card 0x464: if `CountOtherFaceUpSameNameMonsters(p,z)>0` for any monster zone, `ShowCardEffect(0, gCardNumberToId_Kotodama[0])` and `DestroyFieldCard(p,z,1)` for each |
 | `0x08046B54` | 0x54 | matching |  | card 0x464 variant for one zone: `CountOtherFaceUpSameNameMonsters(player, zone) > 0` -> `DestroyFieldCard(player, zone, 1)` |
 | `0x08046BA8` | 0x38 | matching |  | card 0x475: `n` copies, `DrawCards(player, 2*n)` |
 | `0x08046BE0` | 0x40 | matching |  | card 0x476: `DuelPrompt_PostDiscard(1-player, mul*n, 0, 1)` |
 | `0x08046C20` | 0x4C | matching |  | card 0x51A (either side): `LoseLifePoints(player, idx*300)` |
 | `0x08046C6C` | 0x44 | matching |  | `(player, zone, flag)`: send message 0xD9 (flag) / 0xD8 (`\|0x8000` for p1) via `DuelCmd_Push(msg, zone, flag?1:0, 0)` |
-| `0x08046CB0` | 0x8C | matching |  | `(a, b, c)`: zone card of player b/zone c with card number (via `0x08622AB4`) 0x5EA, `a != b`, card 0x453 absent, `c <= 4`: message 0x4C, `sub_080197C0` |
+| `0x08046CB0` | 0x8C | matching |  | `(a, b, c)`: zone card of player b/zone c with card number (via `0x08622AB4`) 0x5EA, `a != b`, card 0x453 absent, `c <= 4`: message 0x4C, `ShowActivatedCard` |
 | `0x08046D3C` | 0x150 | matching C |  | picks a card number 0x605..0x608 from bits 2-5 of the zone byte +6, then either announces (`PlaceDeckCardOnField(p, num, FindFreeSpellTrapZone())` true -> `ShowCardEffect(p, cardId)`) or searches the hand for it (message 0xC5, `DuelCmd_Push(msg, id, (i&15)<<4 \| (x&15) \| 0x100, 0)`). Tagged FAKEMATCH register/lifetime constraints |
 | `0x08046E8C` | 0x94 | matching C |  | card 0x5FD: count opponent's list cards (`+0xB84` of the player struct) of type <= 0x14; `LoseLifePoints(1-player, 100*n)`. Explicit back edge and FAKEMATCH register bindings preserve hoisting |
 | `0x08046F20` | 0x130 | matching C |  | dice: card 0x600, roll = `Random() % 6 + 1`, messages 0xE4 / 0x12, then destroy every face-down zone monster whose level (0 for 0x15-0x17, 10 for 0x18, else `(stats & 0x1E000000) >> 25`) equals the roll (or >5 with roll 6) |

@@ -28,13 +28,13 @@
 void PlaySE(u32 seId);
 
 /* ---- ROM data used only here ---- */
-extern u16 gUnk_0201EFC4[];   /* 0x0201EFC4 = gDeckEdit.sortScratch: base of the list-row
+extern u16 gDeckEditSortScratch[];   /* 0x0201EFC4 = gDeckEdit.sortScratch: base of the list-row
                                  pointer arithmetic in DeckEdit_FilterAndSortList */
 extern const struct SpriteDef gListFilterCursorSprites[];   /* 0x081A715C */
 extern const struct SpriteDef gListFilterFlashSprites[];    /* 0x081A71CC */
 extern const u8 gListFilterAnimScripts[];       /* 0x081A6118 */
 extern const u8 gListFilterBgPatternMap[];      /* 0x086FC060 */
-extern const u8 gUnk_086FC0E0[];                /* 0x086FC0E0 */
+extern const u8 gListFilterPanelMap[];                /* 0x086FC0E0 */
 extern const u8 gListFilterFilterPageMap[];     /* 0x086FC590 */
 extern const u8 gListFilterSortPageMap[];       /* 0x086FCA40 */
 extern const u8 gListFilterListIconMap[];       /* 0x086FD850 */
@@ -114,7 +114,7 @@ static inline u8 FS_FrameKind(u16 id)
     }
 /* Deck-edit filter and sort of card list `list`: rebuilds the lists, copies list `list` (u16 ids) to a scratch array,
    keeps the cards of category `filter` (enum ListFilter) and sorts by `sort` (enum ListSort). The list rows are
-   reached at negative offsets from gUnk_0201EFC4 (the matching pointer form; wiki/functions/deck-edit-filter-c.md). */
+   reached at negative offsets from gDeckEditSortScratch (the matching pointer form; wiki/functions/deck-edit-filter-c.md). */
 void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
 {
     u16 *src;
@@ -122,7 +122,7 @@ void DeckEdit_FilterAndSortList(u8 list, u8 filter, u8 sort)
     int n = 0;
     u16 n2 = 0;
     u16 i;
-    u16 *base = gUnk_0201EFC4;
+    u16 *base = gDeckEditSortScratch;
 
     DeckEdit_BuildCardLists();
     switch (list) {
@@ -272,7 +272,7 @@ int ListFilter_Init(void)
         for (j = 0; j <= 3; j++)
             CopyMapRectAddOffset((u16 *)gListFilterBgPatternMap, (u16 *)0x0600F000 + (j * 8 + i * 256), 8, 8, 8, 0, 0);
     }
-    CopyMapRect((void *)gUnk_086FC0E0, (void *)0x0600E000, 0x1E, 0x14);
+    CopyMapRect((void *)gListFilterPanelMap, (void *)0x0600E000, 0x1E, 0x14);
     CopyMapRect((void *)gListFilterFilterPageMap, (void *)0x0600D000, 0x1E, 0x14);
     CopyMapRect((void *)gListFilterSortPageMap, (void *)0x0600C000, 0x1E, 0x14);
     CropMapBlockWord((u16 *)gListFilterListIconMap, 0, gDeckEdit.curList * 5, 7, (void *)0x0600D000, 0x14, 0, 7, 5, 0);

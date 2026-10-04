@@ -27,7 +27,7 @@
 #include "palette.h"            /* FadeStart, SetBldAlpha, SetBldY */
 #include "sprite.h"             /* struct AnimSeq, OamListClear, ObjAffineInit, AnimBlockInit */
 #include "link.h"               /* LinkSyncStart, LinkSyncStep */
-#include "duel_scenes.h"        /* gSceneWork, struct TurnOrderSceneWork, ChoiceBob, sub_080288DC */
+#include "duel_scenes.h"        /* gSceneWork, struct TurnOrderSceneWork, ChoiceBob, TurnOrder_DrawUnusedSprite */
 #include "turn_order.h"         /* the screen's enums, steps, phases and drawers, its graphics */
 
 /* ---- Names the legacy headers lack (until H0 installs the new gba.h, main.h and sound.h) ---- */
@@ -81,9 +81,9 @@ extern s32 MulFix8Int(s32 a, s32 b) asm("MulFix8");
 
 /* ---- ROM data used only here ---- */
 
-/* 0x0808270C / 0x08082710: {0x318, 0x398} and {11, 12}: tiles and palettes of the unused sub_080288DC. */
-extern const u16 gUnk_0808270C[];
-extern const u8 gUnk_08082710[];
+/* 0x0808270C / 0x08082710: {0x318, 0x398} and {11, 12}: tiles and palettes of the unused TurnOrder_DrawUnusedSprite. */
+extern const u16 gTurnOrderUnusedSpriteTiles[];
+extern const u8 gTurnOrderUnusedSpritePals[];
 
 /* The screen's own data, at gSceneWork + 0xAAC. */
 #define sTurn gSceneWork.u.turnOrder
@@ -154,13 +154,13 @@ void TurnOrder_DrawDuelLogo(u8 unused, u8 swing, u8 drop)
     }
 }
 
-/* Unreferenced: a 64x32 sprite (tile gUnk_0808270C[index], palette gUnk_08082710[index]) at (0x58, 0x64).
+/* Unreferenced: a 64x32 sprite (tile gTurnOrderUnusedSpriteTiles[index], palette gTurnOrderUnusedSpritePals[index]) at (0x58, 0x64).
  * Nothing is loaded at tile 0x318 or into palettes 11 and 12: a leftover. */
-void sub_080288DC(u8 index)
+void TurnOrder_DrawUnusedSprite(u8 index)
 {
     u32 width = 0x40;
     u32 height = 0x20;
-    OamListAddSpriteWide(0, gUnk_0808270C[index], 0x58, 0x64, width, height, 4, gUnk_08082710[index], 0x200, 0, 0,
+    OamListAddSpriteWide(0, gTurnOrderUnusedSpriteTiles[index], 0x58, 0x64, width, height, 4, gTurnOrderUnusedSpritePals[index], 0x200, 0, 0,
                          0, &gSceneWork.oamList);
 }
 

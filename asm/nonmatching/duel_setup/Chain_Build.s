@@ -150,7 +150,7 @@ _08020464:
 	lsl r3, r3, #2
 	add r1, r2, r3
 	ldrh r1, [r1]
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r2, _080204D0 @ =0x02017FB0
 	mov r0, #0xC2
 	lsl r0, r0, #2

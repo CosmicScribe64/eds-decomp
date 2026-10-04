@@ -89,7 +89,7 @@ _080494F6:
 	.align 2, 0
 _08049500: .4byte 0x02017A40
 _08049504: .4byte 0xFFFFFC03
-_08049508: .4byte gUnk_08624A0A
+_08049508: .4byte gCardNumberToId_1547
 _0804950C: .4byte 0x020192E0
 _08049510: .4byte 0x00001B30
 	thumb_func_end CardMenu_FusionSummon

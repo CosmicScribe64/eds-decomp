@@ -7,7 +7,7 @@
  * cells, text cells) and leaves it black; DuelScreen_FadeInStep / DuelScreen_FadeOutStep step the fade
  * around it and DuelScreen_Exit tears it down. The DuelFieldFade* helpers blend only the field layers
  * (BG0-2 and the backdrop) through gMain.brightness. ClearTileBlock4x4 / FillTileBlock4x4 write the
- * 4x4-tile field cells of the BG2 card layer in its IWRAM shadow (gUnk_03001C5C, 32 columns);
+ * 4x4-tile field cells of the BG2 card layer in its IWRAM shadow (gBgMap3, 32 columns);
  * DrawZoneTiles, DrawAreaTiles and DrawAllAreaTiles redraw the cells from the duel state. Per frame,
  * DrawFieldOverlay draws the link markers of the card under the cursor plus the Battle Phase
  * can-attack markers and runs gDuelScreen.overlayCallback, DrawHandCards draws both players' hand
@@ -170,7 +170,7 @@ struct IntrTable {
 };
 extern struct IntrTable IntrTable;  /* 0x03000000 */
 
-extern u16 gUnk_03001C5C[];                         /* 0x03001C5C: BG2 card-layer map shadow, 32 columns */
+extern u16 gBgMap3[];                         /* 0x03001C5C: BG2 card-layer map shadow, 32 columns */
 extern u8 gDuelFieldImage[];                        /* 0x0867BB7C: the field board image loaded by DuelScreen_Init */
 extern const u32 gZoneMarkerAnimTiles[8];           /* 0x081A427C: OBJ tile of the marker animation frames */
 
@@ -336,7 +336,7 @@ u32 DuelFieldFadeFromWhite(s32 step)
 /* Clear a 4x4 block of the IWRAM tilemap buffer at (x, y). */
 void ClearTileBlock4x4(u16 x, u16 y)
 {
-    u16 *p = gUnk_03001C5C + (x + (y << 5));
+    u16 *p = gBgMap3 + (x + (y << 5));
 
     p[0] = 0;
     p[1] = 0;
@@ -358,7 +358,7 @@ void ClearTileBlock4x4(u16 x, u16 y)
 /* Fill a 4x4 block of the tilemap buffer at (x, y) with consecutive tiles starting at t. */
 void FillTileBlock4x4(u32 x, u32 y, u16 t)
 {
-    u16 *p = gUnk_03001C5C + ((u16)x + ((u16)y << 5));
+    u16 *p = gBgMap3 + ((u16)x + ((u16)y << 5));
 
     p[0x0] = t++;
     p[0x1] = t++;
@@ -395,7 +395,7 @@ void DrawZoneTiles(u32 player, u32 zone)
         if ((s32)zone <= 4 && IsMonsterZoneFree(player, zone) == 0) {
             markerX = x + 1;
             markerY = y + 1;
-            map = gUnk_03001C5C + (markerX + (markerY << 5));
+            map = gBgMap3 + (markerX + (markerY << 5));
             map[0] = FIELD_TILE_HELD_ZONE_MARK;
             map[1] = FIELD_TILE_HELD_ZONE_MARK + 1;
             map[0x20] = FIELD_TILE_HELD_ZONE_MARK + 2;

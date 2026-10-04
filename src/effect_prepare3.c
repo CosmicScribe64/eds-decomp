@@ -114,7 +114,7 @@ extern const char gStrTributeToReturnToDeckPrompt[];/* '%s has been sent to the 
 extern const char gStrPayLpToReturnToDeckPrompt[];  /* '%s has been sent to the Graveyard. ... pay 500LP ...' */
 
 /* gCardNumberToId[CARD_AXE_OF_DESPAIR] (0x08624052), an alias symbol the ROM loads directly. */
-extern const u16 gUnk_08624052;
+extern const u16 gCardNumberToId_AxeOfDespair;
 
 /*
  * Local views of callees (HEADERS.md, "Keeping a deliberate local view"). Matching: the ROM uses the
@@ -537,7 +537,7 @@ int EffectSanganResolve(struct ChainEntry *link)
         return EFFECT_STEP_3;
     case EFFECT_STEP_3:
         /* Show the picked card, add it to the hand and shuffle the deck. */
-        sub_08019820(link->player,
+        ShowPickedCard(link->player,
                      CARD_ID(gCardListView.cards[gCardListView.top + gCardListView.cursorRow]));
         if (AddDeckCardToHand(link->player,
                               ((const u16 *)0x08622AB4)[CARD_ID11(gCardListView.cards[gCardListView.top
@@ -600,7 +600,7 @@ int EffectReaperOfTheCardsResolve(struct ChainEntry *link)
             return EFFECT_STEP_DONE;
         }
         DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_FLIP_CARD), zone, 0, 0);
-        sub_08019820(player, id);
+        ShowPickedCard(player, id);
         if (CARD_TYPE(id) == CARD_TYPE_TRAP)
             DestroyFieldCard(player, zone, 1);
         else
@@ -656,7 +656,7 @@ int EffectMaskOfDarknessResolve(struct ChainEntry *link)
         return EFFECT_STEP_DONE;
     /* Matching: the assignment inside the argument fixes the evaluation order; u32 shifts give lsr. */
     if (CountGraveyardCardsByNumber(link->player, CARD_NUMBER(id = (u32)(link->targets[0] << 20) >> 20)) > 0) {
-        sub_08019820(link->player, id);
+        ShowPickedCard(link->player, id);
         {
             /* Matching: the player bit as the raw byte & 1 (the bitfield read gives other code here). */
             int player = LINK_BYTE2(link) & BYTE2_PLAYER_MASK;
@@ -834,9 +834,9 @@ u16 EffectAxeOfDespairResolve(struct ChainEntry *link, struct ChainEntry *chaine
             return EFFECT_STEP_DONE;
         if (CountTributableMonsters(link->player, -1) == 0)
             return EFFECT_STEP_END;
-        /* gUnk_08624052 = gCardNumberToId[CARD_AXE_OF_DESPAIR]: the name is the Axe's own. */
+        /* gCardNumberToId_AxeOfDespair = gCardNumberToId[CARD_AXE_OF_DESPAIR]: the name is the Axe's own. */
         FormatStr(text, gStrTributeToReturnToDeckPrompt,
-                  (const char *)gCardNames + gUnk_08624052 * CARD_NAME_SIZE);
+                  (const char *)gCardNames + gCardNumberToId_AxeOfDespair * CARD_NAME_SIZE);
         TextBoxOpen(PROMPT_POS, PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
         TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
         return EFFECT_STEP_2;

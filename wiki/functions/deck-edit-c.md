@@ -89,7 +89,7 @@ Private checks use `check.py` with its source compiler redirected to a scratch c
 
 ### F404 matched
 
-The bounded permuter reached score zero (`build/permuter/ProhibitCardSelect_InitListView/output-0-1/diff.txt`). Its only final change was a pointer to the existing `gUnk_0201F3D0` array, initialized between object marks `+0x126` and `+0x13A`, then used in both row loops. This harmless staging restores the target's temporary allocation; it is named `objectRows` and marked `FAKEMATCH` in the accepted C. No instruction asm or register bindings are used. The complete unit comparison passed: **0x1BF8 bytes MATCH**, with **11/12 functions in C**. The earlier F404 near-miss notes are superseded.
+The bounded permuter reached score zero (`build/permuter/ProhibitCardSelect_InitListView/output-0-1/diff.txt`). Its only final change was a pointer to the existing `gDeckEditObjAffine` array, initialized between object marks `+0x126` and `+0x13A`, then used in both row loops. This harmless staging restores the target's temporary allocation; it is named `objectRows` and marked `FAKEMATCH` in the accepted C. No instruction asm or register bindings are used. The complete unit comparison passed: **0x1BF8 bytes MATCH**, with **11/12 functions in C**. The earlier F404 near-miss notes are superseded.
 
 
 ## Twin-handler port and tail audit (2026-10-01)

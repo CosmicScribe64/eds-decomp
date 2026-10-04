@@ -68,10 +68,10 @@ struct CommandMenuSlideA {
 #define PA(p) ((struct CommandMenuSlideA *)(p))
 extern void CopyMapRectSetPalette(const void *src, u32 dst, int w, int h, int a, int b, int c);
 extern const u8 gDeckEditMenuTilemap[][60];      /* 0x086F17B0: command menu background map */
-extern const u8 gUnk_086F17E8[][60];             /* 0x086F17E8 */
-extern const u8 gUnk_086F17D4[][120];            /* 0x086F17D4 */
-extern const u8 gUnk_086F17E0[][120];            /* 0x086F17E0 */
-extern const u8 gUnk_086F1B10[][12]; /* 0x086F1B10: statement label tile maps, 12-byte rows */
+extern const u8 gDeckEditMenuTilemapBarEnd[][60];             /* 0x086F17E8 */
+extern const u8 gDeckEditMenuTilemapFilterLabels[][120];            /* 0x086F17D4 */
+extern const u8 gDeckEditMenuTilemapSortLabels[][120];            /* 0x086F17E0 */
+extern const u8 gDeckEditMenuTilemapStatementLabels[][12]; /* 0x086F1B10: statement label tile maps, 12-byte rows */
 /* Word view of the command-menu word at +0x1C3C (DeckEdit_CommandLabelVBlank / DeckEdit_CommandWindowVBlank). */
 struct CommandMenuWordView {
     u8 pad0[0x1C3C];
@@ -154,7 +154,7 @@ extern void LoadCardArt8bpp(u16 id, u32 dst);
 extern void DeckEdit_DrawPortraitTilemap(u8 col, u8 row, u8 set, u8 wrap, u32 base);
 extern void DeckEdit_CalcScrollBar(u32 a, u32 b, void *out);
 extern void DeckEdit_InitFrameSlot(u8 slot, u16 id, u8 kind, void *slots, void *out);
-extern const u8 gUnk_081A6EAC[]; /* 0x081A6EAC: sprite templates */
+extern const u8 gDeckEditCommandTabSprite[]; /* 0x081A6EAC: sprite templates */
 extern const u8 gDeckEditCommandLabelSprites[][40];
 extern void CopyMapRectAddOffset(const void *src, u32 dst, int a, int b, int c, int d, int e);
 extern u16 *OamListAddSpriteGroup(const void *a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l);
@@ -192,12 +192,12 @@ struct DeckEditScrollBase {
     u16 nameTabTimer;            /* +0x1C58 */
 };
 extern struct DeckEditScrollBase gDeckEditScroll asm("gDeckEdit");
-extern u16 gUnk_0201E140[];      /* 0x0201E140: per-list scroll positions (aliases gDeckEdit.listPos) */
-extern u8 gUnk_0201EFC0[];       /* 0x0201EFC0: per-list shown rows (aliases gDeckEdit.listRow) */
-extern u8 gUnk_0201E160[];       /* 0x0201E160: text tilemap flags buffer (gDeckEdit.textFlags) */
-extern u8 gUnk_0201F73C;         /* 0x0201F73C: alias of gDeckEdit.curList */
-extern s16 gUnk_08087494[];      /* 0x08087494: scroll offset table */
-extern s16 gUnk_0808749C[];      /* 0x0808749C: scroll offset table */
+extern u16 gDeckEditListPos[];      /* 0x0201E140: per-list scroll positions (aliases gDeckEdit.listPos) */
+extern u8 gDeckEditListRow[];       /* 0x0201EFC0: per-list shown rows (aliases gDeckEdit.listRow) */
+extern u8 gDeckEditTextFlags[];       /* 0x0201E160: text tilemap flags buffer (gDeckEdit.textFlags) */
+extern u8 gDeckEditCurList;         /* 0x0201F73C: alias of gDeckEdit.curList */
+extern s16 gDeckEditListRowRedrawY[];      /* 0x08087494: scroll offset table */
+extern s16 gDeckEditCursorRowRedrawY[];      /* 0x0808749C: scroll offset table */
 extern void FillMapRectWrap(s32, s32, s32, s32, s32, s32, u8 *);
 extern void DeckEdit_DrawCursorRowName(u16, s32, s32, u32, u8 *);
 extern void DeckEdit_DrawListRowName(u16, s32, s32, u32, u8 *, s32);
@@ -461,7 +461,7 @@ void DeckEdit_DrawCommandMenu(struct CommandMenuSlide *p)
     } else {
         gMain.vblankCallback = 0;
     }
-    OamListAddSpriteGroup(gUnk_081A6EAC, 0, 1, 0, (-((2 - p->rows) * 8)) & 0xFF, 1, 0, 1, 0, 0, 0, (int)&D);
+    OamListAddSpriteGroup(gDeckEditCommandTabSprite, 0, 1, 0, (-((2 - p->rows) * 8)) & 0xFF, 1, 0, 1, 0, 0, 0, (int)&D);
     if (PA(p)->rows == 2)
         OamListAddSpriteGroup(gDeckEditCommandLabelSprites[p->choice], 0, 5, -1, -1, 0, 0, 0, 0, 0, 0, (int)&D);
 }
@@ -495,7 +495,7 @@ void DeckEdit_UpdateCommandMenuAnim(struct CommandMenuSlide *p)
 /* Copy a 6x6 block of tiles of the card-info panel number `x` into the map at 0x0600E3B0 (hypothesis). */
 void DeckEdit_DrawStatementLabels(u8 x)
 {
-    CopyMapRectSetPalette(gUnk_086F1B10[x], 0x0600E3B0, 6, 6, 0x1E, 3, 2);
+    CopyMapRectSetPalette(gDeckEditMenuTilemapStatementLabels[x], 0x0600E3B0, 6, 6, 0x1E, 3, 2);
 }
 /* struct DeckEditScrollBase above lacks the 2 bytes after brightness (objAffineStaging would land at 0x18AE); this copy has the right offsets. */
 struct ScrollListUpView {
@@ -545,19 +545,19 @@ void DeckEdit_ScrollListUp(u16 *out)
 #define UP (*(struct ScrollListUpView *)&gDeckEditScroll)
     s32 t1, t2, t3;
 
-    if (gUnk_0201E140[UP.curList] == 0)
+    if (gDeckEditListPos[UP.curList] == 0)
         return;
     UP.nameTabTimer = 0x1E;
     UP.brightness = 0xFC00;
     Ease_Start(6, 0, -1, UP.scrollEase);
-    gUnk_0201E140[UP.curList]--;
+    gDeckEditListPos[UP.curList]--;
     UP.cardArtPage ^= 1;
-    t1 = gUnk_0808749C[0];
-    FillMapRectWrap(0, 0x0600C000, 0, ((UP.bg0Vofs + t1) & 0xFF) >> 3, 0x1E, 5, gUnk_0201E160);
-    if (gUnk_0201E140[UP.curList] < UP.listCounts[gUnk_0201EFC0[UP.curList]][UP.curList]) {
-        UP_CURSOR_ROW(DeckEdit_GetListCard(UP.curList, gUnk_0201EFC0[UP.curList], gUnk_0201E140[UP.curList]),
-                     0x0600C000, 0, ((UP.bg0Vofs + t1) & 0xFF) >> 3, gUnk_0201E160);
-        UP_CARD_ART(DeckEdit_GetListCard(UP.curList, gUnk_0201EFC0[UP.curList], gUnk_0201E140[UP.curList]),
+    t1 = gDeckEditCursorRowRedrawY[0];
+    FillMapRectWrap(0, 0x0600C000, 0, ((UP.bg0Vofs + t1) & 0xFF) >> 3, 0x1E, 5, gDeckEditTextFlags);
+    if (gDeckEditListPos[UP.curList] < UP.listCounts[gDeckEditListRow[UP.curList]][UP.curList]) {
+        UP_CURSOR_ROW(DeckEdit_GetListCard(UP.curList, gDeckEditListRow[UP.curList], gDeckEditListPos[UP.curList]),
+                     0x0600C000, 0, ((UP.bg0Vofs + t1) & 0xFF) >> 3, gDeckEditTextFlags);
+        UP_CARD_ART(DeckEdit_GetListCard(UP.curList, gDeckEditListRow[UP.curList], gDeckEditListPos[UP.curList]),
                  UP.cardArtPage * 0x1680 + 0x06008000, UP.cardArtPage);
         DeckEdit_DrawPortraitTilemap(((UP.bg3Hofs & 0xFF) >> 3) + 0x13, (u8)(((UP.bg3Vofs & 0xFF) >> 3) - 8), UP.cardArtPage, 1, 0);
     }
@@ -566,25 +566,25 @@ void DeckEdit_ScrollListUp(u16 *out)
     UP.scrollDir = 1;
     /* t2 is read inside the argument list, table operand first: the 0x0600D000 pseudo is then set
        before the table load, and the load before the bg1Vofs address. */
-    FillMapRectWrap(0, 0x0600D000, 3, (((t2 = gUnk_08087494[0]) + UP.bg1Vofs) & 0xFF) >> 3, 0x1B, 2, gUnk_0201E160);
-    if ((s16)gUnk_0201E140[UP.curList] - 2 >= 0) {
-        UP_LIST_ROW(DeckEdit_GetListCard(UP.curList, gUnk_0201EFC0[UP.curList], (u16)(gUnk_0201E140[UP.curList] - 2)),
-                     0x0600D000, 0, ((UP.bg1Vofs + t2) & 0xFF) >> 3, gUnk_0201E160, 0);
-        *out = DeckEdit_GetListCard(UP.curList, gUnk_0201EFC0[UP.curList], (u16)(gUnk_0201E140[UP.curList] - 2));
+    FillMapRectWrap(0, 0x0600D000, 3, (((t2 = gDeckEditListRowRedrawY[0]) + UP.bg1Vofs) & 0xFF) >> 3, 0x1B, 2, gDeckEditTextFlags);
+    if ((s16)gDeckEditListPos[UP.curList] - 2 >= 0) {
+        UP_LIST_ROW(DeckEdit_GetListCard(UP.curList, gDeckEditListRow[UP.curList], (u16)(gDeckEditListPos[UP.curList] - 2)),
+                     0x0600D000, 0, ((UP.bg1Vofs + t2) & 0xFF) >> 3, gDeckEditTextFlags, 0);
+        *out = DeckEdit_GetListCard(UP.curList, gDeckEditListRow[UP.curList], (u16)(gDeckEditListPos[UP.curList] - 2));
     } else {
         *out = 0xFFFF;
     }
-    t3 = gUnk_08087494[1];
+    t3 = gDeckEditListRowRedrawY[1];
     FillMapRectWrap(0, 0x0600D000, 3, ((UP.bg1Vofs + t3) & 0xFF) >> 3, 0x1B, 2, UP.textFlags);
-    if (gUnk_0201E140[gUnk_0201F73C] + 1 < UP.listCounts[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C])
-        UP_LIST_ROW(DeckEdit_GetListCard(gUnk_0201F73C, gUnk_0201EFC0[gUnk_0201F73C], (u16)(gUnk_0201E140[gUnk_0201F73C] + 1)),
+    if (gDeckEditListPos[gDeckEditCurList] + 1 < UP.listCounts[gDeckEditListRow[gDeckEditCurList]][gDeckEditCurList])
+        UP_LIST_ROW(DeckEdit_GetListCard(gDeckEditCurList, gDeckEditListRow[gDeckEditCurList], (u16)(gDeckEditListPos[gDeckEditCurList] + 1)),
                      0x0600D000, 0, ((UP.bg1Vofs + t3) & 0xFF) >> 3, UP.textFlags, 3);
     UP.bg1Vofs -= 0x10;
     UP_ATK_DEF(0x0600C000, 0xB, ((UP.bg0Vofs + 0x38) & 0xFF) >> 3, UP.textFlags);
     UP_LEVEL_STARS(0x0600C000, 0x11, ((UP.bg0Vofs + 0x38) & 0xFF) >> 3, 6);
     DeckEdit_DrawCardIcons(0);
-    DeckEdit_CalcScrollBar(UP.listCounts[gUnk_0201EFC0[gUnk_0201F73C]][gUnk_0201F73C],
-                 gUnk_0201E140[gUnk_0201F73C], &UP.scrollBar);
+    DeckEdit_CalcScrollBar(UP.listCounts[gDeckEditListRow[gDeckEditCurList]][gDeckEditCurList],
+                 gDeckEditListPos[gDeckEditCurList], &UP.scrollBar);
     {
         /* FAKEMATCH: addressing upArrowDirty through the upArrowFrame pointer puts the offset constant in r0 and the
            address in r1, as in the ROM; plain UP.upArrowDirty |= 1 swaps them. */
@@ -594,7 +594,7 @@ void DeckEdit_ScrollListUp(u16 *out)
             p[-1] |= 1;
         }
     }
-    DeckEdit_ScrollFrameSlots(UP.scrollDir, *out, ((u16 *)UP.listCounts)[gUnk_0201EFC0[gUnk_0201F73C] * 3 + gUnk_0201F73C],
+    DeckEdit_ScrollFrameSlots(UP.scrollDir, *out, ((u16 *)UP.listCounts)[gDeckEditListRow[gDeckEditCurList] * 3 + gDeckEditCurList],
                  UP.frameSlots, UP.objAffineStaging);
     DeckEdit_RotateListRowRing(1);
     PlaySE(SE_CURSOR);
@@ -649,7 +649,7 @@ void DeckEdit_ScrollListDown(u16 *out)
                                  DOWN.cardArtPage * 0x1680 + 0x06008000, DOWN.cardArtPage);
     DeckEdit_DrawPortraitTilemap(((DOWN.bg3Hofs & 0xFF) >> 3) + 0x13, ((DOWN.bg3Vofs & 0xFF) >> 3) + 0xC, DOWN.cardArtPage, 1, 0);
     DOWN.scrollDir = 2;
-    FillMapRectWrap(0, 0x0600D000, 3, (((t1 = gUnk_08087494[2]) + DOWN.bg1Vofs) & 0xFF) >> 3, 0x1B, 3, DOWN.textFlags);
+    FillMapRectWrap(0, 0x0600D000, 3, (((t1 = gDeckEditListRowRedrawY[2]) + DOWN.bg1Vofs) & 0xFF) >> 3, 0x1B, 3, DOWN.textFlags);
     if (DOWN.listPos[DOWN.curList] + 2 < DOWN.listCounts[DOWN.listRow[DOWN.curList]][DOWN.curList]) {
         DOWN_LIST_ROW(DeckEdit_GetListCard(DOWN.curList, DOWN.listRow[DOWN.curList], DOWN.listPos[DOWN.curList] + 2),
                      0x0600D000, 0, ((DOWN.bg1Vofs + t1) & 0xFF) >> 3, DOWN.textFlags, 6);
@@ -657,11 +657,11 @@ void DeckEdit_ScrollListDown(u16 *out)
     } else {
         *out = 0xFFFF;
     }
-    FillMapRectWrap(0, 0x0600D000, 3, (((t2 = gUnk_08087494[3]) + DOWN.bg1Vofs) & 0xFF) >> 3, 0x1B, 3, DOWN.textFlags);
+    FillMapRectWrap(0, 0x0600D000, 3, (((t2 = gDeckEditListRowRedrawY[3]) + DOWN.bg1Vofs) & 0xFF) >> 3, 0x1B, 3, DOWN.textFlags);
     if ((s16)DOWN.listPos[DOWN.curList] - 1 >= 0)
         DOWN_LIST_ROW(DeckEdit_GetListCard(DOWN.curList, DOWN.listRow[DOWN.curList], DOWN.listPos[DOWN.curList] - 1),
                      0x0600D000, 0, ((DOWN.bg1Vofs + t2) & 0xFF) >> 3, DOWN.textFlags, 3);
-    FillMapRectWrap(0, 0x0600C000, 0, (((t3 = gUnk_0808749C[1]) + DOWN.bg0Vofs) & 0xFF) >> 3, 0x1E, 6, DOWN.textFlags);
+    FillMapRectWrap(0, 0x0600C000, 0, (((t3 = gDeckEditCursorRowRedrawY[1]) + DOWN.bg0Vofs) & 0xFF) >> 3, 0x1E, 6, DOWN.textFlags);
     if (DOWN.listCounts[DOWN.listRow[DOWN.curList]][DOWN.curList] != 0) {
         DOWN_CURSOR_ROW(DeckEdit_GetListCard(DOWN.curList, DOWN.listRow[DOWN.curList], DOWN.listPos[DOWN.curList]),
                      0x0600C000, 0, ((DOWN.bg0Vofs + t3) & 0xFF) >> 3, DOWN.textFlags);

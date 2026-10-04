@@ -12,6 +12,6 @@
 	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_Run.s"
 	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_StartAndRun.s"
 	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_Init.s"
-	.include "asm/nonmatching/deck_edit/sub_0806F400.s"
+	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_UnusedNop.s"
 	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_InitListView.s"
 	.include "asm/nonmatching/deck_edit/ProhibitCardSelect_Update.s"

@@ -1,5 +1,5 @@
-	thumb_func_start sub_08066164
-sub_08066164: @ 0x08066164
+	thumb_func_start DeckEdit_LoadCardBoxTiles
+DeckEdit_LoadCardBoxTiles: @ 0x08066164
 	push {r4, r5, lr}
 	add r4, r0, #0
 	ldr r0, _08066214 @ =0x08706F28
@@ -76,17 +76,17 @@ sub_08066164: @ 0x08066164
 	pop {r0}
 	bx r0
 	.align 2, 0
-_08066214: .4byte gUnk_08706F28
-_08066218: .4byte gUnk_087070A8
-_0806621C: .4byte gUnk_08707228
-_08066220: .4byte gUnk_087076A8
-_08066224: .4byte gUnk_087073A8
-_08066228: .4byte gUnk_08707528
-_0806622C: .4byte gUnk_08707828
-_08066230: .4byte gUnk_087078A8
-_08066234: .4byte gUnk_08707928
-_08066238: .4byte gUnk_08707AA8
-_0806623C: .4byte gUnk_087079A8
-_08066240: .4byte gUnk_08707A28
-	thumb_func_end sub_08066164
+_08066214: .4byte gDeckEditCardBoxTiles0
+_08066218: .4byte gDeckEditCardBoxTiles1
+_0806621C: .4byte gDeckEditCardBoxTiles2
+_08066220: .4byte gDeckEditCardBoxTiles3
+_08066224: .4byte gDeckEditCardBoxTiles4
+_08066228: .4byte gDeckEditCardBoxTiles5
+_0806622C: .4byte gDeckEditSmallCardBoxTiles0
+_08066230: .4byte gDeckEditSmallCardBoxTiles1
+_08066234: .4byte gDeckEditSmallCardBoxTiles2
+_08066238: .4byte gDeckEditSmallCardBoxTiles3
+_0806623C: .4byte gDeckEditSmallCardBoxTiles4
+_08066240: .4byte gDeckEditSmallCardBoxTiles5
+	thumb_func_end DeckEdit_LoadCardBoxTiles
 

@@ -23,7 +23,7 @@ DeckEdit_DrawStatementLabels: @ 0x080679A8
 	add sp, #0xC
 	pop {r0}
 	bx r0
-_080679D8: .4byte gUnk_086F1B10
+_080679D8: .4byte gDeckEditMenuTilemapStatementLabels
 _080679DC: .4byte 0x0600E3B0
 	thumb_func_end DeckEdit_DrawStatementLabels
 

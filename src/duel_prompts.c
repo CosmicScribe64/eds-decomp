@@ -8,7 +8,7 @@
 #include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
 #include "duel_flow.h"              /* gDuelCtrl, gPulseScaleCurve, the dead-code sub_ functions here */
 #include "duel_prompt.h"            /* the DuelPrompt_* API and the prompt handlers */
-#include "duel_actions.h"           /* DiscardHandCard, sub_080197C0 */
+#include "duel_actions.h"           /* DiscardHandCard, ShowActivatedCard */
 #include "constants/cards.h"        /* CARD_INSPECTION, CARD_1517, CARD_1519, CARD_1520 */
 #include "constants/card_stats.h"   /* enum CardType */
 #include "constants/duel.h"         /* enum DuelPromptKind, enum FieldPickMask */
@@ -148,7 +148,7 @@ extern const u8 gStrPromptSelectOwnReplacementTarget[]; /* "As a replacement, se
 extern const u8 gStrPromptSelectOpponentReplacementTarget[]; /* same, "... of your opponent's monsters ..." */
 
 /* gCardNumberToId[CARD_1520] (0 in EDS) through its own address-suffixed symbol, as the ROM loads it. */
-extern u16 gUnk_086249D4;
+extern u16 gCardNumberToId_1520;
 
 /* gCardNumberToId (0x08623DF4) and gCardStats (0x08621DE0) through their integer addresses: the ROM's
  * register allocation needs these forms (integer-constant address, not the symbol). */
@@ -207,13 +207,13 @@ static inline u32 GetCardLevel(u16 cardId)
 }
 
 /* Dead code: returns 0. */
-u32 sub_08021CC8(void)
+u32 DuelPrompt_UnusedReturnFalse(void)
 {
     return 0;
 }
 
 /* Dead code: clears gDuel bytes +0x1B43 and +0x1B44, which nothing reads. */
-void sub_08021CCC(void)
+void Duel_ClearUnk1B43(void)
 {
     gDuel.unk1B43 = 0;
     gDuel.unk1B44 = 0;
@@ -225,7 +225,7 @@ void sub_08021CCC(void)
  * selected one (0 = left) pulses with gPulseScaleCurve (one step every 2 frames); the other keeps scale
  * 0x100. The last AddAffineSprite argument is scale << 16 | angle.
  */
-void sub_08021CEC(u16 cardId, u16 showSecond, u16 selected)
+void DuelPrompt_DrawPositionChoice(u16 cardId, u16 showSecond, u16 selected)
 {
     u16 tile;
 
@@ -249,7 +249,7 @@ u32 DuelPrompt_ConfirmCardEffect(int player, u16 cardNumber)
 {
     switch (gDuel.promptStep) {
     case 0:
-        sub_080197C0(player, CardNumberToId(cardNumber));
+        ShowActivatedCard(player, CardNumberToId(cardNumber));
         gDuel.promptStep++;
         return 0;
     case 1:
@@ -387,7 +387,7 @@ u32 DuelPrompt_ConfirmGraveyardSummon(int unusedPlayer)
     }
     gDuel.promptResult = 0;
     FormatStr(buf, gStrPromptOpponentSpecialSummonedFmt,
-              (const char *)&gCardNames[gUnk_086249D4 * CARD_NAME_SIZE]);
+              (const char *)&gCardNames[gCardNumberToId_1520 * CARD_NAME_SIZE]);
     TextBoxOpen(PROMPT_BOX_POS, PROMPT_BOX_SIZE_WIDE, TEXTBOX_FLAGS_DEFAULT,
                 (const u8 *)gStrPromptOpponentSpecialSummonedFmt);   /* the format, not buf */
     TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
@@ -658,7 +658,7 @@ u32 DuelPrompt_TryPostSetMonster(int player)
 
 /* Dead code: request a link interrupt (interruptRequested) when none is pending and gDuel +0x1B14 bits 2-8
  * are 0 (it rewrites them with 0). */
-void sub_08022914(void)
+void DuelLink_RequestInterruptIfIdle(void)
 {
     if (!gLinkState.interruptRequested && gDuel.unk1B14_2 == 0) {
         gLinkState.interruptRequested = 1;
@@ -667,7 +667,7 @@ void sub_08022914(void)
 }
 
 /* Dead code: clears gDuel +0x1B14 bits 2-8; returns 0. */
-u32 sub_0802295C(void)
+u32 Duel_ClearUnk1B14_2(void)
 {
     gDuel.unk1B14_2 = 0;
     return 0;

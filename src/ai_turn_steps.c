@@ -108,7 +108,7 @@ struct DuelZoneFlagsView {
     u8 unk0[0x91];
     u8 flags91;
 };
-extern u8 gUnk_0201A04A;        /* = gDuelPlayers[1].handCount (0x0201A048 + 2), read through its own symbol */
+extern u8 gDuelHandCountP1;        /* = gDuelPlayers[1].handCount (0x0201A048 + 2), read through its own symbol */
 
 /* Card word of a zone or pile entry and its card ID (bits 0-11). */
 #define CARD_ID(word) (((word) << 20) >> 20)
@@ -627,7 +627,7 @@ int AiStepSetSpellTraps(void)
                     u32 next = q->stepIndex + 1;
                     register u8 *cp asm("r3");
                     q->stepIndex = next;
-                    cp = &gUnk_0201A04A;
+                    cp = &gDuelHandCountP1;
                     count = *cp;
                     if (count != 0 && (u8)next < count) goto hand_next;
                 }

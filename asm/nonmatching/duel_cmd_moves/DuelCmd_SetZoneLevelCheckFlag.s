@@ -1,5 +1,5 @@
-	thumb_func_start sub_08013104
-sub_08013104: @ 0x08013104
+	thumb_func_start DuelCmd_SetZoneLevelCheckFlag
+DuelCmd_SetZoneLevelCheckFlag: @ 0x08013104
 	push {r4, lr}
 	ldr r2, _08013144 @ =0x020185C0
 	ldrh r0, [r2]
@@ -36,5 +36,5 @@ _08013144: .4byte 0x020185C0
 _08013148: .4byte 0x00000D64
 _0801314C: .4byte 0x0201930C
 _08013150: .4byte 0x0000080D
-	thumb_func_end sub_08013104
+	thumb_func_end DuelCmd_SetZoneLevelCheckFlag
 

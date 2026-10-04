@@ -35,7 +35,7 @@ EffectRedirectAttackChainB: @ 0x08040EBC
 _08040F00: .4byte 0x02017A40
 _08040F04: .4byte 0x000003E5
 _08040F08: .4byte gStrSelectAttackTargetFmt
-_08040F0C: .4byte gUnk_086248EE
+_08040F0C: .4byte gCardNumberToId_1405
 _08040F10: .4byte gCardNames
 _08040F14: .4byte 0x00000206
 _08040F18: .4byte 0x00000712

@@ -101,7 +101,7 @@ A byte at `-1` mirrors the current speaker. `Bustup_Update` reaches the bytes at
   is a 4-byte record indexed by the byte table `gBustupOpponentIds`, with three counters in
   bits 0–10, 11–21 and 22–31 (the target reads u16 / u32 / u16 respectively).
 - `gBustupBannerTiles` (u16[]), `gBustupRecordPos` (six u16 positions), `gBustupOpponentIds` (u8[]),
-  `gStrDebugDM5Script`/`gStrDebugMoveToScript` (dialogue name formats), `gUnk_0813ADF8`
+  `gStrDebugDM5Script`/`gStrDebugMoveToScript` (dialogue name formats), `gDialogueTableText`
   (= `gDialogueTable + 4`, the `text[]` of each 0x304-byte `DialogueEntry`).
 - `gBustupCursor` (TextBox + 0x28) is the sparkle sub-state: `+0x91A` u16, `+0x91E` u8,
   `+0x99B` s8.

@@ -284,7 +284,7 @@ _0803C77C:
 	beq _0803C7EC
 	add r0, r4, #0
 	add r1, r6, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	lsl r0, r4, #0x1F
 	mov r1, #0x1F
 	and r5, r1

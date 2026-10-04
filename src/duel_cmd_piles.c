@@ -585,7 +585,7 @@ void DuelCmd_EquipGraveyardCardToOpponent(void)
 
 /* DUEL_CMD_CLEAR_PENDING_OPPONENT_SUMMON (0xDA), one frame: clear pendingOpponentSummon of the acting
  * player's graveyard[arg2] (the opponent had no free zone or declined). */
-void sub_080106BC(void)
+void DuelCmd_ClearPendingOpponentSummon(void)
 {
     struct DuelCmd *cmd = &gDuelCmd;
 
@@ -595,7 +595,7 @@ void sub_080106BC(void)
 
 /* DUEL_CMD_MARK_GRAVEYARD_CARD (0xDB), one frame: set flag23 of the first entry of the acting player's
  * graveyard whose whole word equals the card word. */
-void sub_08010708(void)
+void DuelCmd_MarkGraveyardCard(void)
 {
     u32 *entry;
     u32 cardWord = CMD_CARD_WORD();

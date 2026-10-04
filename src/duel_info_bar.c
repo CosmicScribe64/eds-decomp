@@ -136,26 +136,26 @@ extern const u32 gTextBoxColors[];          /* 0x081A4214: [10] palette indices 
                                                the background; [1-8] the text colours '@1'-'@8'; [9] = 3, the
                                                shadow */
 /* OBJ graphics (LoadDuelUiGfx) */
-extern const u8 gUnk_0867817C[];            /* card back, 4 poses of 32x32 (also BG tile 0x70) */
-extern const u8 gUnk_0867FC3C[];            /* OBJ palette 2: the card command menu icons */
-extern const u8 gUnk_0867FC5C[];            /* card command menu icons, 16x16 each, 4 tiles per command */
-extern const u8 gUnk_0868045C[];            /* OBJ palette 3: the card command menu labels */
-extern const u8 gUnk_0868047C[];            /* card command menu labels ("Card View", "Def Pos", ...), 32x16
+extern const u8 gCardIconBackGfx[];            /* card back, 4 poses of 32x32 (also BG tile 0x70) */
+extern const u8 gCardMenuIconsPal[];            /* OBJ palette 2: the card command menu icons */
+extern const u8 gCardMenuIconsGfx[];            /* card command menu icons, 16x16 each, 4 tiles per command */
+extern const u8 gCardMenuLabelsPal[];            /* OBJ palette 3: the card command menu labels */
+extern const u8 gCardMenuLabelsGfx[];            /* card command menu labels ("Card View", "Def Pos", ...), 32x16
                                                each, 8 tiles per command */
-extern const u8 gUnk_0868167C[];            /* OBJ palette 4: button icons, YES/NO labels, arrow */
-extern const u8 gUnk_0868467C[];            /* OBJ palette 5: attack and link markers */
-extern const u8 gUnk_0868487C[];            /* "can attack" marker frames (MARKER_TILE_CAN_ATTACK) */
-extern const u8 gUnk_086849FC[];            /* equip link marker frames (MARKER_TILE_LINK_EQUIP) */
-extern const u8 gUnk_08684B7C[];            /* other link marker frames (MARKER_TILE_LINK_OTHER) */
-extern const u8 gUnk_0868557C[];            /* OBJ palette 6: the link "Wait..." sprites */
-extern const u8 gUnk_0868559C[];            /* link "Wait..." sprites (DrawLinkWaitIndicator) and related
+extern const u8 gButtonIconsPal[];            /* OBJ palette 4: button icons, YES/NO labels, arrow */
+extern const u8 gZoneMarkerPal[];            /* OBJ palette 5: attack and link markers */
+extern const u8 gZoneMarkerCanAttackGfx[];            /* "can attack" marker frames (MARKER_TILE_CAN_ATTACK) */
+extern const u8 gZoneMarkerLinkEquipGfx[];            /* equip link marker frames (MARKER_TILE_LINK_EQUIP) */
+extern const u8 gZoneMarkerLinkOtherGfx[];            /* other link marker frames (MARKER_TILE_LINK_OTHER) */
+extern const u8 gLinkWaitIndicatorPal[];            /* OBJ palette 6: the link "Wait..." sprites */
+extern const u8 gLinkWaitIndicatorGfx[];            /* link "Wait..." sprites (DrawLinkWaitIndicator) and related
                                                graphics, 64 tiles */
 extern const u8 gButtonIconsGfx[];          /* A and B button press frames, 16x16 each, 40 tiles */
 extern const u8 gYesNoLabelsGfx[];          /* 'YES' and 'NO' labels, 32x16 each, 16 tiles */
 extern const u8 gDuelUiIconsGfx[];          /* small marker icons and the right arrow, 8 tiles */
 /* BG graphics (LoadDuelBgGfx) */
-extern const u8 gUnk_0867B97C[];            /* thick card pile (a deck of more than 5 cards), 4x4 tiles */
-extern const u8 gUnk_08684EFC[];            /* mark for a monster zone held for a banished card: the first
+extern const u8 gThickPileGfx[];            /* thick card pile (a deck of more than 5 cards), 4x4 tiles */
+extern const u8 gHeldZoneMarkGfx[];            /* mark for a monster zone held for a banished card: the first
                                                2x2 tiles of this sheet survive the digit load */
 extern const u8 gDuelDigitsPal[];           /* BG palette 3, used by the digit tiles */
 extern const u8 gDuelDigitsGfx[];           /* digits 0-9 in 6 colour sets, 60 tiles */
@@ -948,28 +948,28 @@ void LoadDuelUiGfx(void)
     REG_DISPCNT |= DISPCNT_OBJ_1D_MAP;
     CopyDoubleWords((void *)OBJ_PLTT_ADDR(0), gHandCursorPal, PALETTE_SIZE);
     CopyDoubleWords((void *)OBJ_PLTT_ADDR(1), gCardIconPal, PALETTE_SIZE);
-    CopyDoubleWords((void *)OBJ_PLTT_ADDR(5), gUnk_0868467C, PALETTE_SIZE);
-    CopyDoubleWords((void *)OBJ_PLTT_ADDR(2), gUnk_0867FC3C, PALETTE_SIZE);
-    CopyDoubleWords((void *)OBJ_PLTT_ADDR(3), gUnk_0868045C, PALETTE_SIZE);
-    CopyDoubleWords((void *)OBJ_PLTT_ADDR(4), gUnk_0868167C, PALETTE_SIZE);
-    CopyDoubleWords((void *)OBJ_PLTT_ADDR(6), gUnk_0868557C, PALETTE_SIZE);
+    CopyDoubleWords((void *)OBJ_PLTT_ADDR(5), gZoneMarkerPal, PALETTE_SIZE);
+    CopyDoubleWords((void *)OBJ_PLTT_ADDR(2), gCardMenuIconsPal, PALETTE_SIZE);
+    CopyDoubleWords((void *)OBJ_PLTT_ADDR(3), gCardMenuLabelsPal, PALETTE_SIZE);
+    CopyDoubleWords((void *)OBJ_PLTT_ADDR(4), gButtonIconsPal, PALETTE_SIZE);
+    CopyDoubleWords((void *)OBJ_PLTT_ADDR(6), gLinkWaitIndicatorPal, PALETTE_SIZE);
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_HAND_CURSOR), gHandCursorGfx, TILES(64));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_BACK), gUnk_0867817C, TILES(64));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_BACK), gCardIconBackGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0x00), gCardIconNormalGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0x40), gCardIconEffectGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0x80), gCardIconFusionGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0xC0), gCardIconRitualGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0x100), gCardIconMagicGfx, TILES(64));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_CARD_ICON_NORMAL + 0x140), gCardIconTrapGfx, TILES(64));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_CAN_ATTACK), gUnk_0868487C, TILES(12));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_LINK_EQUIP), gUnk_086849FC, TILES(12));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_LINK_OTHER), gUnk_08684B7C, TILES(12));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_COMMAND_ICONS), gUnk_0867FC5C, TILES(64));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_COMMAND_LABELS), gUnk_0868047C, TILES(128));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_CAN_ATTACK), gZoneMarkerCanAttackGfx, TILES(12));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_LINK_EQUIP), gZoneMarkerLinkEquipGfx, TILES(12));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(MARKER_TILE_LINK_OTHER), gZoneMarkerLinkOtherGfx, TILES(12));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_COMMAND_ICONS), gCardMenuIconsGfx, TILES(64));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_COMMAND_LABELS), gCardMenuLabelsGfx, TILES(128));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_BUTTON_ICONS), gButtonIconsGfx, TILES(40));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_YES_LABEL), gYesNoLabelsGfx, TILES(16));
     CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_UI_ICONS), gDuelUiIconsGfx, TILES(8));
-    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_WAIT_SPRITES), gUnk_0868559C, TILES(64));
+    CopyDoubleWords((void *)OBJ_TILE_ADDR(OBJ_TILE_WAIT_SPRITES), gLinkWaitIndicatorGfx, TILES(64));
     gDuelScreen.uiGfxLoaded = 1;
 }
 
@@ -986,15 +986,15 @@ void LoadDuelBgGfx(void)
     CopyDoubleWords((void *)BG_PLTT_ADDR(3), gDuelDigitsPal, PALETTE_SIZE);
     CopyDoubleWords((void *)BG_PLTT_ADDR(4), gPhaseIndicatorPal, PALETTE_SIZE);
     CopyDoubleWords((void *)BG_PLTT_ADDR(8), gTextBoxPal, PALETTE_SIZE);
-    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_BACK), gUnk_0867817C, TILES(64));
+    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_BACK), gCardIconBackGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0x00), gCardIconNormalGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0x40), gCardIconEffectGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0x80), gCardIconFusionGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0xC0), gCardIconRitualGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0x100), gCardIconMagicGfx, TILES(64));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_CARD_ICON_NORMAL + 0x140), gCardIconTrapGfx, TILES(64));
-    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_THICK_PILE), gUnk_0867B97C, TILES(16));
-    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_HELD_ZONE_MARK), gUnk_08684EFC, TILES(16));
+    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_THICK_PILE), gThickPileGfx, TILES(16));
+    CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_HELD_ZONE_MARK), gHeldZoneMarkGfx, TILES(16));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_DIGITS), gDuelDigitsGfx, TILES(60));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_LP_LABEL), gLpLabelGfx, TILES(2));
     CopyDoubleWords((void *)BG_TILE_ADDR(BG_TILE_PHASE_LETTERS), gPhaseIndicatorGfx, TILES(12));

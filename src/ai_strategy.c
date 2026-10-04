@@ -133,7 +133,7 @@ extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0]
                                        AiTryPlaySpellTrap, AiPickTributeMonster */
 
 /* ---- ROM data used only here ---- */
-extern const u16 gUnk_0862448E[];   /* 0x0862448E: card id table (hypothesis; first entry is the id
+extern const u16 gCardNumberToId_ValkyrionTheMagnaWarrior[];   /* 0x0862448E: card id table (hypothesis; first entry is the id
                                        AiStrategyValkyrion summons) */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
@@ -256,7 +256,7 @@ int AiStrategyValkyrion(void)
         S.stepState += 2;
         return 0;
     case 4:
-        if (!CanSummonFromHand(1, gUnk_0862448E[0])) {
+        if (!CanSummonFromHand(1, gCardNumberToId_ValkyrionTheMagnaWarrior[0])) {
             {
                 struct FlagByte { u8 found : 1, rest : 7; };
                 /* FAKEMATCH: initialized address terms retain this clear prefix. */

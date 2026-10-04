@@ -124,14 +124,14 @@ void PlaySE(u32 seId);                                  /* legacy sound.h lacks 
  * - DuelPrompt_DiscardRandom, DuelPrompt_SetMonsterFromHand and the CPU branch of
  *   DuelPrompt_PickOpponentHandCard call DuelCmd_Push with u16 arguments (the header has int for the last two);
  * - CardListView_Open is called with u16 card number and argument (the header has int);
- * - AttributeMenu_HandleInputExcludeFirst reads promptResult through its own symbol gUnk_0201AE44;
+ * - AttributeMenu_HandleInputExcludeFirst reads promptResult through its own symbol gDuelPromptResult;
  * - the second answer halfword of gDuel (+0x1B66), which the header does not name (DuelPromptAnswers);
  * - the random-pick handlers reach gDuel.promptStep and their player from the base of gDuelPlayers
  *   (PROMPT_STEP_VIA_PLAYERS).
  */
 extern void DuelCmd_Push16(u16 cmd, u16 arg2, u16 arg4, u16 arg6) asm("DuelCmd_Push");
 extern void CardListView_Open16(s32 player, s32 area, u16 cardNumber, u16 arg) asm("CardListView_Open");
-extern u16 gUnk_0201AE44;       /* 0x0201AE44: gDuel.promptResult, through its own symbol in the second attribute menu */
+extern u16 gDuelPromptResult;       /* 0x0201AE44: gDuel.promptResult, through its own symbol in the second attribute menu */
 
 /* Matching: the second answer halfword at gDuel +0x1B66 (promptResult2). The header declares only promptResult
  * (+0x1B64) and leaves the halfword after it as padding (build/readability/issues/duel_prompt_handlers.md); this
@@ -643,7 +643,7 @@ int AttributeMenu_HandleInputExcludeFirst(void)
     }
     if (gMain.newKeys & DPAD_LEFT) {
         struct TextBox *box = &gTextBox;
-        firstPick = gUnk_0201AE44;
+        firstPick = gDuelPromptResult;
         do {
             box->result += ATTRIBUTE_COUNT - 1;
             box->result = box->result % ATTRIBUTE_COUNT;
@@ -653,7 +653,7 @@ int AttributeMenu_HandleInputExcludeFirst(void)
     }
     if (gMain.newKeys & DPAD_RIGHT) {
         struct TextBox *box = &gTextBox;
-        firstPick = gUnk_0201AE44;
+        firstPick = gDuelPromptResult;
         do {
             box->result += 1;
             box->result = box->result % ATTRIBUTE_COUNT;

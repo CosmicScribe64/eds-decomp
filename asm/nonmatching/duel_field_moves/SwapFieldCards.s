@@ -100,7 +100,7 @@ _08019258:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	mov r0, r8
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r1, #0xFA
 	lsl r1, r1, #3
 	add r0, r7, #0
@@ -126,7 +126,7 @@ _08019290:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	mov r0, r8
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r1, _080192DC @ =0x00000BB8
 	mov r0, r8
 	bl GainLifePoints
@@ -179,7 +179,7 @@ _080192F0:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r7, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r1, #0xFA
 	lsl r1, r1, #3
 	mov r0, r8
@@ -219,7 +219,7 @@ _08019348:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r7, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r1, _080193A8 @ =0x00000BB8
 	add r0, r7, #0
 	bl GainLifePoints

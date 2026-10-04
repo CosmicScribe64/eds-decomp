@@ -263,7 +263,7 @@ int EffectStopDefenseResolve(struct ChainEntry *link)
             u16 cmd = CMD_FOR(targetPlayer, DUEL_CMD_FLIP_CARD);
 
             DuelCmd_Push(cmd, targetZone, 0, 0);
-            sub_080197C0(targetPlayer, CARD_ID(CARD_WORD(zone->card)));
+            ShowActivatedCard(targetPlayer, CARD_ID(CARD_WORD(zone->card)));
         } else {
             int side2 = targetPlayer & 1;
             struct DuelZone *zone2 = ZONE_AT(side2, targetZone);

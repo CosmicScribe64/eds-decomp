@@ -25,11 +25,11 @@ Unit status: `unit bytes MATCH` (0x104C bytes), **17/17 functions in C** after w
 | `0x08040714` | 0x68 | matching | step 0 `DuelPrompt_Post(p, 8, 0, 0)`, step 1 `AddEffectTarget(ref, DG.w1B64 + 1)` |
 | `0x0804077C` | 0x9C | matching | prompt `gStrDesignateFaceDownMonsterToBanish`, keys `0xD000D0` |
 | `0x08040818` | 0x9C | matching | prompt `gStrDesignateFaceDownSpellTrapToBanish`, keys `0x20002` |
-| `0x080408B4` | 0x12C | matching | 5-step text-entry style prompt (`DuelScreen_FadeOutStep`, `ResetVideo`, `ProhibitCardSelect_Run`, `DuelScreen_Init`, `DuelScreen_FadeInStep`); the result u16 at `0x03004872` becomes the target (`sub_08019820(p, v)`, `AddEffectTarget(ref, v)`) |
+| `0x080408B4` | 0x12C | matching | 5-step text-entry style prompt (`DuelScreen_FadeOutStep`, `ResetVideo`, `ProhibitCardSelect_Run`, `DuelScreen_Init`, `DuelScreen_FadeInStep`); the result u16 at `0x03004872` becomes the target (`ShowPickedCard(p, v)`, `AddEffectTarget(ref, v)`) |
 | `0x080409E0` | 0x134 | matching | 4 steps: `EffectRiryokuPrepare(ref, 0, 0)` gate, prompts `gStrDesignateMonsterToHalveAtk` / `gStrDesignateMonsterToIncreaseAtk`, keys `0xE000E0`; step 3 refuses the same target as `ref->targets[0]` |
 | `0x08040B14` | 0xFC | matching | 4 steps: prompts `gStrDesignateOpponentMonsterToDestroy` / `gStrDesignateMonsterToGiveControl`, keys `0xF00000` (step 1) and `0xF0` (step 3) |
 | `0x08040C10` | 0x98 | matching | prompt `gStrDesignateOpponentMonsterToTribute`, keys `0xF00000` |
-| `0x08040CA8` | 0xDC | matching | prompt = name of card `gUnk_08623E1E[0]` (`FormatStr(buf, gStrDesignateFaceUpMonsterOfTwoFmt, name)` + `gStrThunderType`), keys 0xE0, `EffectOwnSkullOrThunderCheck(ref, zone << 8 \| player)` must accept |
+| `0x08040CA8` | 0xDC | matching | prompt = name of card `gCardNumberToId_SummonedSkull[0]` (`FormatStr(buf, gStrDesignateFaceUpMonsterOfTwoFmt, name)` + `gStrThunderType`), keys 0xE0, `EffectOwnSkullOrThunderCheck(ref, zone << 8 \| player)` must accept |
 | `0x08040D84` | 0x138 | matching | opponent zones 0-4 with a face-down card whose `GetZoneCardType(1 - p, i) == 7` (prompt `gStrSelectOpponentMonsterToControlFmt` + `gStrMachineType`); keys `0xE00000`, chosen zone must have `GetZoneCardType == 7` |
 
 ## Structs and globals

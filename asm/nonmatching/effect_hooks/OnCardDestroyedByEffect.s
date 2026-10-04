@@ -42,7 +42,7 @@ OnCardDestroyedByEffect: @ 0x08046CB0
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r4, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r0, #0x4C
 	cmp r4, #0
 	beq _08046D14

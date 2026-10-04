@@ -108,7 +108,7 @@ extern void SetBgMapEntry(u32 screenBlock, u32 cell, u32 entry);
 extern const u16 gPackSceneRasterColors[8];
 /* 0x0300045C (= gMain.bgMapBuffer): kept as this symbol; the base load must come after the row * 4
  * copy in GetPack_DrawCardRow. */
-extern u16 gUnk_0300045C[];
+extern u16 gBgMaps[];
 
 /* Card category (same inline as in card_detail): Obelisk (card number 1910) gives RITUAL, Slifer and
  * Ra (1911, 1912) give EFFECT, the Magic/Trap/Ticket types give their kinds, else the monster kind
@@ -645,7 +645,7 @@ void GetPack_DrawCardRow(int row, u16 id)
             /* The index in its own local puts the table base load after row * 4 in the loop body,
              * which gives the ROM's hoist order (row * 4 copy before the 0x0300045C base). */
             int idx = (row * 4 + i) * 32 + 3 + k;
-            gUnk_0300045C[idx] = row * 0x30 + 0x40 + k + i * 24;
+            gBgMaps[idx] = row * 0x30 + 0x40 + k + i * 24;
         }
     }
     stats = &CARD_STATS_WORD(id);

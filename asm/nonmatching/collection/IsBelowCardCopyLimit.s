@@ -177,7 +177,7 @@ _080772E4: .4byte gCardNumberToId
 _080772E8:
 	ldr r0, _080772EC @ =0x086245CA
 	b _08077442
-_080772EC: .4byte gUnk_086245CA
+_080772EC: .4byte gCardNumberToId_Polymerization
 _080772F0:
 	ldr r0, _08077314 @ =0x08624768
 	ldrh r0, [r0]
@@ -197,8 +197,8 @@ _080772F0:
 	lsr r0, r0, #0xE
 	b _08077446
 	.align 2, 0
-_08077314: .4byte gUnk_08624768
-_08077318: .4byte gUnk_08623E38
+_08077314: .4byte gCardNumberToId_1210
+_08077318: .4byte gCardNumberToId_DarkMagician
 _0807731C:
 	ldr r0, _0807733C @ =0x08623E38
 	ldrh r0, [r0]
@@ -216,7 +216,7 @@ _0807731C:
 	add r0, r0, r1
 	b _08077442
 	.align 2, 0
-_0807733C: .4byte gUnk_08623E38
+_0807733C: .4byte gCardNumberToId_DarkMagician
 _08077340: .4byte gCardNumberToId
 _08077344:
 	ldr r0, _08077368 @ =0x08623E38
@@ -237,15 +237,15 @@ _08077344:
 	ldrb r1, [r1, #9]
 	b _0807744A
 	.align 2, 0
-_08077368: .4byte gUnk_08623E38
+_08077368: .4byte gCardNumberToId_DarkMagician
 _0807736C:
 	ldr r0, _08077370 @ =0x086247B6
 	b _08077442
-_08077370: .4byte gUnk_086247B6
+_08077370: .4byte gCardNumberToId_1249
 _08077374:
 	ldr r0, _08077378 @ =0x08623E6E
 	b _08077442
-_08077378: .4byte gUnk_08623E6E
+_08077378: .4byte gCardNumberToId_HarpieLady
 _0807737C:
 	ldr r0, _08077388 @ =0x08623DF4
 	ldrh r0, [r0]
@@ -261,7 +261,7 @@ _0807738C:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _0807742A
-_08077398: .4byte gUnk_08623E10
+_08077398: .4byte gCardNumberToId_FlameSwordsman
 _0807739C:
 	ldr r0, _080773A8 @ =0x08623E3E
 	ldrh r0, [r0]
@@ -269,7 +269,7 @@ _0807739C:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _08077446
-_080773A8: .4byte gUnk_08623E3E
+_080773A8: .4byte gCardNumberToId_GaiaTheFierceKnight
 _080773AC:
 	ldr r0, _080773B8 @ =0x08623E44
 	ldrh r0, [r0]
@@ -277,7 +277,7 @@ _080773AC:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _08077446
-_080773B8: .4byte gUnk_08623E44
+_080773B8: .4byte gCardNumberToId_CelticGuardian
 _080773BC:
 	ldr r0, _080773C8 @ =0x08623E72
 	ldrh r0, [r0]
@@ -285,7 +285,7 @@ _080773BC:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _08077446
-_080773C8: .4byte gUnk_08623E72
+_080773C8: .4byte gCardNumberToId_TigerAxe
 _080773CC:
 	ldr r0, _080773D8 @ =0x08623E7C
 	ldrh r0, [r0]
@@ -293,7 +293,7 @@ _080773CC:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _0807742A
-_080773D8: .4byte gUnk_08623E7C
+_080773D8: .4byte gCardNumberToId_ThousandDragon
 _080773DC:
 	ldr r0, _080773E8 @ =0x086240FA
 	ldrh r0, [r0]
@@ -301,7 +301,7 @@ _080773DC:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _08077446
-_080773E8: .4byte gUnk_086240FA
+_080773E8: .4byte gCardNumberToId_PendulumMachine
 _080773EC:
 	ldr r0, _080773F8 @ =0x086240FE
 	ldrh r0, [r0]
@@ -309,7 +309,7 @@ _080773EC:
 	lsl r0, r0, #0x10
 	lsr r0, r0, #0xE
 	b _08077446
-_080773F8: .4byte gUnk_086240FE
+_080773F8: .4byte gCardNumberToId_LauncherSpider
 _080773FC:
 	ldr r0, _08077400 @ =0x08623DF4
 	b _08077442
@@ -317,19 +317,19 @@ _08077400: .4byte gCardNumberToId
 _08077404:
 	ldr r0, _08077408 @ =0x08623E10
 	b _08077426
-_08077408: .4byte gUnk_08623E10
+_08077408: .4byte gCardNumberToId_FlameSwordsman
 _0807740C:
 	ldr r0, _08077410 @ =0x08623E3E
 	b _08077442
-_08077410: .4byte gUnk_08623E3E
+_08077410: .4byte gCardNumberToId_GaiaTheFierceKnight
 _08077414:
 	ldr r0, _08077418 @ =0x08623E44
 	b _08077442
-_08077418: .4byte gUnk_08623E44
+_08077418: .4byte gCardNumberToId_CelticGuardian
 _0807741C:
 	ldr r0, _08077420 @ =0x08623E72
 	b _08077442
-_08077420: .4byte gUnk_08623E72
+_08077420: .4byte gCardNumberToId_TigerAxe
 _08077424:
 	ldr r0, _08077434 @ =0x08623E7C
 _08077426:
@@ -341,11 +341,11 @@ _0807742A:
 	lsr r0, r0, #6
 	add r5, r5, r0
 	b _08077456
-_08077434: .4byte gUnk_08623E7C
+_08077434: .4byte gCardNumberToId_ThousandDragon
 _08077438:
 	ldr r0, _0807743C @ =0x086240FA
 	b _08077442
-_0807743C: .4byte gUnk_086240FA
+_0807743C: .4byte gCardNumberToId_PendulumMachine
 _08077440:
 	ldr r0, _08077464 @ =0x086240FE
 _08077442:
@@ -370,6 +370,6 @@ _0807745E:
 	pop {r4, r5, r6}
 	pop {r1}
 	bx r1
-_08077464: .4byte gUnk_086240FE
+_08077464: .4byte gCardNumberToId_LauncherSpider
 	thumb_func_end IsBelowCardCopyLimit
 

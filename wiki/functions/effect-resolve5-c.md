@@ -25,7 +25,7 @@ Unit-local views kept (the canonical header does not cover these):
 |---|---|---|---|
 | `0x08035198` | 0x17C | **matching** (wave 2, 2026-10-01) | `(ref, arg)`: 4-step machine 0x80/0x7F/0x7E/0x7D: `EFF_SIDE = 3` counter; `EffectTheCheerfulCoffinPrepare(ref, arg, 0)` then a text box (`gStrCheerfulCoffinDiscardPrompt`); 0x7E text `gStrCheerfulCoffinSelectMonster` when `0x0201AE60+0x14` set; 0x7D `DuelCursor_PickTarget(1)` key wait, then the card word (u32) at `0x02019968[p][w82C]` with type <= 0x14: `PlaySE(1)`, message 8/0x8008, `DiscardHandCard`, `EFF_SIDE--`, return 0x7F; else `PlaySE(3)` |
 | `0x08035314` | 0x90 | matching | both sides (opponent first), zones 0-4 with `unk7 & 0x40`: `DestroyFieldCardByEffect`, `OnCardDestroyedByEffect` |
-| `0x080353A4` | 0xDC | matching | one target on the other side, `FindFreeMonsterZone(player) != -1`: card 0x4B1 set -> message 0x7F + `sub_080197C0`; else `MoveFieldCard` + `QueueAddZoneLink(.., 3)` |
+| `0x080353A4` | 0xDC | matching | one target on the other side, `FindFreeMonsterZone(player) != -1`: card 0x4B1 set -> message 0x7F + `ShowActivatedCard`; else `MoveFieldCard` + `QueueAddZoneLink(.., 3)` |
 | `0x08035480` | 0xAC | matching | `(ref, u16 *idp)`: idp set: type 0x15/0x16 -> message 0xB0; else phase 0x80: `EffectSolemnJudgmentPrepare` -> message 0x91 (pos), return 0x7F; other phase `DestroyFieldCard(pos, 1)` |
 | `0x0803552C` | 0x54 | matching | phase 0x80: message 0x91 for `ref->pos` target, return 0x7F; else `DestroyFieldCard(tp, tz, 1)` |
 | `0x08035580` | 0x40 | matching | `n = CountMonsters(opp)`; if n > 0 `LoseLifePoints(opp, n * 500)` |

@@ -176,11 +176,11 @@ extern void DuelCmd_Push32(u32 cmd, u16 arg2, int arg4, int arg6) asm("DuelCmd_P
 
 /* Card IDs of single card numbers, as address-suffixed aliases of the gCardNumberToId entries (card_data.h
  * lists them): the ROM loads the element address from its own literal. */
-extern const u16 gUnk_08623F3E[];   /* &gCardNumberToId[CARD_MYSTERIOUS_PUPPETEER] */
-extern const u16 gUnk_08624084[];   /* &gCardNumberToId[CARD_DRAGON_CAPTURE_JAR] */
-extern const u16 gUnk_086241A8[];   /* &gCardNumberToId[CARD_SINISTER_SERPENT] */
-extern const u16 gUnk_086246BC[];   /* &gCardNumberToId[CARD_KOTODAMA] */
-extern const u16 gUnk_086249EE[];   /* &gCardNumberToId[CARD_1533] */
+extern const u16 gCardNumberToId_MysteriousPuppeteer[];   /* &gCardNumberToId[CARD_MYSTERIOUS_PUPPETEER] */
+extern const u16 gCardNumberToId_DragonCaptureJar[];   /* &gCardNumberToId[CARD_DRAGON_CAPTURE_JAR] */
+extern const u16 gCardNumberToId_SinisterSerpent[];   /* &gCardNumberToId[CARD_SINISTER_SERPENT] */
+extern const u16 gCardNumberToId_Kotodama[];   /* &gCardNumberToId[CARD_KOTODAMA] */
+extern const u16 gCardNumberToId_1533[];   /* &gCardNumberToId[CARD_1533] */
 
 /* Prompt of Sinister Serpent (ROM): "Do you wish to returne @2%s@0 from the Graveyard to your hand?" (sic) */
 extern const char gStrSinisterSerpentPrompt[];
@@ -225,7 +225,7 @@ void ApplyPumpkingBoost(int player, int zone)
     if (HAS_CARD(zn->card) && zn->isFaceUp) {
         if (CountActiveCardsOnField2(0, CARD_CASTLE_OF_DARK_ILLUSIONS) > 0
             || CountActiveCardsOnField2(1, CARD_CASTLE_OF_DARK_ILLUSIONS) > 0) {
-            sub_080197C0(player, CARD_ID(CARD_WORD(zn->card)));
+            ShowActivatedCard(player, CARD_ID(CARD_WORD(zn->card)));
             /* the DUEL_LOC of (player, zone), each narrowed to a byte */
             QueueAddZoneLink(player, CARD_ID(CARD_WORD(zn->card)), (u8)player | (u8)zone << 8,
                              ZONE_LINK_STATS_UP_100);
@@ -244,7 +244,7 @@ void TriggerMysteriousPuppeteer(int player)
     int theirs = CountActiveCardsOnField2(other, CARD_MYSTERIOUS_PUPPETEER);
 
     if (mine > 0 || theirs > 0) {
-        ShowCardEffect(player, gUnk_08623F3E[0]);
+        ShowCardEffect(player, gCardNumberToId_MysteriousPuppeteer[0]);
         GainLifePoints(player, mine * 500);
         GainLifePoints(other, theirs * 500);
     }
@@ -285,7 +285,7 @@ void ApplyDragonCaptureJar(int player)
 
             if (player != 0)
                 cmd = DUEL_CMD_PLAYER | DUEL_CMD_SHOW_CARD_EFFECT;
-            DuelCmd_Push32(cmd, gUnk_08624084[0], 1, 0);
+            DuelCmd_Push32(cmd, gCardNumberToId_DragonCaptureJar[0], 1, 0);
             for (p = 0; p < 2;) {
                 /* FAKEMATCH: keep the next player in r6 after initializing the zone loop. */
                 register int next asm("r6");
@@ -343,7 +343,7 @@ int SinisterSerpentStandbyStep(int player)
         if (gTextBox.result != 0) {
             int cardNo = CARD_SINISTER_SERPENT;
 
-            ShowCardEffect(player, gUnk_086241A8[0]);
+            ShowCardEffect(player, gCardNumberToId_SinisterSerpent[0]);
             ReturnGraveyardCardToHand(player, cardNo);
         }
         break;
@@ -428,7 +428,7 @@ void ApplyKotodama(void)
             }
         }
         if (found != 0) {
-            ShowCardEffect(0, gUnk_086246BC[0]);
+            ShowCardEffect(0, gCardNumberToId_Kotodama[0]);
             for (p = 0; p < 2; p++) {
                 for (z = 0; z < 5; z++) {
                     if (CountOtherFaceUpSameNameMonsters(p, z) != 0)
@@ -530,7 +530,7 @@ void OnCardDestroyedByEffect(int srcPlayer, int player, int zone)
             && zone <= ZONE_MONSTER_4) {
             u32 cmd;
 
-            sub_080197C0(player, CARD_ID(CARD_WORD(zn->card)));
+            ShowActivatedCard(player, CARD_ID(CARD_WORD(zn->card)));
             cmd = DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING;
             if (player != 0)
                 cmd = DUEL_CMD_PLAYER | DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING;
@@ -686,7 +686,7 @@ void DamageOpponentPerBanishedMonster(int player)
                 goto loop;
         }
         if (n > 0) {
-            ShowCardEffect(player, gUnk_086249EE[0]);
+            ShowCardEffect(player, gCardNumberToId_1533[0]);
             LoseLifePoints(1 - player, n * 100);
         }
     }
@@ -1038,8 +1038,8 @@ extern const char gStrTributeEitherFromField[];         /* "Select from Field ei
 extern const char gStrTributeOneFromField[];            /* "Select from Field %s as Tribute." */
 
 /* Card IDs of Petit Moth and Labyrinth Wall: address-suffixed aliases of gCardNumberToId entries (card_data.h). */
-extern const u16 gUnk_0862401E[];   /* &gCardNumberToId[CARD_PETIT_MOTH] */
-extern const u16 gUnk_086240CE[];   /* &gCardNumberToId[CARD_LABYRINTH_WALL] */
+extern const u16 gCardNumberToId_PetitMoth[];   /* &gCardNumberToId[CARD_PETIT_MOTH] */
+extern const u16 gCardNumberToId_LabyrinthWall[];   /* &gCardNumberToId[CARD_LABYRINTH_WALL] */
 
 /* The prompt box of the summon procedures: x 6, y 2; 18 x 7 cells for a question or a pick prompt (OPEN_PROMPT),
  * 18 x 4 cells for a message (OPEN_MESSAGE). */
@@ -1163,14 +1163,14 @@ void CardMenu_SummonMonster(u16 faceUp, u16 special)
         case CARD_PERFECTLY_ULTIMATE_GREAT_MOTH:
             /* The moths are Special Summoned by Tributing a Petit Moth. */
             FormatStr(format, gStrSpecialSummonSelectTribute, CARD_NAME(CM.cardMenuCard));
-            FormatStr(text, format, CARD_NAME(gUnk_0862401E[0]));
+            FormatStr(text, format, CARD_NAME(gCardNumberToId_PetitMoth[0]));
             OPEN_PROMPT(text);
             CM.step = SUMMON_STEP_NAMED_TRIBUTE_PICK;
             break;
         case CARD_WALL_SHADOW:
             /* Wall Shadow is Special Summoned by Tributing a Labyrinth Wall. */
             FormatStr(format, gStrSpecialSummonSelectTribute, CARD_NAME(CM.cardMenuCard));
-            FormatStr(text, format, CARD_NAME(gUnk_086240CE[0]));
+            FormatStr(text, format, CARD_NAME(gCardNumberToId_LabyrinthWall[0]));
             OPEN_PROMPT(text);
             CM.step = SUMMON_STEP_NAMED_TRIBUTE_PICK;
             break;

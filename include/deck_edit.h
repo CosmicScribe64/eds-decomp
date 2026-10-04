@@ -13,7 +13,7 @@
  *  - Prototypes below are the definitions as compiled today. Several callers use another view (u32 instead of
  *    u8 parameters, void * instead of a struct pointer, or no argument at all); such a unit keeps a commented
  *    local alias prototype (`T Name(...) asm("Sym");`). See build/readability/proto_mismatches.txt.
- *  - Many units reach gDeckEdit fields through address-suffixed alias symbols (gUnk_0201E140 = listPos, ...;
+ *  - Many units reach gDeckEdit fields through address-suffixed alias symbols (gDeckEditListPos = listPos, ...;
  *    each is named in the field comments) or through integer addresses. Those forms are matching choices: keep
  *    them, do not turn them into field accesses (or the reverse) without checking the unit still matches.
  *  - Bitfield containers are u8 here; a unit that needs a u32 view of the same bits keeps a local view.
@@ -267,11 +267,11 @@ struct DeckEditCommandMenu {
    Statistics) reuse the +0x1C49..+0x1C54 bytes for their own state. */
 struct DeckEdit {
     struct OamList oamList;         /* +0x0000: OBJ layer lists (the last argument of the OamList sprite helpers) */
-    struct Fade fade;               /* +0x0618: screen fade; fade.state 2 = faded out, 3 = faded in. Alias gUnk_0201E138 */
-    u16 listPos[3];                 /* +0x0620: selected card index per enum DeckEditList. Alias gUnk_0201E140 */
+    struct Fade fade;               /* +0x0618: screen fade; fade.state 2 = faded out, 3 = faded in. Alias gDeckEditFade */
+    u16 listPos[3];                 /* +0x0620: selected card index per enum DeckEditList. Alias gDeckEditListPos */
     u16 unk626;
     struct Ease scrollEase;         /* +0x0628: 0..6 ease of the running scroll, page or list slide; cur indexes
-                                       gDeckEditEaseCurve; state 1 running, 2 just finished. Alias gUnk_0201E148 */
+                                       gDeckEditEaseCurve; state 1 running, 2 just finished. Alias gDeckEditScrollEase */
     u16 bg3Hofs;                    /* +0x0630: BG3 (card art) HOFS shadow; -0x50 per slide to the previous list */
     u16 bg3Vofs;                    /* +0x0632: BG3 VOFS shadow; -0x50 per card scrolled */
     u8 cardArtPage;                 /* +0x0634: card art double buffer 0/1 at VRAM 0x06008000 + page * 0x1680 */
@@ -283,15 +283,15 @@ struct DeckEdit {
     u16 bg0Vofs;                    /* +0x063E: BG0 VOFS shadow; -0x28 per card; DeckEdit_DrawCardIcons turns it into
                                        a map row */
     struct TextFlags textFlags;     /* +0x0640: kana flags of the map-text drawers (ClearKatakanaFlag at init); also
-                                       passed as a trailing argument that some drawers ignore. Alias gUnk_0201E160 */
+                                       passed as a trailing argument that some drawers ignore. Alias gDeckEditTextFlags */
     struct DeckEditListRow lists[2]; /* +0x0644: card IDs [row]; row 0 = full lists, row 1 = filtered/sorted copy.
                                        Read through DeckEdit_GetListCard / DeckEdit_SetListCard */
     u16 listCount[2][3];            /* +0x1494: [row][list] number of cards */
-    u8 listRow[3];                  /* +0x14A0: row shown per list: 0 full, 1 filtered/sorted. Alias gUnk_0201EFC0 */
+    u8 listRow[3];                  /* +0x14A0: row shown per list: 0 full, 1 filtered/sorted. Alias gDeckEditListRow */
     u8 unk14A3;
     u16 sortScratch[(0x1710 - 0x14A4) / 2]; /* +0x14A4: non-monsters held back during a sorted 'All' filter; the
                                        filter code also reaches the list rows at negative offsets from its alias
-                                       gUnk_0201EFC4 */
+                                       gDeckEditSortScratch */
     u8 redrawOnPageSlide:1;         /* +0x1710 bit 0: redraw the rows and detail panel when a horizontal slide
                                        passes its midpoint (set by DeckEdit_StartListSlide) */
     u8 unk1710_1:7;
@@ -306,15 +306,15 @@ struct DeckEdit {
                                        to 0x400; >= 0 brightens, < 0 darkens, BLDY = |v| >> 8 */
     u16 unk18AE;
     struct ObjAffine objAffine[32]; /* +0x18B0: OBJ affine records; [0] scroll-bar thumb, [1..6] frame slots.
-                                       Alias gUnk_0201F3D0 */
+                                       Alias gDeckEditObjAffine */
     struct DeckEditScrollBar scrollBar; /* +0x1BB0 */
-    struct FrameSlotRing frameSlots; /* +0x1BB8: card-frame sprites left of the list. Alias gUnk_0201F6D8, which
+    struct FrameSlotRing frameSlots; /* +0x1BB8: card-frame sprites left of the list. Alias gDeckEditFrameSlots, which
                                        code also uses as a base for cardMove (+0x68), +0x1C34 (+0x7C), commandMenu
                                        (+0x84) and +0x1C5A (+0xA2), and anims (-0x4A0) */
-    u8 curList;                     /* +0x1C1C: enum DeckEditList shown. Alias gUnk_0201F73C */
+    u8 curList;                     /* +0x1C1C: enum DeckEditList shown. Alias gDeckEditCurList */
     u8 prevList;                    /* +0x1C1D: list highlighted last frame (DeckEdit_UpdatePanelHighlight) */
     u8 unk1C1E[2];
-    struct CardMove cardMove;       /* +0x1C20: alias gUnk_0201F740, which the frame handlers use as a base for
+    struct CardMove cardMove;       /* +0x1C20: alias gDeckEditCardMove, which the frame handlers use as a base for
                                        the rest of the state (-0x1608 fade, -0x508 anims, +0x1C commandMenu) */
     u8 cursorRowPage:1;             /* +0x1C34 bit 0: cursor-row text page 0/1 (DeckEdit_FlipCursorRowPage) */
     u8 listRowRing:4;               /* +0x1C34 bits 1-4: rotation 0..6 of the 7 row-name buffers */
@@ -331,7 +331,7 @@ struct DeckEdit {
     u8 subPhase;                    /* +0x1C4B: List Filter phase (enum ListFilterPhase) */
     u16 bgScrollX;                  /* +0x1C4C: sub-screen BG3 pattern scroll X, 8.8, +0x80 per frame */
     u16 bgScrollY;                  /* +0x1C4E: sub-screen BG3 pattern scroll Y, 8.8 */
-    u8 panelAlpha;                  /* +0x1C50: BG2 panel blend level, 16 hidden .. 8 shown. Alias gUnk_0201F770 */
+    u8 panelAlpha;                  /* +0x1C50: BG2 panel blend level, 16 hidden .. 8 shown. Alias gDeckEditPanelAlpha */
     s8 panelAlphaStep;              /* +0x1C51: -1 while the panel blends in, +1 while it blends out, 0 idle */
     u8 panelShown;                  /* +0x1C52: 1 while the panel is fully shown */
     u8 inputLock;                   /* +0x1C53: List Filter confirm timer (counts to 13 after A); Statistics ignores
@@ -470,7 +470,7 @@ int ProhibitCardSelect_SwitchScreen(void);          /* step 3: like DeckEdit_Swi
 u16 ProhibitCardSelect_RunListFilter(void);         /* step 5: List Filter on gChain.targetWork2 */
 /* Empty R/L handler of the pickers. Callers pass &gDeckEdit.curList, so they keep a local one-argument view. */
 void CardSelect_HandleListSwitch(void);
-void sub_0806F400(void);                            /* empty function */
+void ProhibitCardSelect_UnusedNop(void);                            /* empty function */
 
 /* Card lists. */
 void DeckEdit_BuildCardLists(void);                 /* rebuild row 0 of the three lists from gSaveData.trunk */
@@ -545,7 +545,7 @@ void DeckEdit_DrawCardIcon(u8 set, u8 idx, u16 *map, u8 col, u8 row, u8 pal, u16
 void DeckEdit_DrawCardIcons(u16 rowOffset);         /* attribute/type/kind icons of the cursor card */
 void DeckEdit_DrawAtkDef(u16 *map, u16 col, u16 row); /* ATK/DEF of the cursor card */
 void DeckEdit_DrawLevelStars(u8 *map, u16 col, u16 row, u8 perRow); /* level stars of the cursor card */
-void sub_08066164(u8 *dst);                         /* copy 12 BG tile blocks (card-row graphics) to dst */
+void DeckEdit_LoadCardBoxTiles(u8 *dst);                         /* copy 12 BG tile blocks (card-row graphics) to dst */
 
 /* Scroll bar, card-frame slots and the card-move animation. Parameters typed u8 * point to the struct named in
    the comment (the definitions take u8 *). */

@@ -68,7 +68,7 @@ u32 DeckEdit_IsFusionMonsterW(u32 cardId) asm("DeckEdit_IsFusionMonster");
 void DeckEdit_DrawAtkDefW(void *map, int col, int row, void *textFlags) asm("DeckEdit_DrawAtkDef");
 
 /* Address-suffixed views of gDeckEdit (these forms are matching choices, see deck_edit.h). */
-extern u8 gUnk_0201F6D8[];   /* 0x0201F6D8 = &gDeckEdit.frameSlots; also the base for the cardMove
+extern u8 gDeckEditFrameSlots[];   /* 0x0201F6D8 = &gDeckEdit.frameSlots; also the base for the cardMove
                                 (+0x68), listRowRing byte (+0x7C), commandMenu (+0x84) and swap byte
                                 (+0xA2) views in SideDeckSwap_Init */
 
@@ -197,18 +197,18 @@ int SideDeckSwap_Init(void)
     if (gDeckEdit.listCount[gDeckEdit.listRow[gDeckEdit.curList]][gDeckEdit.curList] > 5)
         gDeckEdit.scrollBar.downArrowFrame = gDeckEdit.scrollBar.upArrowFrame = 1;
     else gDeckEdit.scrollBar.downArrowFrame = gDeckEdit.scrollBar.upArrowFrame = 0;
-    DeckEdit_ResetFrameSlots(gUnk_0201F6D8);
-    DeckEdit_ResetCardMove(gUnk_0201F6D8 + 0x68);
-    rowByte = (struct ListRowRingByteView *)(gUnk_0201F6D8 + 0x7C);
+    DeckEdit_ResetFrameSlots(gDeckEditFrameSlots);
+    DeckEdit_ResetCardMove(gDeckEditFrameSlots + 0x68);
+    rowByte = (struct ListRowRingByteView *)(gDeckEditFrameSlots + 0x7C);
     rowByte->cursorRowPage = 0; rowByte->listRowRing = 0;
-    swapByte = (struct SwapStateByteView *)(gUnk_0201F6D8 + 0xA2);
+    swapByte = (struct SwapStateByteView *)(gDeckEditFrameSlots + 0xA2);
     swapByte->menuVariant = DECKEDIT_MENU_SIDE_SWAP;
     menuWord = (struct CommandMenuWordView *)((u8 *)rowByte + 8);
     menuWord->choice = DECKEDIT_CMD_TO_MAIN_DECK;
     ((struct CommandMenuAnimByteView *)((u8 *)menuWord + 1))->anim = CMDMENU_REFRESH;
     ((struct CommandMenuAnimByteView *)((u8 *)menuWord + 1))->anim = CMDMENU_OPEN;
     swapByte->swapSelector = SWAP_STATE_IDLE;
-    AnimBlockInit((struct AnimSeq **)gDeckEditAnimScripts, gUnk_0201F6D8 - 0x4A0);
+    AnimBlockInit((struct AnimSeq **)gDeckEditAnimScripts, gDeckEditFrameSlots - 0x4A0);
     return 1;
 }
 
@@ -392,12 +392,12 @@ void SideDeckSwap_CancelExchange(void)
  * so only the top-level architecture can be clarified here.
  */
 
-extern u8 gUnk_0201E148[];      /* 0x0201E148 = &gDeckEdit.scrollEase */
-extern u8 gUnk_0201F740[];      /* 0x0201F740 = &gDeckEdit.cardMove */
-extern u16 gUnk_0201E140[];     /* 0x0201E140 = gDeckEdit.listPos */
-extern u8 gUnk_0201F73C;        /* 0x0201F73C = gDeckEdit.curList */
-extern const u8 gUnk_081A6524[];    /* sprite templates drawn by SideDeckSwap_Update */
-extern const u8 gUnk_081A6EA4[];
+extern u8 gDeckEditScrollEase[];      /* 0x0201E148 = &gDeckEdit.scrollEase */
+extern u8 gDeckEditCardMove[];      /* 0x0201F740 = &gDeckEdit.cardMove */
+extern u16 gDeckEditListPos[];     /* 0x0201E140 = gDeckEdit.listPos */
+extern u8 gDeckEditCurList;        /* 0x0201F73C = gDeckEdit.curList */
+extern const u8 gDeckEditArtFrameSprites[];    /* sprite templates drawn by SideDeckSwap_Update */
+extern const u8 gDeckEditPanelCornerSprite[];
 
 /* gDeckEdit as one view: fade/scrollEase scalars, the scroll bar arrows and the command menu word. */
 struct SideDeckSwapFrameView {
@@ -457,7 +457,7 @@ struct FrameSlotRowsView {
     struct FrameSlotRowView rows[6];
 };
 
-/* gDeckEdit.scrollEase through its gUnk_0201E148 base. */
+/* gDeckEdit.scrollEase through its gDeckEditScrollEase base. */
 struct ScrollEaseView {
     u8 state;
     u8 pad1;
@@ -470,9 +470,9 @@ struct ScrollEaseView {
 #define MENU_WORD (((struct CommandMenuRawView *)&gDeckEdit)->word)
 #define MENU_PHASE (((struct CommandMenuPhaseView *)&gDeckEdit)->anim)
 #define SLOT_ROWS ((struct FrameSlotRowsView *)&gDeckEdit)->rows
-#define TWEEN (*(struct ScrollEaseView *)gUnk_0201E148)
+#define TWEEN (*(struct ScrollEaseView *)gDeckEditScrollEase)
 #define STATE_BYTES ((u8 *)&gDeckEdit)
-#define CUR_LIST_ALIAS gUnk_0201F73C
+#define CUR_LIST_ALIAS gDeckEditCurList
 #define LIST_COUNT(list) (gDeckEdit.listCount[gDeckEdit.listRow[list]][list])
 #define TWEEN_STATE FRAME.scrollEaseState
 #define TWEEN_STEP FRAME.scrollEaseStep
@@ -522,39 +522,39 @@ int SideDeckSwap_Update(void)
     struct DeckEdit *state;
 
     keys = gMain.newKeys & 0x3FF;   /* all ten key bits (gba.h has no mask constant) */
-    Ease_Tick((struct Ease *)gUnk_0201E148);
+    Ease_Tick((struct Ease *)gDeckEditScrollEase);
     /* Crossing the midpoint of a horizontal page slide changes the visible rows. */
-    if ((*((u8 *)&gUnk_0201E148 + 0x10E8) & 1) &&
+    if ((*((u8 *)&gDeckEditScrollEase + 0x10E8) & 1) &&
         ((TWEEN.cur == 4 && TWEEN.scrollDir == DECKEDIT_SCROLL_PAGE_RIGHT) ||
          (TWEEN.cur == 3 && TWEEN.scrollDir == DECKEDIT_SCROLL_PAGE_LEFT))) {
         FRAME.redrawOnPageSlide = 0;
         clear = 0;
         CpuFastSet((const void *)&clear, (void *)0x0600D000, 0x01000200);
-        if ((s16)gUnk_0201E140[CUR_LIST_ALIAS] - 2 >= 0) {
-            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS] - 2),
+        if ((s16)gDeckEditListPos[CUR_LIST_ALIAS] - 2 >= 0) {
+            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS] - 2),
                          (u8 *)0x0600D000, 0, (u8)gDeckEdit.bg1Vofs >> 3, (u32)(STATE_BYTES + 0x640), 1);
         }
-        if ((s16)gUnk_0201E140[CUR_LIST_ALIAS] - 1 >= 0) {
-            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS] - 1),
+        if ((s16)gDeckEditListPos[CUR_LIST_ALIAS] - 1 >= 0) {
+            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS] - 1),
                          (u8 *)0x0600D000, 0, ((gDeckEdit.bg1Vofs + 0x10) & 0xFF) >> 3, (u32)(STATE_BYTES + 0x640), 2);
         }
-        if ((s16)gUnk_0201E140[CUR_LIST_ALIAS] + 1 < LIST_COUNT(CUR_LIST_ALIAS)) {
-            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS] + 1),
+        if ((s16)gDeckEditListPos[CUR_LIST_ALIAS] + 1 < LIST_COUNT(CUR_LIST_ALIAS)) {
+            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS] + 1),
                          (u8 *)0x0600D000, 0, ((gDeckEdit.bg1Vofs + 0x48) & 0xFF) >> 3, (u32)(STATE_BYTES + 0x640), 4);
         }
-        if ((s16)gUnk_0201E140[CUR_LIST_ALIAS] + 2 < LIST_COUNT(CUR_LIST_ALIAS)) {
-            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS] + 2),
+        if ((s16)gDeckEditListPos[CUR_LIST_ALIAS] + 2 < LIST_COUNT(CUR_LIST_ALIAS)) {
+            DRAW_LIST_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS] + 2),
                          (u8 *)0x0600D000, 0, ((gDeckEdit.bg1Vofs + 0x58) & 0xFF) >> 3, (u32)(STATE_BYTES + 0x640), 5);
         }
         FillMapRectWrapW(0, (void *)0x0600C000, 0, ((gDeckEdit.bg0Vofs + 0x20) & 0xFF) >> 3, 30, 6, STATE_BYTES + 0x640);
         if (LIST_COUNT(CUR_LIST_ALIAS) != 0) {
-            DRAW_CURSOR_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS]),
+            DRAW_CURSOR_ROW(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS]),
                          (u8 *)0x0600C000, 0, ((gDeckEdit.bg0Vofs + 0x20) & 0xFF) >> 3, STATE_BYTES + 0x640);
             DeckEdit_DrawCardIcons(0);
             DeckEdit_DrawAtkDefW((u8 *)0x0600C000, 11, ((gDeckEdit.bg0Vofs + 0x38) & 0xFF) >> 3, STATE_BYTES + 0x640);
             DeckEdit_DrawLevelStarsW((u8 *)0x0600C000, 17, ((gDeckEdit.bg0Vofs + 0x38) & 0xFF) >> 3, 6);
         } else {
-            DRAW_NO_CARDS(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gUnk_0201E140[CUR_LIST_ALIAS]),
+            DRAW_NO_CARDS(GET_LIST_CARD(CUR_LIST_ALIAS, gDeckEdit.listRow[CUR_LIST_ALIAS], gDeckEditListPos[CUR_LIST_ALIAS]),
                          (u8 *)0x0600C000, 0, ((gDeckEdit.bg0Vofs + 0x20) & 0xFF) >> 3, STATE_BYTES + 0x640);
         }
     }
@@ -743,7 +743,7 @@ int SideDeckSwap_Update(void)
                 PLAY_SE_CALL(1);
                 break;
             }
-            SideDeckSwap_HandleListSwitch(&gUnk_0201F73C);
+            SideDeckSwap_HandleListSwitch(&gDeckEditCurList);
             break;
         case 1:
             if (FRAME.cardMoveStep == 0 && FRAME.exchange == -1) {
@@ -847,8 +847,8 @@ int SideDeckSwap_Update(void)
                     }
                     break;
                 default:
-                    SideDeckSwap_HandleListSwitch(&gUnk_0201F73C);
-                    if (*((u8 *)&gUnk_0201F73C - 0x15F4) != 1) {   /* gUnk_0201E148 (scrollEase.state), reached from &curList in the ROM's offset form */
+                    SideDeckSwap_HandleListSwitch(&gDeckEditCurList);
+                    if (*((u8 *)&gDeckEditCurList - 0x15F4) != 1) {   /* gDeckEditScrollEase (scrollEase.state), reached from &curList in the ROM's offset form */
                         switch (keys) {
                         case DPAD_UP: DeckEdit_ScrollListUp(&row); break;
                         case DPAD_DOWN: DeckEdit_ScrollListDown(&row); break;
@@ -862,19 +862,19 @@ int SideDeckSwap_Update(void)
     }
 
     SideDeckSwap_UpdateExchange();
-    OamListAddSpriteGroupW(gUnk_081A6524, 5, 12, -1, -1, 3, 2, 0, 0, 0, 0, &gDeckEdit);
+    OamListAddSpriteGroupW(gDeckEditArtFrameSprites, 5, 12, -1, -1, 3, 2, 0, 0, 0, 0, &gDeckEdit);
     FRAME.frameDirty = 1;
     DRAW_SCROLL_BAR(gDeckEdit.listPos[gDeckEdit.curList], LIST_COUNT(gDeckEdit.curList), (u16 *)&gDeckEdit.scrollBar);
     DeckEdit_DrawFrameSlots(STATE_BYTES + 0x1BBC, (int)&gDeckEdit);
     for (slot = 1; slot <= 6; slot++)
         ObjAffineApply((struct ObjAffine *)(STATE_BYTES + 0x18B0 + slot * 24));
-    tail = gUnk_0201F740;
+    tail = gDeckEditCardMove;
     UPDATE_CARD_MOVE0();
     list = tail - 4;
     DeckEdit_UpdatePanelHighlight(list, tail - 3, (struct AnimState *)(objects = tail - 0x508));
     DeckEdit_UpdateCommandMenuAnim((struct DeckEditCommandMenu *)(tail + 0x1C));
     DeckEdit_DrawCommandMenu((struct DeckEditCommandMenu *)(tail + 0x1C));
-    OamListAddSpriteGroupW(gUnk_081A6EA4, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, state = (struct DeckEdit *)(tail - 0x1C20));
+    OamListAddSpriteGroupW(gDeckEditPanelCornerSprite, 0, 1, -1, -1, 0, 0, 1, 1, 0, 0, state = (struct DeckEdit *)(tail - 0x1C20));
     DeckEdit_DrawCardCounts(*list);
     AnimBlockTick(objects);
     AnimBlockDraw(objects, 0, 0, 0, 0, 0, 3, 0, 0, (u32)state);

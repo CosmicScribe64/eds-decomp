@@ -83,7 +83,7 @@ void PlaySE(u32 seId);
 #include "ai.h"                     /* AiFindStrongestMonster, AiFindWeakestMonster, AiPickEffectTribute, ... */
 #include "card_list_view.h"         /* gCardListView, gCardListViewCards, CardListView_Open */
 #include "chain.h"                  /* struct ChainEntry, gChain */
-#include "duel_actions.h"           /* sub_08019820 */
+#include "duel_actions.h"           /* ShowPickedCard */
 #include "duel_cmd.h"               /* DuelCmd_Push */
 #include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget */
 #include "effect.h"                 /* AddEffectTarget, CanActivateEffect, shared prompt texts */
@@ -224,7 +224,7 @@ void AddEffectTargetUnchecked(struct ChainEntry *card, int player, int zone)
  * ChainB of Mask of Darkness, Magician of Faith, Monster Eye, Monster Reborn, Graverobber, Call of the
  * Haunted, Premature Burial and key 1241: the target is a card chosen in the card-list viewer, stored as the
  * two halves of its card word (targets[0] low, targets[1] high).
- *   CPU: the AI's pick from the candidates (AiPickCardListEntry), shown with sub_08019820; returns 1.
+ *   CPU: the AI's pick from the candidates (AiPickCardListEntry), shown with ShowPickedCard; returns 1.
  *   Step 0: no target (return 1) if CollectEffectTargets finds no candidate, else the prompt.
  *   Step 1: open the viewer on the candidates (area -1).
  *   Step 2: take the card under the viewer's cursor; return 1.
@@ -241,7 +241,7 @@ int EffectCardListTargetChainB(struct ChainEntry *link)
         i = AiPickCardListEntry(link->card);
         if (i >= 0) {
             halves = (u16 *)&gCardListViewCards[i];
-            sub_08019820(link->player, CARD_ID(*(u32 *)halves));
+            ShowPickedCard(link->player, CARD_ID(*(u32 *)halves));
             AddEffectTarget(link, halves[0]);
             AddEffectTarget(link, halves[1]);
         }
@@ -262,7 +262,7 @@ int EffectCardListTargetChainB(struct ChainEntry *link)
         (*step)++;
         return 0;
     default:
-        sub_08019820(link->player, CARD_ID(gCardListView.cards[gCardListView.top + gCardListView.cursorRow]));
+        ShowPickedCard(link->player, CARD_ID(gCardListView.cards[gCardListView.top + gCardListView.cursorRow]));
         halves = (u16 *)&gCardListView.cards[gCardListView.top + gCardListView.cursorRow];
         AddEffectTarget(link, halves[0]);
         AddEffectTarget(link, halves[1]);

@@ -263,7 +263,7 @@ int EffectPainfulChoiceResolve(struct ChainEntry *link, int chainedTo)
                 u16 *cardHalves = (u16 *)card;
 
                 if (CARD_ID(*card) == gDuel.promptResult && toHandLeft != 0) {
-                    sub_08019820(link->player, CARD_ID(*card));
+                    ShowPickedCard(link->player, CARD_ID(*card));
                     DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_ADD_CARD_TO_HAND), cardHalves[0],
                                  cardHalves[1], 0);
                     toHandLeft = 0;

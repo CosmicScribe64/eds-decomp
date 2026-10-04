@@ -41,7 +41,7 @@ _08063D82:
 	mov r0, #0
 	b _08063DA6
 	.align 2, 0
-_08063D98: .4byte gUnk_0862311E
+_08063D98: .4byte gCardIdToNumber_821
 _08063D9C: .4byte 0x0000077F
 _08063DA0: .4byte 0x02011C20
 _08063DA4:

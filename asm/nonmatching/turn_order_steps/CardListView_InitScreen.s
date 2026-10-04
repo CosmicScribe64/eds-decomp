@@ -262,24 +262,24 @@ _0802A8FE:
 	ble _0802A8FE
 	b _0802AAA0
 _0802A91C: .4byte 0x05000200
-_0802A920: .4byte gUnk_08698C7C
+_0802A920: .4byte gCardListViewButtonsPal
 _0802A924: .4byte 0x06010000
 _0802A928: .4byte gCardListViewButtonsGfx
 _0802A92C: .4byte 0x05000220
-_0802A930: .4byte gUnk_0869AD1C
+_0802A930: .4byte gCardListViewStatusIconsPal
 _0802A934: .4byte 0x06012000
 _0802A938: .4byte gCardListViewStatusIconsGfx
 _0802A93C: .4byte 0x000003C6
-_0802A940: .4byte gUnk_0869E8E4
-_0802A944: .4byte gUnk_0869C45C
+_0802A940: .4byte gCardListViewHeaderImage
+_0802A944: .4byte gCardListViewBgImage
 _0802A948: .4byte gCardListViewInfoPanelImage
 _0802A94C: .4byte 0x05000080
-_0802A950: .4byte gUnk_0869EECC
+_0802A950: .4byte gCardListViewCursorFramePal
 _0802A954: .4byte 0x06004000
 _0802A958: .4byte gCardListViewCursorFrameGfx
 _0802A95C: .4byte 0x00000165
 _0802A960: .4byte 0x050000E0
-_0802A964: .4byte gUnk_0869B53C
+_0802A964: .4byte gCardListViewTitlesPal
 _0802A968: .4byte 0x0201D810
 _0802A96C: .4byte 0x06006840
 _0802A970: .4byte gCardListViewTitlesGfx

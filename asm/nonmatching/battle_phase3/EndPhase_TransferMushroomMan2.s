@@ -142,7 +142,7 @@ _0804E6CE:
 	b _0804E772
 	.align 2, 0
 _0804E6D4: .4byte gStrAskTransferControlFmt
-_0804E6D8: .4byte gUnk_08624244
+_0804E6D8: .4byte gCardNumberToId_MushroomMan2
 _0804E6DC: .4byte gCardNames
 _0804E6E0: .4byte 0x00000206
 _0804E6E4: .4byte 0x00000712

@@ -1,5 +1,5 @@
-	thumb_func_start sub_080106BC
-sub_080106BC: @ 0x080106BC
+	thumb_func_start DuelCmd_ClearPendingOpponentSummon
+DuelCmd_ClearPendingOpponentSummon: @ 0x080106BC
 	push {r4, lr}
 	ldr r3, _080106F4 @ =0x020185C0
 	ldr r4, _080106F8 @ =0x020192E4
@@ -33,5 +33,5 @@ _080106F8: .4byte 0x020192E4
 _080106FC: .4byte 0x00000D64
 _08010700: .4byte 0x00000907
 _08010704: .4byte 0x0000080D
-	thumb_func_end sub_080106BC
+	thumb_func_end DuelCmd_ClearPendingOpponentSummon
 

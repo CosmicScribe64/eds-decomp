@@ -5,7 +5,7 @@
  * The drawing helpers serve the list view of deck_edit_list / deck_edit_panel:
  *   - DeckEdit_DrawLevelStars: the cursor card's level stars on the detail panel.
  *   - DeckEdit_CalcScrollBar / DeckEdit_DrawScrollBar: the scroll bar at the right edge of the list.
- *   - sub_08066164: copies the 12 card-row BG tile blocks into VRAM.
+ *   - DeckEdit_LoadCardBoxTiles: copies the 12 card-row BG tile blocks into VRAM.
  *   - DeckEdit_ResetFrameSlots / DeckEdit_TweenFrameSlots / DeckEdit_ScrollFrameSlots /
  *     DeckEdit_DrawFrameSlots / DeckEdit_InitFrameSlot: the ring of six card-frame sprites left of
  *     the list; scrolling tweens each live slot between two ring positions (gFrameSlotY /
@@ -48,19 +48,19 @@ extern u8 gCardFrameAnimIds[];                  /* 0x08087480: pick-up animation
 extern const u8 gCardMoveSprite[];              /* 0x081A6D84: flying card sprite of DeckEdit_UpdateCardMove */
 extern u16 gDeckEditEaseCurve[];                /* 0x080875D2: [7] ease-in-out factors in 8.8 */
 extern const u8 gScrollArrowTiles[];            /* 0x08087450: scroll-bar arrow tiles */
-/* The 12 card-row BG tile blocks copied by sub_08066164. */
-extern const u8 gUnk_08706F28[];
-extern const u8 gUnk_087070A8[];
-extern const u8 gUnk_08707228[];
-extern const u8 gUnk_087076A8[];
-extern const u8 gUnk_087073A8[];
-extern const u8 gUnk_08707528[];
-extern const u8 gUnk_08707828[];
-extern const u8 gUnk_087078A8[];
-extern const u8 gUnk_08707928[];
-extern const u8 gUnk_08707AA8[];
-extern const u8 gUnk_087079A8[];
-extern const u8 gUnk_08707A28[];
+/* The 12 card-row BG tile blocks copied by DeckEdit_LoadCardBoxTiles. */
+extern const u8 gDeckEditCardBoxTiles0[];
+extern const u8 gDeckEditCardBoxTiles1[];
+extern const u8 gDeckEditCardBoxTiles2[];
+extern const u8 gDeckEditCardBoxTiles3[];
+extern const u8 gDeckEditCardBoxTiles4[];
+extern const u8 gDeckEditCardBoxTiles5[];
+extern const u8 gDeckEditSmallCardBoxTiles0[];
+extern const u8 gDeckEditSmallCardBoxTiles1[];
+extern const u8 gDeckEditSmallCardBoxTiles2[];
+extern const u8 gDeckEditSmallCardBoxTiles3[];
+extern const u8 gDeckEditSmallCardBoxTiles4[];
+extern const u8 gDeckEditSmallCardBoxTiles5[];
 
 /* Wide caller views of helpers whose headers declare narrower prototypes (util.h has
  * MulFix8(s16, s16) and struct Ease * forms of Ease_Start / Ease_Tick; sprite.h has its own
@@ -277,21 +277,21 @@ void DeckEdit_DrawScrollBar(u16 pos, u16 count, struct ScrollBarView *bar)
 }
 /* Copy 12 graphics blocks (0x0870xxxx) into the tile area at dst: 0xC0 halfwords each for the
  * first six, 0x40 for the rest; the 9th and 10th share dst + 0xA00. */
-void sub_08066164(u8 *dst)
+void DeckEdit_LoadCardBoxTiles(u8 *dst)
 {
     u8 *p;
-    CpuSet(gUnk_08706F28, dst, 0xC0);
-    CpuSet(gUnk_087070A8, dst + 0x180, 0xC0);
-    CpuSet(gUnk_08707228, dst + 0x300, 0xC0);
-    CpuSet(gUnk_087076A8, dst + 0x480, 0xC0);
-    CpuSet(gUnk_087073A8, dst + 0x600, 0xC0);
-    CpuSet(gUnk_08707528, dst + 0x780, 0xC0);
-    CpuSet(gUnk_08707828, dst + 0x900, 0x40);
-    CpuSet(gUnk_087078A8, dst + 0x980, 0x40);
-    CpuSet(gUnk_08707928, p = dst + 0xA00, 0x40);
-    CpuSet(gUnk_08707AA8, p, 0x40);
-    CpuSet(gUnk_087079A8, dst + 0xA80, 0x40);
-    CpuSet(gUnk_08707A28, dst + 0xB00, 0x40);
+    CpuSet(gDeckEditCardBoxTiles0, dst, 0xC0);
+    CpuSet(gDeckEditCardBoxTiles1, dst + 0x180, 0xC0);
+    CpuSet(gDeckEditCardBoxTiles2, dst + 0x300, 0xC0);
+    CpuSet(gDeckEditCardBoxTiles3, dst + 0x480, 0xC0);
+    CpuSet(gDeckEditCardBoxTiles4, dst + 0x600, 0xC0);
+    CpuSet(gDeckEditCardBoxTiles5, dst + 0x780, 0xC0);
+    CpuSet(gDeckEditSmallCardBoxTiles0, dst + 0x900, 0x40);
+    CpuSet(gDeckEditSmallCardBoxTiles1, dst + 0x980, 0x40);
+    CpuSet(gDeckEditSmallCardBoxTiles2, p = dst + 0xA00, 0x40);
+    CpuSet(gDeckEditSmallCardBoxTiles3, p, 0x40);
+    CpuSet(gDeckEditSmallCardBoxTiles4, dst + 0xA80, 0x40);
+    CpuSet(gDeckEditSmallCardBoxTiles5, dst + 0xB00, 0x40);
 }
 /* All six frame slots off, ring head back to slot 5 (gDeckEdit.frameSlots.head). */
 void DeckEdit_ResetFrameSlots(u8 *ring)

@@ -156,7 +156,7 @@ _0802662C: .4byte 0x06004000
 _08026630: .4byte gExodiaFlameBgTiles3
 _08026634: .4byte 0x06006000
 _08026638: .4byte gExodiaFlameBgPal
-_0802663C: .4byte gUnk_086CAD78
+_0802663C: .4byte gExodiaFlameArmsObjTiles
 _08026640: .4byte 0x06010000
 _08026644: .4byte gExodiaFlameObjTilesB
 _08026648: .4byte 0x06014000

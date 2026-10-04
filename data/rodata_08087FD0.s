@@ -54,8 +54,8 @@ gBustupSteps: @ 0x0813ADD4
 	.global gDialogueTable
 gDialogueTable: @ 0x0813ADF4
 	.incbin "build/assets/text__dialogue.json.bin", 0x0, 0x4
-	.global gUnk_0813ADF8
-gUnk_0813ADF8: @ 0x0813ADF8
+	.global gDialogueTableText
+gDialogueTableText: @ 0x0813ADF8
 	.incbin "build/assets/text__dialogue.json.bin", 0x4, 0x5C5A4
 @ text/dialogue_end.json (tables_game_dialogue_end)
 	.incbin "build/assets/text__dialogue_end.json.bin", 0x0, 0x304
@@ -382,8 +382,8 @@ gAttributeNames: @ 0x0819D264
 	.global gCardJumpArc
 gCardJumpArc: @ 0x0819D27C
 	.incbin "build/assets/tables__pointer_tables.bin", 0xB8, 0x4
-	.global gUnk_0819D280
-gUnk_0819D280: @ 0x0819D280
+	.global gCardJumpArcDy
+gCardJumpArcDy: @ 0x0819D280
 	.incbin "build/assets/tables__pointer_tables.bin", 0xBC, 0x7C
 	.global gAiPowerCards
 gAiPowerCards: @ 0x0819D2FC
@@ -481,8 +481,8 @@ gUnlockablePackIds: @ 0x081A5758
 	.global gListFilterAnimScripts
 gListFilterAnimScripts: @ 0x081A6118
 	.incbin "build/assets/tables__rodata2.bin", 0x83B4, 0x40C
-	.global gUnk_081A6524
-gUnk_081A6524: @ 0x081A6524
+	.global gDeckEditArtFrameSprites
+gDeckEditArtFrameSprites: @ 0x081A6524
 	.incbin "build/assets/tables__rodata2.bin", 0x87C0, 0x860
 	.global gCardMoveSprite
 gCardMoveSprite: @ 0x081A6D84
@@ -490,11 +490,11 @@ gCardMoveSprite: @ 0x081A6D84
 	.global gDeckEditCommandLabelSprites
 gDeckEditCommandLabelSprites: @ 0x081A6D8C
 	.incbin "build/assets/tables__rodata2.bin", 0x9028, 0x118
-	.global gUnk_081A6EA4
-gUnk_081A6EA4: @ 0x081A6EA4
+	.global gDeckEditPanelCornerSprite
+gDeckEditPanelCornerSprite: @ 0x081A6EA4
 	.incbin "build/assets/tables__rodata2.bin", 0x9140, 0x8
-	.global gUnk_081A6EAC
-gUnk_081A6EAC: @ 0x081A6EAC
+	.global gDeckEditCommandTabSprite
+gDeckEditCommandTabSprite: @ 0x081A6EAC
 	.incbin "build/assets/tables__rodata2.bin", 0x9148, 0x8
 	.global gDeckEditDigitSprites
 gDeckEditDigitSprites: @ 0x081A6EB4
@@ -662,169 +662,169 @@ gCardStats: @ 0x08621DE0
 	.global gCardIdToNumber
 gCardIdToNumber: @ 0x08622AB4
 	.incbin "build/assets/cards__id_to_number.json.bin", 0x0, 0x66A
-	.global gUnk_0862311E
-gUnk_0862311E: @ 0x0862311E
+	.global gCardIdToNumber_821
+gCardIdToNumber_821: @ 0x0862311E
 	.incbin "build/assets/cards__id_to_number.json.bin", 0x66A, 0x2
 @ cards/passwords.csv (tables_game_passwords)
 	.global gCardPasswords
 gCardPasswords: @ 0x08623120
 	.incbin "build/assets/cards__passwords.csv.bin", 0x0, 0x206
-	.global gUnk_08623326
-gUnk_08623326: @ 0x08623326
+	.global gCardIdToNumber_1081
+gCardIdToNumber_1081: @ 0x08623326
 	.incbin "build/assets/cards__passwords.csv.bin", 0x206, 0xACE
 @ cards/number_to_id.json (u16)
 	.global gCardNumberToId
 gCardNumberToId: @ 0x08623DF4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x0, 0x1C
-	.global gUnk_08623E10
-gUnk_08623E10: @ 0x08623E10
+	.global gCardNumberToId_FlameSwordsman
+gCardNumberToId_FlameSwordsman: @ 0x08623E10
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x1C, 0xE
-	.global gUnk_08623E1E
-gUnk_08623E1E: @ 0x08623E1E
+	.global gCardNumberToId_SummonedSkull
+gCardNumberToId_SummonedSkull: @ 0x08623E1E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x2A, 0x1A
-	.global gUnk_08623E38
-gUnk_08623E38: @ 0x08623E38
+	.global gCardNumberToId_DarkMagician
+gCardNumberToId_DarkMagician: @ 0x08623E38
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x44, 0x6
-	.global gUnk_08623E3E
-gUnk_08623E3E: @ 0x08623E3E
+	.global gCardNumberToId_GaiaTheFierceKnight
+gCardNumberToId_GaiaTheFierceKnight: @ 0x08623E3E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x4A, 0x6
-	.global gUnk_08623E44
-gUnk_08623E44: @ 0x08623E44
+	.global gCardNumberToId_CelticGuardian
+gCardNumberToId_CelticGuardian: @ 0x08623E44
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x50, 0x22
-	.global gUnk_08623E66
-gUnk_08623E66: @ 0x08623E66
+	.global gCardNumberToId_Kuriboh
+gCardNumberToId_Kuriboh: @ 0x08623E66
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x72, 0x8
-	.global gUnk_08623E6E
-gUnk_08623E6E: @ 0x08623E6E
+	.global gCardNumberToId_HarpieLady
+gCardNumberToId_HarpieLady: @ 0x08623E6E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x7A, 0x4
-	.global gUnk_08623E72
-gUnk_08623E72: @ 0x08623E72
+	.global gCardNumberToId_TigerAxe
+gCardNumberToId_TigerAxe: @ 0x08623E72
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x7E, 0xA
-	.global gUnk_08623E7C
-gUnk_08623E7C: @ 0x08623E7C
+	.global gCardNumberToId_ThousandDragon
+gCardNumberToId_ThousandDragon: @ 0x08623E7C
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x88, 0xC2
-	.global gUnk_08623F3E
-gUnk_08623F3E: @ 0x08623F3E
+	.global gCardNumberToId_MysteriousPuppeteer
+gCardNumberToId_MysteriousPuppeteer: @ 0x08623F3E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x14A, 0xE0
-	.global gUnk_0862401E
-gUnk_0862401E: @ 0x0862401E
+	.global gCardNumberToId_PetitMoth
+gCardNumberToId_PetitMoth: @ 0x0862401E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x22A, 0x34
-	.global gUnk_08624052
-gUnk_08624052: @ 0x08624052
+	.global gCardNumberToId_AxeOfDespair
+gCardNumberToId_AxeOfDespair: @ 0x08624052
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x25E, 0x32
-	.global gUnk_08624084
-gUnk_08624084: @ 0x08624084
+	.global gCardNumberToId_DragonCaptureJar
+gCardNumberToId_DragonCaptureJar: @ 0x08624084
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x290, 0x4A
-	.global gUnk_086240CE
-gUnk_086240CE: @ 0x086240CE
+	.global gCardNumberToId_LabyrinthWall
+gCardNumberToId_LabyrinthWall: @ 0x086240CE
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x2DA, 0x2C
-	.global gUnk_086240FA
-gUnk_086240FA: @ 0x086240FA
+	.global gCardNumberToId_PendulumMachine
+gCardNumberToId_PendulumMachine: @ 0x086240FA
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x306, 0x4
-	.global gUnk_086240FE
-gUnk_086240FE: @ 0x086240FE
+	.global gCardNumberToId_LauncherSpider
+gCardNumberToId_LauncherSpider: @ 0x086240FE
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x30A, 0xAA
-	.global gUnk_086241A8
-gUnk_086241A8: @ 0x086241A8
+	.global gCardNumberToId_SinisterSerpent
+gCardNumberToId_SinisterSerpent: @ 0x086241A8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x3B4, 0x9C
-	.global gUnk_08624244
-gUnk_08624244: @ 0x08624244
+	.global gCardNumberToId_MushroomMan2
+gCardNumberToId_MushroomMan2: @ 0x08624244
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x450, 0xD8
 	.global gUnk_0862431C
 gUnk_0862431C: @ 0x0862431C
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x528, 0xAC
-	.global gUnk_086243C8
-gUnk_086243C8: @ 0x086243C8
+	.global gCardNumberToId_GazelleTheKingOfMythicalBeasts
+gCardNumberToId_GazelleTheKingOfMythicalBeasts: @ 0x086243C8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x5D4, 0x20
-	.global gUnk_086243E8
-gUnk_086243E8: @ 0x086243E8
+	.global gCardNumberToId_ParasiteParacide
+gCardNumberToId_ParasiteParacide: @ 0x086243E8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x5F4, 0xA6
-	.global gUnk_0862448E
-gUnk_0862448E: @ 0x0862448E
+	.global gCardNumberToId_ValkyrionTheMagnaWarrior
+gCardNumberToId_ValkyrionTheMagnaWarrior: @ 0x0862448E
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x69A, 0xDA
-	.global gUnk_08624568
-gUnk_08624568: @ 0x08624568
+	.global gCardNumberToId_ToonWorld
+gCardNumberToId_ToonWorld: @ 0x08624568
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x774, 0x14
-	.global gUnk_0862457C
-gUnk_0862457C: @ 0x0862457C
+	.global gCardNumberToId_LightforceSword
+gCardNumberToId_LightforceSword: @ 0x0862457C
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x788, 0x4E
-	.global gUnk_086245CA
-gUnk_086245CA: @ 0x086245CA
+	.global gCardNumberToId_Polymerization
+gCardNumberToId_Polymerization: @ 0x086245CA
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x7D6, 0xA
 	.global gUnk_086245D4
 gUnk_086245D4: @ 0x086245D4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x7E0, 0xA6
-	.global gUnk_0862467A
-gUnk_0862467A: @ 0x0862467A
+	.global gCardNumberToId_Graverobber
+gCardNumberToId_Graverobber: @ 0x0862467A
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x886, 0x42
-	.global gUnk_086246BC
-gUnk_086246BC: @ 0x086246BC
+	.global gCardNumberToId_Kotodama
+gCardNumberToId_Kotodama: @ 0x086246BC
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x8C8, 0x48
 	.global gUnk_08624704
 gUnk_08624704: @ 0x08624704
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x910, 0x2C
-	.global gUnk_08624730
-gUnk_08624730: @ 0x08624730
+	.global gCardNumberToId_SwordOfDragonsSoul
+gCardNumberToId_SwordOfDragonsSoul: @ 0x08624730
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x93C, 0x28
-	.global gUnk_08624758
-gUnk_08624758: @ 0x08624758
+	.global gCardNumberToId_DarkSage
+gCardNumberToId_DarkSage: @ 0x08624758
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x964, 0x10
-	.global gUnk_08624768
-gUnk_08624768: @ 0x08624768
+	.global gCardNumberToId_1210
+gCardNumberToId_1210: @ 0x08624768
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x974, 0x42
-	.global gUnk_086247AA
-gUnk_086247AA: @ 0x086247AA
+	.global gCardNumberToId_1243
+gCardNumberToId_1243: @ 0x086247AA
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x9B6, 0xC
-	.global gUnk_086247B6
-gUnk_086247B6: @ 0x086247B6
+	.global gCardNumberToId_1249
+gCardNumberToId_1249: @ 0x086247B6
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x9C2, 0x12
-	.global gUnk_086247C8
-gUnk_086247C8: @ 0x086247C8
+	.global gCardNumberToId_1258
+gCardNumberToId_1258: @ 0x086247C8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0x9D4, 0x7A
 	.global gUnk_08624842
 gUnk_08624842: @ 0x08624842
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xA4E, 0x6
-	.global gUnk_08624848
-gUnk_08624848: @ 0x08624848
+	.global gCardNumberToId_1322
+gCardNumberToId_1322: @ 0x08624848
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xA54, 0x24
-	.global gUnk_0862486C
-gUnk_0862486C: @ 0x0862486C
+	.global gCardNumberToId_1340
+gCardNumberToId_1340: @ 0x0862486C
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xA78, 0x82
-	.global gUnk_086248EE
-gUnk_086248EE: @ 0x086248EE
+	.global gCardNumberToId_1405
+gCardNumberToId_1405: @ 0x086248EE
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xAFA, 0xDA
-	.global gUnk_086249C8
-gUnk_086249C8: @ 0x086249C8
+	.global gCardNumberToId_1514
+gCardNumberToId_1514: @ 0x086249C8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xBD4, 0xC
-	.global gUnk_086249D4
-gUnk_086249D4: @ 0x086249D4
+	.global gCardNumberToId_1520
+gCardNumberToId_1520: @ 0x086249D4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xBE0, 0x1A
-	.global gUnk_086249EE
-gUnk_086249EE: @ 0x086249EE
+	.global gCardNumberToId_1533
+gCardNumberToId_1533: @ 0x086249EE
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xBFA, 0x6
-	.global gUnk_086249F4
-gUnk_086249F4: @ 0x086249F4
+	.global gCardNumberToId_1536
+gCardNumberToId_1536: @ 0x086249F4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xC00, 0x4
-	.global gUnk_086249F8
-gUnk_086249F8: @ 0x086249F8
+	.global gCardNumberToId_1538
+gCardNumberToId_1538: @ 0x086249F8
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xC04, 0x12
-	.global gUnk_08624A0A
-gUnk_08624A0A: @ 0x08624A0A
+	.global gCardNumberToId_1547
+gCardNumberToId_1547: @ 0x08624A0A
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xC16, 0x2
-	.global gUnk_08624A0C
-gUnk_08624A0C: @ 0x08624A0C
+	.global gCardNumberToId_1548
+gCardNumberToId_1548: @ 0x08624A0C
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xC18, 0x2C2
-	.global gUnk_08624CCE
-gUnk_08624CCE: @ 0x08624CCE
+	.global gCardNumberToId_TheMonarchy
+gCardNumberToId_TheMonarchy: @ 0x08624CCE
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xEDA, 0x2
-	.global gUnk_08624CD0
-gUnk_08624CD0: @ 0x08624CD0
+	.global gCardNumberToId_SetSailForTheKingdom
+gCardNumberToId_SetSailForTheKingdom: @ 0x08624CD0
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xEDC, 0x2
-	.global gUnk_08624CD2
-gUnk_08624CD2: @ 0x08624CD2
+	.global gCardNumberToId_GloryOfTheKingsHand
+gCardNumberToId_GloryOfTheKingsHand: @ 0x08624CD2
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xEDE, 0x22
-	.global gUnk_08624CF4
-gUnk_08624CF4: @ 0x08624CF4
+	.global gCardNumberToId_InsectMonsterToken
+gCardNumberToId_InsectMonsterToken: @ 0x08624CF4
 	.incbin "build/assets/cards__number_to_id.json.bin", 0xF00, 0x100
 @ cards/sort_keys.json (u16)
 	.incbin "build/assets/cards__sort_keys.json.bin", 0x0, 0x66C
@@ -879,8 +879,8 @@ gMagicBadgeImage: @ 0x08636DA0
 	.global gSpellTrapSubtypeIconGfx
 gSpellTrapSubtypeIconGfx: @ 0x08637374
 	.incbin "build/assets/gfx__bank_a.bin", 0x10EC, 0x20
-	.global gUnk_08637394
-gUnk_08637394: @ 0x08637394
+	.global gSpellTrapSubtypeIconGfx_1
+gSpellTrapSubtypeIconGfx_1: @ 0x08637394
 	.incbin "build/assets/gfx__bank_a.bin", 0x110C, 0xC0
 	.global gSpellTrapSubtypeIconPal
 gSpellTrapSubtypeIconPal: @ 0x08637454
@@ -963,8 +963,8 @@ gCardIconPal: @ 0x0867795C
 	.global gHandCursorGfx
 gHandCursorGfx: @ 0x0867797C
 	.incbin "build/assets/gfx__bank_a.bin", 0x416F4, 0x800
-	.global gUnk_0867817C
-gUnk_0867817C: @ 0x0867817C
+	.global gCardIconBackGfx
+gCardIconBackGfx: @ 0x0867817C
 	.incbin "build/assets/gfx__bank_a.bin", 0x41EF4, 0x800
 	.global gCardIconNormalGfx
 gCardIconNormalGfx: @ 0x0867897C
@@ -984,8 +984,8 @@ gCardIconTrapGfx: @ 0x0867A97C
 	.global gCardIconMagicGfx
 gCardIconMagicGfx: @ 0x0867B17C
 	.incbin "build/assets/gfx__bank_a.bin", 0x44EF4, 0x800
-	.global gUnk_0867B97C
-gUnk_0867B97C: @ 0x0867B97C
+	.global gThickPileGfx
+gThickPileGfx: @ 0x0867B97C
 	.incbin "build/assets/gfx__bank_a.bin", 0x456F4, 0x200
 	.global gDuelFieldImage
 gDuelFieldImage: @ 0x0867BB7C
@@ -1017,17 +1017,17 @@ gPhaseBannerGfx: @ 0x0867F03C
 	.global gBattlePhaseBannerGfx
 gBattlePhaseBannerGfx: @ 0x0867F63C
 	.incbin "build/assets/gfx__bank_a.bin", 0x493B4, 0x600
-	.global gUnk_0867FC3C
-gUnk_0867FC3C: @ 0x0867FC3C
+	.global gCardMenuIconsPal
+gCardMenuIconsPal: @ 0x0867FC3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x499B4, 0x20
-	.global gUnk_0867FC5C
-gUnk_0867FC5C: @ 0x0867FC5C
+	.global gCardMenuIconsGfx
+gCardMenuIconsGfx: @ 0x0867FC5C
 	.incbin "build/assets/gfx__bank_a.bin", 0x499D4, 0x800
-	.global gUnk_0868045C
-gUnk_0868045C: @ 0x0868045C
+	.global gCardMenuLabelsPal
+gCardMenuLabelsPal: @ 0x0868045C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4A1D4, 0x20
-	.global gUnk_0868047C
-gUnk_0868047C: @ 0x0868047C
+	.global gCardMenuLabelsGfx
+gCardMenuLabelsGfx: @ 0x0868047C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4A1F4, 0x1000
 	.global gTextBoxPal
 gTextBoxPal: @ 0x0868147C
@@ -1035,8 +1035,8 @@ gTextBoxPal: @ 0x0868147C
 	.global gTextBoxFrameGfx
 gTextBoxFrameGfx: @ 0x0868149C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B214, 0x1E0
-	.global gUnk_0868167C
-gUnk_0868167C: @ 0x0868167C
+	.global gButtonIconsPal
+gButtonIconsPal: @ 0x0868167C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4B3F4, 0x200
 	.global gButtonIconsGfx
 gButtonIconsGfx: @ 0x0868187C
@@ -1053,26 +1053,26 @@ gLpDigitsPal: @ 0x0868247C
 	.global gLpDigitsGfx
 gLpDigitsGfx: @ 0x0868267C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4C3F4, 0x2000
-	.global gUnk_0868467C
-gUnk_0868467C: @ 0x0868467C
+	.global gZoneMarkerPal
+gZoneMarkerPal: @ 0x0868467C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4E3F4, 0x200
-	.global gUnk_0868487C
-gUnk_0868487C: @ 0x0868487C
+	.global gZoneMarkerCanAttackGfx
+gZoneMarkerCanAttackGfx: @ 0x0868487C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4E5F4, 0x180
-	.global gUnk_086849FC
-gUnk_086849FC: @ 0x086849FC
+	.global gZoneMarkerLinkEquipGfx
+gZoneMarkerLinkEquipGfx: @ 0x086849FC
 	.incbin "build/assets/gfx__bank_a.bin", 0x4E774, 0x180
-	.global gUnk_08684B7C
-gUnk_08684B7C: @ 0x08684B7C
+	.global gZoneMarkerLinkOtherGfx
+gZoneMarkerLinkOtherGfx: @ 0x08684B7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4E8F4, 0x380
-	.global gUnk_08684EFC
-gUnk_08684EFC: @ 0x08684EFC
+	.global gHeldZoneMarkGfx
+gHeldZoneMarkGfx: @ 0x08684EFC
 	.incbin "build/assets/gfx__bank_a.bin", 0x4EC74, 0x680
-	.global gUnk_0868557C
-gUnk_0868557C: @ 0x0868557C
+	.global gLinkWaitIndicatorPal
+gLinkWaitIndicatorPal: @ 0x0868557C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4F2F4, 0x20
-	.global gUnk_0868559C
-gUnk_0868559C: @ 0x0868559C
+	.global gLinkWaitIndicatorGfx
+gLinkWaitIndicatorGfx: @ 0x0868559C
 	.incbin "build/assets/gfx__bank_a.bin", 0x4F314, 0x2600
 	.global gDuelBannerPal
 gDuelBannerPal: @ 0x08687B9C
@@ -1119,35 +1119,35 @@ gDeckShuffleAnim: @ 0x08694EA8
 	.global gSmokePuffAnim
 gSmokePuffAnim: @ 0x0869771C
 	.incbin "build/assets/gfx__bank_a.bin", 0x61494, 0x1560
-	.global gUnk_08698C7C
-gUnk_08698C7C: @ 0x08698C7C
+	.global gCardListViewButtonsPal
+gCardListViewButtonsPal: @ 0x08698C7C
 	.incbin "build/assets/gfx__bank_a.bin", 0x629F4, 0x20
 	.global gCardListViewButtonsGfx
 gCardListViewButtonsGfx: @ 0x08698C9C
 	.incbin "build/assets/gfx__bank_a.bin", 0x62A14, 0x2080
-	.global gUnk_0869AD1C
-gUnk_0869AD1C: @ 0x0869AD1C
+	.global gCardListViewStatusIconsPal
+gCardListViewStatusIconsPal: @ 0x0869AD1C
 	.incbin "build/assets/gfx__bank_a.bin", 0x64A94, 0x20
 	.global gCardListViewStatusIconsGfx
 gCardListViewStatusIconsGfx: @ 0x0869AD3C
 	.incbin "build/assets/gfx__bank_a.bin", 0x64AB4, 0x800
-	.global gUnk_0869B53C
-gUnk_0869B53C: @ 0x0869B53C
+	.global gCardListViewTitlesPal
+gCardListViewTitlesPal: @ 0x0869B53C
 	.incbin "build/assets/gfx__bank_a.bin", 0x652B4, 0x20
 	.global gCardListViewTitlesGfx
 gCardListViewTitlesGfx: @ 0x0869B55C
 	.incbin "build/assets/gfx__bank_a.bin", 0x652D4, 0xF00
-	.global gUnk_0869C45C
-gUnk_0869C45C: @ 0x0869C45C
+	.global gCardListViewBgImage
+gCardListViewBgImage: @ 0x0869C45C
 	.incbin "build/assets/gfx__bank_a.bin", 0x661D4, 0x12FC
 	.global gCardListViewInfoPanelImage
 gCardListViewInfoPanelImage: @ 0x0869D758
 	.incbin "build/assets/gfx__bank_a.bin", 0x674D0, 0x118C
-	.global gUnk_0869E8E4
-gUnk_0869E8E4: @ 0x0869E8E4
+	.global gCardListViewHeaderImage
+gCardListViewHeaderImage: @ 0x0869E8E4
 	.incbin "build/assets/gfx__bank_a.bin", 0x6865C, 0x5E8
-	.global gUnk_0869EECC
-gUnk_0869EECC: @ 0x0869EECC
+	.global gCardListViewCursorFramePal
+gCardListViewCursorFramePal: @ 0x0869EECC
 	.incbin "build/assets/gfx__bank_a.bin", 0x68C44, 0x20
 	.global gCardListViewCursorFrameGfx
 gCardListViewCursorFrameGfx: @ 0x0869EEEC
@@ -1350,17 +1350,17 @@ gExodiaFlameBg0Map: @ 0x086CA6C8
 	.global gExodiaFlameBgPal
 gExodiaFlameBgPal: @ 0x086CAB78
 	.incbin "build/assets/gfx__bank_a.bin", 0x948F0, 0x200
-	.global gUnk_086CAD78
-gUnk_086CAD78: @ 0x086CAD78
+	.global gExodiaFlameArmsObjTiles
+gExodiaFlameArmsObjTiles: @ 0x086CAD78
 	.incbin "build/assets/gfx__bank_a.bin", 0x94AF0, 0x2000
 	.global gExodiaFlameObjTilesB
 gExodiaFlameObjTilesB: @ 0x086CCD78
 	.incbin "build/assets/gfx__bank_a.bin", 0x96AF0, 0x2000
-	.global gUnk_086CED78
-gUnk_086CED78: @ 0x086CED78
+	.global gExodiaPiecesColorObjTiles
+gExodiaPiecesColorObjTiles: @ 0x086CED78
 	.incbin "build/assets/gfx__bank_a.bin", 0x98AF0, 0xA00
-	.global gUnk_086CF778
-gUnk_086CF778: @ 0x086CF778
+	.global gExodiaPiecesGreyObjTiles
+gExodiaPiecesGreyObjTiles: @ 0x086CF778
 	.incbin "build/assets/gfx__bank_a.bin", 0x994F0, 0xA00
 	.global gDestinyBoardBgTiles0
 gDestinyBoardBgTiles0: @ 0x086D0178
@@ -1446,17 +1446,17 @@ gDeckEditDecideLabelGfx: @ 0x086F13B0
 	.global gDeckEditMenuTilemap
 gDeckEditMenuTilemap: @ 0x086F17B0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB528, 0x24
-	.global gUnk_086F17D4
-gUnk_086F17D4: @ 0x086F17D4
+	.global gDeckEditMenuTilemapFilterLabels
+gDeckEditMenuTilemapFilterLabels: @ 0x086F17D4
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB54C, 0xC
-	.global gUnk_086F17E0
-gUnk_086F17E0: @ 0x086F17E0
+	.global gDeckEditMenuTilemapSortLabels
+gDeckEditMenuTilemapSortLabels: @ 0x086F17E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB558, 0x8
-	.global gUnk_086F17E8
-gUnk_086F17E8: @ 0x086F17E8
+	.global gDeckEditMenuTilemapBarEnd
+gDeckEditMenuTilemapBarEnd: @ 0x086F17E8
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB560, 0x328
-	.global gUnk_086F1B10
-gUnk_086F1B10: @ 0x086F1B10
+	.global gDeckEditMenuTilemapStatementLabels
+gDeckEditMenuTilemapStatementLabels: @ 0x086F1B10
 	.incbin "build/assets/gfx__bank_a.bin", 0xBB888, 0x150
 	.global gListFilterBgPal
 gListFilterBgPal: @ 0x086F1C60
@@ -1485,8 +1485,8 @@ gListFilterObjTiles1: @ 0x086FA060
 	.global gListFilterBgPatternMap
 gListFilterBgPatternMap: @ 0x086FC060
 	.incbin "build/assets/gfx__bank_a.bin", 0xC5DD8, 0x80
-	.global gUnk_086FC0E0
-gUnk_086FC0E0: @ 0x086FC0E0
+	.global gListFilterPanelMap
+gListFilterPanelMap: @ 0x086FC0E0
 	.incbin "build/assets/gfx__bank_a.bin", 0xC5E58, 0x4B0
 	.global gListFilterFilterPageMap
 gListFilterFilterPageMap: @ 0x086FC590
@@ -1539,161 +1539,161 @@ gProhibitSelectBgPal3: @ 0x08702BE8
 	.global gProhibitSelectBgTiles
 gProhibitSelectBgTiles: @ 0x08702C08
 	.incbin "build/assets/gfx__bank_a.bin", 0xCC980, 0x2140
-	.global gUnk_08704D48
-gUnk_08704D48: @ 0x08704D48
+	.global gCardKindIconRitualGfx
+gCardKindIconRitualGfx: @ 0x08704D48
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEAC0, 0xA0
-	.global gUnk_08704DE8
-gUnk_08704DE8: @ 0x08704DE8
+	.global gCardKindIconEffectGfx
+gCardKindIconEffectGfx: @ 0x08704DE8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEB60, 0xA0
-	.global gUnk_08704E88
-gUnk_08704E88: @ 0x08704E88
+	.global gDeckEditStatIconGfx
+gDeckEditStatIconGfx: @ 0x08704E88
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEC00, 0x60
-	.global gUnk_08704EE8
-gUnk_08704EE8: @ 0x08704EE8
+	.global gDeckEditStatIconPal
+gDeckEditStatIconPal: @ 0x08704EE8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEC60, 0xC0
-	.global gUnk_08704FA8
-gUnk_08704FA8: @ 0x08704FA8
+	.global gCardKindIconFusionGfx
+gCardKindIconFusionGfx: @ 0x08704FA8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCED20, 0xA0
-	.global gUnk_08705048
-gUnk_08705048: @ 0x08705048
+	.global gSpellSubtypeIconCounterGfx
+gSpellSubtypeIconCounterGfx: @ 0x08705048
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEDC0, 0x140
-	.global gUnk_08705188
-gUnk_08705188: @ 0x08705188
+	.global gSpellSubtypeIconContinuousGfx
+gSpellSubtypeIconContinuousGfx: @ 0x08705188
 	.incbin "build/assets/gfx__bank_a.bin", 0xCEF00, 0x140
-	.global gUnk_087052C8
-gUnk_087052C8: @ 0x087052C8
+	.global gSpellSubtypeIconFieldGfx
+gSpellSubtypeIconFieldGfx: @ 0x087052C8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF040, 0x140
-	.global gUnk_08705408
-gUnk_08705408: @ 0x08705408
+	.global gSpellSubtypeIconRitualGfx
+gSpellSubtypeIconRitualGfx: @ 0x08705408
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF180, 0x220
-	.global gUnk_08705628
-gUnk_08705628: @ 0x08705628
+	.global gSpellSubtypeIconEquipGfx
+gSpellSubtypeIconEquipGfx: @ 0x08705628
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF3A0, 0xA0
-	.global gUnk_087056C8
-gUnk_087056C8: @ 0x087056C8
+	.global gSpellSubtypeIconQuickPlayGfx
+gSpellSubtypeIconQuickPlayGfx: @ 0x087056C8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF440, 0xA0
-	.global gUnk_08705768
-gUnk_08705768: @ 0x08705768
+	.global gTypeIconFiendGfx
+gTypeIconFiendGfx: @ 0x08705768
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF4E0, 0xA0
-	.global gUnk_08705808
-gUnk_08705808: @ 0x08705808
+	.global gTypeIconDragonGfx
+gTypeIconDragonGfx: @ 0x08705808
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF580, 0xA0
-	.global gUnk_087058A8
-gUnk_087058A8: @ 0x087058A8
+	.global gTypeIconRockGfx
+gTypeIconRockGfx: @ 0x087058A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF620, 0xA0
-	.global gUnk_08705948
-gUnk_08705948: @ 0x08705948
+	.global gTypeIconReptileGfx
+gTypeIconReptileGfx: @ 0x08705948
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF6C0, 0xA0
-	.global gUnk_087059E8
-gUnk_087059E8: @ 0x087059E8
+	.global gTypeIconPyroGfx
+gTypeIconPyroGfx: @ 0x087059E8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF760, 0xA0
-	.global gUnk_08705A88
-gUnk_08705A88: @ 0x08705A88
+	.global gTypeIconBeastWarriorGfx
+gTypeIconBeastWarriorGfx: @ 0x08705A88
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF800, 0xA0
-	.global gUnk_08705B28
-gUnk_08705B28: @ 0x08705B28
+	.global gTypeIconSeaSerpentGfx
+gTypeIconSeaSerpentGfx: @ 0x08705B28
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF8A0, 0xA0
-	.global gUnk_08705BC8
-gUnk_08705BC8: @ 0x08705BC8
+	.global gTypeIconThunderGfx
+gTypeIconThunderGfx: @ 0x08705BC8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF940, 0xA0
-	.global gUnk_08705C68
-gUnk_08705C68: @ 0x08705C68
+	.global gTypeIconBeastGfx
+gTypeIconBeastGfx: @ 0x08705C68
 	.incbin "build/assets/gfx__bank_a.bin", 0xCF9E0, 0xA0
-	.global gUnk_08705D08
-gUnk_08705D08: @ 0x08705D08
+	.global gTypeIconMachineGfx
+gTypeIconMachineGfx: @ 0x08705D08
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFA80, 0xA0
-	.global gUnk_08705DA8
-gUnk_08705DA8: @ 0x08705DA8
+	.global gTypeIconInsectGfx
+gTypeIconInsectGfx: @ 0x08705DA8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFB20, 0xA0
-	.global gUnk_08705E48
-gUnk_08705E48: @ 0x08705E48
+	.global gTypeIconDinosaurGfx
+gTypeIconDinosaurGfx: @ 0x08705E48
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFBC0, 0xA0
-	.global gUnk_08705EE8
-gUnk_08705EE8: @ 0x08705EE8
+	.global gTypeIconSpellcasterGfx
+gTypeIconSpellcasterGfx: @ 0x08705EE8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFC60, 0xA0
-	.global gUnk_08705F88
-gUnk_08705F88: @ 0x08705F88
+	.global gTypeIconAquaGfx
+gTypeIconAquaGfx: @ 0x08705F88
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFD00, 0xA0
-	.global gUnk_08706028
-gUnk_08706028: @ 0x08706028
+	.global gTypeIconFishGfx
+gTypeIconFishGfx: @ 0x08706028
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFDA0, 0xA0
-	.global gUnk_087060C8
-gUnk_087060C8: @ 0x087060C8
+	.global gTypeIconWarriorGfx
+gTypeIconWarriorGfx: @ 0x087060C8
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFE40, 0xA0
-	.global gUnk_08706168
-gUnk_08706168: @ 0x08706168
+	.global gTypeIconPlantGfx
+gTypeIconPlantGfx: @ 0x08706168
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFEE0, 0xA0
-	.global gUnk_08706208
-gUnk_08706208: @ 0x08706208
+	.global gTypeIconFairyGfx
+gTypeIconFairyGfx: @ 0x08706208
 	.incbin "build/assets/gfx__bank_a.bin", 0xCFF80, 0xA0
-	.global gUnk_087062A8
-gUnk_087062A8: @ 0x087062A8
+	.global gTypeIconWingedBeastGfx
+gTypeIconWingedBeastGfx: @ 0x087062A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0020, 0xA0
-	.global gUnk_08706348
-gUnk_08706348: @ 0x08706348
+	.global gTypeIconZombieGfx
+gTypeIconZombieGfx: @ 0x08706348
 	.incbin "build/assets/gfx__bank_a.bin", 0xD00C0, 0xA0
-	.global gUnk_087063E8
-gUnk_087063E8: @ 0x087063E8
+	.global gAttributeIconEarthGfx
+gAttributeIconEarthGfx: @ 0x087063E8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0160, 0x140
-	.global gUnk_08706528
-gUnk_08706528: @ 0x08706528
+	.global gAttributeIconLightGfx
+gAttributeIconLightGfx: @ 0x08706528
 	.incbin "build/assets/gfx__bank_a.bin", 0xD02A0, 0x140
-	.global gUnk_08706668
-gUnk_08706668: @ 0x08706668
+	.global gAttributeIconFireGfx
+gAttributeIconFireGfx: @ 0x08706668
 	.incbin "build/assets/gfx__bank_a.bin", 0xD03E0, 0x140
-	.global gUnk_087067A8
-gUnk_087067A8: @ 0x087067A8
+	.global gAttributeIconDivineGfx
+gAttributeIconDivineGfx: @ 0x087067A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0520, 0x140
-	.global gUnk_087068E8
-gUnk_087068E8: @ 0x087068E8
+	.global gAttributeIconWindGfx
+gAttributeIconWindGfx: @ 0x087068E8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0660, 0x140
-	.global gUnk_08706A28
-gUnk_08706A28: @ 0x08706A28
+	.global gAttributeIconMagicGfx
+gAttributeIconMagicGfx: @ 0x08706A28
 	.incbin "build/assets/gfx__bank_a.bin", 0xD07A0, 0x140
-	.global gUnk_08706B68
-gUnk_08706B68: @ 0x08706B68
+	.global gAttributeIconWaterGfx
+gAttributeIconWaterGfx: @ 0x08706B68
 	.incbin "build/assets/gfx__bank_a.bin", 0xD08E0, 0x140
-	.global gUnk_08706CA8
-gUnk_08706CA8: @ 0x08706CA8
+	.global gAttributeIconTrapGfx
+gAttributeIconTrapGfx: @ 0x08706CA8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0A20, 0x140
-	.global gUnk_08706DE8
-gUnk_08706DE8: @ 0x08706DE8
+	.global gAttributeIconDarkGfx
+gAttributeIconDarkGfx: @ 0x08706DE8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0B60, 0x140
-	.global gUnk_08706F28
-gUnk_08706F28: @ 0x08706F28
+	.global gDeckEditCardBoxTiles0
+gDeckEditCardBoxTiles0: @ 0x08706F28
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0CA0, 0x180
-	.global gUnk_087070A8
-gUnk_087070A8: @ 0x087070A8
+	.global gDeckEditCardBoxTiles1
+gDeckEditCardBoxTiles1: @ 0x087070A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0E20, 0x180
-	.global gUnk_08707228
-gUnk_08707228: @ 0x08707228
+	.global gDeckEditCardBoxTiles2
+gDeckEditCardBoxTiles2: @ 0x08707228
 	.incbin "build/assets/gfx__bank_a.bin", 0xD0FA0, 0x180
-	.global gUnk_087073A8
-gUnk_087073A8: @ 0x087073A8
+	.global gDeckEditCardBoxTiles4
+gDeckEditCardBoxTiles4: @ 0x087073A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1120, 0x180
-	.global gUnk_08707528
-gUnk_08707528: @ 0x08707528
+	.global gDeckEditCardBoxTiles5
+gDeckEditCardBoxTiles5: @ 0x08707528
 	.incbin "build/assets/gfx__bank_a.bin", 0xD12A0, 0x180
-	.global gUnk_087076A8
-gUnk_087076A8: @ 0x087076A8
+	.global gDeckEditCardBoxTiles3
+gDeckEditCardBoxTiles3: @ 0x087076A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1420, 0x180
-	.global gUnk_08707828
-gUnk_08707828: @ 0x08707828
+	.global gDeckEditSmallCardBoxTiles0
+gDeckEditSmallCardBoxTiles0: @ 0x08707828
 	.incbin "build/assets/gfx__bank_a.bin", 0xD15A0, 0x80
-	.global gUnk_087078A8
-gUnk_087078A8: @ 0x087078A8
+	.global gDeckEditSmallCardBoxTiles1
+gDeckEditSmallCardBoxTiles1: @ 0x087078A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1620, 0x80
-	.global gUnk_08707928
-gUnk_08707928: @ 0x08707928
+	.global gDeckEditSmallCardBoxTiles2
+gDeckEditSmallCardBoxTiles2: @ 0x08707928
 	.incbin "build/assets/gfx__bank_a.bin", 0xD16A0, 0x80
-	.global gUnk_087079A8
-gUnk_087079A8: @ 0x087079A8
+	.global gDeckEditSmallCardBoxTiles4
+gDeckEditSmallCardBoxTiles4: @ 0x087079A8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1720, 0x80
-	.global gUnk_08707A28
-gUnk_08707A28: @ 0x08707A28
+	.global gDeckEditSmallCardBoxTiles5
+gDeckEditSmallCardBoxTiles5: @ 0x08707A28
 	.incbin "build/assets/gfx__bank_a.bin", 0xD17A0, 0x80
-	.global gUnk_08707AA8
-gUnk_08707AA8: @ 0x08707AA8
+	.global gDeckEditSmallCardBoxTiles3
+gDeckEditSmallCardBoxTiles3: @ 0x08707AA8
 	.incbin "build/assets/gfx__bank_a.bin", 0xD1820, 0x80
 	.global gCardTradingBgImage
 gCardTradingBgImage: @ 0x08707B28

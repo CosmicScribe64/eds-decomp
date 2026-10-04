@@ -60,7 +60,7 @@ headers are shared and were not changed:
     with a single `u16` load/store (canonical `u8 flag7_3`/`flag7_4` writes are 4 bytes longer);
   - `DuelCmd_SkipNextDrawPhase`/`DuelCmd_SkipNextStandbyPhase`/`DuelCmd_SkipNextTurn` (+0x09 bits 1/2/3) and `DuelCmd_SetExtraBattlePhase`
     (+0x08 bit 6), whose bits have no canonical field name (`unk9`/`unk8` are plain bytes);
-  - `DuelCmd_AdjustDelayedSummonCount`/`sub_08014B5C` (+0x0C bits 1–3 / bit 4), likewise `flagsC` is a plain byte.
+  - `DuelCmd_AdjustDelayedSummonCount`/`DuelCmd_SetDestroyedTriggerPending` (+0x0C bits 1–3 / bit 4), likewise `flagsC` is a plain byte.
   `DuelCmd_SetPositionChangeLock` (canonical `flag7_5`) and `DuelCmd_SetMagicTrapLockTurns` (canonical `turns7_6`) do match
   the header and use it directly.
 - `struct DuelFlags08013CDC`, aliased as `gUnk_020192E0_flags asm("gDuel")`:

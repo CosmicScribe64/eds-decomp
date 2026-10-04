@@ -108,7 +108,7 @@ _08040998:
 	ldr r2, _080409D4 @ =0x00004872
 	add r4, r4, r2
 	ldrh r1, [r4]
-	bl sub_08019820
+	bl ShowPickedCard
 	ldrh r1, [r4]
 	add r0, r5, #0
 	bl AddEffectTarget

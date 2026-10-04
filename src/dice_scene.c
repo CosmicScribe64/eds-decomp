@@ -119,8 +119,8 @@ extern const u8 gExodiaPiecesObjPal[];
 extern u8 gExodiaPiecesObjTiles[];
 /* 0x086CED78 / 0x086CF778: two strips of five linear 4x4-tile blocks of the pieces (low-confidence names
  * gExodiaPieceBlocksA / B, not applied). */
-extern const u8 gUnk_086CED78[];
-extern const u8 gUnk_086CF778[];
+extern const u8 gExodiaPiecesColorObjTiles[];
+extern const u8 gExodiaPiecesGreyObjTiles[];
 
 /* 0x086C1D68..0x086C7D68: the four 0x2000-byte quarters of the flames BG tile set, and 0x086CAB78 its
  * palette. */
@@ -131,7 +131,7 @@ extern const u8 gExodiaFlameBgTiles3[];
 extern const u8 gExodiaFlameBgPal[];
 /* 0x086CAD78 (low-confidence name gExodiaFlameObjTilesA, not applied) and 0x086CCD78: the OBJ sheets of the
  * flames phase. */
-extern u8 gUnk_086CAD78[];
+extern u8 gExodiaFlameArmsObjTiles[];
 extern u8 gExodiaFlameObjTilesB[];
 /* 0x086C9D68 / 0x086CA218 / 0x086CA6C8: the 30x20 maps of BG2, BG1 and BG0 (BG0 is the waving layer). */
 extern u16 gExodiaFlameBg2Map[];
@@ -280,14 +280,14 @@ u16 ExodiaScene_LoadEye(void)
     CpuFastSet(gMillenniumEyePal, (void *)BG_PLTT, 0x200 / 4);
     CpuSet(gExodiaPiecesObjPal, (void *)OBJ_PLTT, 0x200 / 2);
     CopyTileSheetTo2D(gExodiaPiecesObjTiles, (u8 *)OBJ_VRAM_BITMAP, TILE_COLORS_16);
-    LoadObjTileBlock4x4(gUnk_086CED78, 0x04, 0x10, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CED78, 0x08, 0x20, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CED78, 0x0C, 0x30, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CED78, 0x80, 0x40, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CF778, 0x88, 0x10, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CF778, 0x8C, 0x20, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CF778, 0x100, 0x30, 0x40);
-    LoadObjTileBlock4x4(gUnk_086CF778, 0x104, 0x40, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x04, 0x10, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x08, 0x20, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x0C, 0x30, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesColorObjTiles, 0x80, 0x40, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesGreyObjTiles, 0x88, 0x10, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesGreyObjTiles, 0x8C, 0x20, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesGreyObjTiles, 0x100, 0x30, 0x40);
+    LoadObjTileBlock4x4(gExodiaPiecesGreyObjTiles, 0x104, 0x40, 0x40);
     REG_DISPCNT = DISPCNT_MODE_4 | DISPCNT_BG_ALL_ON | DISPCNT_OBJ_ON;
     Timer_Reset(&gSceneWork.u.exodia.timer);
     Timer_Start(&gSceneWork.u.exodia.timer, 60);
@@ -305,7 +305,7 @@ u16 ExodiaScene_LoadFlames(void)
     CpuFastSet(gExodiaFlameBgTiles2, (void *)(VRAM + 0x4000), 0x2000 / 4);
     CpuFastSet(gExodiaFlameBgTiles3, (void *)(VRAM + 0x6000), 0x2000 / 4);
     CpuFastSet(gExodiaFlameBgPal, (void *)BG_PLTT, 0x200 / 4);
-    CopyTileSheetTo2D(gUnk_086CAD78, (u8 *)OBJ_VRAM0, TILE_COLORS_16);
+    CopyTileSheetTo2D(gExodiaFlameArmsObjTiles, (u8 *)OBJ_VRAM0, TILE_COLORS_16);
     CopyTileSheetTo2D(gExodiaFlameObjTilesB, (u8 *)OBJ_VRAM_BITMAP, TILE_COLORS_16);
     CopyMapRect(gExodiaFlameBg2Map, (void *)BG_SCREEN_ADDR(28), 30, 20);
     CopyMapRect(gExodiaFlameBg1Map, (void *)BG_SCREEN_ADDR(26), 30, 20);

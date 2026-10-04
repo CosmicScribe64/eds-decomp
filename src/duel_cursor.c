@@ -78,9 +78,9 @@ void PlaySE(u32 seId);                      /* legacy sound.h lacks it */
  *   give halfword accesses;
  * - the cursor walkers test DuelCursor_IsValidTarget's result as a u16;
  * - the swap animation reads the dx and dy columns of gCardJumpArc through two table pointers, the second one
- *   through its own symbol gUnk_0819D280 (= &gCardJumpArc[0].dy); folding it into gCardJumpArc changes the code;
+ *   through its own symbol gCardJumpArcDy (= &gCardJumpArc[0].dy); folding it into gCardJumpArc changes the code;
  * - DeckReorder_DrawCards loads the cursor byte (the low byte of the packed state word at gChain +0x53C,
- *   deckReorder.cursor) through its own symbol gUnk_02017F7C;
+ *   deckReorder.cursor) through its own symbol gChainDeckReorderCursor;
  * - the reorder state is a view of gChain at +0x53C with the card words as u32 (see DeckReorderWords).
  */
 struct DuelScreenFlagsByte {
@@ -93,8 +93,8 @@ struct DuelScreenFlagsByte {
 extern u16 DuelCursor_IsValidTarget16(int player, int area, int index, u32 mask) asm("DuelCursor_IsValidTarget");
 
 extern const struct CardJumpArcEntry gCardJumpArc[16];  /* 0x0819D27C: the 16-step swap arc (dx, dy) */
-extern const int gUnk_0819D280[];   /* 0x0819D280: the dy column of gCardJumpArc */
-extern u8 gUnk_02017F7C;            /* 0x02017F7C: gChain.scratch.deckReorder.cursor */
+extern const int gCardJumpArcDy[];   /* 0x0819D280: the dy column of gCardJumpArc */
+extern u8 gChainDeckReorderCursor;            /* 0x02017F7C: gChain.scratch.deckReorder.cursor */
 
 extern const u8 gStrPromptReorderCards[];   /* "Switch the order of your cards using the following keys: ..." */
 
@@ -843,7 +843,7 @@ void DeckReorder_DrawCards(int hidden)
     u8 *cursor;
     asm("" :: "r"(base)); /* FAKEMATCH: keep base live so combine leaves the copy */
     cards = base;
-    cursor = &gUnk_02017F7C;
+    cursor = &gChainDeckReorderCursor;
     pulseCurve = gPulseScaleCurve;
     frame = &gMain.frameCounter;
     for (; i < REORDER_CARD_COUNT; i++) {
@@ -889,7 +889,7 @@ void DeckReorder_DrawSwap(int hidden, int from, int to)
              * register rotation so the `to` compare loads into r2. u8 phase
              * adds combinable insns that keep 0x03000040 from being hoisted
              * in the second loop pass. */
-            const int *arcDy = gUnk_0819D280;
+            const int *arcDy = gCardJumpArcDy;
             const int *arcDx = &gCardJumpArc[0].dx;
             /* deckReorder.phase: bits 4-11 of the halfword at gChain +0x53E (cards - 6) */
             u8 phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
@@ -897,7 +897,7 @@ void DeckReorder_DrawSwap(int hidden, int from, int to)
             y -= *(const int *)((u32)arcDy + (phase << 3));
         }
         if (i == to) {
-            const int *arcDy = gUnk_0819D280;
+            const int *arcDy = gCardJumpArcDy;
             const int *arcDx = &gCardJumpArc[0].dx;
             u8 phase = ((u32)*(u16 *)((u8 *)cards - 6) << 20) >> 24;
             x -= *(const int *)((phase << 3) + (u32)arcDx);

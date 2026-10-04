@@ -82,7 +82,7 @@ extern u32 __umodsi3(u32, u32);
 extern u8 gDuelScene[];             /* 0x02017A30 (struct DuelScene in duel_scenes.h; only byte +0xB,
                                        the scene step, is written here) */
 /* &gLinkSio.rxWork, declared by the original unit and never used (link.h); kept as declared. */
-extern u8 *gUnk_03006598;           /* 0x03006598 */
+extern u8 *gLinkSioRxWork;           /* 0x03006598 */
 
 /* ---- Local views kept for matching (build/readability/issues/text_canvas.md) ----
  * text.h cannot be included here: its `extern struct TextCanvas gTextCanvas` conflicts with

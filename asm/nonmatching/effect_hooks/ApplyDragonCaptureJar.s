@@ -136,6 +136,6 @@ _080468FA:
 _0804690C: .4byte 0x00000D64
 _08046910: .4byte 0x0201930C
 _08046914: .4byte 0x00008073
-_08046918: .4byte gUnk_08624084
+_08046918: .4byte gCardNumberToId_DragonCaptureJar
 	thumb_func_end ApplyDragonCaptureJar
 

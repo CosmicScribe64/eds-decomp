@@ -44,7 +44,7 @@ Bustup_ChangeSpeaker: @ 0x08001770
 	.align 2, 0
 _080017CC: .4byte 0xFFFFFE80
 _080017D0: .4byte 0x020150CC
-_080017D4: .4byte gUnk_0813ADF8
+_080017D4: .4byte gDialogueTableText
 _080017D8: .4byte 0xFFFFF6C0
 _080017DC: .4byte 0xFFFFFDD4
 _080017E0: .4byte 0x03000040

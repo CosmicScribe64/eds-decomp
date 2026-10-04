@@ -120,7 +120,7 @@ extern struct DuelStateView gDuel;          /* 0x020192E0 */
 
 extern struct DuelZone gDuelZonesP1[];      /* 0x0201A070: player 1 zones */
 extern u32 gDuelHandP1[];                   /* 0x0201A6CC: player 1 hand as card words (= gDuelPlayers.hand1) */
-extern const u16 gUnk_08624568[];           /* card IDs planted into empty zones by the Toon simulation (meaning unknown) */
+extern const u16 gCardNumberToId_ToonWorld[];           /* card IDs planted into empty zones by the Toon simulation (meaning unknown) */
 
 /* The effective stats of a zone card, as filled by GetZoneCardStats; this unit reads the type byte
  * whole (masked to the enum CardType bits) and the ATK. */
@@ -878,7 +878,7 @@ int AiChooseStrategy(void)
                 break;
             AiBackupDuelState();
             zones = gDuelZonesP1;
-            src = gUnk_08624568;
+            src = gCardNumberToId_ToonWorld;
             /* FAKEMATCH: two pointers stepped by hand (flag byte +0x91 first) and a signed
              * pointer compare. The ROM sets them up before the masks, which loop pass 1 hoists,
              * and before the end value, so the loop cannot be an indexed z loop (strength

@@ -98,7 +98,7 @@ void PlaySE(u32 seId);
 #include "bg.h"                     /* ResetVideo */
 #include "chain.h"                  /* struct ChainEntry, gChain */
 #include "deck_edit.h"              /* ProhibitCardSelect_Run */
-#include "duel_actions.h"           /* sub_08019820 */
+#include "duel_actions.h"           /* ShowPickedCard */
 #include "duel_cmd.h"               /* DuelCmd_Push */
 #include "duel_prompt.h"            /* DuelPrompt_Post */
 #include "duel_screen.h"            /* gDuelScreen, DuelCursor_PickTarget, DuelScreen_Init / Fade*Step */
@@ -139,7 +139,7 @@ extern u8 gChainBytes[] asm("gChain");
 
 /* &gCardNumberToId[CARD_SUMMONED_SKULL] (0x08623DF4 + 2 * 21). Matching: the ROM loads this element address
  * from its own literal. */
-extern const u16 gUnk_08623E1E[];
+extern const u16 gCardNumberToId_SummonedSkull[];
 
 /* Prompts (ROM; only this unit uses them). */
 extern const u8 gStrDesignateMonsterToIncreaseAtk[];        /* 0x08084520: stat cards, Riryoku */
@@ -655,7 +655,7 @@ int EffectNoblemanOfExterminationChainB(struct ChainEntry *link)
  *           own step there).
  *   Step 2: run the popup (ProhibitCardSelect_Run) until done, then DuelScreen_Init.
  *   Step 3: fade the duel screen in.
- *   Step 4: show the chosen card (sub_08019820) and store its card ID (gMain.pickedCardId) as targets[0];
+ *   Step 4: show the chosen card (ShowPickedCard) and store its card ID (gMain.pickedCardId) as targets[0];
  *           return 1.
  */
 int EffectProhibitionChainB(struct ChainEntry *link)
@@ -694,7 +694,7 @@ int EffectProhibitionChainB(struct ChainEntry *link)
         /* Matching: the pointer is formed late, from a byte pointer and the offset. */
         main = (u8 *)&gMain;
         pickedCardId = (u16 *)(main + MAIN_PICKED_CARD_ID);
-        sub_08019820(player, *pickedCardId);
+        ShowPickedCard(player, *pickedCardId);
         AddEffectTarget(link, *pickedCardId);
         gChainBytes[TARGET_STEP]++;
         return 1;
@@ -859,7 +859,7 @@ int EffectOwnSkullOrThunderChainB(struct ChainEntry *link)
             /* FormatStr(prompt, fmt, name of Summoned Skull). FAKEMATCH: the format, the name offset and the
              * name table are pinned to r1, r2 and r3, and the offset is added first, as in the ROM. */
             register const char *fmt __asm__("r1") = gStrDesignateFaceUpMonsterOfTwoFmt;
-            u16 id = gUnk_08623E1E[0];
+            u16 id = gCardNumberToId_SummonedSkull[0];
             register u32 nameOffset __asm__("r2");
             register const char *names __asm__("r3");
 

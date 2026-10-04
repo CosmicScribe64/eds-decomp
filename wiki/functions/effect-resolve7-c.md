@@ -29,7 +29,7 @@ Six local struct definitions were removed: `DuelCard`, `DuelZone`, `DuelZonesPla
 | `0x0803752C` | 0xCC | matching | step 0x80: card numbers 0x470-0x473 play message 0x15/0x16/0x18/0x17 (0x8000 for player 1), return 0x7F; else `UpdateSpellTrapNegation(0)` |
 | `0x080375F8` | 0x90 | matching | card 0x474: `GainLifePoints(p, 500 * CountGraveyardCardsByNumber(p, n) + 1000)`; card 0x518: `LoseLifePoints(1 - p, 300 * ... + 700)` |
 | `0x08037688` | 0x98 | matching | step 0x80, one target: message 0x87; else card 0x479: `DestroyInvalidEquips(i, j)` for i 0-1, j 0-4 |
-| `0x08037720` | 0x19C | matching | 5-step machine 0x80..0x7C: hand-count check (card 0x47B), list viewer (`ListView`) picks a card, `ReturnGraveyardCardToHand` / `sub_08019820` |
+| `0x08037720` | 0x19C | matching | 5-step machine 0x80..0x7C: hand-count check (card 0x47B), list viewer (`ListView`) picks a card, `ReturnGraveyardCardToHand` / `ShowPickedCard` |
 | `0x080378BC` | 0x160 | matching | counts occupied zones 0-4 per side into `targets[i]` (0x80), then two steps that decrement them while `DuelPrompt_TryPostSetMonster(side)` |
 | `0x08037A1C` | 0xD8 | matching | for each zone 0-4 both sides: `FlipFieldCard` if card flag `& 3 == 1`; count zones where `IsEffectMonster(id)`; `LoseLifePoints(1 - p, count * 500)` |
 | `0x08037AF4` | 0x1E0 | **matching** (wave 1, 2026-10-01) | 5-step machine; step 0x80 takes the target card (`ref+0xE` = id), removes it (`FlipFieldCard`, `ShowRevealedCard`, `BanishFieldCard`), checks card number 0x485/0x486 rules. Matched with integer-constant card-number lookups throughout (see below) |

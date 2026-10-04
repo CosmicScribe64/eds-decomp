@@ -298,15 +298,15 @@ s16 ParseSignedDecimal(u8 **cursor)
     *cursor = p;
     return (s16)sign * val;
 }
-/* The unknown 0x20-byte object of sub_08078CA8 (unused in the USA ROM). */
+/* The unknown 0x20-byte object of UnusedObjectInit (unused in the USA ROM). */
 struct Bf {
-    u8 flag : 1;                    /* +0x00 bit 0: cleared by sub_08078CA8 */
+    u8 flag : 1;                    /* +0x00 bit 0: cleared by UnusedObjectInit */
     u8 rest : 7;
     u8 pad[3];
     u32 value;                      /* +0x04 */
     u8 b[0x18];                     /* +0x08: bytes +0x10 and +0x1C are set to 2 */
 };
-void sub_08078CA8(u32 value, u8 *obj)
+void UnusedObjectInit(u32 value, u8 *obj)
 {
     struct Bf *p = (struct Bf *)obj;
     u8 z, two;

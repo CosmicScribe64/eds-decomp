@@ -156,7 +156,7 @@ extern struct PackListWork gSceneWork;                   /* 0x02020310 */
 /* Picture banks for the opening scene and the card icons. */
 extern const u8 gHandCursorPal[];         /* 0x0867793C */
 extern const u8 gHandCursorGfx[];         /* 0x0867797C */
-extern const u8 gUnk_0867817C[];          /* 0x0867817C: card back graphic (hypothesis) */
+extern const u8 gCardIconBackGfx[];          /* 0x0867817C: card back graphic (hypothesis) */
 extern const u8 gPackSceneBgPal[];        /* 0x0863CA9C */
 extern const u8 gPackSceneBgTiles[];      /* 0x0863CABC */
 extern const u8 gPackCursorFramePal[];    /* 0x0863CB3C */
@@ -445,7 +445,7 @@ int GetPack_InitScene(void)
     MemCopy16((void *)OBJ_PLTT, gHandCursorPal, 0x20);
     MemCopy16((void *)(OBJ_PLTT + 0x20), gCardIconPal, 0x20);
     MemCopy16((void *)OBJ_VRAM0, gHandCursorGfx, 0x800);
-    MemCopy16((void *)(OBJ_VRAM0 + 0x800), gUnk_0867817C, 0x800);
+    MemCopy16((void *)(OBJ_VRAM0 + 0x800), gCardIconBackGfx, 0x800);
     MemCopy16((void *)(OBJ_VRAM0 + 0x1000), gCardIconNormalGfx, 0x800);
     MemCopy16((void *)(OBJ_VRAM0 + 0x1800), gCardIconEffectGfx, 0x800);
     MemCopy16((void *)(OBJ_VRAM0 + 0x2000), gCardIconFusionGfx, 0x800);

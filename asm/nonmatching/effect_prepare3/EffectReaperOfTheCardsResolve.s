@@ -68,7 +68,7 @@ _08030480:
 	bl DuelCmd_Push
 	add r0, r5, #0
 	add r1, r4, #0
-	bl sub_08019820
+	bl ShowPickedCard
 	ldr r0, _080304BC @ =0x000007FF
 	and r4, r0
 	lsl r0, r4, #2

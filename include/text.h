@@ -257,7 +257,7 @@ u8 StrLenU8(const u8 *s);
 u16 SelectU16(u16 cond, u16 a, u16 b);
 /* Unused. Initialises an unknown 0x20-byte object: bit 0 of +0 cleared, +4 = value, +0x10 = +0x1C = 2,
  * +8 / +0xC / +0xD / +0x1D = 0. */
-void sub_08078CA8(u32 value, u8 *obj);
+void UnusedObjectInit(u32 value, u8 *obj);
 
 /* ---- Fonts and the system palette (ROM) ----
  * 1bpp fonts, bit 7 (or bit 15) = leftmost pixel. Several units address the fonts by integer literal on

@@ -169,7 +169,7 @@ struct DuelZonePos {
 };
 
 /* One step of the 16-step arc of the card swap animation (gCardJumpArc, ROM 0x0819D27C). duel_cursor.c
- * reads the dy column through its own symbol gUnk_0819D280 (= &gCardJumpArc[0].dy): the matched code needs
+ * reads the dy column through its own symbol gCardJumpArcDy (= &gCardJumpArc[0].dy): the matched code needs
  * separate x and y table pointers, so both symbols stay. */
 struct CardJumpArcEntry {
     s32 dx;                         /* +0: horizontal offset (0..31) */

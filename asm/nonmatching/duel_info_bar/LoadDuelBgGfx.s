@@ -96,7 +96,7 @@ _08060848: .4byte gPhaseIndicatorPal
 _0806084C: .4byte 0x05000100
 _08060850: .4byte gTextBoxPal
 _08060854: .4byte 0x06004E00
-_08060858: .4byte gUnk_0867817C
+_08060858: .4byte gCardIconBackGfx
 _0806085C: .4byte 0x06005600
 _08060860: .4byte gCardIconNormalGfx
 _08060864: .4byte 0x06005E00
@@ -110,9 +110,9 @@ _08060880: .4byte gCardIconMagicGfx
 _08060884: .4byte 0x06007E00
 _08060888: .4byte gCardIconTrapGfx
 _0806088C: .4byte 0x06008600
-_08060890: .4byte gUnk_0867B97C
+_08060890: .4byte gThickPileGfx
 _08060894: .4byte 0x06008800
-_08060898: .4byte gUnk_08684EFC
+_08060898: .4byte gHeldZoneMarkGfx
 _0806089C: .4byte 0x06008880
 _080608A0: .4byte gDuelDigitsGfx
 _080608A4: .4byte 0x06009000

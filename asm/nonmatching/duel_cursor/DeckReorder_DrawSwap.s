@@ -95,7 +95,7 @@ _08053800:
 	.align 2, 0
 _08053824: .4byte 0x02017F84
 _08053828: .4byte gCardJumpArc
-_0805382C: .4byte gUnk_0819D280
+_0805382C: .4byte gCardJumpArcDy
 _08053830: .4byte 0x02017F7C
 _08053834: .4byte 0x03000040
 _08053838: .4byte 0x0000485E

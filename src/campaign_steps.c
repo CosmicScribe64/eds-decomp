@@ -101,9 +101,9 @@ extern const u16 gOpponentNextMatchDuelText[];
 
 /* The card IDs of the three Championship tickets, read through address-suffixed aliases of
  * gCardNumberToId entries: each gets its own literal, as in the ROM (a single base would be shared). */
-extern const u16 gUnk_08624CCE;         /* gCardNumberToId[CARD_THE_MONARCHY]: round 2 prize */
-extern const u16 gUnk_08624CD0;         /* gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]: round 1 prize */
-extern const u16 gUnk_08624CD2;         /* gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]: semifinal prize */
+extern const u16 gCardNumberToId_TheMonarchy;         /* gCardNumberToId[CARD_THE_MONARCHY]: round 2 prize */
+extern const u16 gCardNumberToId_SetSailForTheKingdom;         /* gCardNumberToId[CARD_SET_SAIL_FOR_THE_KINGDOM]: round 1 prize */
+extern const u16 gCardNumberToId_GloryOfTheKingsHand;         /* gCardNumberToId[CARD_GLORY_OF_THE_KINGS_HAND]: semifinal prize */
 
 /* Clear the sub-states of the screen runners before the next one starts. */
 #define RESET_SEQ_STATE() (gMain.seqIndex1 = 0, gMain.seqState1 = 0, gMain.seqState2 = 0)
@@ -244,19 +244,19 @@ u16 Campaign_GiveRewards(void)
             case CAL_TOURNAMENT_ROUND1:
                 StartDialogue(200);
                 gSaveData.tournamentRound++;
-                gMain.rewardCard = gUnk_08624CD0;
+                gMain.rewardCard = gCardNumberToId_SetSailForTheKingdom;
                 gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
             case CAL_TOURNAMENT_ROUND2:
                 StartDialogue(202);
                 gSaveData.tournamentRound++;
-                gMain.rewardCard = gUnk_08624CCE;
+                gMain.rewardCard = gCardNumberToId_TheMonarchy;
                 gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
             case CAL_TOURNAMENT_SEMIFINAL:
                 StartDialogue(204);
                 gSaveData.tournamentRound++;
-                gMain.rewardCard = gUnk_08624CD2;
+                gMain.rewardCard = gCardNumberToId_GloryOfTheKingsHand;
                 gMain.subStep = REWARD_STEP_TICKET;
                 return 0;
             /* Final (text 206): the champion title. championshipWins is also bumped by
@@ -405,9 +405,9 @@ u16 Campaign_GiveRewards(void)
                 return 0;
             } else {
                 /* Champion: the three tickets are handed back. */
-                RemoveCardFromTrunk(gUnk_08624CCE);
-                RemoveCardFromTrunk(gUnk_08624CD0);
-                RemoveCardFromTrunk(gUnk_08624CD2);
+                RemoveCardFromTrunk(gCardNumberToId_TheMonarchy);
+                RemoveCardFromTrunk(gCardNumberToId_SetSailForTheKingdom);
+                RemoveCardFromTrunk(gCardNumberToId_GloryOfTheKingsHand);
                 IncrementChampionshipWins();
                 SaveGame();
                 RESET_SEQ_STATE();

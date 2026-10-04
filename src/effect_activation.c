@@ -154,7 +154,7 @@ extern int FindAbsorbedMonsterLinkInt(int player, int zone) asm("FindAbsorbedMon
 
 /* 0x08623E66 = &gCardNumberToId[CARD_KURIBOH] (card_data.h). Matching: the ROM loads this element address
  * from its own literal. */
-extern const u16 gUnk_08623E66[];
+extern const u16 gCardNumberToId_Kuriboh[];
 
 /* Prompts used only by this unit. */
 extern const char gStrSelectTributeFmt[];       /* 0x080827EC "Please select @3%s@0 as @2Tribute@0" */
@@ -228,7 +228,7 @@ int EffectTributeKuribohChainA(struct ChainEntry *link)
 
         /* ROM bug: the prompt is formatted with Kuriboh's name into buf, but the box shows fmt with its
          * raw %s. */
-        FormatStr(buf, fmt, (const char *)gCardNames + gUnk_08623E66[0] * CARD_NAME_SIZE);  /* Kuriboh's name */
+        FormatStr(buf, fmt, (const char *)gCardNames + gCardNumberToId_Kuriboh[0] * CARD_NAME_SIZE);  /* Kuriboh's name */
         TextBoxOpen(0x206, 0x712, TEXTBOX_FLAGS_DEFAULT, (const u8 *)fmt);   /* at cell (6, 2), 18 x 7 cells */
         (*step)++;
         return 0;

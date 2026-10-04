@@ -145,11 +145,11 @@ struct DuelCtrlBytes {
 extern struct DuelCtrlBytes gDuelCtrlBytes asm("gDuelCtrl");
 
 /* Alias symbols into gDuel (duel.h "Alias symbols"): the matched code loads these addresses by name. */
-extern u8 gUnk_0201ADAD[];          /* gDuel+0x1ACD: equip/field/continuous negation bits (DuelState) */
-extern u8 gUnk_0201ADF2[];          /* gDuel+0x1B12: bit 1 = turnPlayer */
+extern u8 gDuelNegationFlags[];          /* gDuel+0x1ACD: equip/field/continuous negation bits (DuelState) */
+extern u8 gDuelTurnFlags[];          /* gDuel+0x1B12: bit 1 = turnPlayer */
 /* Alias of gChain.effectCard (0x02017A40 + 0x3E8). Matching: EffectRitualSummonResolve passes the card
  * word both as this symbol and as &gChain.effectCard; the two literal-pool entries are separate in the ROM. */
-extern u32 gUnk_02017E28[];
+extern u32 gChainEffectCard[];
 
 /* A zone as the card word and two whole flag bytes. Matching: UpdateSpellTrapNegation tests the flags as
  * ldrb + and through int temporaries (DuelZone.isFaceUp is +0x06 bit 1, isDisabled +0x91 bit 3). */
@@ -168,7 +168,7 @@ struct ZoneFlagBytes {
 #define ZONES_TO_RULE_FLAGS     0x1AA0
 #define RULE_FLAG_MAGIC_NEGATED 0x40    /* +0x1ACC bit 6 */
 #define RULE_FLAG_TRAPS_NEGATED 0x80    /* +0x1ACC bit 7 */
-/* gUnk_0201ADAD (+0x1ACD) bits, by spell subtype. */
+/* gDuelNegationFlags (+0x1ACD) bits, by spell subtype. */
 #define RULE_FLAG_EQUIP_NEGATED (0x01 | 0x02) /* equipMagicNegated, equipMagicNegatedThisTurn */
 #define RULE_FLAG_FIELD_NEGATED 0x04    /* fieldMagicNegatedThisTurn (World Suppression) */
 #define RULE_FLAG_CONT_MAGIC_NEGATED 0x08 /* contMagicNegatedThisTurn (Mystic Probe) */
@@ -301,21 +301,21 @@ void UpdateSpellTrapNegation(void)
             /* Equip, Field and Continuous cards under the subtype negations */
             switch (GetSpellSubtype(cardId)) {
             case SPELL_EQUIP:
-                if (TestFlagsPtrFirst(gUnk_0201ADAD, RULE_FLAG_EQUIP_NEGATED))
+                if (TestFlagsPtrFirst(gDuelNegationFlags, RULE_FLAG_EQUIP_NEGATED))
                     disable = 1;
                 break;
             case SPELL_FIELD:
-                if (TestFlagsPtrFirst(gUnk_0201ADAD, RULE_FLAG_FIELD_NEGATED))
+                if (TestFlagsPtrFirst(gDuelNegationFlags, RULE_FLAG_FIELD_NEGATED))
                     disable = 1;
                 break;
             case SPELL_CONTINUOUS:
                 switch (((CARD_STATS_TABLE[cardId & CARD_ID_MASK] & CARD_STATS_TYPE_MASK) >> CARD_STATS_TYPE_SHIFT)) {
                 case CARD_TYPE_TRAP:
-                    if (TestFlagsPtrFirst(gUnk_0201ADAD, RULE_FLAG_CONT_TRAP_NEGATED))
+                    if (TestFlagsPtrFirst(gDuelNegationFlags, RULE_FLAG_CONT_TRAP_NEGATED))
                         disable = 1;
                     break;
                 case CARD_TYPE_MAGIC:
-                    if (TestFlagsPtrFirst(gUnk_0201ADAD, RULE_FLAG_CONT_MAGIC_NEGATED))
+                    if (TestFlagsPtrFirst(gDuelNegationFlags, RULE_FLAG_CONT_MAGIC_NEGATED))
                         disable = 1;
                     break;
                 }
@@ -327,7 +327,7 @@ void UpdateSpellTrapNegation(void)
                 break;
             }
             /* link duel, partner's turn (gDuel.turnPlayer = 1): leave it to the partner */
-            if (((flags = gDuelCtrlBytes.flags) & 1) && TestFlagsMaskFirst(2, gUnk_0201ADF2))
+            if (((flags = gDuelCtrlBytes.flags) & 1) && TestFlagsMaskFirst(2, gDuelTurnFlags))
                 continue;
             if (disable == 0) {
                 if ((flags = GetZoneAt(player, zone, zonesBaseCopy)->disableFlags) & ZONE_FLAG_DISABLED) {
@@ -727,7 +727,7 @@ int EffectRitualSummonResolve(struct ChainEntry *link)
             if (gCardIdToNumber[(*(u32 *)(offset + ((u32)gDuelPlayers + 0x684)) << 21) >> 21]
                 == gRitualRecipes[FindRitualRecipe(link->card)].monster) {
                 u32 *handCard = (u32 *)&gDuelPlayers[link->player & 1].hand[i];
-                CopyDuelCard(gUnk_02017E28, handCard);
+                CopyDuelCard(gChainEffectCard, handCard);
                 /* the card word as two halves */
                 DuelCmd_Push(link->player ? DUEL_CMD_PLAYER | DUEL_CMD_REMOVE_CARD_FROM_HAND
                                           : DUEL_CMD_REMOVE_CARD_FROM_HAND,

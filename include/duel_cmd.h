@@ -139,7 +139,7 @@ void DuelCmd_SetPositionChangeLock(void);       /* 0x48: no position changes thi
 void DuelCmd_SetSummonLocks(void);              /* 0x49: no Normal Summon = arg2, no Special Summon = arg4 */
 void DuelCmd_SetMagicTrapLockTurns(void);       /* 0x4A: magic/trap lock turns = arg2 */
 void DuelCmd_AdjustDelayedSummonCount(void);    /* 0x4B: delayed summon count +1 (arg2 != 0) or -1 */
-void sub_08014B5C(void);                        /* 0x4C: player +0x0C bit 4 = arg2 */
+void DuelCmd_SetDestroyedTriggerPending(void);                        /* 0x4C: player +0x0C bit 4 = arg2 */
 void DuelCmd_SetCrushCardTurns(void);           /* 0x69: Crush Card turns of the acting player = arg2 */
 
 /* Battle */
@@ -203,7 +203,7 @@ void DuelCmd_SetCannotAttack(void);             /* 0x96: cannot-attack flag of a
 void DuelCmd_SetCannotAttackNextTurn(void);     /* 0x97: cannot-attack-next-turn flag = arg4 */
 void DuelCmd_SetPositionLocked(void);           /* 0xA1: position-locked flag of a monster = arg4 */
 void DuelCmd_SetReturnAfterBattle(void);        /* 0xA2: return-after-battle flag of loc arg2 = arg4 */
-void sub_08013104(void);                        /* 0xA6: zone +0x08 bit 0 = arg4 */
+void DuelCmd_SetZoneLevelCheckFlag(void);                        /* 0xA6: zone +0x08 bit 0 = arg4 */
 void DuelCmd_SetSpellTrapDisabled(void);        /* 0xB1: disable (with animation) or enable a spell/trap zone */
 void DuelCmd_UpdateZoneLpPaid(void);            /* 0xB3: LP paid for a zone's card: add 500 or store arg4 */
 void DuelCmd_NegateActivation(void);            /* 0xB0: negate the chain entry being responded to */
@@ -240,8 +240,8 @@ void DuelCmd_TakeOpponentGraveyardCard(void);   /* 0xD5: Graverobber: opponent's
 void DuelCmd_ReturnBanishedCardToGraveyard(void); /* 0xDE: banished card to the graveyard */
 void DuelCmd_ClearPendingEquip(void);           /* 0xD8: clear pendingEquip of graveyard[arg2] */
 void DuelCmd_EquipGraveyardCardToOpponent(void); /* 0xD9: equip graveyard[arg2] to an opponent monster */
-void sub_080106BC(void);                        /* 0xDA: clear bit 28 (pending opponent summon) of graveyard[arg2] */
-void sub_08010708(void);                        /* 0xDB: set bit 23 of the graveyard card matching the card word */
+void DuelCmd_ClearPendingOpponentSummon(void);                        /* 0xDA: clear bit 28 (pending opponent summon) of graveyard[arg2] */
+void DuelCmd_MarkGraveyardCard(void);                        /* 0xDB: set bit 23 of the graveyard card matching the card word */
 
 /* Hand */
 void DuelCmd_SendHandCardToGraveyard(void);     /* 0xC0: hand[arg2] to its owner's graveyard */

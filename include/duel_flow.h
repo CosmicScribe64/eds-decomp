@@ -208,23 +208,23 @@ void EndPhase_DestroyLowLevelMonsters(int player);
 /* ---- Unused ---- */
 
 /* Unreferenced: wait for the partner's reply to a response request, then 60 frames; 1 when done. */
-u32 sub_0801FE54(void);
+u32 Chain_WaitPartnerReply(void);
 /* Dead code: returns 0. */
-u32 sub_08021CC8(void);
+u32 DuelPrompt_UnusedReturnFalse(void);
 /* Dead code: clears gDuel bytes +0x1B43 and +0x1B44. */
-void sub_08021CCC(void);
+void Duel_ClearUnk1B43(void);
 /* Dead code: draw two card sprites (the second one face down unless showSecond); the selected one pulses. */
-void sub_08021CEC(u16 cardId, u16 showSecond, u16 selected);
+void DuelPrompt_DrawPositionChoice(u16 cardId, u16 showSecond, u16 selected);
 /* Dead code: request a link interrupt when none is pending. */
-void sub_08022914(void);
+void DuelLink_RequestInterruptIfIdle(void);
 /* Dead code: clear gDuel +0x1B14 bits 2-8; returns 0. */
-u32 sub_0802295C(void);
+u32 Duel_ClearUnk1B14_2(void);
 /* Empty and unreferenced. */
-void sub_0804E3BC(void);
+void BattlePhase_UnusedNop(void);
 /* Dead code: draw a pulsing icon above or below the cursor (meaning unknown). */
-void sub_0804E3C0(void);
+void DuelScreen_DrawPulseIconOverlay(void);
 /* Dead code: count the monsters other than (skipPlayer, skipZone) that EffectBlastJugglerCheck accepts. */
-int sub_0804F6A8(int skipPlayer, int skipZone);
+int CountBlastJugglerTargets(int skipPlayer, int skipZone);
 
 /* Compile-time layout checks (agbcc pads every struct to a multiple of 4 bytes). */
 typedef char duel_flow_h_check_ctrl[sizeof(struct DuelCtrl) == 0x8 ? 1 : -1];

@@ -71,7 +71,7 @@ updated: 2026-10-02
 - **`if/else` with an `ok` variable** (LinkSendPacket) gives the `beq` to the `mov #0` tail; `if (...) return 1; return 0;` gives the opposite layout.
 - **Large struct offsets** (`gLinkBuf.lastId`): the base literal is shared through a struct-typed `extern`, `ldr;ldr;add` appears for offsets > 0x7F.
 - **Loop inversion**: `while (1) { if (*s == 0) return; ... }` keeps the test at the top (`b` back), `while (*s)` duplicates it at the bottom.
-- **Explicit divide helper vs `/`** (LinkIsRecvMessageComplete): the target calls the game's own `sub_0807F0AC(len, 5)`; writing `len / 5` makes agbcc emit the pure `__udivsi3` builtin and hoist the (loop-invariant) quotient out of the loop. Call the helper explicitly to keep the `bl` inside the loop.
+- **Explicit divide helper vs `/`** (LinkIsRecvMessageComplete): the target calls the game's own `__udivsi3(len, 5)`; writing `len / 5` makes agbcc emit the pure `__udivsi3` builtin and hoist the (loop-invariant) quotient out of the loop. Call the helper explicitly to keep the `bl` inside the loop.
 - **Constant mask reloaded each iteration** (LinkIsRecvMessageComplete): `(x & 0xF0FF)` hoists `0xF0FF` into a spare register; route the mask through an `unsigned long long` temp (`& (u32)mask`) so agbcc rematerialises the literal each use (`/* FAKEMATCH */`).
 
 > [!warning] Contradiction
@@ -85,7 +85,7 @@ updated: 2026-10-02
 - `0x08071FA0`: target keeps the base in r4 and copies it to r5 for the shift loop.
 - `0x08072010`: the target does `(b + 0x52C) + idx*12` with the add of the pool constant after the multiply; every source shape reassociates or hoists the literal.
 - `0x08072054`, `0x080722B0`, `0x080723B4`: control flow/bitfields match, register assignment differs; `0x080723B4` re-reads `rxCount` and recomputes `&rx[rxCount] + (++j)*2` per halfword.
-- `0x08072238`: the target calls `sub_0807F0AC(len, 5)` (not the `__udivsi3` that `/5` produces) so it evaluates the bound in the loop each iteration, and reloads the `0xF0FF` mask/`0x52C` each iteration; the updated draft gets the mask reload via the `u64` temp but still differs in which temp registers hold the loop index/base and in the entry's `(base + 0x52C)` computation.
+- `0x08072238`: the target calls `__udivsi3(len, 5)` (not the `__udivsi3` that `/5` produces) so it evaluates the bound in the loop each iteration, and reloads the `0xF0FF` mask/`0x52C` each iteration; the updated draft gets the mask reload via the `u64` temp but still differs in which temp registers hold the loop index/base and in the entry's `(base + 0x52C)` computation.
 - `0x080725B0`: cases 0 and 15 (single colour) differ in the register used for the `and` (`movs r0,#15; adds r1,r4,#0; ands r1,r0` vs `movs r1,#15; ands r1,r4`).
 - Historical (matched in waves 2-3, see below): `0x08072A14`, `0x08072AF8`: register allocation; the target keeps the `0x1F` mask in a register and does not hoist the `0x03000040` literal.
 - Historical (matched in wave 2, see below): `0x08072D28`: entry block order (`e>>4`, `c<<7`, `d<<5`, `c<<4`, `e<<8`) and stack slots differ.
@@ -143,7 +143,7 @@ Working notes: `build/wf/DrawBgSjisString/NOTES.md`.
 
 ### `DrawBgSjisString` (`DrawTextSjis`, 0xE4, start score 110; ordinary C)
 
-- Draft fixes: `u8 lo` (not `u16`); the wrap recomputes the map as `(u16 *)gUnk_0300045C + base` instead of `&m->map[base]` (two literals); `while (1) { if (...) return; ... }` instead of a `break`, which let jump.c rotate the exit test to the loop bottom; `map` initialised before lo/hi and `s += 2` before `tile++`.
+- Draft fixes: `u8 lo` (not `u16`); the wrap recomputes the map as `(u16 *)gBgMaps + base` instead of `&m->map[base]` (two literals); `while (1) { if (...) return; ... }` instead of a `break`, which let jump.c rotate the exit test to the loop bottom; `map` initialised before lo/hi and `s += 2` before `tile++`.
 - The character read: the ROM does `ldrh w; ldrb b; cmp b,#0; ... (w >> 8) | (b << 8)` and then narrows to u16. That comes from `(u8)` of the halfword: CSE shares the test's `(u8)` with the `<< 8` operand, and combine narrows the shared value to `ldrb`.
 - Last step (score 26 to 0): global-alloc order of col (ROM r6) and ch (r5). col's priority had to fall below ch's (0.5333: 8 refs, live length 45) but stay above the `0x1F` mask's (0.5217), which needs a col live length of 85. Reading `*(u16 *)s` three times without a `w` local, plus `(u8)(*(u16 *)s >> 8)`, added exactly 4 pre-combine insns inside col's live range: `if ((u8)*(u16 *)s == 0) return; ch = (u8)(*(u16 *)s >> 8) | ((u8)*(u16 *)s << 8);`. Diagnosed from the `.greg` priority list (`greg.sh` in the work directory).
 - Failed: `ch = *(u16 *)s` then `ch = (ch >> 8) | ((u8)ch << 8)` (4: the `ldrh` lands in ch's r5); a `u16 w` local (26, col/ch swapped); `if ((u8)(w = *(u16 *)s) == 0)` (14: right priorities, but the `<< 8` no longer shares the `ldrb`); `ch = w >> 8; ch |= ...` (32); `& 0xFF` forms, `col % 32`, int/u32 casts of col (no effect).

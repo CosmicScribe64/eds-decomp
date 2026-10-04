@@ -14,7 +14,7 @@ Unit status: `unit bytes MATCH` (0x10E0 bytes), **14/14 functions in C** after w
 
 | Address | Size | Status | Purpose (hypotheses) |
 |---|---|---|---|
-| `0x08040EBC` | 0xF4 | matching | prompt = name of card `gUnk_086248EE[0]` (`FormatStr`, `gStrSelectAttackTargetFmt`); keys `0xE0`; the cursor zone must hold a face-down card (`flags6 & 2`) whose card number is 0x57D -> `AddEffectTargetUnchecked` |
+| `0x08040EBC` | 0xF4 | matching | prompt = name of card `gCardNumberToId_1405[0]` (`FormatStr`, `gStrSelectAttackTargetFmt`); keys `0xE0`; the cursor zone must hold a face-down card (`flags6 & 2`) whose card number is 0x57D -> `AddEffectTargetUnchecked` |
 | `0x08040FB0` | 0x17C | matching | 2 steps: prompt `gStrDesignateMonsterYouWishToTribute`; keys `0xF0`, `EffectTributeForInsectCheck(ref, w)` accepts the cursor zone -> sound 1, message 8/0x8008, `TributeMonster(p, w)`, then the monster level of the card (`CARD_LEVEL`) + 1 is added as a target (`AddEffectTarget`) |
 | `0x0804112C` | 0x160 | **matching** (wave 1, 2026-10-01) | 4 steps: prompts `gStrSelectZoneToBlock` / `gStrSelectAnotherZoneToBlock`, `DuelCursor_PickAny()` (input poll), needs `w828 == 0`, `IsMonsterZoneFree(p, w82C)`; step 3 also needs an empty zone (`ZB(..)->card == 0`) different from `ref->targets[0]`; picks with `AddEffectTargetUnchecked`. Matched by steering cross-jumping with per-case returns (see below) |
 | `0x0804128C` | 0x110 | matching | step 0: at least one opponent zone 0-4 holds a face-down card (`(flags6 & 3) == 1`), else return 1; prompt `gStrDesignateOpponentMonsterToFlip`; step 1: keys `0x900000` -> `TryAddEffectTarget` |

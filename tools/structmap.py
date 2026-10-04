@@ -48,13 +48,15 @@ def preprocess(path):
     r = subprocess.run(['cpp', '-P', '-nostdinc', '-undef', '-DOBJDIFF_BASE', '-I', 'include', '-I',
                         '/opt/agbcc/include', '-iquote', '.', path], capture_output=True, text=True)
     t = r.stdout
-    t = re.sub(r'^\s*asm\s*\(.*?\)\s*;', '', t, flags=re.M | re.S)
     t = _strip_attributes(t)        # balanced: __attribute__((packed, aligned(2))); packing itself is ignored
+    # asm labels first: a label continued on its own line (`f(...)\n    asm("sym");`) would otherwise look like a
+    # top-level asm statement below and take the declaration's semicolon with it.
     t = re.sub(r'\)\s*(asm|__asm__)\s*\(\s*"[^"]*"\s*\)', ')', t)        # symbol aliases: f(void) asm("sym")
     # variable aliases (another view of a global): `T name[] asm("sym")` -> `T sym_aliasN[]`, counted as sym
     t = re.sub(r'\b(\w+)\s*((?:\[[^\]]*\])*)\s*(?:asm|__asm__)\s*\(\s*"(\w+)"\s*\)',
                lambda m: f'{m.group(3)}__alias{m.start()}{m.group(2)}', t)
     t = re.sub(r'\b(register\s+[^;=]*?)\s+(asm|__asm__)\s*\(\s*"[^"]*"\s*\)', r'\1', t)  # register pins
+    t = re.sub(r'^[ \t]*asm\s*\(.*?\)\s*;', '', t, flags=re.M | re.S)   # remaining top-level asm statements
     t = re.sub(r'\bextern int __objdiff_skipped_asm\s*;', '', t)
     # keep declarations only: drop function bodies
     out, i, depth, start = [], 0, 0, 0

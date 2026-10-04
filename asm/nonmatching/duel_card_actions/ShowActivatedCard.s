@@ -1,5 +1,5 @@
-	thumb_func_start sub_080197C0
-sub_080197C0: @ 0x080197C0
+	thumb_func_start ShowActivatedCard
+ShowActivatedCard: @ 0x080197C0
 	push {lr}
 	lsl r1, r1, #0x10
 	lsr r1, r1, #0x10
@@ -15,5 +15,5 @@ _080197CE:
 	pop {r0}
 	bx r0
 _080197DC: .4byte 0x00008072
-	thumb_func_end sub_080197C0
+	thumb_func_end ShowActivatedCard
 

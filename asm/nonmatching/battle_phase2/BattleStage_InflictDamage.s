@@ -589,7 +589,7 @@ _0804D00C:
 	b _0804D074
 	.align 2, 0
 _0804D044: .4byte gStrAskKuribohFmt
-_0804D048: .4byte gUnk_08623E66
+_0804D048: .4byte gCardNumberToId_Kuriboh
 _0804D04C: .4byte gCardNames
 _0804D050: .4byte 0x00000915
 _0804D054: .4byte 0x020192E0
@@ -661,7 +661,7 @@ _0804D0DC:
 	mov r0, #0
 	b _0804D288
 _0804D0E0: .4byte 0x0000F057
-_0804D0E4: .4byte gUnk_08623E66
+_0804D0E4: .4byte gCardNumberToId_Kuriboh
 _0804D0E8: .4byte 0x02017FB0
 _0804D0EC: .4byte 0x020192E0
 _0804D0F0: .4byte 0x00001B16
@@ -710,7 +710,7 @@ _0804D144:
 	ldr r0, _0804D18C @ =0x08623E66
 	ldrh r1, [r0]
 	add r0, r4, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	add r0, r4, #0
 	mov r1, #0x39
 	bl DiscardHandCardByNumber
@@ -736,7 +736,7 @@ _0804D182:
 	strh r1, [r0]
 	b _0804D0DC
 _0804D188: .4byte 0x0201AE60
-_0804D18C: .4byte gUnk_08623E66
+_0804D18C: .4byte gCardNumberToId_Kuriboh
 _0804D190: .4byte 0x02018450
 _0804D194: .4byte 0x020192E0
 _0804D198: .4byte 0x00001B16
@@ -837,7 +837,7 @@ _0804D258: .4byte 0x000007FF
 _0804D25C: .4byte gCardIdToNumber
 _0804D260: .4byte 0x000004B1
 _0804D264: .4byte 0x00000D64
-_0804D268: .4byte gUnk_08624730
+_0804D268: .4byte gCardNumberToId_SwordOfDragonsSoul
 _0804D26C:
 	ldrb r2, [r6, #1]
 	lsl r0, r2, #0x1C

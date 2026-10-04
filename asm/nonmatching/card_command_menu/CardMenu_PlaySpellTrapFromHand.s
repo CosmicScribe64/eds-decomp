@@ -312,7 +312,7 @@ _08049296:
 	bl Chain_AddLink
 	b _08049370
 	.align 2, 0
-_080492DC: .4byte gUnk_0862467A
+_080492DC: .4byte gCardNumberToId_Graverobber
 _080492E0: .4byte 0x020192E0
 _080492E4: .4byte 0x00001B33
 _080492E8: .4byte 0x00001B34

@@ -33,7 +33,7 @@ _0802CB28:
 	strb r0, [r5]
 	b _0802CBE2
 _0802CB50: .4byte gStrSelectTributeFmt
-_0802CB54: .4byte gUnk_08623E66
+_0802CB54: .4byte gCardNumberToId_Kuriboh
 _0802CB58: .4byte gCardNames
 _0802CB5C: .4byte 0x00000206
 _0802CB60: .4byte 0x00000712

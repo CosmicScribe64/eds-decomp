@@ -138,7 +138,7 @@ _0805C624:
 	and r0, r3
 	b _0805C8F6
 	.align 2, 0
-_0805C644: .4byte gUnk_0862448E
+_0805C644: .4byte gCardNumberToId_ValkyrionTheMagnaWarrior
 _0805C648: .4byte 0x02015F00
 _0805C64C: .4byte 0x00001B24
 _0805C650:

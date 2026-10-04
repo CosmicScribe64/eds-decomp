@@ -165,7 +165,7 @@ extern u16 (*const gDuelSceneHandlers[])(void);     /* 0x08198EF8: scene handler
 extern u16 (*const gDuelSceneRunnerSteps[])(void);  /* 0x08198F14: fade out the duel screen, run the handler */
 extern const struct OpponentBGM gOpponentDuelBGM[24];   /* 0x08198F20 */
 extern const u8 gStrDoYouSurrender[];               /* "Do you surrender ?" */
-extern const u16 gUnk_0862467A;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
+extern const u16 gCardNumberToId_Graverobber;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
 
 /* ---- Local views kept for matching ---- */
 
@@ -338,7 +338,7 @@ void CardMenu_Execute(void)
              * zones[index] (the monster zone in the same column), not of zones[5 + index]: the ROM does the
              * same, possibly an original bug. */
             if (ZONE_CARD(MENU.player & 1, MENU.index)->graverobbed) {
-                ShowCardEffect(MENU.player, gUnk_0862467A);
+                ShowCardEffect(MENU.player, gCardNumberToId_Graverobber);
                 LoseLifePoints(MENU.player, 2000);
             }
             Chain_AddPending(((MENU.player & 1) << 31)
@@ -732,7 +732,7 @@ void DuelCmd_Dispatch(void)
         DuelCmd_AdjustDelayedSummonCount();
         break;
     case DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING:
-        sub_08014B5C();
+        DuelCmd_SetDestroyedTriggerPending();
         break;
     case DUEL_CMD_DRAW_PHASE:
         DuelCmd_EnterPhase(0);
@@ -951,7 +951,7 @@ void DuelCmd_Dispatch(void)
         DuelCmd_SendFusionMaterialToGrave();
         break;
     case DUEL_CMD_SET_ZONE_LEVEL_CHECK_FLAG:
-        sub_08013104();
+        DuelCmd_SetZoneLevelCheckFlag();
         break;
     case DUEL_CMD_MOVE_MONSTER_FACE_DOWN:
         DuelCmd_MoveMonsterFaceDown();
@@ -1050,10 +1050,10 @@ void DuelCmd_Dispatch(void)
         DuelCmd_EquipGraveyardCardToOpponent();
         break;
     case DUEL_CMD_CLEAR_PENDING_OPPONENT_SUMMON:
-        sub_080106BC();
+        DuelCmd_ClearPendingOpponentSummon();
         break;
     case DUEL_CMD_MARK_GRAVEYARD_CARD:
-        sub_08010708();
+        DuelCmd_MarkGraveyardCard();
         break;
     case DUEL_CMD_REMOVE_CARD_FROM_FUSION_DECK:
         DuelCmd_RemoveCardFromFusionDeck();

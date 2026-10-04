@@ -1,5 +1,5 @@
-	thumb_func_start sub_08014B5C
-sub_08014B5C: @ 0x08014B5C
+	thumb_func_start DuelCmd_SetDestroyedTriggerPending
+DuelCmd_SetDestroyedTriggerPending: @ 0x08014B5C
 	push {r4, lr}
 	ldr r1, _08014B9C @ =0x020192E4
 	ldr r3, _08014BA0 @ =0x020185C0
@@ -37,5 +37,5 @@ _08014B9C: .4byte 0x020192E4
 _08014BA0: .4byte 0x020185C0
 _08014BA4: .4byte 0x00000D64
 _08014BA8: .4byte 0x0000080D
-	thumb_func_end sub_08014B5C
+	thumb_func_end DuelCmd_SetDestroyedTriggerPending
 

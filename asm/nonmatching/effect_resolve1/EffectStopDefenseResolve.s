@@ -52,7 +52,7 @@ _08030EA2:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r6, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	b _08030EF6
 	.align 2, 0
 _08030EBC: .4byte 0x00000D64

@@ -74,8 +74,8 @@ Tiles go to `0x06004000 + tileBase*32` (charblock 1). The 6 variants differ only
 
 ## Matching tricks learned (old_agbcc)
 
-- **Rows of a buffer**: `extern u8 gBgMaps[8][0x800] asm("gUnk_0300045C")` and `for (i = 0; i < 8; i++) f(gBgMaps[i], 0x800)` matches `ClearBgMaps`; a pointer advanced by `0x800` makes old_agbcc hoist the `0x800` constant into a register.
-- **Nested counted loop with moved decrement** (`FillMapRect`): `u16 *dst = base + col; for (; h != 0; dst += 0x20, h--) for (x = 0; x < w; x++) dst[x] = *src;` with `dst` computed as `(u16 *)(gUnk_0300045C + row * 0x800); dst += col;` reproduces the target's loop-inverted `sub r3,#1` placement (the `while (h != 0) {... h--}` forms do not).
+- **Rows of a buffer**: `extern u8 gBgMaps[8][0x800] asm("gBgMaps")` and `for (i = 0; i < 8; i++) f(gBgMaps[i], 0x800)` matches `ClearBgMaps`; a pointer advanced by `0x800` makes old_agbcc hoist the `0x800` constant into a register.
+- **Nested counted loop with moved decrement** (`FillMapRect`): `u16 *dst = base + col; for (; h != 0; dst += 0x20, h--) for (x = 0; x < w; x++) dst[x] = *src;` with `dst` computed as `(u16 *)(gBgMaps + row * 0x800); dst += col;` reproduces the target's loop-inverted `sub r3,#1` placement (the `while (h != 0) {... h--}` forms do not).
 - **`idx += mapBase;` as a separate statement** gives `adds r0,r0,rX` (expression first); the one-line `(a|b) + mapBase` swaps the operands of the add.
 - **Argument order**: when the tile destination must be computed before `hdrT[0]`, hoist it into a named pointer declared between the `tiles` and `hdrC` locals.
 - **Global `gLinkSio` struct** reached through a `asm("gLinkSio")` alias of a struct-typed extern (`gUnk_03005B60_s`) so it doesn't clash with other units' declarations.

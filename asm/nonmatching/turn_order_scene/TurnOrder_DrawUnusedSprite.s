@@ -1,5 +1,5 @@
-	thumb_func_start sub_080288DC
-sub_080288DC: @ 0x080288DC
+	thumb_func_start TurnOrder_DrawUnusedSprite
+TurnOrder_DrawUnusedSprite: @ 0x080288DC
 	push {r4, lr}
 	sub sp, #0x24
 	lsl r0, r0, #0x18
@@ -35,8 +35,8 @@ sub_080288DC: @ 0x080288DC
 	pop {r4}
 	pop {r0}
 	bx r0
-_08028924: .4byte gUnk_0808270C
-_08028928: .4byte gUnk_08082710
+_08028924: .4byte gTurnOrderUnusedSpriteTiles
+_08028928: .4byte gTurnOrderUnusedSpritePals
 _0802892C: .4byte 0x02020310
-	thumb_func_end sub_080288DC
+	thumb_func_end TurnOrder_DrawUnusedSprite
 

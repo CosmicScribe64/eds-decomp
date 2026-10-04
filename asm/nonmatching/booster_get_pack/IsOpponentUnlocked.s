@@ -85,7 +85,7 @@ _08063E7C:
 	mov r0, #1
 	b _08063E9A
 _08063E80: .4byte 0x02011C20
-_08063E84: .4byte gUnk_08624568
+_08063E84: .4byte gCardNumberToId_ToonWorld
 _08063E88:
 	bl IsCardCollectionComplete
 	b _08063E92

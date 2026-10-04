@@ -37,7 +37,7 @@ Every function returns 0 ("nothing / done") or a step code that the caller store
 | Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
 |---|---|---|---|
 | `0x08030B88` | 0x2C4 | **matching** (wave 3, 2026-10-02) | 5-way step machine (0x7C-0x80) on the card-list viewer `0x0201D810`: step 0x80 checks for card numbers 0x3D/0x3E/0x4E1 on the field, then searches the list for them and opens the viewer (`AiPickCardListEntry`, `row = 0`, `top = i`) or shows a text box (`TextBoxOpen`); 0x7F `CardListView_Open(p, -1, no, 0)`; 0x7E prints message 0xC2/0x65 for the selected entry; 0x7D `QueueSpecialSummonChoosePosition`; 0x7C message 0x60 |
-| `0x08030E4C` | 0xB8 | matching | one target; if its card number is 0x4B1 and it is face-down-set (`(ZFLAGS & 3) == 1`): message 0x7F and `sub_080197C0`; else if flag bit 0: `ChangeBattlePosition(tp, tz, 1, 1)` |
+| `0x08030E4C` | 0xB8 | matching | one target; if its card number is 0x4B1 and it is face-down-set (`(ZFLAGS & 3) == 1`): message 0x7F and `ShowActivatedCard`; else if flag bit 0: `ChangeBattlePosition(tp, tz, 1, 1)` |
 | `0x08030F04` | 0x80 | matching | for both players, zones 0-4: occupied, flags `& 3 == 2`, `GetZoneCardType == 1` -> `ChangeBattlePosition(p, i, 0, 0)` |
 | `0x08030F84` | 0x78 | matching | if the field word at `0x020198D4 + p*0xD64` is set: message 0x11 with `GetFieldMagicIndex(number)`, `EventResponse_Request(1 - p, 0x18, 0)` |
 | `0x08030FFC` | 0x98 | **matching** (wave 1, 2026-10-01; FAKEMATCH) | phase 0x80/0x7F: scan the other side's zones 0-4 with `IsZoneTargetable`, `DestroyFieldCardByEffect` + `OnCardDestroyedByEffect`; returns 0x7F |

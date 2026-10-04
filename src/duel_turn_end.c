@@ -248,8 +248,8 @@ extern const char gStrAttackTargetSubstituteFmt[];  /* key 1243: "... select you
                                                      * the target?" */
 extern const char gStrAttackTargetRedirectFmt[];    /* key 1522: "... designate another monster as target?" */
 extern const u8 gStrDiscardFromHand[];              /* "Discard from your hand." */
-extern const u16 gUnk_0862467A;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
-extern const u16 gUnk_08623E66;                     /* = gCardNumberToId[CARD_KURIBOH]: Kuriboh's ID */
+extern const u16 gCardNumberToId_Graverobber;                     /* = gCardNumberToId[CARD_GRAVEROBBER]: Graverobber's ID */
+extern const u16 gCardNumberToId_Kuriboh;                     /* = gCardNumberToId[CARD_KURIBOH]: Kuriboh's ID */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
 
@@ -373,7 +373,7 @@ int DuelPhase_TurnEnd(void)
                 /* Matching: the card is addressed as hand + player * 0xD64 + i * 4, not hand[i] of the player. */
                 struct DuelCard card = *(struct DuelCard *)((player & 1) * 0xD64 + (u32)hand + i * 4);
                 if (card.graverobbed) {
-                    ShowCardEffect(player, gUnk_0862467A);
+                    ShowCardEffect(player, gCardNumberToId_Graverobber);
                     DiscardHandCard(player, i, 0, 1);
                     return 0;
                 }
@@ -395,7 +395,7 @@ int DuelPhase_TurnEnd(void)
                 }
                 if (ok) {
                     ZONE_PZ(player, i)->card.graverobbed = 0;
-                    ShowCardEffect(player, gUnk_0862467A);
+                    ShowCardEffect(player, gCardNumberToId_Graverobber);
                     DestroyFieldCard(player, i, 0);
                     return 0;
                 }
@@ -415,7 +415,7 @@ int DuelPhase_TurnEnd(void)
             do {
                 struct DuelCard card = *(struct DuelCard *)((opponent & 1) * 0xD64 + (u32)hand + i * 4);
                 if (card.graverobbed) {
-                    ShowCardEffect(opponent, gUnk_0862467A);
+                    ShowCardEffect(opponent, gCardNumberToId_Graverobber);
                     DiscardHandCard(1 - player, i, 0, 1);
                     return 0;
                 }
@@ -437,7 +437,7 @@ int DuelPhase_TurnEnd(void)
                 }
                 if (ok) {
                     ZONE_PZ(1 - player, i)->card.graverobbed = 0;
-                    ShowCardEffect(1 - player, gUnk_0862467A);
+                    ShowCardEffect(1 - player, gCardNumberToId_Graverobber);
                     DestroyFieldCard(1 - player, i, 0);
                     return 0;
                 }
@@ -513,7 +513,7 @@ u16 DuelLink_RunCardPrompt(void)
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;
         case CARD_KURIBOH:
-            FormatStr(text, gStrKuribohDiscardFmt, CARD_NAME_OF(gUnk_08623E66));
+            FormatStr(text, gStrKuribohDiscardFmt, CARD_NAME_OF(gCardNumberToId_Kuriboh));
             TextBoxOpen(TEXTBOX_XY(4, 2), TEXTBOX_XY(21, 9), TEXTBOX_FLAGS_DEFAULT, text);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             break;

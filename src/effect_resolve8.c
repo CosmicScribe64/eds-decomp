@@ -149,8 +149,8 @@ extern const char gStrSelectMagicFromDeck[];              /* 0x080832AC: "Select
                                                            * that you wish to add to your hand from the Deck." */
 /* Card IDs of Dark Magician and Dark Sage: address-suffixed aliases of single gCardNumberToId entries
  * (card_data.h). Matching: the ROM loads each entry through its own literal. */
-extern const u16 gUnk_08623E38;     /* gCardNumberToId[CARD_DARK_MAGICIAN] */
-extern const u16 gUnk_08624758;     /* gCardNumberToId[CARD_DARK_SAGE] */
+extern const u16 gCardNumberToId_DarkMagician;     /* gCardNumberToId[CARD_DARK_MAGICIAN] */
+extern const u16 gCardNumberToId_DarkSage;     /* gCardNumberToId[CARD_DARK_SAGE] */
 
 /* Text box positions and sizes (x | y << 8, width | height << 8, in cells) of the effect prompts. */
 #define EFFECT_TEXTBOX_POS          0x206
@@ -395,8 +395,8 @@ int EffectTimeWizardResolve(struct ChainEntry *link)
         }
         case TIME_WIZARD_OFFER_DARK_SAGE:
             /* "Do you wish to tribute Dark Magician and Special Summon Dark Sage?" */
-            FormatStr(format, gStrPromptTributeToSpecialSummonFmt, CARD_NAME(gUnk_08623E38));
-            FormatStr(text, format, CARD_NAME(gUnk_08624758));
+            FormatStr(format, gStrPromptTributeToSpecialSummonFmt, CARD_NAME(gCardNumberToId_DarkMagician));
+            FormatStr(text, format, CARD_NAME(gCardNumberToId_DarkSage));
             TextBoxOpen(EFFECT_TEXTBOX_POS, COIN_TEXTBOX_SIZE, TEXTBOX_FLAGS_DEFAULT, text);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
             return TIME_WIZARD_ANSWER;
@@ -444,7 +444,7 @@ int EffectTimeWizardResolve(struct ChainEntry *link)
             return TIME_WIZARD_PROMPT_TRIBUTE;
         case TIME_WIZARD_PROMPT_TRIBUTE:
             /* "Please select Dark Magician as Tribute" */
-            FormatStr(text, gStrTimeWizardSelectTributeFmt, CARD_NAME_AT_ADDR(gUnk_08623E38));
+            FormatStr(text, gStrTimeWizardSelectTributeFmt, CARD_NAME_AT_ADDR(gCardNumberToId_DarkMagician));
             TextBoxOpen(EFFECT_TEXTBOX_POS, COIN_TEXTBOX_SIZE, TEXTBOX_FLAGS_DEFAULT, text);
         pickTribute:
             return TIME_WIZARD_PICK_TRIBUTE;

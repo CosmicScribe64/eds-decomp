@@ -1,5 +1,5 @@
-	thumb_func_start sub_08010708
-sub_08010708: @ 0x08010708
+	thumb_func_start DuelCmd_MarkGraveyardCard
+DuelCmd_MarkGraveyardCard: @ 0x08010708
 	push {r4, r5, r6, r7, lr}
 	ldr r0, _08010758 @ =0x020185C0
 	ldrh r1, [r0, #4]
@@ -67,5 +67,5 @@ _0801078A:
 	pop {r0}
 	bx r0
 _08010790: .4byte 0x0000080D
-	thumb_func_end sub_08010708
+	thumb_func_end DuelCmd_MarkGraveyardCard
 

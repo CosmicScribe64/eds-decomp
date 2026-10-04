@@ -31,7 +31,7 @@ Field offsets below are relative to `gDeckEdit`; the accesses are verified from 
 |---|---|---|
 | `+0x618`, `+0x61E` | transition record, byte state | Enter/leave the view; state 2 completes this frame handler. |
 | `+0x620` | `u16[3]` | Current row for each card list. |
-| `+0x628`, `+0x62A` | byte, signed halfword | Scroll tween state and step; also based at `gUnk_0201E148`. |
+| `+0x628`, `+0x62A` | byte, signed halfword | Scroll tween state and step; also based at `gDeckEditScrollEase`. |
 | `+0x630`–`+0x63E` | scroll halfwords and two bytes | BG positions, artwork buffer selector and direction (1/2 vertical, 3/4 horizontal). |
 | `+0x1494`, `+0x14A0` | `u16[2][3]`, `u8[3]` | Per-list counts and active row/category. |
 | `+0x1710` bit 0 | flag | Redraw the list as a horizontal slide crosses its midpoint. |
@@ -40,7 +40,7 @@ Field offsets below are relative to `gDeckEdit`; the accesses are verified from 
 | `+0x1BB4`–`+0x1BB7` | four bytes | Previous/next arrow dirty and animation states. |
 | `+0x1BB8` | row records with 0x10 stride | Clear a row's byte `+0xC` when the corresponding card is out of range. |
 | `+0x1C14`, `+0x1C20` | bytes | Row/menu animation states. |
-| `+0x1C1C` | byte | Current list selector; absolute alias `gUnk_0201F73C`. |
+| `+0x1C1C` | byte | Current list selector; absolute alias `gDeckEditCurList`. |
 | `+0x1C3C` bits 15–17 | three-bit selector | Seven menu choices, skipping current-list choice. Spans bytes `+0x1C3D`/`+0x1C3E`. |
 | `+0x1C48` bits 0, 1–4 | flag and mode | Browse/menu selection and outgoing screen mode. |
 | `+0x1C58` | halfword | Row animation timer, initialized to 30. |
@@ -64,7 +64,7 @@ Field offsets below are relative to `gDeckEdit`; the accesses are verified from 
 - Reusing a pointer for sprite VRAM and the object array, explicitly binding that pointer to r5, and the older unsigned-halfword update variants did not improve the draft. No failed candidate was enabled.
 - A complete readable `DeckEdit_Update` draft was checked against assembly and compiled in private scratch space. The first version compiled at 0x1074 bytes, before two omitted fifth draw-call arguments were corrected.
 - The D644 permuter reached score zero after 3,200 iterations. Its initialized constant temporaries and equivalent expressions were applied with `FAKEMATCH` annotations, and **whole-unit bytes MATCH, 0x1828 bytes**, with D644 active in C. No register binding or inline assembly was needed.
-- A 16-combination minimization retained only one permuter change: initialize `rowObjects = gUnk_0201F3D0` immediately after the first object flag update and use it in both row loops. The extra integer temporary, expanded OR assignment and commuted increment are unnecessary and were removed. This one behavior-neutral pointer-staging `FAKEMATCH` resolves the final 20 normalized lines; the complete unit still matches.
+- A 16-combination minimization retained only one permuter change: initialize `rowObjects = gDeckEditObjAffine` immediately after the first object flag update and use it in both row loops. The extra integer temporary, expanded OR assignment and commuted increment are unnecessary and were removed. This one behavior-neutral pointer-staging `FAKEMATCH` resolves the final 20 normalized lines; the complete unit still matches.
 - DBB0 now has a complete readable, compiling draft parked under `#if 0`. Independent assembly review checked all cases and corrected a missing repeated `-1` argument in both `OamListAddSpriteGroup` calls. The draft started at 0x1074 bytes with 1,839 normalized changed lines. Typed field overlays and menu assignment expressions brought it to **0x1190 bytes with 196 lines**. The target is 0x1194; remaining differences are menu bitfield updates and card classification.
 - DBB0's prefix up to the menu handling and its final draw/fade tail now match normalized assembly. A `volatile u32` fill local reproduces original stack slots and scheduling; 25 aggregate/alignment/scope alternatives did not improve it. Assignment of pointers inside draw-call arguments and explicit complete/fade labels recover the tail. Two empty `asm("")` barriers after menu transition calls prevent tail merging; they emit no instructions and are marked `FAKEMATCH`. A 30-minute, two-worker permuter run was started from this state.
 - DBB0 reached its **exact 0x1194 target size**, first with a table-base constraint (174 normalized lines), then with an `int` card-number local and absolute pointer views of the existing number/stat tables (**108 normalized lines**). These views avoid sharing the statistics-table base with the fallback lookup. No ROM data is defined or changed. Ordinary extern-preserving cast/offset/wide-pointer variants did not retain the exact classifier. Raw byte comparison confirms `0x0806DBB0`–`0x0806E6E4` and `0x0806E8E8`–`0x0806ED44` already match; all remaining changes are in the intervening menu section. The parked draft retains the stronger 108-line version, and the earlier permuter was stopped and reseeded from it.

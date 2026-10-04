@@ -343,7 +343,7 @@ _0804D5C2:
 	blt _0804D5F6
 	ldrh r1, [r5, #0xA]
 	add r0, r4, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldrh r1, [r5, #0xA]
 	mov r2, #1
 	sub r2, r2, r4
@@ -884,7 +884,7 @@ _0804DA08:
 	blt _0804DA3A
 	ldrh r1, [r5, #0xA]
 	add r0, r4, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldrh r1, [r5, #0xA]
 	lsl r2, r4, #0x18
 	lsr r2, r2, #0x18

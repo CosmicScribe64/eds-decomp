@@ -3,9 +3,9 @@
 	.syntax divided
 	.text
 
-	.include "asm/nonmatching/duel_prompts/sub_08021CC8.s"
-	.include "asm/nonmatching/duel_prompts/sub_08021CCC.s"
-	.include "asm/nonmatching/duel_prompts/sub_08021CEC.s"
+	.include "asm/nonmatching/duel_prompts/DuelPrompt_UnusedReturnFalse.s"
+	.include "asm/nonmatching/duel_prompts/Duel_ClearUnk1B43.s"
+	.include "asm/nonmatching/duel_prompts/DuelPrompt_DrawPositionChoice.s"
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_ConfirmCardEffect.s"
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_OfferDiscardMagic.s"
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_ConfirmSpecialSummon.s"
@@ -23,8 +23,8 @@
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_PostRandomBanishFaceDown.s"
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_PostTribute.s"
 	.include "asm/nonmatching/duel_prompts/DuelPrompt_TryPostSetMonster.s"
-	.include "asm/nonmatching/duel_prompts/sub_08022914.s"
-	.include "asm/nonmatching/duel_prompts/sub_0802295C.s"
+	.include "asm/nonmatching/duel_prompts/DuelLink_RequestInterruptIfIdle.s"
+	.include "asm/nonmatching/duel_prompts/Duel_ClearUnk1B14_2.s"
 	.include "asm/nonmatching/duel_prompts/DuelLink_SendMessage.s"
 	.include "asm/nonmatching/duel_prompts/DuelLink_SendMessageData.s"
 	.include "asm/nonmatching/duel_prompts/DuelLink_SendHand.s"

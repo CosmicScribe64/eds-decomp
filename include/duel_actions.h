@@ -115,13 +115,13 @@ void BanishDeckCopies(int player, u16 cardNo);
 /* Show the Card Detail view of cardId (300-frame auto-close), then reopen the duel screen. */
 void ShowCardDetail(int player, u16 cardId);
 /* Queue duel command 0x72 (DuelCmd_ShowCardZoomIn): the card picture zooms in, holds and fades. */
-void sub_080197C0(int player, u16 arg);
+void ShowActivatedCard(int player, u16 arg);
 /* Queue duel command 0x73 (DuelCmd_ShowCardEffect): the card picture with a white flash. */
 void ShowCardEffect(int player, u16 cardId);
 /* Queue duel command 0x74 (DuelCmd_ShowCardScatter): the card picture zooms in, then shrinks away. */
 void ShowDestroyedCard(int player, u16 cardId);
 /* Queue duel command 0x75 (DuelCmd_ShowCardUnrollDown): the card picture's rows grow from the top. */
-void sub_08019820(int player, u16 arg);
+void ShowPickedCard(int player, u16 arg);
 /* Queue duel command 0x76 (DuelCmd_ShowCardUnrollSideways): the card picture slides in horizontally. */
 void ShowRevealedCard(int player, u16 cardId);
 

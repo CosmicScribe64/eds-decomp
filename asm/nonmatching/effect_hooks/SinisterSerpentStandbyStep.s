@@ -85,6 +85,6 @@ _080469CA:
 	bx r1
 	.align 2, 0
 _080469D4: .4byte 0x0201AE60
-_080469D8: .4byte gUnk_086241A8
+_080469D8: .4byte gCardNumberToId_SinisterSerpent
 	thumb_func_end SinisterSerpentStandbyStep
 

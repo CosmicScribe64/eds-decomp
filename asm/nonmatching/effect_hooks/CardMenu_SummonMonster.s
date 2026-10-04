@@ -272,7 +272,7 @@ _08047470:
 _080474B4: .4byte gStrSpecialSummonSelectTribute
 _080474B8: .4byte 0x00001B28
 _080474BC: .4byte gCardNames
-_080474C0: .4byte gUnk_0862401E
+_080474C0: .4byte gCardNumberToId_PetitMoth
 _080474C4: .4byte 0x00000206
 _080474C8: .4byte 0x00000712
 _080474CC: .4byte 0x00001B30
@@ -308,7 +308,7 @@ _080474D4:
 	.align 2, 0
 _08047514: .4byte gStrSpecialSummonSelectTribute
 _08047518: .4byte gCardNames
-_0804751C: .4byte gUnk_086240CE
+_0804751C: .4byte gCardNumberToId_LabyrinthWall
 _08047520: .4byte 0x00000206
 _08047524: .4byte 0x00000712
 _08047528: .4byte 0x00001B30

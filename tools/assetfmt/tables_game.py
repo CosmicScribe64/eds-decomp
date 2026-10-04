@@ -47,7 +47,7 @@ LAYOUTS = {
          'Attribute names (char *[6]): entry i is attribute i + 1 (LIGHT, DARK, WATER, FIRE, EARTH, WIND).'),
         (0x0819D27C, 'card_jump_arc', 'struct', {'fields': [('dx', 's32'), ('dy', 's32')]}, ['DeckReorder_DrawSwap'],
          '{s32 dx; s32 dy}[16] pixel offsets along an arc, indexed by an animation phase. The code addresses '
-         'the dx column as gCardJumpArc and the dy column as gUnk_0819D280.'),
+         'the dx column as gCardJumpArc and the dy column as gCardJumpArcDy.'),
         (0x0819D2FC, 'ai_power_cards', 'cards', {}, ['AiPickHandCard (AiPickCardListEntry)'],
          'AI "power card" list (13 card numbers); see wiki special-card-lists.'),
         (0x0819D316, 'ai_priority_cards', 'cards', {}, ['AiPickOpponentHandCard'],

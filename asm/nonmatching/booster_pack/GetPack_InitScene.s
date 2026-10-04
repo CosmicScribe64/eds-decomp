@@ -266,7 +266,7 @@ _08063280: .4byte gCardIconPal
 _08063284: .4byte 0x06010000
 _08063288: .4byte gHandCursorGfx
 _0806328C: .4byte 0x06010800
-_08063290: .4byte gUnk_0867817C
+_08063290: .4byte gCardIconBackGfx
 _08063294: .4byte 0x06011000
 _08063298: .4byte gCardIconNormalGfx
 _0806329C: .4byte 0x06011800

@@ -342,7 +342,7 @@ _08050D0C:
 	add r0, r4, #0
 	b _08050D4A
 	.align 2, 0
-_08050D1C: .4byte gUnk_0862467A
+_08050D1C: .4byte gCardNumberToId_Graverobber
 _08050D20:
 	mov r0, #0x94
 	add r1, r5, #0
@@ -371,7 +371,7 @@ _08050D4A:
 	bl DiscardHandCard
 	mov r0, #0
 	b _08050E24
-_08050D58: .4byte gUnk_0862467A
+_08050D58: .4byte gCardNumberToId_Graverobber
 _08050D5C:
 	mov r0, #1
 	sub r4, r0, r4
@@ -401,7 +401,7 @@ _08050D7A:
 	mov r0, #0
 	b _08050E24
 _08050D94: .4byte 0x00000D64
-_08050D98: .4byte gUnk_0862467A
+_08050D98: .4byte gCardNumberToId_Graverobber
 _08050D9C:
 	ldr r1, _08050DD0 @ =0x08085D94
 	lsl r2, r2, #6

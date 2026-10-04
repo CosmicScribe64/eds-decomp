@@ -161,8 +161,8 @@ u32 GetZoneCardType(s32 player, s32 slot);
 
 /* ROM data used only here. */
 /* Matching: card IDs read through their alias symbols (= &gCardNumberToId[number], see card_data.h). */
-extern const u16 gUnk_0862467A;                 /* CARD_GRAVEROBBER: Graverobber's card ID */
-extern const u16 gUnk_08624A0A[];               /* CARD_1547 (0 in EDS): the Fusion Gate-like key the Fusion command resolves */
+extern const u16 gCardNumberToId_Graverobber;                 /* CARD_GRAVEROBBER: Graverobber's card ID */
+extern const u16 gCardNumberToId_1547[];               /* CARD_1547 (0 in EDS): the Fusion Gate-like key the Fusion command resolves */
 
 /* Matching: the card tables through their integer addresses (not the gCardStats / gCardIdToNumber symbols:
  * different literal-pool entries). */
@@ -224,7 +224,7 @@ struct MenuPlaceZoneWord {
 /* Low and high nibble of a byte as the DUEL_CMD_PLACE_SPELL_TRAP_FROM_HAND operand packs them. */
 static inline int LowNibble(u8 x) { return x & 0xF; }
 static inline int HighNibble(u8 x) { return (x & 0xF) << 4; }
-static inline void ShowGraverobber(u8 player) { ShowCardEffect(player, gUnk_0862467A); }
+static inline void ShowGraverobber(u8 player) { ShowCardEffect(player, gCardNumberToId_Graverobber); }
 static inline u32 ZoneCardWord(u8 player, u8 zone) { return *(u32 *)&gDuel.players[player].zones[zone].card; }
 
 /* Flip command: queue the Flip Summon of the monster in (cardMenu.player, cardMenu.index), lock its position
@@ -379,7 +379,7 @@ void CardMenu_FusionSummon(void)
         MENU_STEP(e)++;
         /* fall through */
     case 1: {
-        u16 id = gUnk_08624A0A[0];
+        u16 id = gCardNumberToId_1547[0];
 
         ref.card = id;
         ref.player = 0;

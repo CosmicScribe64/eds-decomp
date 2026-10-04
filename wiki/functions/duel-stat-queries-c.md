@@ -28,7 +28,7 @@ Unit status: `unit bytes MATCH`, **23/24 functions in C** after workflow waves 2
 | `0x0800C894` | 0x14 | matching | `GetZoneCardUnk4` | Returns `zone[unk4]` field via `GetZoneCardStats`. |
 | `0x0800C8A8` | 0x14 | matching | `GetZoneCardUnk8` | Returns `zone[unk8]` field via `GetZoneCardStats`. |
 | `0x0800C8BC` | 0x234 | nonmatching (draft) | `FindBestTarget` (hyp.) | Given a zone, searches both fields for the best card to target: own zones for type 0x2FA, opponent zones (via `gDuelSpellTrapZones`) for type 0x479, and attached cards for type 0x60E. Returns a priority value (0, 1, 0xA, or bits from zone+0x90). NONMATCHING draft in `#if 0`. |
-| `0x0800CAF0` | 0x128 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `GetCardAttribute` (hyp.) | Returns stats bits 29-31 of `gCardStats[cardId]` (0 for an empty zone). For a face-up monster (slot 0-4), a kind-1 link to a card whose number (`0x08622AB4`) is 0x5A8 overrides it with the linked zone's `+0x90` bits 13-17, if that zone's `+0x91` bit 3 is clear, neither side has 0x601 (`CountActiveCardsOnField`) and `gUnk_0201ADAD` bits 0-1 are clear. |
+| `0x0800CAF0` | 0x128 | **matching** (wave 3, 2026-10-01; FAKEMATCH) | `GetCardAttribute` (hyp.) | Returns stats bits 29-31 of `gCardStats[cardId]` (0 for an empty zone). For a face-up monster (slot 0-4), a kind-1 link to a card whose number (`0x08622AB4`) is 0x5A8 overrides it with the linked zone's `+0x90` bits 13-17, if that zone's `+0x91` bit 3 is clear, neither side has 0x601 (`CountActiveCardsOnField`) and `gDuelNegationFlags` bits 0-1 are clear. |
 | `0x0800CC18` | 0xB4 | **matching** (wave 1, 2026-10-01) | `ZoneHasCompatibleCard` (hyp.) | Searches both players' monster zones for a face-up card (+6 bit 1) compatible with the given zone's card (via `FindZoneLinkFromCard`). Returns 1 if found, 0 otherwise (also 0 if the source zone is empty). |
 | `0x0800CCCC` | 0x58 | matching | `EvalZoneAgainstTarget` | Evaluates a card at (player,slot) against (targetPlayer,targetSlot) via `EffectEquipTargetCheck`. |
 | `0x0800CD24` | 0x44 | matching | `CountMatchingZones` | Counts zones where `IsValidEquipTarget` returns nonzero (both players, slots 0-4). |
@@ -66,7 +66,7 @@ Unit status: `unit bytes MATCH`, **23/24 functions in C** after workflow waves 2
 | `gDuelBannerPal` | 0x08687B9C | `u8[]` | VRAM data for banner DMA. |
 | `gDirectAttackBannerGfx` | 0x086883BC | `u8[]` | VRAM data for banner DMA (0x400 bytes). |
 | `gBounceScaleCurve` | 0x081A43E4 | `u16[]` | Sine/effect table for banner animation. |
-| `gUnk_0201ADAD` | 0x0201ADAD | `u8` | Global flag checked in `GetZoneCardAttribute` and `GetZoneCardType`. |
+| `gDuelNegationFlags` | 0x0201ADAD | `u8` | Global flag checked in `GetZoneCardAttribute` and `GetZoneCardType`. |
 | `gDuelScreen` | 0x0201CFB0 | `u8[]` | Busy/lock flags for duel UI. |
 | `gMain` | 0x03000040 | `u16[]` | GBA I/O registers (key input at +4). |
 
@@ -142,7 +142,7 @@ Working notes: `build/wf/GetZoneCardAttribute/NOTES.md`, `build/wf/DuelCmd_Attac
 - Zone access through a pointer macro re-evaluated at every use (`CAF0_ZONE(p, s)` = `gDuelZones + (s*0x94 + (p&1)*0xD64)`): loop.c hoists the whole zone chain plus zone+0x4A and zone+0x8A, and cse2 turns the hoisted chain into copies of the entry pseudos (`mov r8, r2`, `mov r9, r4`). A local `z` pointer gives strength-reduced walking pointers instead (+16 bytes).
 - The link's player byte is a separate `ldrb` from the same address as the `ldrh`: a u8 view struct, `CAF0ZoneB.linkBytes[i * 2]`. `(u8)links[i]` is CSE'd into the one `ldrh`, and `*(u8 *)&z->links[i]` folds the +0xA into the symbol.
 - Linked zone: `lz = link >> 8; lp = byte & 1;` and a macro without its own `& 1`, with `(s*0x94 + p*0xD64)` parenthesised, give the ROM order (ldrh, lsr, ldrb, and, mul 0x94, mul 0xD64, add, add base). Card tables go through integer-constant pointers with `u16 tid` (table load after the index, the `ldr r2; adds r0, r2, #0` copy of 0x7FF); `u16 link` and `u8 kind` are read at the top of the loop.
-- `u8 *flags = &gUnk_0201ADAD` set before the loop: the spilled constant pointer is rematerialized after `movs r0, #3`, which also fixed every reload-register difference in the loop.
+- `u8 *flags = &gDuelNegationFlags` set before the loop: the spilled constant pointer is rematerialized after `movs r0, #3`, which also fixed every reload-register difference in the loop.
 - FAKEMATCH: `asm("" :: "r"(gDuelZones));` at the top of the loop body gives the hoisted base 5 refs instead of 3. Its live length is doubled (REG_EQUIV symbol), and the extra refs lift it above zone+0x8A/zone+0x4A in global-alloc priority, so it gets r9 and zone+0x4A spills to `[sp]`. Removing it costs 42.
 - An early `return result` for slot > 4 / face-down raises `result`'s refs from 4 to 5, so it is allocated before the zone pointer (r7 vs r8). Entry: `off = (player & 1) * 0xD64; zones = gDuelZones;` then `(zones + (slot * 0x94 + off))->card` loads the base before `slot*0x94` and adds `(s94 + off) + base`.
 - Failed: `s16 i` (sign extension), a struct-array rvalue `gZ[p&1].zones[s].x` (`links[i]` associates as `base + (i*2 + s94 + off) + 0xA`), a union for `links` (agbcc pads it to 4 bytes), `3 & x` / `== 0` / `*(u8 *)0x0201ADAD` for the flag test order, `zones` for the linked zone (50).

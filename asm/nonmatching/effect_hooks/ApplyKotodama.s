@@ -65,6 +65,6 @@ _08046B44:
 	bx r0
 	.align 2, 0
 _08046B4C: .4byte 0x00000464
-_08046B50: .4byte gUnk_086246BC
+_08046B50: .4byte gCardNumberToId_Kotodama
 	thumb_func_end ApplyKotodama
 

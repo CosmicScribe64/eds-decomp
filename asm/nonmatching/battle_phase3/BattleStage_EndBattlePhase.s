@@ -130,7 +130,7 @@ _0804DD9C: .4byte 0x000007FF
 _0804DDA0: .4byte gCardIdToNumber
 _0804DDA4: .4byte 0x00002003
 _0804DDA8: .4byte 0x0000049E
-_0804DDAC: .4byte gUnk_08624730
+_0804DDAC: .4byte gCardNumberToId_SwordOfDragonsSoul
 _0804DDB0: .4byte 0x020192E0
 _0804DDB4: .4byte 0x00001B16
 _0804DDB8: .4byte 0xFFFFFE01
@@ -331,7 +331,7 @@ _0804DF48:
 	mov r0, r9
 	bl ShowCardEffect
 	b _0804DFEC
-_0804DF54: .4byte gUnk_0862486C
+_0804DF54: .4byte gCardNumberToId_1340
 _0804DF58:
 	ldr r0, _0804DF94 @ =0x00001B17
 	add r0, r8

@@ -311,8 +311,8 @@
 0x080104B8	t	0x34	DuelCmd_AddCardToGraveyardNoRedraw	duel_cmd_piles	bl@0801F3EE
 0x080104EC	t	0x4C	DuelCmd_ClearPendingEquip	duel_cmd_piles	bl@0801F3F4
 0x08010538	t	0x184	DuelCmd_EquipGraveyardCardToOpponent	duel_cmd_piles	bl@0801F3FA
-0x080106BC	t	0x4C	sub_080106BC	duel_cmd_piles	bl@0801F400
-0x08010708	t	0x8C	sub_08010708	duel_cmd_piles	bl@0801F406
+0x080106BC	t	0x4C	DuelCmd_ClearPendingOpponentSummon	duel_cmd_piles	bl@0801F400
+0x08010708	t	0x8C	DuelCmd_MarkGraveyardCard	duel_cmd_piles	bl@0801F406
 0x08010794	t	0x168	DuelCmd_SendHandCardToGraveyard	duel_cmd_piles	bl@0801F376
 0x080108FC	t	0x160	DuelCmd_BanishHandCard	duel_cmd_piles	bl@0801F37C
 0x08010A5C	t	0x180	DuelCmd_ReturnHandCardToDeck	duel_cmd_piles	bl@0801F382
@@ -362,7 +362,7 @@
 0x08012D7C	t	0x158	DuelCmd_BanishMonsterUntilEndPhase	duel_cmd_moves	bl@0801F34C
 0x08012ED4	t	0xD0	DuelCmd_ReturnBanishedMonster	duel_cmd_moves	bl@0801F352
 0x08012FA4	t	0x160	DuelCmd_SendFusionMaterialToGrave	duel_cmd_moves	bl@0801F334
-0x08013104	t	0x50	sub_08013104	duel_cmd_moves	bl@0801F33A
+0x08013104	t	0x50	DuelCmd_SetZoneLevelCheckFlag	duel_cmd_moves	bl@0801F33A
 0x08013154	t	0x3C	DuelCmd_ClearZoneLinks2	duel_cmd_moves	bl@0801F316
 0x08013190	t	0x200	DuelCmd_ShowDuelResult	duel_cmd_moves	bl@0801F092
 0x08013390	t	0x15C	DuelCmd_Surrender	duel_cmd_moves	bl@0801F12E
@@ -383,7 +383,7 @@
 0x08014A24	t	0x40	DuelCmd_SetStatChangesReversed	duel_cmd_turn	bl@0801F0DA
 0x08014A64	t	0x44	DuelCmd_SetAtkDefSwapped	duel_cmd_turn	bl@0801F0E0
 0x08014AA8	t	0xB4	DuelCmd_AdjustDelayedSummonCount	duel_cmd_turn	bl@0801F174
-0x08014B5C	t	0x50	sub_08014B5C	duel_cmd_turn	bl@0801F17A
+0x08014B5C	t	0x50	DuelCmd_SetDestroyedTriggerPending	duel_cmd_turn	bl@0801F17A
 0x08014BAC	t	0x84	DuelCmd_ShowCardDetail	duel_cmd_turn	bl@0801F1F6
 0x08014C30	t	0x4AC	DuelCmd_ShowCardAssemble	duel_cmd_turn	bl@0801F1FC
 0x080150DC	t	0x2F8	DuelCmd_ShowCardZoomIn	duel_cmd_presentation	bl@0801F202
@@ -441,10 +441,10 @@
 0x0801967C	t	0x90	RemoveDeckCardByNumber	duel_card_actions	gap 0801967C-080197C0
 0x0801970C	t	0x7C	AddDeckCardToHand	duel_card_actions	gap 0801970A-080197C0
 0x08019788	t	0x38	ShowCardDetail	duel_card_actions	gap 08019788-080197C0
-0x080197C0	t	0x20	sub_080197C0	duel_card_actions	bl@08019168
+0x080197C0	t	0x20	ShowActivatedCard	duel_card_actions	bl@08019168
 0x080197E0	t	0x20	ShowCardEffect	duel_card_actions	bl@0801467A
 0x08019800	t	0x20	ShowDestroyedCard	duel_card_actions	bl@080185AE
-0x08019820	t	0x20	sub_08019820	duel_card_actions	gap 08019820-08019860
+0x08019820	t	0x20	ShowPickedCard	duel_card_actions	gap 08019820-08019860
 0x08019840	t	0x20	ShowRevealedCard	duel_card_actions	bl@08019B94
 0x08019860	t	0x34	LoseLifePoints	duel_card_actions	bl@080178F2
 0x08019894	t	0xEC	InflictBattleDamage	duel_card_actions	gap 08019894-08019980
@@ -461,15 +461,15 @@
 0x0801A238	t	0xF4	GetCardIconGfx	duel_card_actions	gap 0801A238-0801A7B4
 0x0801A32C	t	0x488	ChainListScreen_Run	duel_card_actions	gap 0801A32C-0801A7B4
 0x0801A7B4	t	0x18	ChainListScreen_Start	link_battle	bl@08023C40
-0x0801A7CC	t	0x4	sub_0801A7CC	link_battle	gap 0801A7CC-0801A7DC
-0x0801A7D0	t	0x4	sub_0801A7D0	link_battle	gap 0801A7CE-0801A7DC
-0x0801A7D4	t	0x4	sub_0801A7D4	link_battle	gap 0801A7D2-0801A7DC
-0x0801A7D8	t	0x4	sub_0801A7D8	link_battle	gap 0801A7D6-0801A7DC
+0x0801A7CC	t	0x4	DebugDrawValue	link_battle	gap 0801A7CC-0801A7DC
+0x0801A7D0	t	0x4	DebugUnusedNop1	link_battle	gap 0801A7CE-0801A7DC
+0x0801A7D4	t	0x4	DebugUnusedNop2	link_battle	gap 0801A7D2-0801A7DC
+0x0801A7D8	t	0x4	DebugPrint	link_battle	gap 0801A7D6-0801A7DC
 0x0801A7DC	t	0x8	DebugPrintf	link_battle	bl@08077482
-0x0801A7E4	t	0x4	sub_0801A7E4	link_battle	gap 0801A7E2-0801A7E8
+0x0801A7E4	t	0x4	DebugUnusedNop3	link_battle	gap 0801A7E2-0801A7E8
 0x0801A7E8	t	0x4	DebugPrintFlush	link_battle	bl@08077486
-0x0801A7EC	t	0x4	sub_0801A7EC	link_battle	gap 0801A7EA-08063BAC
-0x0801A7F0	t	0x4	sub_0801A7F0	link_battle	gap 0801A7EE-08026C90
+0x0801A7EC	t	0x4	DebugUnusedNop4	link_battle	gap 0801A7EA-08063BAC
+0x0801A7F0	t	0x4	DebugUnusedNop5	link_battle	gap 0801A7EE-08026C90
 0x0801A7F4	t	0xB0	LinkBattle_Init	link_battle	gap 0801A7F2-08026C90
 0x0801A8A4	t	0x28	LinkBattle_DecideTurnOrder	link_battle	gap 0801A8A4-08026C90
 0x0801A8CC	t	0x2D4	LinkBattle_Connect	link_battle	gap 0801A8CC-08026C90
@@ -523,7 +523,7 @@
 0x0801FBF4	t	0xB4	Chain_AddPartnerEntry	duel_setup	bl@080239D4
 0x0801FCA8	t	0xC0	Chain_CardGoesToGrave	duel_setup	gap 0801FCA8-0801FD68
 0x0801FD68	t	0xEC	Chain_GetResponseCommands	duel_setup	bl@08042EA4
-0x0801FE54	t	0x4C	sub_0801FE54	duel_setup	gap 0801FE54-080225D8
+0x0801FE54	t	0x4C	Chain_WaitPartnerReply	duel_setup	gap 0801FE54-080225D8
 0x0801FEA0	t	0x490	Chain_AskResponse	duel_setup	gap 0801FE9E-080225D8
 0x08020330	t	0x7C4	Chain_Build	duel_setup	gap 08020330-080225D8
 0x08020AF4	t	0x8CC	Chain_Resolve	duel_main	gap 08020AF4-080225D8
@@ -534,9 +534,9 @@
 0x08021834	t	0x78	DuelPhase_Init	duel_main	gap 08021834-080225D8
 0x080218AC	t	0x19C	DuelPhase_ShowResult	duel_main	gap 080218AC-080225D8
 0x08021A48	t	0x280	DuelMainStep	duel_main	gap 08021A48-080225D8
-0x08021CC8	t	0x4	sub_08021CC8	duel_prompts	gap 08021CC8-08021DA8
-0x08021CCC	t	0x20	sub_08021CCC	duel_prompts	gap 08021CCC-08021DA8
-0x08021CEC	t	0xBC	sub_08021CEC	duel_prompts	gap 08021CEC-08021DA8
+0x08021CC8	t	0x4	DuelPrompt_UnusedReturnFalse	duel_prompts	gap 08021CC8-08021DA8
+0x08021CCC	t	0x20	Duel_ClearUnk1B43	duel_prompts	gap 08021CCC-08021DA8
+0x08021CEC	t	0xBC	DuelPrompt_DrawPositionChoice	duel_prompts	gap 08021CEC-08021DA8
 0x08021DA8	t	0x120	DuelPrompt_ConfirmCardEffect	duel_prompts	bl@08022508
 0x08021EC8	t	0x20C	DuelPrompt_OfferDiscardMagic	duel_prompts	bl@08022542
 0x080220D4	t	0x88	DuelPrompt_ConfirmSpecialSummon	duel_prompts	bl@0802255C
@@ -554,8 +554,8 @@
 0x08022814	t	0x10	DuelPrompt_PostRandomBanishFaceDown	duel_prompts	gap 08022814-0802297C
 0x08022824	t	0x10	DuelPrompt_PostTribute	duel_prompts	gap 08022824-0802297C
 0x08022834	t	0xE0	DuelPrompt_TryPostSetMonster	duel_prompts	gap 08022834-0802297C
-0x08022914	t	0x48	sub_08022914	duel_prompts	gap 08022914-0802297C
-0x0802295C	t	0x20	sub_0802295C	duel_prompts	gap 0802295C-0802297C
+0x08022914	t	0x48	DuelLink_RequestInterruptIfIdle	duel_prompts	gap 08022914-0802297C
+0x0802295C	t	0x20	Duel_ClearUnk1B14_2	duel_prompts	gap 0802295C-0802297C
 0x0802297C	t	0x40	DuelLink_SendMessage	duel_prompts	bl@0801AB0C
 0x080229BC	t	0x30	DuelLink_SendMessageData	duel_prompts	gap 080229BC-08022A9C
 0x080229EC	t	0xB0	DuelLink_SendHand	duel_prompts	gap 080229EA-08022A9C
@@ -659,7 +659,7 @@
 0x080283BC	t	0x2C8	TurnOrder_DrawTurnChoiceConfirm	destiny_board_scene	gap 080283BC-08029DCC
 0x08028684	t	0x120	TurnOrder_DrawChosenTurnBanner	turn_order_scene	gap 08028684-08029DCC
 0x080287A4	t	0x138	TurnOrder_DrawDuelLogo	turn_order_scene	gap 080287A4-08029D7C
-0x080288DC	t	0x54	sub_080288DC	turn_order_scene	gap 080288DC-08029D7C
+0x080288DC	t	0x54	TurnOrder_DrawUnusedSprite	turn_order_scene	gap 080288DC-08029D7C
 0x08028930	t	0x6C	JudgeRockPaperScissors	turn_order_scene	gap 08028930-08029D7C
 0x0802899C	t	0x40	TurnOrder_UpdateChoiceBob	turn_order_scene	gap 0802899A-08029D7C
 0x080289DC	t	0xC	TurnOrder_CpuPickTurn	turn_order_scene	gap 080289DC-08029D7C
@@ -1206,8 +1206,8 @@
 0x0804DC88	t	0x5B8	BattleStage_EndBattlePhase	battle_phase3	gap 0804DC88-0804E31C
 0x0804E240	t	0xDC	BattleStage_Cleanup	battle_phase3	gap 0804E240-0804E31C
 0x0804E31C	t	0xA0	BattlePhase_Run	battle_phase3	bl@0805C4CA
-0x0804E3BC	t	0x4	sub_0804E3BC	battle_phase3	gap 0804E3BC-08052908
-0x0804E3C0	t	0x60	sub_0804E3C0	battle_phase3	gap 0804E3BE-08052908
+0x0804E3BC	t	0x4	BattlePhase_UnusedNop	battle_phase3	gap 0804E3BC-08052908
+0x0804E3C0	t	0x60	DuelScreen_DrawPulseIconOverlay	battle_phase3	gap 0804E3BE-08052908
 0x0804E420	t	0x118	DuelPhase_Draw	battle_phase3	gap 0804E420-08052908
 0x0804E538	t	0x7C	EndPhase_ReturnWickedWormBeast	battle_phase3	gap 0804E538-08052908
 0x0804E5B4	t	0x1CC	EndPhase_TransferMushroomMan2	battle_phase3	gap 0804E5B4-0804F310
@@ -1219,7 +1219,7 @@
 0x0804F384	t	0xDC	PhaseMenu_HandleInput	duel_phases	ptr@0804ACE0
 0x0804F460	t	0x1F4	DuelPhase_Main	duel_phases	gap 0804F460-08052908
 0x0804F654	t	0x54	GetMaintenanceLpCost	duel_phases	gap 0804F654-0805163C
-0x0804F6A8	t	0x44	sub_0804F6A8	duel_phases	gap 0804F6A8-0805163C
+0x0804F6A8	t	0x44	CountBlastJugglerTargets	duel_phases	gap 0804F6A8-0805163C
 0x0804F6EC	t	0xB8	HasActivatableStandbyCard	duel_phases	gap 0804F6EC-0805163C
 0x0804F7A4	t	0x4A8	ApplyStandbyPhaseEffects	duel_phases	gap 0804F7A4-0805163C
 0x0804FC4C	t	0xE24	DuelPhase_Standby	duel_phases	gap 0804FC4C-0805163C
@@ -1516,7 +1516,7 @@
 0x08065E6C	t	0xC8	DeckEdit_DrawLevelStars	deck_edit_widgets	bl@0806F76C
 0x08065F34	t	0x44	DeckEdit_CalcScrollBar	deck_edit_widgets	bl@0806F2BC
 0x08065F78	t	0x1EC	DeckEdit_DrawScrollBar	deck_edit_widgets	gap 08065F78-08066244
-0x08066164	t	0xE0	sub_08066164	deck_edit_widgets	gap 08066164-08066244
+0x08066164	t	0xE0	DeckEdit_LoadCardBoxTiles	deck_edit_widgets	gap 08066164-08066244
 0x08066244	t	0x1C	DeckEdit_ResetFrameSlots	deck_edit_widgets	bl@0806F366
 0x08066260	t	0xFC	DeckEdit_TweenFrameSlots	deck_edit_widgets	gap 08066260-080666AC
 0x0806635C	t	0x11C	GetCardFrameIndex	deck_edit_widgets	gap 0806635C-080666AC
@@ -1597,7 +1597,7 @@
 0x0806F05C	t	0x60	ProhibitCardSelect_Run	deck_edit	gap 0806F05C-08071F40
 0x0806F0BC	t	0x3C	ProhibitCardSelect_StartAndRun	deck_edit	gap 0806F0BC-08071F40
 0x0806F0F8	t	0x308	ProhibitCardSelect_Init	deck_edit	gap 0806F0F8-08071F40
-0x0806F400	t	0x4	sub_0806F400	deck_edit	gap 0806F400-08071F40
+0x0806F400	t	0x4	ProhibitCardSelect_UnusedNop	deck_edit	gap 0806F400-08071F40
 0x0806F404	t	0x530	ProhibitCardSelect_InitListView	deck_edit	gap 0806F402-08071F40
 0x0806F934	t	0x1008	ProhibitCardSelect_Update	deck_edit	gap 0806F934-08071F40
 0x0807093C	t	0xE0	ProhibitCardSelect_SwitchScreen	deck_edit_prohibit	gap 0807093C-08070F14
@@ -1800,7 +1800,7 @@
 0x080788A0	t	0xC	ClearKatakanaFlag	text_render	gap 080788A0-0807A1A8
 0x080788AC	t	0x39C	RenderShadowedGlyph	text_render	gap 080788AC-0807A1A8
 0x08078C48	t	0x60	ParseSignedDecimal	text_render	gap 08078C48-0807A1A8
-0x08078CA8	t	0x20	sub_08078CA8	text_render	gap 08078CA6-080798B8
+0x08078CA8	t	0x20	UnusedObjectInit	text_render	gap 08078CA6-080798B8
 0x08078CC8	t	0xFC	TextCanvasRowsToTiles	text_render	gap 08078CC6-080798B8
 0x08078DC4	t	0x68	TextDrawGlyphShadowed	text_render	gap 08078DC4-08078ED4
 0x08078E2C	t	0x54	ParseDecimal	text_render	gap 08078E2C-08078E80

@@ -240,7 +240,7 @@ _0806CFF4: .4byte 0xFFFFFE80
 _0806CFF8: .4byte 0x04000010
 _0806CFFC: .4byte 0x0201F770
 _0806D000: .4byte 0x00000439
-_0806D004: .4byte gUnk_08623326
+_0806D004: .4byte gCardIdToNumber_1081
 _0806D008: .4byte 0x00000776
 _0806D00C: .4byte gCardStats
 	thumb_func_end DeckStats_Init

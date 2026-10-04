@@ -1,5 +1,5 @@
-	thumb_func_start sub_08019820
-sub_08019820: @ 0x08019820
+	thumb_func_start ShowPickedCard
+ShowPickedCard: @ 0x08019820
 	push {lr}
 	lsl r1, r1, #0x10
 	lsr r1, r1, #0x10
@@ -15,5 +15,5 @@ _0801982E:
 	pop {r0}
 	bx r0
 _0801983C: .4byte 0x00008075
-	thumb_func_end sub_08019820
+	thumb_func_end ShowPickedCard
 

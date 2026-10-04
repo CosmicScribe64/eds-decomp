@@ -85,7 +85,7 @@ typedef char link_h_check_buf_ticks[(u32)&((struct LinkBuf *)0)->timer2Ticks == 
 typedef char link_h_check_buf_index[(u32)&((struct LinkBuf *)0)->queueIndex == 0x830 ? 1 : -1];
 typedef char link_h_check_buf_send[(u32)&((struct LinkBuf *)0)->sendBuf == 0x834 ? 1 : -1];
 
-/* The packet layer. text_bg.c also reaches gLinkBuf.sendBuf through the alias symbol gUnk_03005204 and
+/* The packet layer. text_bg.c also reaches gLinkBuf.sendBuf through the alias symbol gLinkSendBuf and
  * sendSeq / lastSentPacket at negative offsets from it; keep that form (matching choice). */
 extern struct LinkBuf gLinkBuf;
 
@@ -199,7 +199,7 @@ typedef char link_h_check_sio_cnt[(u32)&((struct LinkSio *)0)->sioCnt == 0xB0C ?
 typedef char link_h_check_sio_result[(u32)&((struct LinkSio *)0)->stepResult == 0xB14 ? 1 : -1];
 typedef char link_h_check_sio_packets[(u32)&((struct LinkSio *)0)->rxPackets == 0xB16 ? 1 : -1];
 
-/* The SIO driver state. text_canvas.c declares gUnk_03006598 (= &gLinkSio.rxWork) without using it, and
+/* The SIO driver state. text_canvas.c declares gLinkSioRxWork (= &gLinkSio.rxWork) without using it, and
  * LinkSyncClose clears it through the integer address 0x03005B60; keep those forms (matching choices). */
 extern struct LinkSio gLinkSio;
 /* Alias of &gLinkSio.txMsg[1] (0x03005B6A), the outgoing payload; LinkSioSend copies into it. */

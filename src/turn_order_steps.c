@@ -161,7 +161,7 @@ struct CardListViewFlags16 {
 
 /* gMain.bgMapBuffer[0] (BG0's map, 0x0300045C) through its own symbol: the title and the level stars are
  * written through this literal, not through gMain + offset. */
-extern u16 gUnk_0300045C[];
+extern u16 gBgMaps[];
 
 /* ---- ROM data used only here ---- */
 
@@ -183,17 +183,17 @@ extern u8 (*const gTurnOrderChoiceSubsteps[])(u8 *phase);   /* 0x0819A6D0: ShowC
 #define HAND_CARD_PAL_NUMS ((u8 *)0x08082703)
 
 /* Card-list viewer graphics. */
-extern const u8 gUnk_08698C7C[];                /* OBJ palette 0 of the buttons */
+extern const u8 gCardListViewButtonsPal[];                /* OBJ palette 0 of the buttons */
 extern const u8 gCardListViewButtonsGfx[];      /* 0x08698C9C: Card View / Exit / Arrange / Decide buttons */
-extern const u8 gUnk_0869AD1C[];                /* OBJ palette 1 of the status icons */
+extern const u8 gCardListViewStatusIconsPal[];                /* OBJ palette 1 of the status icons */
 extern const u8 gCardListViewStatusIconsGfx[];  /* 0x0869AD3C: 16x16 CARD STATUS icons */
-extern const u8 gUnk_0869B53C[];                /* BG palette 7 of the titles */
+extern const u8 gCardListViewTitlesPal[];                /* BG palette 7 of the titles */
 extern const u8 gCardListViewTitlesGfx[];       /* 0x0869B55C: five 96x16 titles, 0x300 bytes each, by mode */
 /* The image packs are declared u16 [] (not const) because the bg.h loaders take a u16 *. */
-extern u16 gUnk_0869C45C[];                     /* image pack: 240x144 list background */
+extern u16 gCardListViewBgImage[];                     /* image pack: 240x144 list background */
 extern u16 gCardListViewInfoPanelImage[];       /* 0x0869D758: image pack: CARD PROPERTY / CARD STATUS panel */
-extern u16 gUnk_0869E8E4[];                     /* image pack: 240x16 header strip */
-extern const u8 gUnk_0869EECC[];                /* BG palette 4 of the cursor box */
+extern u16 gCardListViewHeaderImage[];                     /* image pack: 240x16 header strip */
+extern const u8 gCardListViewCursorFramePal[];                /* BG palette 4 of the cursor box */
 extern const u8 gCardListViewCursorFrameGfx[];  /* 0x0869EEEC: cursor boxes, 0x60 tiles each: OPPONENT, YOU */
 extern const u16 gStrCardListViewUnknown[];     /* 0x0808275C: "[ Unknown ]" */
 extern const u16 gStrCardListViewNoCards[];     /* 0x08082768: "There are no cards." */
@@ -815,7 +815,7 @@ void CardListView_DrawCardInfo(u32 *card)
             int col = i & 7;
             int starRow = (i >> 3) + 13;
             col += 12;
-            gUnk_0300045C[col + ((u16)starRow << 5)] = 2;
+            gBgMaps[col + ((u16)starRow << 5)] = 2;
         }
         break;
     }
@@ -1010,15 +1010,15 @@ u16 CardListView_InitScreen(void)
         titles = (u32)gCardListViewTitlesGfx;
         SetBrightnessBlack();
         ResetBgScroll();
-        CopyDoubleWords(OBJ_PAL(0), gUnk_08698C7C, 0x20);
+        CopyDoubleWords(OBJ_PAL(0), gCardListViewButtonsPal, 0x20);
         CopyDoubleWords(OBJ_TILE(0), gCardListViewButtonsGfx, 0x2000);
-        CopyDoubleWords(OBJ_PAL(1), gUnk_0869AD1C, 0x20);
+        CopyDoubleWords(OBJ_PAL(1), gCardListViewStatusIconsPal, 0x20);
         CopyDoubleWords(OBJ_TILE(0x100), gCardListViewStatusIconsGfx, 0x800);
         /* BG2 (map offsets 0x400 + cell): header strip, list background, info panel */
-        LoadBgImage4bppMap1(0x400, 0x10, 0x3C6, gUnk_0869E8E4);
-        LoadBgImage4bppMap1(0x400 + 2 * 32, 0x20, 0x354, gUnk_0869C45C);
+        LoadBgImage4bppMap1(0x400, 0x10, 0x3C6, gCardListViewHeaderImage);
+        LoadBgImage4bppMap1(0x400 + 2 * 32, 0x20, 0x354, gCardListViewBgImage);
         LoadBgImage4bppMap1(0x400 + 11 * 32, 0x30, 0x2E0, gCardListViewInfoPanelImage);
-        MemCopy16(BG_PAL(4), gUnk_0869EECC, 0x20);
+        MemCopy16(BG_PAL(4), gCardListViewCursorFramePal, 0x20);
         /* The OPPONENT (i = 0) and YOU (i = 1) cursor boxes, 15 tiles each from BG tile 0x15A + i * 15, taken
          * from a 3 x 32-tile sheet of 0x60 tiles per box: the tab (8), top edge and corner (2), left side,
          * right side, bottom-left corner and bottom edge (2), bottom-right corner. */
@@ -1032,14 +1032,14 @@ u16 CardListView_InitScreen(void)
             CopyDoubleWords(BG_CHAR1_TILE(dst + 0x166), gCardListViewCursorFrameGfx + (src + 0x40) * 32, 2 * 32);
             CopyDoubleWords(BG_CHAR1_TILE(dst + 0x168), gCardListViewCursorFrameGfx + (src + 0x5D) * 32, 32);
         }
-        CopyDoubleWords(BG_PAL(7), gUnk_0869B53C, 0x20);
+        CopyDoubleWords(BG_PAL(7), gCardListViewTitlesPal, 0x20);
         /* The title of the list (none for the deck): 12 x 2 tiles at BG tile 0x142, palette 7, BG0 rows 0-1. */
         if (gCardListView.mode <= CARDLIST_MODE_TARGETS) {
             CopyDoubleWords(BG_CHAR1_TILE(0x142), (const u8 *)(gCardListView.mode * 0x300 + titles), 0x300);
             for (j = 0; j < 12; j++) {
                 u16 col = j;
-                gUnk_0300045C[col] = j + 0x7142;
-                gUnk_0300045C[col + 32] = j + 0x714E;
+                gBgMaps[col] = j + 0x7142;
+                gBgMaps[col + 32] = j + 0x714E;
             }
         }
         gCardListView.initState++;

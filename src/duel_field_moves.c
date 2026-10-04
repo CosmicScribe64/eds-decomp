@@ -145,7 +145,7 @@ u16 FindMonsterLinkedToCard(s32 player, s32 slot);
  * definitions take a u16 card ID, but ChangeBattlePosition and SendBattleDestroyedCardToGraveyard pass
  * 32-bit IDs without the narrowing a u16 prototype adds at the call. */
 int CanActivateEffectOfCardU32(int player, u32 cardId, int fromHand) asm("CanActivateEffectOfCard");
-void sub_080197C0Int(int player, int cardId) asm("sub_080197C0");
+void ShowActivatedCardInt(int player, int cardId) asm("ShowActivatedCard");
 
 /* Command id for DuelCmd_Push: DUEL_CMD_PLAYER (bit 15) marks a command of player 1. */
 #define PLAYER_CMD(player, cmd) ((player) ? (DUEL_CMD_PLAYER | (cmd)) : (cmd))
@@ -353,7 +353,7 @@ void SendBattleDestroyedCardToGraveyard(int defender, int player, int zone, u16 
         break;
     case CARD_1514:
         if (defender == player) {
-            sub_080197C0Int(player, dispatchId);
+            ShowActivatedCardInt(player, dispatchId);
             DuelCmd_Push(PLAYER_CMD(player, DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING), 1, 0, 0);
         }
         break;
@@ -590,7 +590,7 @@ void MoveFieldCard(int player, u16 fromLoc, u16 toLoc)
     switch (CARD_NUMBER(id)) {
     case CARD_AMEBA:
         if (ZONE(fromPlayer, fromZone)->effectUnused) {
-            sub_080197C0(fromPlayer, id);
+            ShowActivatedCard(fromPlayer, id);
             LoseLifePoints(toPlayer, 2000);
             DuelCmd_Push(PLAYER_CMD(toPlayer, DUEL_CMD_SET_EFFECT_UNUSED), toZone, 0, 0);
             return;
@@ -598,7 +598,7 @@ void MoveFieldCard(int player, u16 fromLoc, u16 toLoc)
         break;
     case CARD_GRIGGLE:
         if (ZONE(fromPlayer, fromZone)->effectUnused) {
-            sub_080197C0(fromPlayer, id);
+            ShowActivatedCard(fromPlayer, id);
             GainLifePoints(fromPlayer, 3000);
             DuelCmd_Push(PLAYER_CMD(toPlayer, DUEL_CMD_SET_EFFECT_UNUSED), toZone, 0, 0);
         }
@@ -626,14 +626,14 @@ void SwapFieldCards(int player, u16 loc1, u16 loc2)
     switch (CARD_NUMBER(id1)) {
     case CARD_AMEBA:
         if (ZONE(player1, zone1)->effectUnused) {
-            sub_080197C0(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
+            ShowActivatedCard(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
             LoseLifePoints(player2, 2000);
             DuelCmd_Push(PLAYER_CMD(player2, DUEL_CMD_SET_EFFECT_UNUSED), zone2, 0, 0);
         }
         break;
     case CARD_GRIGGLE:
         if (ZONE(player1, zone1)->effectUnused) {
-            sub_080197C0(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
+            ShowActivatedCard(player1, ZONE_CARD_ID(ZONE(player1, zone1)));
             GainLifePoints(player1, 3000);
             DuelCmd_Push(PLAYER_CMD(player2, DUEL_CMD_SET_EFFECT_UNUSED), zone2, 0, 0);
         }
@@ -642,14 +642,14 @@ void SwapFieldCards(int player, u16 loc1, u16 loc2)
     switch (CARD_NUMBER(id2)) {
     case CARD_AMEBA:
         if (ZONE(player2, zone2)->effectUnused) {
-            sub_080197C0(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
+            ShowActivatedCard(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
             LoseLifePoints(player1, 2000);
             DuelCmd_Push(PLAYER_CMD(player1, DUEL_CMD_SET_EFFECT_UNUSED), zone1, 0, 0);
         }
         break;
     case CARD_GRIGGLE:
         if (ZONE(player2, zone2)->effectUnused) {
-            sub_080197C0(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
+            ShowActivatedCard(player2, ZONE_CARD_ID(ZONE(player2, zone2)));
             GainLifePoints(player2, 3000);
             DuelCmd_Push(PLAYER_CMD(player1, DUEL_CMD_SET_EFFECT_UNUSED), zone1, 0, 0);
         }

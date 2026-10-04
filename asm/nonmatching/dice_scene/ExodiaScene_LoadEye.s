@@ -103,8 +103,8 @@ _080264B8: .4byte gExodiaPiecesObjPal
 _080264BC: .4byte 0x05000200
 _080264C0: .4byte gExodiaPiecesObjTiles
 _080264C4: .4byte 0x06014000
-_080264C8: .4byte gUnk_086CED78
-_080264CC: .4byte gUnk_086CF778
+_080264C8: .4byte gExodiaPiecesColorObjTiles
+_080264CC: .4byte gExodiaPiecesGreyObjTiles
 _080264D0: .4byte 0x00001F04
 	thumb_func_end ExodiaScene_LoadEye
 

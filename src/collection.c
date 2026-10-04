@@ -81,18 +81,18 @@ extern const struct CardCopyLimit gCardCopyLimits[];    /* 0x081A78B4: the 47-ro
 
 /* Single entries of gCardNumberToId (0x08623DF4) read through their own literal-pool symbols;
  * card_data.h lists what each one is. The code below reads entry [0] of each. */
-extern const u16 gUnk_08623E10[];   /* gCardNumberToId[CARD_FLAME_SWORDSMAN] */
-extern const u16 gUnk_08623E38[];   /* gCardNumberToId[CARD_DARK_MAGICIAN] */
-extern const u16 gUnk_08623E3E[];   /* gCardNumberToId[CARD_GAIA_THE_FIERCE_KNIGHT] */
-extern const u16 gUnk_08623E44[];   /* gCardNumberToId[CARD_CELTIC_GUARDIAN] */
-extern const u16 gUnk_08623E6E[];   /* gCardNumberToId[CARD_HARPIE_LADY] */
-extern const u16 gUnk_08623E72[];   /* gCardNumberToId[CARD_TIGER_AXE] */
-extern const u16 gUnk_08623E7C[];   /* gCardNumberToId[CARD_THOUSAND_DRAGON] */
-extern const u16 gUnk_086240FA[];   /* gCardNumberToId[CARD_PENDULUM_MACHINE] */
-extern const u16 gUnk_086240FE[];   /* gCardNumberToId[CARD_LAUNCHER_SPIDER] */
-extern const u16 gUnk_086245CA[];   /* gCardNumberToId[CARD_POLYMERIZATION] */
-extern const u16 gUnk_08624768[];   /* gCardNumberToId[CARD_1210] (0 in EDS) */
-extern const u16 gUnk_086247B6[];   /* gCardNumberToId[1249] (0 in EDS; 1249 has no CARD_ name) */
+extern const u16 gCardNumberToId_FlameSwordsman[];   /* gCardNumberToId[CARD_FLAME_SWORDSMAN] */
+extern const u16 gCardNumberToId_DarkMagician[];   /* gCardNumberToId[CARD_DARK_MAGICIAN] */
+extern const u16 gCardNumberToId_GaiaTheFierceKnight[];   /* gCardNumberToId[CARD_GAIA_THE_FIERCE_KNIGHT] */
+extern const u16 gCardNumberToId_CelticGuardian[];   /* gCardNumberToId[CARD_CELTIC_GUARDIAN] */
+extern const u16 gCardNumberToId_HarpieLady[];   /* gCardNumberToId[CARD_HARPIE_LADY] */
+extern const u16 gCardNumberToId_TigerAxe[];   /* gCardNumberToId[CARD_TIGER_AXE] */
+extern const u16 gCardNumberToId_ThousandDragon[];   /* gCardNumberToId[CARD_THOUSAND_DRAGON] */
+extern const u16 gCardNumberToId_PendulumMachine[];   /* gCardNumberToId[CARD_PENDULUM_MACHINE] */
+extern const u16 gCardNumberToId_LauncherSpider[];   /* gCardNumberToId[CARD_LAUNCHER_SPIDER] */
+extern const u16 gCardNumberToId_Polymerization[];   /* gCardNumberToId[CARD_POLYMERIZATION] */
+extern const u16 gCardNumberToId_1210[];   /* gCardNumberToId[CARD_1210] (0 in EDS) */
+extern const u16 gCardNumberToId_1249[];   /* gCardNumberToId[1249] (0 in EDS; 1249 has no CARD_ name) */
 
 extern u8 gStrErrorIdFmt[];         /* 0x08087B80: the format string DebugCheckCardId prints */
 
@@ -136,19 +136,19 @@ u32 IsBelowCardCopyLimit(u16 id) {
         ADD_PAIR(*(const u16 *)(((key + 0x1F) << 1) + (u32)((const u16 *)0x08623DF4)));
         break;
     case CARD_POLYMERIZATION_ALT:
-        ADD_PAIR(gUnk_086245CA[0]);
+        ADD_PAIR(gCardNumberToId_Polymerization[0]);
         break;
     case CARD_DARK_MAGICIAN:
-        ADD_PAIR(gUnk_08624768[0]);
-        ADD_PAIR((u16)(gUnk_08623E38[0] + 1));
+        ADD_PAIR(gCardNumberToId_1210[0]);
+        ADD_PAIR((u16)(gCardNumberToId_DarkMagician[0] + 1));
         break;
     case CARD_1210:
-        ADD_PAIR(gUnk_08623E38[0]);
+        ADD_PAIR(gCardNumberToId_DarkMagician[0]);
         ADD_PAIR(*(const u16 *)((key << 1) + (u32)((const u16 *)0x08623DF4)));
         break;
     case CARD_DARK_MAGICIAN_ALT: {
         /* FAKEMATCH: keep the initialized related ID separate from the cached count byte. */
-        register u16 relatedId asm("r1") = gUnk_08623E38[0];
+        register u16 relatedId asm("r1") = gCardNumberToId_DarkMagician[0];
         u8 flags = *((u8 *)s + relatedId * 4 + 9);
         sum += ((u32)flags << 28) >> 30;
         sum += ((u32)flags << 26) >> 30;
@@ -156,58 +156,58 @@ u32 IsBelowCardCopyLimit(u16 id) {
         break;
     }
     case CARD_HARPIE_LADY:
-        ADD_PAIR(gUnk_086247B6[0]);
+        ADD_PAIR(gCardNumberToId_1249[0]);
         break;
     case 1249: /* no EDS card (no CARD_ name); pairs with CARD_HARPIE_LADY */
-        ADD_PAIR(gUnk_08623E6E[0]);
+        ADD_PAIR(gCardNumberToId_HarpieLady[0]);
         break;
     case CARD_BLUE_EYES_WHITE_DRAGON:
         ADD_PAIR((u16)(((const u16 *)0x08623DF4)[0] + 1));
         break;
     case CARD_FLAME_SWORDSMAN:
-        ADD_N3((u16)(gUnk_08623E10[0] + 1));
+        ADD_N3((u16)(gCardNumberToId_FlameSwordsman[0] + 1));
         break;
     case CARD_GAIA_THE_FIERCE_KNIGHT:
-        ADD_PAIR((u16)(gUnk_08623E3E[0] + 1));
+        ADD_PAIR((u16)(gCardNumberToId_GaiaTheFierceKnight[0] + 1));
         break;
     case CARD_CELTIC_GUARDIAN:
-        ADD_PAIR((u16)(gUnk_08623E44[0] + 1));
+        ADD_PAIR((u16)(gCardNumberToId_CelticGuardian[0] + 1));
         break;
     case CARD_TIGER_AXE:
-        ADD_PAIR((u16)(gUnk_08623E72[0] + 1));
+        ADD_PAIR((u16)(gCardNumberToId_TigerAxe[0] + 1));
         break;
     case CARD_THOUSAND_DRAGON:
-        ADD_N3((u16)(gUnk_08623E7C[0] + 1));
+        ADD_N3((u16)(gCardNumberToId_ThousandDragon[0] + 1));
         break;
     case CARD_PENDULUM_MACHINE:
-        ADD_PAIR((u16)(gUnk_086240FA[0] + 1));
+        ADD_PAIR((u16)(gCardNumberToId_PendulumMachine[0] + 1));
         break;
     case CARD_LAUNCHER_SPIDER:
-        ADD_PAIR((u16)(gUnk_086240FE[0] + 1));
+        ADD_PAIR((u16)(gCardNumberToId_LauncherSpider[0] + 1));
         break;
     case CARD_BLUE_EYES_WHITE_DRAGON_ALT:
         ADD_PAIR(((const u16 *)0x08623DF4)[0]);
         break;
     case CARD_FLAME_SWORDSMAN_ALT:
-        ADD_N3(gUnk_08623E10[0]);
+        ADD_N3(gCardNumberToId_FlameSwordsman[0]);
         break;
     case CARD_GAIA_THE_FIERCE_KNIGHT_ALT:
-        ADD_PAIR(gUnk_08623E3E[0]);
+        ADD_PAIR(gCardNumberToId_GaiaTheFierceKnight[0]);
         break;
     case CARD_CELTIC_GUARDIAN_ALT:
-        ADD_PAIR(gUnk_08623E44[0]);
+        ADD_PAIR(gCardNumberToId_CelticGuardian[0]);
         break;
     case CARD_TIGER_AXE_ALT:
-        ADD_PAIR(gUnk_08623E72[0]);
+        ADD_PAIR(gCardNumberToId_TigerAxe[0]);
         break;
     case CARD_THOUSAND_DRAGON_ALT:
-        ADD_N3(gUnk_08623E7C[0]);
+        ADD_N3(gCardNumberToId_ThousandDragon[0]);
         break;
     case CARD_PENDULUM_MACHINE_ALT:
-        ADD_PAIR(gUnk_086240FA[0]);
+        ADD_PAIR(gCardNumberToId_PendulumMachine[0]);
         break;
     case CARD_LAUNCHER_SPIDER_ALT:
-        ADD_PAIR(gUnk_086240FE[0]);
+        ADD_PAIR(gCardNumberToId_LauncherSpider[0]);
         break;
     }
     return sum < limit;

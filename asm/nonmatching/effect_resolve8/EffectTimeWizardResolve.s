@@ -304,9 +304,9 @@ _08038938:
 	b _08038C28
 	.align 2, 0
 _08038978: .4byte gStrPromptTributeToSpecialSummonFmt
-_0803897C: .4byte gUnk_08623E38
+_0803897C: .4byte gCardNumberToId_DarkMagician
 _08038980: .4byte gCardNames
-_08038984: .4byte gUnk_08624758
+_08038984: .4byte gCardNumberToId_DarkSage
 _08038988: .4byte 0x00000206
 _0803898C: .4byte 0x00000613
 _08038990:
@@ -411,7 +411,7 @@ _08038A4A:
 	b _08038C28
 	.align 2, 0
 _08038A50: .4byte gStrTimeWizardSelectTributeFmt
-_08038A54: .4byte gUnk_08623E38
+_08038A54: .4byte gCardNumberToId_DarkMagician
 _08038A58: .4byte gCardNames
 _08038A5C: .4byte 0x00000206
 _08038A60: .4byte 0x00000613

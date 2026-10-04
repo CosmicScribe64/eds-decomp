@@ -14,7 +14,7 @@ Every handler is a small sub-step machine on `gAiState.f2` (`+2`), returns 0 whi
 
 | Address | Size | Status | Proposed name | Purpose |
 |---|---|---|---|---|
-| `0x0805C508` | 0x430 | **matching C**, initialized hints | `AiStrategy1` (hyp.) | sub-steps 0-8: commit card 0x29F/0x425/0x438/0x14F/0x150 (same head as `AiStrategyCyberStein`), then queue zone actions for card 0x1A3 (`CanSummonFromHand(1, gUnk_0862448E)` ...) |
+| `0x0805C508` | 0x430 | **matching C**, initialized hints | `AiStrategy1` (hyp.) | sub-steps 0-8: commit card 0x29F/0x425/0x438/0x14F/0x150 (same head as `AiStrategyCyberStein`), then queue zone actions for card 0x1A3 (`CanSummonFromHand(1, gCardNumberToId_ValkyrionTheMagnaWarrior)` ...) |
 | `0x0805C938` | 0x1F4 | **matching C**, initialized hints | `AiStrategy2` (hyp.) | step 0: if `CountFaceUpMonstersByNumber(1,0x1FF)` and card 0x4DD usable, commit; step 2: if nothing forbids card 0x58A, scan zones 0-4 for a card number in 0x780..0x7CF, pick one with `FindFaceUpMonsterByNumber(1,0x1FF)` and queue `DuelCmd_Push(0x8008, idx<<8,1,0)` + `Chain_AddPending(((idx&0x1F)<<16) \| id \| 0x80400000, 0)` |
 | `0x0805CB2C` | 0x278 | **matching C**, initialized hints | `AiStrategy3` (hyp.) | steps 0-5: card 0x13D (hand scan for 0x4E1 then 0x3D, queue `QueueNormalSummon(1, j, target, 0, 1)`), commit, wait, card 0x468 via `GetFaceUpFieldMagicNumber`; step 5/reset sets `f2 = 0` |
 | `0x0805CDA4` | 0x108 | matching | `AiStrategy4` (hyp.) | step 0: if card 0x522 usable, commit and advance, else clear the found flag; step 1: `CardMenu_PlaySpellTrapFromHand(1,0,0)` and wait for bit 1 of `0x0201AE0C`; step 2: clear the found flag |

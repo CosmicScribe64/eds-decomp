@@ -7,7 +7,7 @@
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_BanishMonsterUntilEndPhase.s"
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_ReturnBanishedMonster.s"
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_SendFusionMaterialToGrave.s"
-	.include "asm/nonmatching/duel_cmd_moves/sub_08013104.s"
+	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_SetZoneLevelCheckFlag.s"
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_ClearZoneLinks2.s"
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_ShowDuelResult.s"
 	.include "asm/nonmatching/duel_cmd_moves/DuelCmd_Surrender.s"

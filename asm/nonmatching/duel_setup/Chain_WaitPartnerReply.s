@@ -1,5 +1,5 @@
-	thumb_func_start sub_0801FE54
-sub_0801FE54: @ 0x0801FE54
+	thumb_func_start Chain_WaitPartnerReply
+Chain_WaitPartnerReply: @ 0x0801FE54
 	ldr r2, _0801FE6C @ =0x0201AE60
 	add r3, r2, #0
 	add r3, #0x22
@@ -39,6 +39,6 @@ _0801FE9A:
 	mov r0, #0
 _0801FE9C:
 	bx lr
-	thumb_func_end sub_0801FE54
+	thumb_func_end Chain_WaitPartnerReply
 	.align 2, 0
 

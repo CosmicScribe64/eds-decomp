@@ -117,7 +117,7 @@ _0803A04A:
 	b _0803A16A
 	.align 2, 0
 _0803A050: .4byte gStrSelectEquipTarget
-_0803A054: .4byte gUnk_086247C8
+_0803A054: .4byte gCardNumberToId_1258
 _0803A058: .4byte gCardNames
 _0803A05C: .4byte 0x00000206
 _0803A060: .4byte 0x00000613

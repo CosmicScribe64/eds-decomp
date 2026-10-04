@@ -247,11 +247,11 @@ gHandCardPalNums: @ 0x08082703
 	.global gDuelLogoTileNums
 gDuelLogoTileNums: @ 0x08082706
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CE6, 0x6
-	.global gUnk_0808270C
-gUnk_0808270C: @ 0x0808270C
+	.global gTurnOrderUnusedSpriteTiles
+gTurnOrderUnusedSpriteTiles: @ 0x0808270C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CEC, 0x4
-	.global gUnk_08082710
-gUnk_08082710: @ 0x08082710
+	.global gTurnOrderUnusedSpritePals
+gTurnOrderUnusedSpritePals: @ 0x08082710
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x1CF0, 0x2
 	.global gSquareTable
 gSquareTable: @ 0x08082712
@@ -1129,11 +1129,11 @@ gCardFrameAnimIds: @ 0x08087480
 	.global gCardMoveTargets
 gCardMoveTargets: @ 0x08087488
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A68, 0xC
-	.global gUnk_08087494
-gUnk_08087494: @ 0x08087494
+	.global gDeckEditListRowRedrawY
+gDeckEditListRowRedrawY: @ 0x08087494
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A74, 0x8
-	.global gUnk_0808749C
-gUnk_0808749C: @ 0x0808749C
+	.global gDeckEditCursorRowRedrawY
+gDeckEditCursorRowRedrawY: @ 0x0808749C
 	.incbin "build/assets/rodata__strings_and_tables.bin", 0x6A7C, 0x4
 	.global gNameIndexLettersSprite
 gNameIndexLettersSprite: @ 0x080874A0

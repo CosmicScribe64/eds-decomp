@@ -31,7 +31,7 @@ EffectMaskOfDarknessResolve: @ 0x08030578
 	lsl r0, r1, #0x1F
 	lsr r0, r0, #0x1F
 	add r1, r5, #0
-	bl sub_08019820
+	bl ShowPickedCard
 	mov r0, #1
 	ldrb r2, [r4, #2]
 	and r0, r2

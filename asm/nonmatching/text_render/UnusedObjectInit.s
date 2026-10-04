@@ -1,5 +1,5 @@
-	thumb_func_start sub_08078CA8
-sub_08078CA8: @ 0x08078CA8
+	thumb_func_start UnusedObjectInit
+UnusedObjectInit: @ 0x08078CA8
 	str r0, [r1, #4]
 	mov r0, #2
 	neg r0, r0
@@ -15,6 +15,6 @@ sub_08078CA8: @ 0x08078CA8
 	strb r0, [r1, #0xC]
 	strb r0, [r1, #0x1D]
 	bx lr
-	thumb_func_end sub_08078CA8
+	thumb_func_end UnusedObjectInit
 	.align 2, 0
 

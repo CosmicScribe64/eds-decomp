@@ -24,7 +24,7 @@ Five local struct definitions (`Main`, `DuelCard`, `DuelZone`, `DuelPlayer`, `Du
 
 Two unit-local views are kept because the canonical layout differs from what the ROM code needs:
 
-- `struct DuelZone08012C4C` (used in `sub_08013104`): `duel.h` declares zone `+0x08` as `u8 unk8[2]`, but this function writes only bit 0 and the ROM compiles a bitfield read-modify-write; a plain byte store does not match.
+- `struct DuelZone08012C4C` (used in `DuelCmd_SetZoneLevelCheckFlag`): `duel.h` declares zone `+0x08` as `u8 unk8[2]`, but this function writes only bit 0 and the ROM compiles a bitfield read-modify-write; a plain byte store does not match.
 - `struct DuelFlags08012C4C` / `gUnk_020192E0_flags asm("gDuel")` (used in `DuelCmd_SetNegationFlag`): `duel.h` folds 0x1ACC bits 6-7 and 0x1ACD bits 0-4 into `unk1ACC_0` (bits 0..14) and `queueCount` (bits 15..18); this unit needs the finer bit split.
 
 ## Functions

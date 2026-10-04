@@ -15,6 +15,6 @@
 	.include "asm/nonmatching/duel_setup/Chain_AddPartnerEntry.s"
 	.include "asm/nonmatching/duel_setup/Chain_CardGoesToGrave.s"
 	.include "asm/nonmatching/duel_setup/Chain_GetResponseCommands.s"
-	.include "asm/nonmatching/duel_setup/sub_0801FE54.s"
+	.include "asm/nonmatching/duel_setup/Chain_WaitPartnerReply.s"
 	.include "asm/nonmatching/duel_setup/Chain_AskResponse.s"
 	.include "asm/nonmatching/duel_setup/Chain_Build.s"

@@ -16,6 +16,6 @@
 	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_SetStatChangesReversed.s"
 	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_SetAtkDefSwapped.s"
 	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_AdjustDelayedSummonCount.s"
-	.include "asm/nonmatching/duel_cmd_turn/sub_08014B5C.s"
+	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_SetDestroyedTriggerPending.s"
 	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_ShowCardDetail.s"
 	.include "asm/nonmatching/duel_cmd_turn/DuelCmd_ShowCardAssemble.s"

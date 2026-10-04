@@ -127,7 +127,7 @@ extern const char gStrAskZeroAttackerAtkFmt[];  /* 0x08085A48: "%s has been desi
 extern const char gStrAskSubstituteTargetFmt[]; /* 0x08085ADC: "... select your opponent's monster to substitute as
                                                  * the target?" */
 /* Matching: card IDs read through their alias symbol (= &gCardNumberToId[CARD_1243], 0 in EDS). */
-extern const u16 gUnk_086247AA;
+extern const u16 gCardNumberToId_1243;
 
 /* The card tables through their integer addresses (different literals from gCardIdToNumber / gCardNumberToId). */
 #define CARD_NUMBER_OF(id)  (((const u16 *)0x08622AB4)[(id) & CARD_ID_MASK])   /* gCardIdToNumber[id] */
@@ -183,7 +183,7 @@ struct BattleBytes {
  * Matching: gDuel.battleStep and gDuel.battleStage are reached in several forms, the one the ROM uses in each
  * place: the member of gDuel (gDuel.battleStep), the gDuelZones symbol (= gDuel + 0x2C) as the base with the step as
  * a halfword view and the stage in a u32 or a u16 container (StepView, StageWordView, StageHalfViaZones), gDuel
- * through a cast with the stage in a u16 container (StageHalfView), and the alias symbol gUnk_0201ADF6 (= the step).
+ * through a cast with the stage in a u16 container (StageHalfView), and the alias symbol gDuelBattleStep (= the step).
  */
 struct StepView {
     u16 unk0:1;
@@ -463,7 +463,7 @@ int BattleStage_RespondToAttack(int player)
 }
 
 /* Matching: the alias symbol of gDuel.battleStep (0x0201ADF6 = gDuel + 0x1B16), used by BattleStage_RevealDefender. */
-extern struct StepView gUnk_0201ADF6;
+extern struct StepView gDuelBattleStep;
 
 /* gDuel.battleStep in BattleStage_RevealDefender. */
 enum RevealStep {
@@ -506,7 +506,7 @@ int BattleStage_RevealDefender(int player)
     if (BATTLE_BYTES.direct)
         return 1;
     e = (u8 *)&gDuel;
-    switch (gUnk_0201ADF6.step) {
+    switch (gDuelBattleStep.step) {
     case REVEAL_STEP_FLIP: {
         int opponent = 1 - player;
 
@@ -518,7 +518,7 @@ int BattleStage_RevealDefender(int player)
             TriggerMysteriousPuppeteer(opponent);
         } else {
             BATTLE_BYTES.flipCardId = 0;
-            gUnk_0201ADF6.step++;
+            gDuelBattleStep.step++;
         }
         gDuel.battleStep++;
         return 0;
@@ -548,7 +548,7 @@ int BattleStage_RevealDefender(int player)
                 int zone = FindFreeSpellTrapZone(opponent);
                 u16 source, destination;
 
-                sub_080197C0(player, BATTLE_BYTES.flipCardId);
+                ShowActivatedCard(player, BATTLE_BYTES.flipCardId);
                 source = (u8)(1 - player) | gBattle.defSlot << 8;
                 destination = (u8)(1 - player) | (u8)zone << 8;
                 MoveFieldCard(opponent, source, destination);
@@ -574,7 +574,7 @@ int BattleStage_RevealDefender(int player)
     case REVEAL_STEP_REQUEST:
         EventResponse_Request(1 - player, RESPONSE_DAMAGE_STEP,
                               (u8)player | gBattle.atkSlot << 8 | ((u8)(1 - player) | gBattle.defSlot << 8) << 16);
-        gUnk_0201ADF6.step++;
+        gDuelBattleStep.step++;
         return 0;
     default:
         return 1;
@@ -842,7 +842,7 @@ int BattleStage_DamageCalc(int player)
         return 0;
     case DAMAGE_STEP_APPLY_ZERO_ATK:
         if (gTextBox.result != 0) {
-            sub_080197C0(1 - player, ZONE_CARD_ID(DefenderZone(1 - player)));
+            ShowActivatedCard(1 - player, ZONE_CARD_ID(DefenderZone(1 - player)));
             DuelCmd_Push(player != 1 ? DUEL_CMD_PLAYER | DUEL_CMD_SET_EFFECT_UNUSED : DUEL_CMD_SET_EFFECT_UNUSED,
                          gBattle.defSlot, 0, 0);
             DuelCmd_Push(player ? DUEL_CMD_PLAYER | DUEL_CMD_ZERO_ATTACKER_ATK : DUEL_CMD_ZERO_ATTACKER_ATK, 0, 0, 0);
@@ -950,7 +950,7 @@ int BattleStage_DamageCalc(int player)
         battle->flipEffectPending = HasFlipEffect(CARD_NUMBER_OF(id), 1);
         if (CountActiveCardsOnField(0, CARD_1530) != 0 || CountActiveCardsOnField(1, CARD_1530) != 0)
             battle->flipEffectPending = 0;
-        QueueAddZoneLink(1 - player, gUnk_086247AA, LOC(1 - player, gBattle.defSlot), ZONE_LINK_CARD_EFFECT);
+        QueueAddZoneLink(1 - player, gCardNumberToId_1243, LOC(1 - player, gBattle.defSlot), ZONE_LINK_CARD_EFFECT);
         CalcBattle(player, 0);
         gDuel.battleStep = DAMAGE_STEP_START_SCENE;
         return 0;

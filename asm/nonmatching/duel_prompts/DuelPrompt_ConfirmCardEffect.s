@@ -59,7 +59,7 @@ _08021E1E:
 	lsl r1, r0, #0x10
 	lsr r1, r1, #0x10
 	add r0, r3, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r0, _08021E3C @ =0x020192E0
 	ldr r1, _08021E40 @ =0x00001B62
 	add r0, r0, r1

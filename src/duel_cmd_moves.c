@@ -467,7 +467,7 @@ void DuelCmd_SendFusionMaterialToGrave(void)
  * Command 0xA6 (DUEL_CMD_SET_ZONE_LEVEL_CHECK_FLAG): levelCheckDone of the acting player's zone arg2 = arg4.
  * The duel step that queues it (for each face-up monster) is also the only reader (meaning: hypothesis).
  */
-void sub_08013104(void)
+void DuelCmd_SetZoneLevelCheckFlag(void)
 {
     ZONE(CMD_PLAYER(), gDuelCmd.arg2)->levelCheckDone = gDuelCmd.arg4;
     gDuelCmd.running = 0;

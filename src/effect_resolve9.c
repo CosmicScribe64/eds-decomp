@@ -123,9 +123,9 @@ void DiscardHandCardInt(int player, int handIdx, int byOpponentEffect, int compa
 
 /* Alias symbols (address-suffixed, card_data.h and chain.h list them). Matching: the ROM loads these element
  * addresses from their own literals. */
-extern const u16 gUnk_086243C8[];   /* &gCardNumberToId[CARD_GAZELLE_THE_KING_OF_MYTHICAL_BEASTS] */
-extern const u16 gUnk_086247C8[];   /* &gCardNumberToId[CARD_1258] (0: no EDS card) */
-extern u32 gUnk_02017F84[];         /* gChain.scratch.effect.effectCards */
+extern const u16 gCardNumberToId_GazelleTheKingOfMythicalBeasts[];   /* &gCardNumberToId[CARD_GAZELLE_THE_KING_OF_MYTHICAL_BEASTS] */
+extern const u16 gCardNumberToId_1258[];   /* &gCardNumberToId[CARD_1258] (0: no EDS card) */
+extern u32 gChainEffectCards[];         /* gChain.scratch.effect.effectCards */
 
 /* Prompts used only by this unit. */
 extern const u8 gStrAddFromDeckToHandPrompt[];  /* 0x08083430 "Do you wish to add %s from the Deck to your
@@ -277,7 +277,7 @@ int EffectAddGazelleFromDeckResolve(struct ChainEntry *link)
         if (link->player)
             goto addCard;
         FormatStr(text, (const char *)gStrAddFromDeckToHandPrompt,
-                  (const char *)gCardNames + gUnk_086243C8[0] * CARD_NAME_SIZE);   /* Gazelle's name */
+                  (const char *)gCardNames + gCardNumberToId_GazelleTheKingOfMythicalBeasts[0] * CARD_NAME_SIZE);   /* Gazelle's name */
         TextBoxOpen(PROMPT_POS, PROMPT_SIZE_18x7, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
         TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
         return 0x7F;
@@ -576,7 +576,7 @@ int EffectEquipFromDeckAndSwitchControlResolve(struct ChainEntry *link)
         return 0;
     }
     case 0x7F:
-        FormatStr(text, (const char *)gStrSelectEquipTarget, (const char *)gCardNames + gUnk_086247C8[0] * CARD_NAME_SIZE);
+        FormatStr(text, (const char *)gStrSelectEquipTarget, (const char *)gCardNames + gCardNumberToId_1258[0] * CARD_NAME_SIZE);
         TextBoxOpen(PROMPT_POS, PROMPT_SIZE_19x6, TEXTBOX_FLAGS_DEFAULT, (const u8 *)text);
     pick:
         return 0x7E;
@@ -614,7 +614,7 @@ int EffectEquipFromDeckAndSwitchControlResolve(struct ChainEntry *link)
 found:
     /* Matching: the call after the switch, reached by goto, keeps the loop counters out of callee-saved
      * registers. */
-    RemoveDeckCardByNumber(link->player, CARD_1258, gUnk_02017F84);
+    RemoveDeckCardByNumber(link->player, CARD_1258, gChainEffectCards);
     return 0x7F;
 done:
     return 0;

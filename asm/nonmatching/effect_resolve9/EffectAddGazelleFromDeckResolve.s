@@ -55,7 +55,7 @@ _0803981C:
 	b _080398A6
 	.align 2, 0
 _0803986C: .4byte gStrAddFromDeckToHandPrompt
-_08039870: .4byte gUnk_086243C8
+_08039870: .4byte gCardNumberToId_GazelleTheKingOfMythicalBeasts
 _08039874: .4byte gCardNames
 _08039878: .4byte 0x00000206
 _0803987C: .4byte 0x00000712

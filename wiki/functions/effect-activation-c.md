@@ -28,7 +28,7 @@ The core of the unit is `CanActivateEffect(ref, other, x)`, a **"can this card e
 | Address | Size | Status | Purpose (hypotheses for the intent) |
 |---|---|---|---|
 | `0x0802CAE8` | 0x24 | matching | set bit 4 of byte +9 of the player block `0x020192E4 + player * 0xD64`; return 1 |
-| `0x0802CB0C` | 0xE0 | matching | 2-step prompt: step 0 formats a name (`FormatStr`, table `0x0822C720 + 0x40 * gUnk_08623E66[0]`) and shows it (`TextBoxOpen`); step 1: `DuelCursor_PickTarget(0xE0)`, chosen (player, zone) from `0x0201CFB0+0x824/+0x82C` must hold card number 0x39 face-up, else SE 3 |
+| `0x0802CB0C` | 0xE0 | matching | 2-step prompt: step 0 formats a name (`FormatStr`, table `0x0822C720 + 0x40 * gCardNumberToId_Kuriboh[0]`) and shows it (`TextBoxOpen`); step 1: `DuelCursor_PickTarget(0xE0)`, chosen (player, zone) from `0x0201CFB0+0x824/+0x82C` must hold card number 0x39 face-up, else SE 3 |
 | `0x0802CBEC` | 0xB4 | matching | same for a hand card: `0x02019968` (hand words) of the chosen player/index must be type 22 (Magic); `DiscardHandCard(player, idx, 0, 1)` |
 | `0x0802CCA0` | 0x18 | matching | `DuelPrompt_PostDiscardCost(ref->player, 1, 1, 0)`, return 1 |
 | `0x0802CCB8` | 0x38 | matching | step 0: `DuelPrompt_PostRandomBanish(ref->player, 2)`, step++; return 0; later return 1 |

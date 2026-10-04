@@ -132,7 +132,7 @@ All parameters, the initial card load, the empty-card return, the face-up test, 
 
 ### ROM audit corrects an inactive two-zone event argument
 
-The older `MoveFieldCard` draft passed zero to `sub_080197C0` in both the card-number `0x1E3` and `0x222` arms. In the ROM, r1 still holds the freshly reloaded 12-bit card ID at both calls, and the `sub_080197C0` wrapper uses that halfword in event `0x72`. The parked draft now reloads `id` after event `0x82` and the player-equality return, then uses that ID for the number lookup and both effect calls. This matches the ROM's read after the callback instead of caching the initial card word. The assembly fallback stays active.
+The older `MoveFieldCard` draft passed zero to `ShowActivatedCard` in both the card-number `0x1E3` and `0x222` arms. In the ROM, r1 still holds the freshly reloaded 12-bit card ID at both calls, and the `ShowActivatedCard` wrapper uses that halfword in event `0x72`. The parked draft now reloads `id` after event `0x82` and the player-equality return, then uses that ID for the number lookup and both effect calls. This matches the ROM's read after the callback instead of caching the initial card word. The assembly fallback stays active.
 
 A new 17-case grid over faithful ID, player and zone types did not reach exact bytes. Its best result is four bytes short with 261 differing bytes (277 length-penalized score). The baseline zero-argument draft was eight bytes short. These scores do not establish correctness. Evidence for the parked draft only: `build/codex-continue/two-zone-draft-repaired-unit-check.log` reports full **0x107C unit bytes MATCH**, with coverage unchanged at **12/15 C**. Private results: `two-zone-types.log` and `two-zone-types/results.json`.
 
@@ -168,7 +168,7 @@ Whole unit `0x107C` matches. Steps, in order:
 1. Big-arm card ID re-read from `*args`; GCSE turns it into the ROM's `adds r2, r3, #0` copy of the dispatch word. `id | 0x600000` goes through its own local so fold does not move the constant outward.
 2. Battle-state view at `0x02018450` (`struct Unk02018450b`): u16 bitfields `atkSlot` (bits 6-8) and `defSlot` (9-11), padded past 4 bytes. agbcc reads a struct of at most 4 bytes with `ldr`; in a larger one it uses `ldrh` for `atkSlot` and `ldrb [base, #1]` for `defSlot`, as the ROM does.
 3. Source case order: big set, `0x1CD`, `0x45C`, `0x5EA`, then `0x2D9`/`0x534`. Type-table read through the literal pointer `((const u32 *)0x08621DE0)[...]` (106 -> 102).
-4. `u16` first ID and `u32` dispatch ID (102 -> 58): the u16 makes the `ShowCardEffect` call set r0 before r1. `sub_080197C0` is called through `(void (*)(int, int))`, as other units declare it (56).
+4. `u16` first ID and `u32` dispatch ID (102 -> 58): the u16 makes the `ShowCardEffect` call set r0 before r1. `ShowActivatedCard` is called through `(void (*)(int, int))`, as other units declare it (56).
 5. Turn-bit re-read (the old "allocation" blocker, FAKEMATCH): the ROM reads `+0x1B12` again after the attacker-position `if`, so CSE1 and CSE2 never saw one path across that join. A dead store `else hi = 0;` (with `hi` assigned again below) keeps the else block alive through both CSE passes; flow deletes it later and jump2 removes the leftover jump. A redundant `&& linkSkip < 2` also broke the path (18) but left its compare in the code.
 6. `0xFFFF` between the two shifts, `ev` in r4 / `lo` in r3 (22 -> 0, FAKEMATCH): split the extraction, `t = *(u32 *)args << 20; w = 0xFFFF; t = (t >> 20) | 0x600000;`, reusing the dispatch-word variable `w` as `lo`. `update_equiv_regs` doubles the live length of a pseudo whose first set (in insn order) is a constant, even when later sets cancel the equivalence (102 instead of 51), and that let `ev` win r3. With the load as `w`'s first set there is no doubling, so `lo` gets r3 and `ev` r4.
 
@@ -176,7 +176,7 @@ Failed: if/else or `?:` for `lo` (a real else block), `do { } while (0)` around 
 
 ### `SwapFieldCards` (0x214, start score 179; ordinary C)
 
-The old draft cached the first zone in a `ZONE_AT()` pointer local, used s16/s8 ID locals, passed the cached ID to `sub_080197C0` (the ROM re-reads the card word after the event call) and swapped the call order in the second `0x222` arm. Two experiments:
+The old draft cached the first zone in a `ZONE_AT()` pointer local, used s16/s8 ID locals, passed the cached ID to `ShowActivatedCard` (the ROM re-reads the card word after the event call) and swapped the call order in the second `0x222` arm. Two experiments:
 
 1. Rewrite in the style of `MoveFieldCard` (wave 2, above): `int p1/zone1/p2/zone2`, no pointer locals, every access through the array-form `ZONE(p, z)`, and `ZONE_CARD_ID(ZONE(..))` re-read in each arm. Score 172 at the exact size; only the high-register roles differed (`arg2`, `p1`, `p2`, `zone2`, constant 1).
 2. `u16 id1` (with `u32 id2`): the narrowing leaves the ROM's `adds r5, r0, #0` copy for `id1`, which shifts every global-alloc decision into place (0). `s16 id1` scored 216, `int`/`u32` 172.

@@ -249,8 +249,8 @@ extern const char gStrMaintainLpCostFmt[];      /* "To maintain %s on the Field 
 extern const char gStrMaintainTributeFmt[];     /* "To maintain %s of the Field requires 1 monster as Tribute. Do
                                                  * you wish to tribute a monster?" */
 extern const u8 gStrSelectMonsterAsTribute[];   /* "Select a monster as Tribute." */
-extern const u16 gUnk_0862457C[];               /* = &gCardNumberToId[CARD_LIGHTFORCE_SWORD]: Lightforce Sword's ID */
-extern const u16 gUnk_086249F4[];               /* = &gCardNumberToId[CARD_1536]: 0, the dice effect's "card" */
+extern const u16 gCardNumberToId_LightforceSword[];               /* = &gCardNumberToId[CARD_LIGHTFORCE_SWORD]: Lightforce Sword's ID */
+extern const u16 gCardNumberToId_1536[];               /* = &gCardNumberToId[CARD_1536]: 0, the dice effect's "card" */
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md) ---- */
 
@@ -317,7 +317,7 @@ struct DuelPlayerSkipStandbyView { u8 pad0[9]; u8 handRevealed:1; s8 skipStandby
  * Matching: local alias prototypes where the unit calls a function through another view than the header's.
  *  - HasActivatableStandbyCard tests CanActivateEffectInZone as an int (the u16 return adds a narrowing).
  *  - DuelPhase_Standby calls FindFaceUpCardOnField2 with two arguments (the header has a third, skipZone).
- *  - sub_0804F6A8 passes two ints to EffectBlastJugglerCheck, whose handler parameters are (struct ChainEntry *,
+ *  - CountBlastJugglerTargets passes two ints to EffectBlastJugglerCheck, whose handler parameters are (struct ChainEntry *,
  *    u16 pos).
  */
 int CanActivateEffectInZoneInt(int player, int zone, u16 event) asm("CanActivateEffectInZone");
@@ -619,7 +619,7 @@ int GetMaintenanceLpCost(u16 cardNumber)
 
 /* Dead code (no callers): count the monster zones other than (skipPlayer, skipZone) for which
  * EffectBlastJugglerCheck succeeds. */
-int sub_0804F6A8(int skipPlayer, int skipZone)
+int CountBlastJugglerTargets(int skipPlayer, int skipZone)
 {
     int count = 0;
     int player, zone;
@@ -923,7 +923,7 @@ int DuelPhase_Standby(void)
             u32 info = gDuel.players[player & 1].banishedInfo[gDuel.phaseSubStep];
             if (info == ((4 << 8) | BANISH_FACE_DOWN)) {
                 u16 cmd;
-                ShowCardEffect(player, gUnk_0862457C[0]);
+                ShowCardEffect(player, gCardNumberToId_LightforceSword[0]);
                 cmd = DUEL_CMD_RETURN_BANISHED_CARD_TO_HAND;
                 if (player)
                     cmd = DUEL_CMD_RETURN_BANISHED_CARD_TO_HAND | DUEL_CMD_PLAYER;
@@ -1031,7 +1031,7 @@ int DuelPhase_Standby(void)
         }
         return 0;
     case STANDBY_STEP_DICE: {
-        const u16 *diceCardId = gUnk_086249F4;
+        const u16 *diceCardId = gCardNumberToId_1536;
         int diceCount = CountActiveCardsOnField(player, CARD_1536);
         if (diceCount > 0)
             do {
@@ -1192,7 +1192,7 @@ int DuelPhase_Standby(void)
             TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(19, 6), TEXTBOX_FLAGS_DEFAULT, text);
             TextBoxSetMenu(TEXTBOX_MENU_YES_NO, NULL, NULL);
         }
-        sub_080197C0(player, cardId);       /* DUEL_CMD_SHOW_CARD_ZOOM_IN: show the card while the question is asked */
+        ShowActivatedCard(player, cardId);       /* DUEL_CMD_SHOW_CARD_ZOOM_IN: show the card while the question is asked */
         gDuel.phaseStep++;
         return 0;
     }

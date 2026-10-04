@@ -125,19 +125,19 @@ _0806069C: .4byte gHandCursorPal
 _080606A0: .4byte 0x05000220
 _080606A4: .4byte gCardIconPal
 _080606A8: .4byte 0x050002A0
-_080606AC: .4byte gUnk_0868467C
+_080606AC: .4byte gZoneMarkerPal
 _080606B0: .4byte 0x05000240
-_080606B4: .4byte gUnk_0867FC3C
+_080606B4: .4byte gCardMenuIconsPal
 _080606B8: .4byte 0x05000260
-_080606BC: .4byte gUnk_0868045C
+_080606BC: .4byte gCardMenuLabelsPal
 _080606C0: .4byte 0x05000280
-_080606C4: .4byte gUnk_0868167C
+_080606C4: .4byte gButtonIconsPal
 _080606C8: .4byte 0x050002C0
-_080606CC: .4byte gUnk_0868557C
+_080606CC: .4byte gLinkWaitIndicatorPal
 _080606D0: .4byte 0x06010000
 _080606D4: .4byte gHandCursorGfx
 _080606D8: .4byte 0x06010800
-_080606DC: .4byte gUnk_0867817C
+_080606DC: .4byte gCardIconBackGfx
 _080606E0: .4byte 0x06011000
 _080606E4: .4byte gCardIconNormalGfx
 _080606E8: .4byte 0x06011800
@@ -151,15 +151,15 @@ _08060704: .4byte gCardIconMagicGfx
 _08060708: .4byte 0x06013800
 _0806070C: .4byte gCardIconTrapGfx
 _08060710: .4byte 0x06014000
-_08060714: .4byte gUnk_0868487C
+_08060714: .4byte gZoneMarkerCanAttackGfx
 _08060718: .4byte 0x06014180
-_0806071C: .4byte gUnk_086849FC
+_0806071C: .4byte gZoneMarkerLinkEquipGfx
 _08060720: .4byte 0x06014300
-_08060724: .4byte gUnk_08684B7C
+_08060724: .4byte gZoneMarkerLinkOtherGfx
 _08060728: .4byte 0x06014480
-_0806072C: .4byte gUnk_0867FC5C
+_0806072C: .4byte gCardMenuIconsGfx
 _08060730: .4byte 0x06014C80
-_08060734: .4byte gUnk_0868047C
+_08060734: .4byte gCardMenuLabelsGfx
 _08060738: .4byte 0x06015C80
 _0806073C: .4byte gButtonIconsGfx
 _08060740: .4byte 0x06016180
@@ -167,7 +167,7 @@ _08060744: .4byte gYesNoLabelsGfx
 _08060748: .4byte 0x06016380
 _0806074C: .4byte gDuelUiIconsGfx
 _08060750: .4byte 0x06016480
-_08060754: .4byte gUnk_0868559C
+_08060754: .4byte gLinkWaitIndicatorGfx
 _08060758: .4byte 0x0201CFB0
 	thumb_func_end LoadDuelUiGfx
 

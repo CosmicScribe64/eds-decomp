@@ -37,7 +37,7 @@ _0804677C:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r5, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r1, [r4]
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14

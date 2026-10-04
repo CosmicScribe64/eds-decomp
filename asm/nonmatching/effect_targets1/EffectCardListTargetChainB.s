@@ -25,7 +25,7 @@ EffectCardListTargetChainB: @ 0x0803DEB8
 	ldr r1, [r4]
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
-	bl sub_08019820
+	bl ShowPickedCard
 	ldrh r1, [r4]
 	add r0, r6, #0
 	bl AddEffectTarget
@@ -59,7 +59,7 @@ _0803DF08:
 	ldr r1, [r1]
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
-	bl sub_08019820
+	bl ShowPickedCard
 	ldrb r1, [r4, #5]
 	lsl r0, r1, #0x1E
 	lsr r0, r0, #0x1E

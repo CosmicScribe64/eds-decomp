@@ -17,7 +17,7 @@ Unit status: `unit bytes MATCH`, **14/14 functions in C** after workflow waves 2
 | Address | Size | Status | Purpose (hypotheses about role, verified about logic) |
 |---|---|---|---|
 | `0x080361D0` | 0x84 | matching | both sides (opponent first), zones 5-10 holding a card: `ReturnFieldCardToHand(p, j, 9)` |
-| `0x08036254` | 0x288 | **matching** (wave 3, 2026-10-01) | 5-step machine 0x80..0x7C (`(ref, arg)`): 0x80 `EffectPainfulChoicePrepare`, text `gStrPainfulChoiceSelect5`, `EFF_SIDE = 5`; 0x7F `CardListView_Open`; 0x7E takes the viewer's card into `0x02017A40+0x544+side*4` (`CopyDuelCard`), prints `gStrPainfulChoiceCardsRemaining` with the count; 0x7D copies 5 ids of `0x02017F84` into a u16 array for `DuelPrompt_PostData(opp, 12, ids, 5)`; 0x7C loops the 5 words: the one equal to `0x020192E0+0x1B64` (first time only) -> `sub_08019820` + message 0xCB, else `ShowDestroyedCard` + message 0xD7 and, for card number 0x4DA, `Chain_AddPending(bit12 << 31 \| id \| 0x3C600000, 0)` |
+| `0x08036254` | 0x288 | **matching** (wave 3, 2026-10-01) | 5-step machine 0x80..0x7C (`(ref, arg)`): 0x80 `EffectPainfulChoicePrepare`, text `gStrPainfulChoiceSelect5`, `EFF_SIDE = 5`; 0x7F `CardListView_Open`; 0x7E takes the viewer's card into `0x02017A40+0x544+side*4` (`CopyDuelCard`), prints `gStrPainfulChoiceCardsRemaining` with the count; 0x7D copies 5 ids of `0x02017F84` into a u16 array for `DuelPrompt_PostData(opp, 12, ids, 5)`; 0x7C loops the 5 words: the one equal to `0x020192E0+0x1B64` (first time only) -> `ShowPickedCard` + message 0xCB, else `ShowDestroyedCard` + message 0xD7 and, for card number 0x4DA, `Chain_AddPending(bit12 << 31 \| id \| 0x3C600000, 0)` |
 | `0x080364DC` | 0x34 | matching | message 0x44 |
 | `0x08036510` | 0x60 | matching | two targets: `GetGraveyardCardById(opp, id12(targets[0]), &out)` -> message 0xD5 |
 | `0x08036570` | 0x80 | matching | count zones 0-4 of both sides that hold a card with flag 2; `GainLifePoints(p, count * 300)` |
@@ -61,7 +61,7 @@ Working notes: `build/wf/EffectPainfulChoiceResolve/NOTES.md`, `build/wf/EffectR
 
 Score 124 to 64 to 42 to 20 to 0:
 - One `int i` shared by the 0x7D copy loop and the 0x7C loop (that is why the reversed 0x7D counter sits in r7). Keep 0x7C a real `for` loop: its loop-depth ref weighting gives `ph` r6 and `i` r7; a goto loop swaps them.
-- `sub_08019820(ref->player, CARD_ID(*pw))` takes two arguments (real prototype `(int player, u16 id)`; the unit declares one, so the source calls it through a cast). The id stays live in r1 across the call, which pushes the `ldrb` temporaries to r2/r3.
+- `ShowPickedCard(ref->player, CARD_ID(*pw))` takes two arguments (real prototype `(int player, u16 id)`; the unit declares one, so the source calls it through a cast). The id stays live in r1 across the call, which pushes the `ldrb` temporaries to r2/r3.
 - `first = 0` after the `DuelCmd_Push` call; `u32 id`, not `u8 id` (the u8 form dropped the 0x7FF mask); OR order `0x3C600000 | bit << 31 | id`.
 - The last 0x4DA hoist: `CARD_NUMBER(id) == 0x4DA` is shortened to an HImode compare, whose constant becomes a 3-insn chain (savings 2, life 4) that loop.c moves into sl (13*2*4 >= 98 insns). `u32 num = CARD_NUMBER(id); if (num == 0x4DA)` keeps it SImode (savings 1), so it stays in place.
 - Failed: `u16 id` (over the threshold in loop pass 1 but not pass 2, and it changed the AND operand order); `((w >> 12) & 1) << 31` instead of `((w << 19) >> 31) & 1` (23).

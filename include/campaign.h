@@ -256,12 +256,12 @@ void OpponentSelect_DrawDuelistInfo(u16 duelistId);
 
 /* --- Empty stubs in link_battle.c (no callers; compiled-out debug code) --- */
 
-void sub_0801A7CC(void);
-void sub_0801A7D0(void);
-void sub_0801A7D4(void);
-void sub_0801A7D8(void);
-void sub_0801A7E4(void);
-void sub_0801A7EC(void);
-void sub_0801A7F0(void);
+void DebugDrawValue(void);
+void DebugUnusedNop1(void);
+void DebugUnusedNop2(void);
+void DebugPrint(void);
+void DebugUnusedNop3(void);
+void DebugUnusedNop4(void);
+void DebugUnusedNop5(void);
 
 #endif /* GUARD_CAMPAIGN_H */

@@ -269,7 +269,7 @@ extern u16 gEndOfTurnEffectCards[12];       /* card numbers whose ZONE_LINK_CARD
 extern const u16 gTurnEndHandFrames[];      /* [32] OBJ tile offset per frame of the end-of-turn hand */
 /* Alias symbol = gCardNumberToId[CARD_INSECT_MONSTER_TOKEN] (the token's card ID); the matched code loads
  * this address from its own literal. */
-extern const u16 gUnk_08624CF4[];
+extern const u16 gCardNumberToId_InsectMonsterToken[];
 
 /* The acting player of the current command (cmd bit 15), in the two forms the handlers use. */
 #define CMD_PLAYER()        (gDuelCmd.cmd >> 15)
@@ -641,7 +641,7 @@ void DuelCmd_TurnEnd(void)
                 int target = FindFreeMonsterZone(player);
 
                 ShowCardEffectInt(player, id);
-                DuelCmd_Push(CMD_OF(player, DUEL_CMD_SHOW_CARD_ASSEMBLE), gUnk_08624CF4[0], 1, 0);
+                DuelCmd_Push(CMD_OF(player, DUEL_CMD_SHOW_CARD_ASSEMBLE), gCardNumberToId_InsectMonsterToken[0], 1, 0);
                 /* arg2: the token's zone (the high byte, Insect Queen's zone, is not read) */
                 DuelCmd_Push(CMD_OF(player, DUEL_CMD_SUMMON_TOKEN), (u8)target | ((u8)i << 8),
                              TOKEN_KIND_INSECT_MONSTER, 0);
@@ -771,7 +771,7 @@ void DuelCmd_AdjustDelayedSummonCount(void)
 
 /* Command 0x4C (DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING): destroyedTriggerPending of the acting player = arg2
  * (key 1514 was destroyed; its effect runs in the End Phase). */
-void sub_08014B5C(void)
+void DuelCmd_SetDestroyedTriggerPending(void)
 {
     gDuelPlayers[CMD_PLAYER_BIT()].destroyedTriggerPending = gDuelCmd.arg2;
     gDuelCmd.running = 0;

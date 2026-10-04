@@ -9,7 +9,7 @@
  * enum EndPhaseStep) are the Draw and End Phase handlers; DuelPhase_End announces the phase, runs the
  * three end-of-phase scans (EndPhase_ReturnWickedWormBeast, EndPhase_TransferMushroomMan2,
  * EndPhase_DestroyLowLevelMonsters), resolves the zone-link and graveyard effects and enforces the
- * six-card hand limit. sub_0804E3BC is an empty stub; sub_0804E3C0 queues the pulsing sprite of the
+ * six-card hand limit. BattlePhase_UnusedNop is an empty stub; DuelScreen_DrawPulseIconOverlay queues the pulsing sprite of the
  * selected card.
  *
  * Card numbers written CARD_12xx to CARD_15xx are effect-table keys of cards the EDS ROM does not
@@ -180,13 +180,13 @@ extern const char gStrAskTransferControlFmt[];  /* 0x08085BD8: "Do you wish to p
                                                  * of %s to your opponent?" (Mushroom Man #2) */
 /* Card IDs read through their alias symbols (= &gCardNumberToId[CARD_x], include/card_data.h); indexing
  * gCardNumberToId instead changes the code. */
-extern const u16 gUnk_08624244[];               /* CARD_MUSHROOM_MAN_2 */
-extern const u16 gUnk_08624730[];               /* CARD_SWORD_OF_DRAGONS_SOUL */
-extern const u16 gUnk_08624848[];               /* CARD_1322 (0 in EDS) */
-extern const u16 gUnk_0862486C[];               /* CARD_1340 (0 in EDS) */
-extern const u16 gUnk_086249C8[];               /* CARD_1514 (0 in EDS) */
-extern const u16 gUnk_086249F8[];               /* CARD_1538 (0 in EDS) */
-extern const u16 gUnk_08624A0C[];               /* CARD_1548 (0 in EDS) */
+extern const u16 gCardNumberToId_MushroomMan2[];               /* CARD_MUSHROOM_MAN_2 */
+extern const u16 gCardNumberToId_SwordOfDragonsSoul[];               /* CARD_SWORD_OF_DRAGONS_SOUL */
+extern const u16 gCardNumberToId_1322[];               /* CARD_1322 (0 in EDS) */
+extern const u16 gCardNumberToId_1340[];               /* CARD_1340 (0 in EDS) */
+extern const u16 gCardNumberToId_1514[];               /* CARD_1514 (0 in EDS) */
+extern const u16 gCardNumberToId_1538[];               /* CARD_1538 (0 in EDS) */
+extern const u16 gCardNumberToId_1548[];               /* CARD_1548 (0 in EDS) */
 /* 0x0819D1D8: the Battle Phase stage handlers, indexed by gDuel.battleStage (enum BattleStage). */
 extern int (*const volatile gBattleStageHandlers[])(int);
 
@@ -278,7 +278,7 @@ int BattleStage_EndAttack(int player)
         ((struct BattleStepHalf *)(e + 0x1B16))->step = 0;
         return 0;
     }
-    ShowCardEffect(player, gUnk_086249F8[0]);
+    ShowCardEffect(player, gCardNumberToId_1538[0]);
     return 1;
 }
 
@@ -350,7 +350,7 @@ int BattleStage_EndBattlePhase(int player)
                 /* FAKEMATCH: the table pointer is set at the top of the body so loop.c hoists it. */
                 const u16 *t;
                 card = CARD_SWORD_OF_DRAGONS_SOUL;
-                t = gUnk_08624730;
+                t = gCardNumberToId_SwordOfDragonsSoul;
                 if (HasZoneCardEffectLink(j, i, card)) {
                     ShowCardEffect(j, t[0]);
                     DestroyFieldCard(j, i, 1);
@@ -409,7 +409,7 @@ int BattleStage_EndBattlePhase(int player)
             BATTLE_END_STATE->battleStep = 2;
             return 0;
         }
-        ShowCardEffect(player, gUnk_0862486C[0]);
+        ShowCardEffect(player, gCardNumberToId_1340[0]);
         BATTLE_END_STATE->battleStep++;
         return 0;
     case 6:
@@ -544,14 +544,14 @@ int BattlePhase_Run(int player)
     }
 }
 
-void sub_0804E3BC(void)
+void BattlePhase_UnusedNop(void)
 {
 }
 
 /* Queue a sprite draw of the selected card: the packed first argument depends on how far the duel
  * screen cursor has travelled (DuelScreen +0x810 - +0x04), the scale comes from gPulseScaleCurve
  * indexed by bits 1-4 of the gMain frame counter (+0x485E). */
-void sub_0804E3C0(void)
+void DuelScreen_DrawPulseIconOverlay(void)
 {
     u8 *e = (u8 *)&gDuelScreen;
     u8 *m;
@@ -692,7 +692,7 @@ int EndPhase_TransferMushroomMan2(int player)
         return 1;
     }
     case 1:
-        FormatStr(buf, gStrAskTransferControlFmt, gCardNames + (gUnk_08624244[0] << 6));
+        FormatStr(buf, gStrAskTransferControlFmt, gCardNames + (gCardNumberToId_MushroomMan2[0] << 6));
         TextBoxOpen(0x206, 0x712, TEXTBOX_FLAGS_DEFAULT, buf);
         TextBoxSetMenu(TEXTBOX_MENU_YES_NO, 0, 0);
         (*st)++;
@@ -772,7 +772,7 @@ void EndPhase_DestroyLowLevelMonsters(int player)
         u16 msg = DUEL_CMD_SHOW_CARD_EFFECT;
         if (player != 0)
             msg = DUEL_CMD_SHOW_CARD_EFFECT | DUEL_CMD_PLAYER;
-        DuelCmd_PushU16(msg, gUnk_08624848[0], 1, 0);
+        DuelCmd_PushU16(msg, gCardNumberToId_1322[0], 1, 0);
     }
     for (i = 0; i <= 4; i++) {
         struct ZoneLevelView *zn = (struct ZoneLevelView *)(i * 0x94 + (player & 1) * 0xD64 + (int)gDuelZones);
@@ -977,7 +977,7 @@ int DuelPhase_End(void)
         do {
             /* Declared at the top of the body: loop.c hoists the table address, it gets no
              * hard register and is reloaded at the call (keeps the reload rotation). */
-            const u16 *t = gUnk_08624A0C;
+            const u16 *t = gCardNumberToId_1548;
             if (CountZoneLinksFromCard(player, END_ZONE, CARD_1548)) {
                 u16 idx = FindZoneLinkFromCard(player, END_ZONE, CARD_1548);
                 int side = player & 1;
@@ -1041,7 +1041,7 @@ int DuelPhase_End(void)
             if (player) msg = DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING | DUEL_CMD_PLAYER;
             DuelCmd_PushU16(msg, 0, 0, 0);
             if (CountMonstersFiltered(1 - player, 1, 0) > 0) {
-                const u16 *t = gUnk_086249C8;
+                const u16 *t = gCardNumberToId_1514;
                 Chain_AddPending(((player & 1) << 31) | (kind = 0x26600000 | t[0]), 0);
             }
         }
@@ -1053,7 +1053,7 @@ int DuelPhase_End(void)
             if (player != 1) msg = DUEL_CMD_SET_DESTROYED_TRIGGER_PENDING | DUEL_CMD_PLAYER;
             DuelCmd_PushU16(msg, 0, 0, 0);
             if (CountMonstersFiltered(player, 1, 0) > 0) {
-                const u16 *t = gUnk_086249C8;
+                const u16 *t = gCardNumberToId_1514;
                 Chain_AddPending(((player ^ 1) << 31) | (kind = 0x26600000 | t[0]), 0);
             }
         }

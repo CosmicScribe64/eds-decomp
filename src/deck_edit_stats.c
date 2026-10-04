@@ -353,9 +353,9 @@ extern const u8 gDeckStatsPatternMap[], gDeckStatsPanelMap[], gDeckStatsBg1Map[]
 extern const u8 gDeckStatsBgTiles[], gDeckStatsLabelTiles[], gDeckStatsBgPal[];
 /* = gCardIdToNumber[0x439] (the card number of card ID 0x439, Obelisk); read by
  * DeckStats_Init's discarded card-type computation. */
-extern const u16 gDeckStatsObeliskNumber asm("gUnk_08623326");
+extern const u16 gDeckStatsObeliskNumber asm("gCardIdToNumber_1081");
 /* Alias of gDeckEdit.panelAlpha (header note: address-suffixed aliases are matching choices). */
-extern u8 gDeckEditPanelAlpha asm("gUnk_0201F770");   /* 0x0201F770 */
+extern u8 gDeckEditPanelAlpha asm("gDeckEditPanelAlpha");   /* 0x0201F770 */
 /* FAKEMATCH: two initialized bindings retain the shared tile source and
  * fade-speed store allocation. Three empty constraints preserve the original
  * discarded card-type computation and its range tests without instructions. */
@@ -425,7 +425,7 @@ int DeckStats_Init(void)
 }
 
 void DeckStats_DrawNumbers(void);
-/* Local view of gDeckEdit reached from the fade (gUnk_0201E138 = &gDeckEdit.fade): the
+/* Local view of gDeckEdit reached from the fade (gDeckEditFade = &gDeckEdit.fade): the
  * Statistics screen reads its background scroll and panel bytes from this base. */
 struct DeckStatsFadeView {
     struct Fade fade;               /* +0x0000 (= gDeckEdit.fade) */
@@ -437,22 +437,22 @@ struct DeckStatsFadeView {
     u8 pad163A;
     u8 inputLock;                   /* +0x163B (= gDeckEdit.inputLock) */
 };
-extern struct DeckStatsFadeView gUnk_0201E138;   /* 0x0201E138 */
+extern struct DeckStatsFadeView gDeckEditFade;   /* 0x0201E138 */
 
 u16 DeckStats_Update(void)
 {
     u32 keys = gMain.newKeys & 0x3FF;
-    FadeTick((struct Fade *)&gUnk_0201E138);
+    FadeTick((struct Fade *)&gDeckEditFade);
     DeckStats_DrawNumbers();
-    gUnk_0201E138.bgScrollX += 0x80;
-    gUnk_0201E138.bgScrollY += 0x80;
-    REG_BG3HOFS = gUnk_0201E138.bgScrollX >> 8;
-    REG_BG3VOFS = gUnk_0201E138.bgScrollY >> 8;
-    if (gUnk_0201E138.fade.state == FADE_STATE_IDLE && gUnk_0201E138.inputLock == 0) {
+    gDeckEditFade.bgScrollX += 0x80;
+    gDeckEditFade.bgScrollY += 0x80;
+    REG_BG3HOFS = gDeckEditFade.bgScrollX >> 8;
+    REG_BG3VOFS = gDeckEditFade.bgScrollY >> 8;
+    if (gDeckEditFade.fade.state == FADE_STATE_IDLE && gDeckEditFade.inputLock == 0) {
         switch (keys) {
         case A_BUTTON:
         case B_BUTTON:
-            gUnk_0201E138.panelAlphaStep = 1;
+            gDeckEditFade.panelAlphaStep = 1;
             PlaySE(SE_CANCEL);
             break;
         }
@@ -512,7 +512,7 @@ struct InitState {
     u8 pad1BB8[0x1C1C - 0x1BB8]; u8 curList, prevList;
 };
 /* Alias of &gDeckEdit.frameSlots (header note: address-suffixed aliases are matching choices). */
-extern u8 gDeckEditFrameSlots[] asm("gUnk_0201F6D8");   /* 0x0201F6D8 */
+extern u8 gDeckEditFrameSlots[] asm("gDeckEditFrameSlots");   /* 0x0201F6D8 */
 /* The cursor-row page/ring byte at gDeckEditFrameSlots + 0x7C (gDeckEdit + 0x1C34). */
 struct CursorRowPageView { u8 cursorRowPage:1; u8 listRowRing:4; u8 rest:3; u8 pad[7]; };
 #define INIT (*(struct InitState *)&gDeckEdit)

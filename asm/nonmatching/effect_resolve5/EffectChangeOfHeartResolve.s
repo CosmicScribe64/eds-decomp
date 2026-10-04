@@ -70,7 +70,7 @@ _08035420:
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
 	add r0, r6, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	b _08035476
 _08035438: .4byte 0x00000D64
 _0803543C: .4byte 0x0201930C

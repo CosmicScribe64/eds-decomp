@@ -213,12 +213,12 @@ _08067804: .4byte 0x0201DB20
 _08067808: .4byte 0x00001C5A
 _0806780C: .4byte gDeckEditMenuTilemap
 _08067810: .4byte 0x0600E000
-_08067814: .4byte gUnk_086F17E8
+_08067814: .4byte gDeckEditMenuTilemapBarEnd
 _08067818: .4byte 0x0600E038
 _0806781C: .4byte 0x00001C1C
-_08067820: .4byte gUnk_086F17D4
+_08067820: .4byte gDeckEditMenuTilemapFilterLabels
 _08067824: .4byte 0x0600E024
-_08067828: .4byte gUnk_086F17E0
+_08067828: .4byte gDeckEditMenuTilemapSortLabels
 _0806782C: .4byte 0x0600E030
 _08067830: .4byte gDeckEditFrameMap
 _08067834: .4byte 0x03000040
@@ -316,7 +316,7 @@ _080678E6:
 	.align 2, 0
 _080678F8: .4byte 0x03000040
 _080678FC: .4byte 0x00000414
-_08067900: .4byte gUnk_081A6EAC
+_08067900: .4byte gDeckEditCommandTabSprite
 _08067904: .4byte gDeckEditCommandLabelSprites
 	thumb_func_end DeckEdit_DrawCommandMenu
 

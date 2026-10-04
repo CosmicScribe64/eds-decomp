@@ -301,7 +301,7 @@ _0801C1A8:
 	b _0801C908
 _0801C1D4: .4byte 0x02011C20
 _0801C1D8: .4byte 0x0000215E
-_0801C1DC: .4byte gUnk_08624CD0
+_0801C1DC: .4byte gCardNumberToId_SetSailForTheKingdom
 _0801C1E0: .4byte 0x0000488A
 _0801C1E4: .4byte 0xFFFFF00F
 _0801C1E8:
@@ -328,7 +328,7 @@ _0801C1E8:
 	b _0801C908
 _0801C214: .4byte 0x02011C20
 _0801C218: .4byte 0x0000215E
-_0801C21C: .4byte gUnk_08624CCE
+_0801C21C: .4byte gCardNumberToId_TheMonarchy
 _0801C220: .4byte 0x0000488A
 _0801C224: .4byte 0xFFFFF00F
 _0801C228:
@@ -355,7 +355,7 @@ _0801C228:
 	b _0801C908
 _0801C254: .4byte 0x02011C20
 _0801C258: .4byte 0x0000215E
-_0801C25C: .4byte gUnk_08624CD2
+_0801C25C: .4byte gCardNumberToId_GloryOfTheKingsHand
 _0801C260: .4byte 0x0000488A
 _0801C264: .4byte 0xFFFFF00F
 _0801C268:
@@ -953,9 +953,9 @@ _0801C78A:
 	strh r0, [r3]
 	b _0801C02E
 	.align 2, 0
-_0801C7A4: .4byte gUnk_08624CCE
-_0801C7A8: .4byte gUnk_08624CD0
-_0801C7AC: .4byte gUnk_08624CD2
+_0801C7A4: .4byte gCardNumberToId_TheMonarchy
+_0801C7A8: .4byte gCardNumberToId_SetSailForTheKingdom
+_0801C7AC: .4byte gCardNumberToId_GloryOfTheKingsHand
 _0801C7B0: .4byte 0x00004859
 _0801C7B4: .4byte 0x0000485A
 _0801C7B8: .4byte 0x0000485B

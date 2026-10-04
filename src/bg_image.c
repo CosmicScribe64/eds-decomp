@@ -46,7 +46,7 @@
 /* The eight 0x800-byte BG map buffers (gMain.bgMapBuffer at 0x0300045C), under the symbol they have
  * always used. The [8][0x800] row form is a matching choice: gBgMaps[row] derives a buffer's address
  * the way the ROM does (build/readability/issues/bg_image.md). */
-extern u8 gBgMaps[8][0x800] asm("gUnk_0300045C");
+extern u8 gBgMaps[8][0x800] asm("gBgMaps");
 
 /* The halfword FillMapRect fills with (0 in practice, so it clears). */
 extern u16 gMapFillTile[];                  /* 0x081A7760 */

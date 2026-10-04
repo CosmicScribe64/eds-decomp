@@ -701,7 +701,7 @@ _0804C5F0:
 	ldr r1, [r1]
 	lsl r1, r1, #0x14
 	lsr r1, r1, #0x14
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r0, #0x92
 	cmp r7, #1
 	beq _0804C628
@@ -1286,7 +1286,7 @@ _0804CB20: .4byte 0x0201930C
 _0804CB24: .4byte 0x000007FF
 _0804CB28: .4byte gCardIdToNumber
 _0804CB2C: .4byte 0x000005FA
-_0804CB30: .4byte gUnk_086247AA
+_0804CB30: .4byte gCardNumberToId_1243
 _0804CB34: .4byte 0x020192E0
 _0804CB38: .4byte 0x00001B16
 _0804CB3C: .4byte 0xFFFFFE01

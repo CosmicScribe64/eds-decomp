@@ -63,7 +63,7 @@ _08030960:
 	mov r0, #0x7F
 	b _08030A1E
 _080309AC: .4byte gStrTributeToReturnToDeckPrompt
-_080309B0: .4byte gUnk_08624052
+_080309B0: .4byte gCardNumberToId_AxeOfDespair
 _080309B4: .4byte gCardNames
 _080309B8: .4byte 0x00000205
 _080309BC: .4byte 0x00000914

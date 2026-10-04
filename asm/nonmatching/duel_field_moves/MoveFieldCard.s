@@ -89,7 +89,7 @@ _08019128:
 	cmp r0, #0
 	beq _08019186
 	add r0, r5, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r1, #0xFA
 	lsl r1, r1, #3
 	add r0, r6, #0
@@ -113,7 +113,7 @@ _0801915C:
 	cmp r0, #0
 	beq _08019186
 	add r0, r5, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r1, _08019194 @ =0x00000BB8
 	add r0, r5, #0
 	bl GainLifePoints

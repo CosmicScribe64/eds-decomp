@@ -364,7 +364,7 @@ int EffectBackupSoldierResolve(struct ChainEntry *link)
              * after link->player is loaded. */
             ReturnGraveyardCardToHand(link->player,
                 CARD_NUMBER(CARD_ID11((view = &gCardListView)->cards[view->top + view->cursorRow])));
-            sub_08019820(link->player, CARD_ID(view->cards[view->top + view->cursorRow]));
+            ShowPickedCard(link->player, CARD_ID(view->cards[view->top + view->cursorRow]));
             if (--gChain.effectSubStep != 0)
                 return EFFECT_STEP_2;
             return EFFECT_STEP_END;

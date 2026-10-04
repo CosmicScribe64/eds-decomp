@@ -1,5 +1,5 @@
-	thumb_func_start sub_08021CEC
-sub_08021CEC: @ 0x08021CEC
+	thumb_func_start DuelPrompt_DrawPositionChoice
+DuelPrompt_DrawPositionChoice: @ 0x08021CEC
 	push {r4, r5, r6, r7, lr}
 	lsl r0, r0, #0x10
 	lsr r5, r0, #0x10
@@ -87,5 +87,5 @@ _08021D8E:
 	.align 2, 0
 _08021DA0: .4byte 0x01000020
 _08021DA4: .4byte 0x004000A0
-	thumb_func_end sub_08021CEC
+	thumb_func_end DuelPrompt_DrawPositionChoice
 

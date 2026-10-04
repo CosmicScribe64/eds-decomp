@@ -132,7 +132,7 @@ extern u8 gChainBytes[] asm("gChain");
 
 /* &gCardNumberToId[CARD_1405] (0x08623DF4 + 2 * 1405); the entry is 0 in EDS (no such card). Matching: the
  * ROM loads this element address from its own literal. */
-extern const u16 gUnk_086248EE[];
+extern const u16 gCardNumberToId_1405[];
 
 /* Prompts (ROM; only this unit uses them; the shared ones are in effect.h). */
 extern const char gStrSelectAttackTargetFmt[];                  /* 0x080849B4: key 1428, %s = card 1405 */
@@ -237,7 +237,7 @@ int EffectRedirectAttackChainB(struct ChainEntry *link)
     char prompt[0x100];
 
     if (*step == 0) {
-        FormatStr(prompt, gStrSelectAttackTargetFmt, (const char *)gCardNames + gUnk_086248EE[0] * CARD_NAME_SIZE);
+        FormatStr(prompt, gStrSelectAttackTargetFmt, (const char *)gCardNames + gCardNumberToId_1405[0] * CARD_NAME_SIZE);
         TextBoxOpen(TARGET_PROMPT_POS, TARGET_PROMPT_SIZE, TEXTBOX_FLAGS_DEFAULT, (const u8 *)prompt);
         {
             /* link->numTargets = 0, as a read-modify-write of the byte at +0xA. FAKEMATCH: the named r1

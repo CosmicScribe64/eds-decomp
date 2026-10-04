@@ -58,7 +58,7 @@ staged post-H0 `gba.h`.
 
 ## Matching tricks
 
-- `s32 m = ~1; *p = *p & m;` gives `mov r1,#2; neg r1,r1; ldrb; and` (a plain `&= ~1` on a byte is narrowed to `#254`). A bitfield `p->flag = 0` (`u8 flag : 1`) also gives the `neg` form (`sub_08078CA8`), and two locals `z = 0; two = 2;` fix the constant-load order.
+- `s32 m = ~1; *p = *p & m;` gives `mov r1,#2; neg r1,r1; ldrb; and` (a plain `&= ~1` on a byte is narrowed to `#254`). A bitfield `p->flag = 0` (`u8 flag : 1`) also gives the `neg` form (`UnusedObjectInit`), and two locals `z = 0; two = 2;` fix the constant-load order.
 - `if (step >= 0) x = 0; else x = 0x1000;` matches; the ternary version becomes branchless.
 - `if (mode != 0x10) { if (mode == 0x100) B } else A` reproduces `cmp; beq A` with A laid out last (`CopyTileRows`); a `switch` gives a different layout.
 - Helper returning `u16` used as `SjisToGlyphIndex(ch) * 8` must be declared `int` (no `lsl/lsr 16` after the call).

@@ -1,5 +1,5 @@
-	thumb_func_start sub_0804F6A8
-sub_0804F6A8: @ 0x0804F6A8
+	thumb_func_start CountBlastJugglerTargets
+CountBlastJugglerTargets: @ 0x0804F6A8
 	push {r4, r5, r6, r7, lr}
 	mov r7, r9
 	mov r6, r8
@@ -37,5 +37,5 @@ _0804F6D2:
 	pop {r4, r5, r6, r7}
 	pop {r1}
 	bx r1
-	thumb_func_end sub_0804F6A8
+	thumb_func_end CountBlastJugglerTargets
 

@@ -49,14 +49,14 @@ extern const u16 gPackListSlideEase[];      /* 0x080865CC: [8] slide easing fact
 extern const u8 gStrDeckEditNoCards[];      /* 0x08087554: 'There are no cards.' */
 extern const u8 gRaStatDigits[4];           /* 0x08087568: ATK/DEF digits of The Winged Dragon of Ra */
 /* Card icon tile and palette blocks, 0x08704D48-0x08706DE8 (see DeckEdit_LoadCardIconTiles). */
-extern const u8 gUnk_08704D48[], gUnk_08704DE8[], gUnk_08704E88[], gUnk_08704FA8[], gUnk_08705048[];
-extern const u8 gUnk_08705188[], gUnk_087052C8[], gUnk_08705408[], gUnk_08705628[], gUnk_087056C8[];
-extern const u8 gUnk_08705768[], gUnk_08705808[], gUnk_087058A8[], gUnk_08705948[], gUnk_087059E8[];
-extern const u8 gUnk_08705A88[], gUnk_08705B28[], gUnk_08705BC8[], gUnk_08705C68[], gUnk_08705D08[];
-extern const u8 gUnk_08705DA8[], gUnk_08705E48[], gUnk_08705EE8[], gUnk_08705F88[], gUnk_08706028[];
-extern const u8 gUnk_087060C8[], gUnk_08706168[], gUnk_08706208[], gUnk_087062A8[], gUnk_08706348[];
-extern const u8 gUnk_087063E8[], gUnk_08706528[], gUnk_08706668[], gUnk_087067A8[], gUnk_087068E8[];
-extern const u8 gUnk_08706A28[], gUnk_08706B68[], gUnk_08706CA8[], gUnk_08706DE8[];
+extern const u8 gCardKindIconRitualGfx[], gCardKindIconEffectGfx[], gDeckEditStatIconGfx[], gCardKindIconFusionGfx[], gSpellSubtypeIconCounterGfx[];
+extern const u8 gSpellSubtypeIconContinuousGfx[], gSpellSubtypeIconFieldGfx[], gSpellSubtypeIconRitualGfx[], gSpellSubtypeIconEquipGfx[], gSpellSubtypeIconQuickPlayGfx[];
+extern const u8 gTypeIconFiendGfx[], gTypeIconDragonGfx[], gTypeIconRockGfx[], gTypeIconReptileGfx[], gTypeIconPyroGfx[];
+extern const u8 gTypeIconBeastWarriorGfx[], gTypeIconSeaSerpentGfx[], gTypeIconThunderGfx[], gTypeIconBeastGfx[], gTypeIconMachineGfx[];
+extern const u8 gTypeIconInsectGfx[], gTypeIconDinosaurGfx[], gTypeIconSpellcasterGfx[], gTypeIconAquaGfx[], gTypeIconFishGfx[];
+extern const u8 gTypeIconWarriorGfx[], gTypeIconPlantGfx[], gTypeIconFairyGfx[], gTypeIconWingedBeastGfx[], gTypeIconZombieGfx[];
+extern const u8 gAttributeIconEarthGfx[], gAttributeIconLightGfx[], gAttributeIconFireGfx[], gAttributeIconDivineGfx[], gAttributeIconWindGfx[];
+extern const u8 gAttributeIconMagicGfx[], gAttributeIconWaterGfx[], gAttributeIconTrapGfx[], gAttributeIconDarkGfx[];
 
 void PackList_DebugNop(u32 value) {}
 /* Pack-list scene step: video setup, draw the covers, then fade in and enable the cover blend. */
@@ -410,45 +410,45 @@ void DeckEdit_DrawNoCardsText(u32 unusedCardId, u8 *map, u16 col, u16 row)
 /* Copy the card icon tile/palette blocks (gUnk_0870xxxx above, 0x40 u32 words each) to dst. */
 void DeckEdit_LoadCardIconTiles(u8 *dst)
 {
-    CpuSet(gUnk_08706528, dst, 0x40);
-    CpuSet(gUnk_08706DE8, dst + 0x80, 0x40);
-    CpuSet(gUnk_08706B68, dst + 0x100, 0x40);
-    CpuSet(gUnk_08706668, dst + 0x180, 0x40);
-    CpuSet(gUnk_087063E8, dst + 0x200, 0x40);
-    CpuSet(gUnk_087068E8, dst + 0x280, 0x40);
-    CpuSet(gUnk_08706A28, dst + 0x300, 0x40);
-    CpuSet(gUnk_08706CA8, dst + 0x380, 0x40);
-    CpuSet(gUnk_087067A8, dst + 0x400, 0x40);
-    CpuSet(gUnk_08705808, dst + 0x480, 0x40);
-    CpuSet(gUnk_08706348, dst + 0x500, 0x40);
-    CpuSet(gUnk_08705768, dst + 0x580, 0x40);
-    CpuSet(gUnk_087059E8, dst + 0x600, 0x40);
-    CpuSet(gUnk_08705B28, dst + 0x680, 0x40);
-    CpuSet(gUnk_087058A8, dst + 0x700, 0x40);
-    CpuSet(gUnk_08705D08, dst + 0x780, 0x40);
-    CpuSet(gUnk_08706028, dst + 0x800, 0x40);
-    CpuSet(gUnk_08705E48, dst + 0x880, 0x40);
-    CpuSet(gUnk_08705DA8, dst + 0x900, 0x40);
-    CpuSet(gUnk_08705C68, dst + 0x980, 0x40);
-    CpuSet(gUnk_08705A88, dst + 0xA00, 0x40);
-    CpuSet(gUnk_08706168, dst + 0xA80, 0x40);
-    CpuSet(gUnk_08705F88, dst + 0xB00, 0x40);
-    CpuSet(gUnk_087060C8, dst + 0xB80, 0x40);
-    CpuSet(gUnk_087062A8, dst + 0xC00, 0x40);
-    CpuSet(gUnk_08706208, dst + 0xC80, 0x40);
-    CpuSet(gUnk_08705EE8, dst + 0xD00, 0x40);
-    CpuSet(gUnk_08705BC8, dst + 0xD80, 0x40);
-    CpuSet(gUnk_08705948, dst + 0xE00, 0x40);
-    CpuSet(gUnk_08705048, dst + 0xE80, 0x40);
-    CpuSet(gUnk_087052C8, dst + 0xF00, 0x40);
-    CpuSet(gUnk_08705628, dst + 0xF80, 0x40);
-    CpuSet(gUnk_08705188, dst + 0x1000, 0x40);
-    CpuSet(gUnk_087056C8, dst + 0x1080, 0x40);
-    CpuSet(gUnk_08705408, dst + 0x1100, 0x40);
-    CpuSet(gUnk_08704DE8, dst + 0x1180, 0x40);
-    CpuSet(gUnk_08704FA8, dst + 0x1200, 0x40);
-    CpuSet(gUnk_08704D48, dst + 0x1280, 0x40);
-    CpuSet(gUnk_08704E88, dst + 0x1300, 0x30);
+    CpuSet(gAttributeIconLightGfx, dst, 0x40);
+    CpuSet(gAttributeIconDarkGfx, dst + 0x80, 0x40);
+    CpuSet(gAttributeIconWaterGfx, dst + 0x100, 0x40);
+    CpuSet(gAttributeIconFireGfx, dst + 0x180, 0x40);
+    CpuSet(gAttributeIconEarthGfx, dst + 0x200, 0x40);
+    CpuSet(gAttributeIconWindGfx, dst + 0x280, 0x40);
+    CpuSet(gAttributeIconMagicGfx, dst + 0x300, 0x40);
+    CpuSet(gAttributeIconTrapGfx, dst + 0x380, 0x40);
+    CpuSet(gAttributeIconDivineGfx, dst + 0x400, 0x40);
+    CpuSet(gTypeIconDragonGfx, dst + 0x480, 0x40);
+    CpuSet(gTypeIconZombieGfx, dst + 0x500, 0x40);
+    CpuSet(gTypeIconFiendGfx, dst + 0x580, 0x40);
+    CpuSet(gTypeIconPyroGfx, dst + 0x600, 0x40);
+    CpuSet(gTypeIconSeaSerpentGfx, dst + 0x680, 0x40);
+    CpuSet(gTypeIconRockGfx, dst + 0x700, 0x40);
+    CpuSet(gTypeIconMachineGfx, dst + 0x780, 0x40);
+    CpuSet(gTypeIconFishGfx, dst + 0x800, 0x40);
+    CpuSet(gTypeIconDinosaurGfx, dst + 0x880, 0x40);
+    CpuSet(gTypeIconInsectGfx, dst + 0x900, 0x40);
+    CpuSet(gTypeIconBeastGfx, dst + 0x980, 0x40);
+    CpuSet(gTypeIconBeastWarriorGfx, dst + 0xA00, 0x40);
+    CpuSet(gTypeIconPlantGfx, dst + 0xA80, 0x40);
+    CpuSet(gTypeIconAquaGfx, dst + 0xB00, 0x40);
+    CpuSet(gTypeIconWarriorGfx, dst + 0xB80, 0x40);
+    CpuSet(gTypeIconWingedBeastGfx, dst + 0xC00, 0x40);
+    CpuSet(gTypeIconFairyGfx, dst + 0xC80, 0x40);
+    CpuSet(gTypeIconSpellcasterGfx, dst + 0xD00, 0x40);
+    CpuSet(gTypeIconThunderGfx, dst + 0xD80, 0x40);
+    CpuSet(gTypeIconReptileGfx, dst + 0xE00, 0x40);
+    CpuSet(gSpellSubtypeIconCounterGfx, dst + 0xE80, 0x40);
+    CpuSet(gSpellSubtypeIconFieldGfx, dst + 0xF00, 0x40);
+    CpuSet(gSpellSubtypeIconEquipGfx, dst + 0xF80, 0x40);
+    CpuSet(gSpellSubtypeIconContinuousGfx, dst + 0x1000, 0x40);
+    CpuSet(gSpellSubtypeIconQuickPlayGfx, dst + 0x1080, 0x40);
+    CpuSet(gSpellSubtypeIconRitualGfx, dst + 0x1100, 0x40);
+    CpuSet(gCardKindIconEffectGfx, dst + 0x1180, 0x40);
+    CpuSet(gCardKindIconFusionGfx, dst + 0x1200, 0x40);
+    CpuSet(gCardKindIconRitualGfx, dst + 0x1280, 0x40);
+    CpuSet(gDeckEditStatIconGfx, dst + 0x1300, 0x30);
 }
 extern const u16 gAttributeIconTiles[], gTypeIconTiles[], gSpellSubtypeIconTiles[], gCardKindIconTiles[];
 extern const u32 *const gAttributeIconPals[], *const gTypeIconPals[], *const gSpellSubtypeIconPals[], *const gCardKindIconPals[];

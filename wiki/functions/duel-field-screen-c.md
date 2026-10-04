@@ -30,7 +30,7 @@ It is the board/screen layer of the duel UI that sits after the prompt helper `T
 | `0x08060C68` | 0x84 | matching | blend fade out: DISPCNT \|= 0x700, `brightness -= step` (floor 0); at 0 `ClearBlend()` and return 1; else BLDY, BLDCNT = 0x27E7 | `BlendFadeOut` |
 | `0x08060CEC` | 0x78 | matching | like `BlendFadeInShort` but BLDCNT 0x27A7 and limit 0x1E/0x1F | `BlendFadeIn2` |
 | `0x08060D64` | 0x74 | matching | like `BlendFadeOut` without DISPCNT, BLDCNT 0x27A7 | `BlendFadeOut2` |
-| `0x08060DD8` | 0x54 | matching | zero a 4x4 block of the tilemap buffer `gUnk_03001C5C` (32 columns) at (x, y) | `ClearTileBlock4x4` |
+| `0x08060DD8` | 0x54 | matching | zero a 4x4 block of the tilemap buffer `gBgMap3` (32 columns) at (x, y) | `ClearTileBlock4x4` |
 | `0x08060E2C` | 0xA0 | matching | fill that 4x4 block with consecutive tile numbers starting at `t` | `FillTileBlock4x4` |
 | `0x08060ECC` | 0x104 | **matching C** | redraw zone `(player, zone)` of the duel field: position from `gDuelZonePositions[player][zone]` (s32 x,y pixels / 8); empty zone: clear the block and, for monster zones 0-4 with `IsMonsterZoneFree == 0`, draw the 2x2 marker tiles 0x1240-0x1243 at (x+1, y+1); occupied: tile base 0x1070 (+ `GetCardIconBgTile(id) + 0x2000` when face-down flag 2, +0x30 for flag 1) via `FillTileBlock4x4` | `DrawZoneTiles` |
 | `0x08060FD0` | 0x34 | matching | clear the block of zone `(player, zone)` | `ClearZoneTiles` |
@@ -65,7 +65,7 @@ It is the board/screen layer of the duel UI that sits after the prompt helper `T
 - **`return FadeToBlack(4) != 0` shapes**: `if (x != 0) { f(); return 1; } return 0;` matches `0x08060B4C`.
 - **`AddSprite(0x00400058, 0x40C0, t |= 0x6000)`** (compound assignment inside the argument) loads the constant args first and keeps `t` in r3 (`0x080617F8`).
 - **Helpers called through `int` asm-name prototypes** (`void f_i(s32, s32) asm("ClearTileBlock4x4")`) so that callers do not narrow the `u16` parameters of the real definition (`0x08060ECC`, `0x08061004`).
-- **Explicit 4x4 block stores** `p[0] = t++; ... p[0x63] = t;` reproduce the unrolled halfword stores; `p = gUnk_03001C5C + (x + (y << 5))` for `u16 x, y`.
+- **Explicit 4x4 block stores** `p[0] = t++; ... p[0x63] = t;` reproduce the unrolled halfword stores; `p = gBgMap3 + (x + (y << 5))` for `u16 x, y`.
 - **Explicit coordinate narrowing** (`0x08060E2C`): `u32 x, y` parameters with `(u16)x` and `(u16)y` at index formation reproduce the target's early tile-parameter narrowing. The three-register calling convention and low-half coordinate behaviour are unchanged.
 - **2-D table access** `gDuelZonePositions[player][zone].x / 8` gives the two separate shifts (`zone << 3`, `player << 7`) and the signed-divide fix-up.
 - **Sequence the decomposition of packed args at the point of use** (`0x0806120C`): `p2 = b; z2 = b >> 8;` between the two helper-call pairs, and `x |= y << 16` just before the tile computation.

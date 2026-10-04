@@ -392,7 +392,7 @@ _080189B0:
 	bne _080189DC
 	add r0, r5, #0
 	add r1, r4, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	mov r0, #0x4C
 	cmp r5, #0
 	beq _080189C4

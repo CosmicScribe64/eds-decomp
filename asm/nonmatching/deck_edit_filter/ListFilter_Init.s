@@ -274,7 +274,7 @@ _08069D1C: .4byte 0x06010000
 _08069D20: .4byte 0x01002000
 _08069D24: .4byte 0x0600F000
 _08069D28: .4byte gListFilterBgPatternMap
-_08069D2C: .4byte gUnk_086FC0E0
+_08069D2C: .4byte gListFilterPanelMap
 _08069D30: .4byte 0x0600E000
 _08069D34: .4byte gListFilterFilterPageMap
 _08069D38: .4byte 0x0600D000

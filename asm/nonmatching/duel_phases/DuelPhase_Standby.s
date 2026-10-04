@@ -344,7 +344,7 @@ _08050018: .4byte 0x00001B22
 _0805001C: .4byte 0x00000D64
 _08050020: .4byte 0x00000CC8
 _08050024: .4byte 0x00000402
-_08050028: .4byte gUnk_0862457C
+_08050028: .4byte gCardNumberToId_LightforceSword
 _0805002C: .4byte 0x000080CF
 _08050030:
 	add r0, r2, #1
@@ -827,7 +827,7 @@ _080503F6:
 	cmp r1, #0x18
 	beq _0805045C
 	b _08050460
-_0805043C: .4byte gUnk_086249F4
+_0805043C: .4byte gCardNumberToId_1536
 _08050440: .4byte 0x000080E4
 _08050444: .4byte 0x00008012
 _08050448: .4byte 0x000007FF
@@ -1319,7 +1319,7 @@ _080507F0:
 _08050830:
 	add r0, r7, #0
 	add r1, r6, #0
-	bl sub_080197C0
+	bl ShowActivatedCard
 	ldr r0, _0805085C @ =0x020192E0
 	mov r2, #0xD9
 	lsl r2, r2, #5

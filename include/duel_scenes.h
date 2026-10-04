@@ -699,8 +699,8 @@ void ScrollLayer_StreamRow(struct ScrollLayer *layer);
 
 /* ---- Turn-order screen leftover (turn_order_scene.c) ---- */
 
-/* Unreferenced: adds a 64x32 sprite (tile gUnk_0808270C[index], palette gUnk_08082710[index]) at
+/* Unreferenced: adds a 64x32 sprite (tile gTurnOrderUnusedSpriteTiles[index], palette gTurnOrderUnusedSpritePals[index]) at
  * (0x58, 0x64) to layer 0 of gSceneWork's OAM list. */
-void sub_080288DC(u8 index);
+void TurnOrder_DrawUnusedSprite(u8 index);
 
 #endif /* GUARD_DUEL_SCENES_H */

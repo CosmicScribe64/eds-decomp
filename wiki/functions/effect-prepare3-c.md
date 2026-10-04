@@ -38,9 +38,9 @@ The unit has two kinds of functions:
 | `0x080300D8` | 0xE8 | matching | effect step: for each occupied face-up spell/trap zone 5-9 with card number 0x148 -> `DestroyFieldCard`; for each face-up monster zone with `GetZoneCardType == 1` -> `ChangeBattlePosition(i, j, 0, 0)` |
 | `0x080301C0` | 0x17C | matching | state machine (0x80/0x7F/0x7E) with the card-list viewer `gCardListView` ([[card-list-viewer-c]]): opens the list with `CardListView_Open(player, -1, number, 0)`, plays a message via `TextBoxOpen`, returns next state |
 | `0x0803033C` | 0xC4 | matching | plays sound `0x92`, then for every face-up monster zone with `GetZoneCardType == 2` calls `QueueAddZoneLink(player, posRef, posZone, 2)` |
-| `0x08030400` | 0xE4 | matching | step 1: card at `ref+0xC`: face-up Magic -> `DestroyFieldCard`; face-down: sound 0x7F, `sub_08019820`, then same or sound again (explicit `return 0;` after the face-up branch stops old_agbcc cross-jumping the two `DestroyFieldCard` blocks) |
+| `0x08030400` | 0xE4 | matching | step 1: card at `ref+0xC`: face-up Magic -> `DestroyFieldCard`; face-down: sound 0x7F, `ShowPickedCard`, then same or sound again (explicit `return 0;` after the face-up branch stops old_agbcc cross-jumping the two `DestroyFieldCard` blocks) |
 | `0x080304E4` | 0x94 | matching | step 1: card number 0x58 -> amount = `HalveRoundUp(ATK)`, 0x1FF -> 500; `TributeMonster` then `LoseLifePoints(1-p, amount)` |
-| `0x08030578` | 0x74 | matching | step 2: `CountGraveyardCardsByNumber(p, number(card))`, `sub_08019820`, sound 0xD2 |
+| `0x08030578` | 0x74 | matching | step 2: `CountGraveyardCardsByNumber(p, number(card))`, `ShowPickedCard`, sound 0xD2 |
 | `0x080305EC` | 0x34 | matching | plays sound 0x60 |
 | `0x08030620` | 0x140 | **matching** (wave 2, 2026-10-01) | 4-state machine on the effect step `gChain[0x3E0]` (0x80 saves the deck words `+0x7C4` to `0x02017F84` = `0x02017A40+0x544` and clears four bitfields, 0x7F `DeckReorder_Run`, 0x7E restores them and on a link duel calls `DuelLink_SendDeck`, 0x7D waits for `0x02017FB0+0x305` bit 1). See [Wave 2 matches](#wave-2-matches-2026-10-01) |
 | `0x08030760` | 0x4C | matching | plays sounds 0xD6 and 0x60 |
@@ -48,7 +48,7 @@ The unit has two kinds of functions:
 | `0x080307D4` | 0x64 | matching | step 1: occupied card, `TributeMonster`, then `QueueAddZoneLink(player, id, pos, 3)` |
 | `0x08030838` | 0x48 | matching | `n = CountSpellTrapsFiltered(1-p,0,0,0)`; if not handled and `n > 0`: `LoseLifePoints(1-p, n * 500)` |
 | `0x08030880` | 0xA8 | matching | dispatch step 1 / step 2 (card 0x3C2 needs `EquipCard` then sound 0x87), returns u16 0 |
-| `0x08030928` | 0x100 | matching | state machine 0x80/0x7F/0x7E/0x7D with a `char buf[0x100]` message (`FormatStr(buf, fmt, table[gUnk_08624052 << 6])`, `TextBoxOpen`, `TextBoxSetMenu`) |
+| `0x08030928` | 0x100 | matching | state machine 0x80/0x7F/0x7E/0x7D with a `char buf[0x100]` message (`FormatStr(buf, fmt, table[gCardNumberToId_AxeOfDespair << 6])`, `TextBoxOpen`, `TextBoxSetMenu`) |
 | `0x08030A28` | 0x3C | matching | mode 3 (`ref[2] & 0xE == 6`) else `EffectEquipResolve`; `LoseLifePoints(1-p, 500)` |
 | `0x08030A64` | 0xE8 | matching | state machine 0x80/0x7F: life points > 499 message; sounds 0x43/0xD0 |
 | `0x08030B4C` | 0x3C | matching | mode 3 else `EffectEquipResolve`; sound 0xD0 |

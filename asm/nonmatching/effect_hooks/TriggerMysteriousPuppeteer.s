@@ -39,6 +39,6 @@ _080467FC:
 	pop {r0}
 	bx r0
 	.align 2, 0
-_08046804: .4byte gUnk_08623F3E
+_08046804: .4byte gCardNumberToId_MysteriousPuppeteer
 	thumb_func_end TriggerMysteriousPuppeteer
 

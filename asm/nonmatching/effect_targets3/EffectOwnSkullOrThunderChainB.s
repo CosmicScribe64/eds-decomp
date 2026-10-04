@@ -38,7 +38,7 @@ EffectOwnSkullOrThunderChainB: @ 0x08040CA8
 _08040CF4: .4byte 0x02017A40
 _08040CF8: .4byte 0x000003E5
 _08040CFC: .4byte gStrDesignateFaceUpMonsterOfTwoFmt
-_08040D00: .4byte gUnk_08623E1E
+_08040D00: .4byte gCardNumberToId_SummonedSkull
 _08040D04: .4byte gCardNames
 _08040D08: .4byte gStrThunderType
 _08040D0C: .4byte 0x00000206

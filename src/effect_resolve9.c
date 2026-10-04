@@ -4,9 +4,11 @@
 #include "constants/card_stats.h"   /* enum CardType */
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, ResponseEventKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER, enum TokenKind */
+#include "duel.h"                  /* struct DuelPlayer, gDuel, ... */
+#include "sound.h"                 /* PlaySE */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "legacy/gba.h"                    /* B_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys */
+#include "gba.h"              /* B_BUTTON */
+#include "main.h"             /* gMain.newKeys */
 
 /*
  * Card effect handlers: the Resolve slot of gCardEffects (include/effect.h) for the effect keys 1221-1318
@@ -23,76 +25,6 @@
  * queued for player 1 carry DUEL_CMD_PLAYER (bit 15). Zones 0-4 hold monsters, 5-9 spells and traps, 10 the
  * Field Magic; a target or location is player | zone << 8 (DUEL_LOC).
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, card_list_view.h, duel_cmd.h, duel_screen.h and summon.h do not pull in the legacy
- * header. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h" (see
- * build/readability/issues/effect_resolve9.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4[0x28 - 0x4];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    u8 unk7C4[0xD64 - 0x7C4];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelZone gDuelFieldZone;          /* 0x020198D4 = gDuelPlayers[0].zones[ZONE_FIELD] */
-
-u32 IsMonsterZoneFree(int player, int zone);
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-int FindFreeSpellTrapZone(int player);
-int CanPlaceSpellTrapCard(int player, u16 cardId);
-int CountMonstersFiltered(int player, u16 faceUpOnly, u16 attackPosOnly);
-u32 GetZoneCardType(s32 player, s32 slot);
-u32 GetZoneCardAtk(u32 player, u32 slot);
-int CountGraveyardCardsByNumber(int player, u16 cardNo);
-int GetGraveyardCardById(int player, u16 cardId, struct DuelCard *out);
-int FindDeckCardByNumber(int player, u16 number, int limit);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
 
 #include "card_list_view.h"         /* gCardListView, CardListView_Open */
 #include "chain.h"                  /* struct ChainEntry, gChain */

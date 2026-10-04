@@ -21,7 +21,7 @@
  * 8bpp card portrait; OBJ the buttons and the status icons.
  */
 #include "global.h"
-#include "legacy/gba.h"                /* REG_*, keys, VRAM / palette addresses */
+#include "gba.h"                       /* REG_*, keys, VRAM / palette addresses */
 #include "constants/card_stats.h" /* enum CardType */
 #include "constants/duel.h"     /* enum BanishKind */
 #include "util.h"               /* MemCopy16, CopyDoubleWords, Random, struct Tween, TweenInit */
@@ -33,91 +33,10 @@
 #include "card_data.h"          /* gCardNames, icon image tables, CARD_ID_MASK, CARD_STATS_* */
 #include "link.h"               /* struct LinkSync, LinkSyncStart, LinkSyncStep */
 #include "main_menu.h"          /* CB_MainMenu */
+#include "main.h"               /* gMain, struct Main */
+#include "duel.h"               /* struct DuelPlayer, IsSpecialSummonOnly */
 
-/* ---- Names the legacy gba.h lacks (until H0 installs the new one; build/readability/HEADERS.md) ---- */
 
-/* Values as in the new gba.h; this block compiles away once it is installed. */
-#ifndef DISPCNT_BG_ALL_ON
-#define BG_VRAM                 0x06000000
-#define BG_CHAR_SIZE            0x4000
-#define BG_CHAR_ADDR(n)         (BG_VRAM + BG_CHAR_SIZE * (n))
-#define DISPCNT_BG_ALL_ON       0x0F00
-#define DISPCNT_OBJ_ON          0x1000
-#define BGCNT_PRIORITY(n)       (n)
-#define BGCNT_CHARBASE(n)       ((n) << 2)
-#define BGCNT_256COLOR          0x0080
-#define BGCNT_SCREENBASE(n)     ((n) << 8)
-#define BLDCNT_EFFECT_BLEND     0x0040
-#define BLDCNT_TGT2_BG2         0x0400
-#define DMA_SRC_FIXED           0x0100
-#define DMA_16BIT               0x0000
-#define DMA_ENABLE              0x8000
-#endif
-
-/* ---- BEGIN header subset (pre-H0) ----
- * The parts of main.h and duel.h this unit and the headers below need, with the canonical headers' tags, names,
- * types and bitfield containers (unused bytes are padding). include/main.h and duel.h still hold the legacy
- * headers until the header switch (H0, build/readability/HEADERS.md); card_list_view.h and duel_screen.h
- * include duel.h, so this block also defines duel.h's include guard. After H0, replace the block (BEGIN to END)
- * with
- *     #include "legacy/main.h"
- *     #include "legacy/duel.h"
- * which gives identical assembly (checked against the staged headers). */
-
-/* main.h */
-enum VBlankFlag {
-    VBLANK_COPY_OAM     = 0x1,          /* gMain.oamBuffer -> OAM */
-    VBLANK_COPY_BG_MAPS = 0x2,          /* gMain.bgMapBuffer -> VRAM screenblocks 0-7 */
-    VBLANK_BG0_VOFS     = 0x100,        /* gMain.bgVofs[0] -> REG_BG0VOFS */
-    VBLANK_BG1_VOFS     = 0x200
-};
-struct Main {
-    u32 rngState;                       /* +0x0000 */
-    u16 heldKeys;                       /* +0x0004 */
-    u16 newKeys;                        /* +0x0006 newly pressed, plus D-pad auto-repeat */
-    u8 unk8[0x40E - 0x8];
-    u16 vblankFlags;                    /* +0x040E enum VBlankFlag */
-    u8 unk410[0x41C - 0x410];
-    u16 bgMapBuffer[8][0x400];          /* +0x041C screenblocks 0-7, copied with VBLANK_COPY_BG_MAPS */
-    u8 unk441C[0x4420 - 0x441C];
-    u16 bgVofs[4];                      /* +0x4420 BG0-3 VOFS shadows */
-    u8 unk4428[0x4859 - 0x4428];
-    u8 seqIndex1;                       /* +0x4859 step index of the screen runners */
-    u8 unk485A[0x4870 - 0x485A];
-    u8 firstPlayer:1;                   /* +0x4870 bit 0: who takes the first turn, 0 = this player */
-    u8 opponent:5;                      /* +0x4870 bits 1-5 */
-    u8 result:2;                        /* +0x4870 bits 6-7 */
-};
-extern struct Main gMain;
-void SetMainCallback(u16 (*callback)(void));
-void ResetBgScroll(void);
-
-/* duel.h */
-#define GUARD_DUEL_H
-struct DuelCard {
-    u32 id:12;                          /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                        /* bit 12: owning player */
-    u32 unk13:19;
-};
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-struct DuelPlayer {
-    u8 unk0[0x684];
-    struct DuelCard hand[80];           /* +0x684 */
-    struct DuelCard deck[80];           /* +0x7C4 */
-    struct DuelCard graveyard[80];      /* +0x904 */
-    struct DuelCard fusionDeck[80];     /* +0xA44 */
-    struct DuelCard banished[80];       /* +0xB84 */
-    u16 banishedInfo[80];               /* +0xCC4: parallel to banished[]: low byte enum BanishKind */
-};
-u32 IsSpecialSummonOnly(u16 cardId);
-/* ---- END header subset ---- */
 
 #include "duel_screen.h"        /* gDuelScreen, DuelScreen_FadeOutStep, TextDrawShadowedString */
 #include "card_list_view.h"     /* gCardListView, the CardListView_* drawers defined here */

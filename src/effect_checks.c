@@ -5,8 +5,10 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, ResponseEventKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "legacy/gba.h"                    /* B_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys */
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
+#include "duel.h"                   /* gDuel, gDuelPlayers, duel rules and helpers */
+#include "sound.h"                  /* PlaySE */
 
 /*
  * Card effect handlers, part 2: target checks (the Check slot of gCardEffects) and activation costs (the
@@ -28,78 +30,6 @@
  * Zones: 0-4 monsters, 5-9 spells and traps, 10 the Field Magic (enum DuelZoneIndex). DuelZone +0x06 holds
  * isDefense (bit 0) and isFaceUp (bit 1).
  */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, duel_cmd.h and duel_screen.h do not pull in the legacy header. After H0, replace
- * the block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/effect_checks.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12 */
-    u32 unk13:3;
-    u32 specialSummoned:1;          /* bit 16: Special Summoned (summon actions 4-6, tokens, Parasite Paracide) */
-    u32 unk17:15;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x94 - 0x7];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 unk2[0x28 - 0x2];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 unk684[0xD64 - 0x684];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-/* Effective stats of the card in a zone (GetZoneCardStats), after field, equip and link modifiers. */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0: card ID */
-    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
-    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
-    u8 unk3;
-    s32 atk;                        /* +0x4: effective ATK */
-    s32 def;                        /* +0x8: effective DEF */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];
-extern struct DuelZonesPlayer gDuelZones[2];
-
-int CountActiveCardsOnField(int player, u16 cardNo);
-int CountZoneEquips(int player, int zone, u16 requireMagic, u16 requireEquipSubtype);
-s32 IsCardLinkedToMonster(s32 player, s32 slot);
-int CountValidEquipTargets(u32 equipPlayer, u32 equipSlot);
-void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
-u32 GetZoneCardType(s32 player, s32 slot);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
 
 #include "chain.h"                  /* struct ChainEntry, gChain */
 #include "duel_actions.h"           /* TributeMonster */

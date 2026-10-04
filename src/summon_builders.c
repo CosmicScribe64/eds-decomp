@@ -14,72 +14,7 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* CARD_STATS_* layout, enum CardType, enum CardKind */
 #include "constants/duel.h"         /* ZoneStatusFlag, SummonActionKind */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that summon.h does not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
- * (see build/readability/issues/summon_builders.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u8 unk4[0x94 - 0x4];
-};
-
-struct DuelPlayer {
-    u8 unk0[0x2];
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4;
-    u8 fusionCount;                 /* +0x005: entries in fusionDeck[] */
-    u8 unk6[0x684 - 0x6];
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    u8 unk904[0xA44 - 0x904];
-    struct DuelCard fusionDeck[80]; /* +0xA44 */
-    u8 unkB84[0xD64 - 0xB84];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];
-};
-
-/* Effective stats of the card in a zone (GetZoneCardStats). */
-struct ZoneCardStats {
-    u16 id;                         /* +0x0: card ID */
-    u8 type:5;                      /* +0x2 bits 0-4: effective enum CardType */
-    u8 attribute:3;                 /* +0x2 bits 5-7: effective enum CardAttribute */
-    u8 unk3;
-    s32 atk;                        /* +0x4: effective ATK */
-    s32 def;                        /* +0x8: effective DEF */
-};
-
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
-extern struct DuelZone gDuelZonesP1[11];        /* 0x0201A070 = gDuelPlayers[1].zones */
-
-u32 IsSpecialSummonOnly(u16 cardId);
-u32 IsFusionMonster(u16 cardId);
-void CopyDuelCard(u32 *dst, u32 *src);
-int CountActiveCardsOnField(int player, u16 cardNo);
-int FindHandCardByNumber(int player, u16 cardNo);
-int CountFreeMonsterZones(int player);
-int FindFreeMonsterZone(int player);
-void GetZoneCardStats(int player, int zone, struct ZoneCardStats *out);
-int FindDeckCardByNumber(int player, u16 number, int limit);
-int FindFusionDeckCardByNumber(int player, u16 number);
-/* ---- END duel.h stand-in ---- */
+#include "duel.h"                   /* struct DuelPlayer, DuelZone, gDuelPlayers, Find*CardByNumber, GetZoneCardStats */
 
 #include "ai.h"                     /* the Ai* pickers defined here, AiHasUsableSpellTrap */
 #include "effect.h"                 /* PayChainEnergyCost */

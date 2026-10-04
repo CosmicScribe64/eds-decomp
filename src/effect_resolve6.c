@@ -22,100 +22,11 @@
 #include "constants/card_stats.h"   /* enum CardType, SpellSubtype */
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, ZoneStatusFlag, ChainEntryKind, ... */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
+#include "duel.h"                  /* struct DuelPlayer, gDuel, ... */
+#include "sound.h"                 /* PlaySE */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "legacy/gba.h"                    /* B_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
- * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
- * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h"
- * (build/readability/issues/effect_resolve6.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;
-    u16 area:4;
-    u16 index:9;
-    u16 isDefense:1;
-    u16 isFaceUp:1;
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u16 destroyCountdown:4;         /* +0x06 bits 6-9 */
-    u8 positionLocked:1;            /* +0x07 bit 2 */
-    u8 unk7_3:1;
-    u8 unk7_4:1;
-    u8 effectUnused:1;              /* +0x07 bit 5 */
-    u8 revivedByMonsterReborn:1;    /* +0x07 bit 6 */
-    u8 summonedFromGraveyard:1;     /* +0x07 bit 7: ZONE_STATUS_FROM_GRAVEYARD */
-    u8 unk8[0x94 - 0x8];
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 handCount;                   /* +0x002: entries in hand[] */
-    u8 deckCount;                   /* +0x003: entries in deck[] */
-    u8 unk4[0x28 - 0x4];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    struct DuelCard hand[80];       /* +0x684 */
-    struct DuelCard deck[80];       /* +0x7C4: deck[0] is the top card */
-    u8 unk904[0xD64 - 0x904];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B12 - 0x1ACC];
-    u8 bgmOn:1;                     /* +0x1B12 bit 0 */
-    u8 turnPlayer:1;                /* +0x1B12 bit 1: player whose turn it is */
-    u8 phase:3;                     /* +0x1B12 bits 2-4: enum DuelPhase */
-    u8 linkError:1;                 /* +0x1B12 bit 5 */
-    u8 result:2;                    /* +0x1B12 bits 6-7: enum DuelResult */
-    u8 unk1B13[0x1B64 - 0x1B13];
-    u16 promptResult;               /* +0x1B64: answer of the last duel prompt (a hand slot, a card ID) */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-extern struct DuelCard gDuelHands[];            /* 0x02019968 = gDuelPlayers[0].hand (player stride 0xD64) */
-extern struct DuelCard gDuelDecks[];            /* 0x02019AA8 = gDuelPlayers[0].deck */
-
-void CopyDuelCard(u32 *dst, u32 *src);
-u32 IsSpecialSummonOnly(u16 cardId);
-int IsCardInGraveyard(int player, struct DuelCard *card);
-int FindTrapInHand(int player);
-int FindNonFieldMagicInHand(int player);
-int CountFreeMonsterZones(int player);
-int FindFreeSpellTrapZone(int player);
-u32 GetZoneCardAttribute(s32 player, s32 slot);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
+#include "gba.h"              /* B_BUTTON */
+#include "main.h"             /* gMain.newKeys */
 
 #include "ai.h"                     /* gAiWork.listPick, AiPickCardListEntry */
 #include "card_list_view.h"         /* gCardListView, CardListView_Open */
@@ -242,7 +153,7 @@ int EffectPainfulChoiceResolve(struct ChainEntry *link, int chainedTo)
             card = &gCardListView.cards[gCardListView.cursorRow + gCardListView.top];
             DuelCmd_Push(PLAYER_CMD(link->player, DUEL_CMD_REMOVE_CARD_FROM_DECK), ((u16 *)card)[0],
                          ((u16 *)card)[1], 0);
-            CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[gChain.effectSubStep], card);
+            CopyDuelCard(&gChain.scratch.effect.effectCards[gChain.effectSubStep], (struct DuelCard *)card);
             if (gChain.effectSubStep != 0) {
                 FormatInt((char *)text, (const char *)gStrPainfulChoiceCardsRemaining, gChain.effectSubStep);
                 TextBoxOpen(TEXTBOX_XY(6, 2), TEXTBOX_XY(18, 5), TEXTBOX_FLAGS_DEFAULT, text);
@@ -601,7 +512,7 @@ int EffectCyberJarResolve(struct ChainEntry *link)
                 if (CountFreeMonsterZones(1 - gChain.effectSubStep) > 0) {
                     DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_REMOVE_CARD_FROM_HAND), topHalves[0],
                                  topHalves[1], 0);
-                    CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[0], top);
+                    CopyDuelCard(&gChain.scratch.effect.effectCards[0], (struct DuelCard *)top);
                     return EFFECT_STEP_4;
                 }
                 /* the drawn card lands at hand index handCount (the draw command has not run yet) */
@@ -615,7 +526,7 @@ int EffectCyberJarResolve(struct ChainEntry *link)
                 if (IS_MONSTER_TYPE(type) && GetCardLevel(type, cardId) <= 4 && IsSpecialSummonOnly(cardId) == 0) {
                     DuelCmd_Push(PLAYER_CMD(gChain.effectSubStep, DUEL_CMD_REMOVE_CARD_FROM_HAND), topHalves[0],
                                  topHalves[1], 0);
-                    CopyDuelCard((u32 *)&gChain.scratch.effect.effectCards[0], top);
+                    CopyDuelCard(&gChain.scratch.effect.effectCards[0], (struct DuelCard *)top);
                     return EFFECT_STEP_3;
                 }
             }
@@ -804,7 +715,7 @@ int EffectSummonSameNameFromDeckResolve(struct ChainEntry *link)
                     struct DuelCard *src = (struct DuelCard *)((u32)gDuelDecks + link->player * 0xD64);
 
                     src = (struct DuelCard *)((u32)src + deckIdx * 4);
-                    CopyDuelCard(dst, (u32 *)src);
+                    CopyDuelCard((struct DuelCard *)dst, (struct DuelCard *)src);
                     return EFFECT_STEP_4;
                 }
             }

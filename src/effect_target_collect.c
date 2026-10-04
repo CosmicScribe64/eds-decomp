@@ -28,56 +28,6 @@
 #include "constants/card_stats.h"   /* enum CardType, CardKind, CardAttribute, SpellSubtype */
 #include "constants/duel.h"         /* BANISH_FACE_DOWN */
 
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that card_list_view.h does not pull in the legacy header. After H0, replace the block (BEGIN to
- * END) with #include "legacy/duel.h" (see build/readability/issues/effect_target_collect.md). */
-#define GUARD_DUEL_H
-
-/* A card in a zone or pile: one 32-bit word. id 0 is an empty slot. */
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID */
-    u32 owner:1;                    /* bit 12: owning player: whose graveyard, hand or deck the card returns to */
-    u32 unk13:1;
-    u32 unk14:1;
-    u32 normalSummoned:1;           /* bit 15 */
-    u32 specialSummoned:1;          /* bit 16 */
-    u32 planted:1;                  /* bit 17: Parasite Paracide shuffled into the other player's deck */
-    u32 graverobbed:1;              /* bit 18 */
-    u32 unk19:1;
-    u32 isFusionMaterial:1;         /* bit 20: one of Polymerization's materials */
-    u32 destroyedInBattle:1;        /* bit 21: set before a battle-destroyed monster enters the graveyard */
-    u32 destroyedByOpponent:1;      /* bit 22 */
-    u32 flag23:1;
-    u32 pendingEquip:1;
-    u32 equipZone:3;
-    u32 pendingOpponentSummon:1;
-    u32 unk29:3;
-};
-
-STATIC_ASSERT(sizeof(struct DuelCard) == 4, DuelCardSize);
-
-/* Player 0's deck and graveyard (the aliases are symbols at gDuelPlayers + 0x7C4 / + 0x904); player 1's
- * piles follow at the player stride 0xD64. */
-extern struct DuelCard gDuelDecks[];            /* 0x02019AA8 = gDuelPlayers[0].deck */
-extern struct DuelCard gDuelGraveyards[];       /* 0x02019BE8 = gDuelPlayers[0].graveyard */
-
-/* 1 if card number cardNo is one of the four Toon effect monsters (Toon Alligator is a Normal Monster). */
-u32 IsToonMonster(u16 cardNo);
-/* 1 if the card is an Effect Monster. */
-u32 IsEffectMonster(u16 cardId);
-/* 1 if the monster cannot be Normal Summoned or Set (Fusion, Ritual and some effect monsters). */
-u32 IsSpecialSummonOnly(u16 cardId);
-/* *dst = *src for a duel card word. */
-void CopyDuelCard(u32 *dst, u32 *src);
-/* 1 if Toon World is face up in the player's spell/trap zones. */
-int HasFaceUpToonWorld(int player);
-/* 1 if an active Prohibition declares the same card name. */
-u32 IsCardProhibited(u16 cardId);
-/* ---- END duel.h stand-in ---- */
-
 #include "card_list_view.h"         /* gCardListView, enum CardListSource */
 #include "effect.h"                 /* CollectEffectTargets, IsMaterialOfFusion, FindFusionMaterials,
                                      * CanReviveGraveyardCard */
@@ -863,7 +813,7 @@ u16 CollectEffectTargets(int player, u16 cardNumber, int param)
                     /* Unlike REMOVE_CARD, this one moves the tags too and stops at the new count. */
                     gCardListView.count--;
                     for (j = i; j < gCardListView.count; j++) {
-                        CopyDuelCard(&gCardListView.cards[j], &gCardListView.cards[j + 1]);
+                        CopyDuelCard((struct DuelCard *)&gCardListView.cards[j], (struct DuelCard *)&gCardListView.cards[j + 1]);
                         gCardListView.sources[j] = gCardListView.sources[j + 1];
                     }
                 }

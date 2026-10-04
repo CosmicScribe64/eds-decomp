@@ -23,83 +23,10 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, DuelPhase, DuelPromptKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_POINT_AT_CARD, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
-#include "legacy/gba.h"                    /* B_BUTTON */
-#include "legacy/main.h"                   /* gMain.newKeys */
-
-/* ---- BEGIN duel.h stand-in (pre-H0) ----
- * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
- * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
- * guard so that chain.h, duel_cmd.h, card_list_view.h and duel_screen.h do not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with the include lines of duel.h and sound.h, in that order
- * (build/readability/issues/effect_targets4.md). */
-#define GUARD_DUEL_H
-
-struct DuelCard {
-    u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */
-    u32 owner:1;                    /* bit 12: owning player */
-    u32 unk13:19;
-};
-
-/* Needed by duel_screen.h (DuelScreen.from / .to). */
-struct DuelLoc {
-    u16 player:1;                   /* bit 0: side of the field */
-    u16 area:4;                     /* bits 1-4: enum DuelArea */
-    u16 index:9;                    /* bits 5-13 */
-    u16 isDefense:1;                /* bit 14 */
-    u16 isFaceUp:1;                 /* bit 15 */
-    u16 unk2;
-};
-
-struct DuelZone {
-    struct DuelCard card;           /* +0x00 */
-    u16 serial;                     /* +0x04 */
-    u8 isDefense:1;                 /* +0x06 bit 0: defense position */
-    u8 isFaceUp:1;                  /* +0x06 bit 1: face up */
-    u8 turnCounter:4;               /* +0x06 bits 2-5 */
-    u8 unk6_6:2;
-    u8 unk7[0x90 - 0x7];
-    u32 unk90_0:10;
-    u32 canActivate:1;              /* +0x91 bit 2: a set card that may be activated */
-    u8 isDisabled:1;                /* +0x91 bit 3: card negated */
-    u32 unk91_4:20;
-};
-
-struct DuelPlayer {
-    u16 lifePoints;                 /* +0x000 */
-    u8 unk2[0x7 - 0x2];
-    u8 unk7_0:6;
-    u8 magicTrapLockTurns:2;        /* +0x007 bits 6-7: nonzero blocks Magic/Trap activation */
-    u8 unk8[0x28 - 0x8];
-    struct DuelZone zones[11];      /* +0x028: enum DuelZoneIndex */
-    u8 unk684[0xD64 - 0x684];
-};
-
-struct DuelState {
-    u16 serial;                     /* +0x0000 */
-    u16 unk2;
-    struct DuelPlayer players[2];   /* +0x0004: = gDuelPlayers */
-    u8 unk1ACC[0x1B64 - 0x1ACC];
-    u16 promptResult;               /* +0x1B64: the answer of the last duel prompt */
-    u8 unk1B66[0x1B78 - 0x1B66];
-};
-
-struct DuelZonesPlayer {
-    struct DuelZone zones[11];
-    u8 rest[0xD64 - 11 * 0x94];     /* the rest of the player stride */
-};
-
-extern struct DuelState gDuel;                  /* 0x020192E0 */
-extern struct DuelPlayer gDuelPlayers[2];       /* 0x020192E4 = gDuel.players */
-extern struct DuelZonesPlayer gDuelZones[2];    /* 0x0201930C = gDuel.players[0].zones */
-
-int CountGraveyardMonsters(int player);
-int CountActiveCardsOnField(int player, u16 cardNo);
-u32 IsMonsterZoneFree(int player, int zone);
-
-/* sound.h (staged) declares this; the legacy include/sound.h does not. */
-void PlaySE(u32 seId);
-/* ---- END duel.h stand-in ---- */
+#include "gba.h"                    /* B_BUTTON */
+#include "main.h"                   /* gMain.newKeys */
+#include "duel.h"                   /* struct DuelZone, gDuel, gDuelPlayers, CountGraveyardMonsters, IsMonsterZoneFree */
+#include "sound.h"                  /* PlaySE */
 
 #include "card_list_view.h"         /* gCardListView, CardListView_Open */
 #include "chain.h"                  /* struct ChainEntry, gChain */

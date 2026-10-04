@@ -19,15 +19,15 @@
 #include "constants/duel.h"         /* DUEL_LOC, enum DuelZoneIndex, ResponseEventKind, ZoneLinkKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* SE_ERROR */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that chain.h, card_list_view.h, duel_cmd.h, duel_screen.h and summon.h do not pull in the legacy
- * header. After H0, replace the block (BEGIN to END) with #include "duel.h"
+ * header. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
  * (see build/readability/issues/effect_resolve3.md). */
 #define GUARD_DUEL_H
 

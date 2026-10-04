@@ -27,7 +27,7 @@
  * The declarations of include/duel.h, duel_cmd.h and duel_screen.h this unit uses, with the headers' tags,
  * field names, types and bitfield containers. include/duel.h still holds the legacy header until the header
  * switch (H0, build/readability/HEADERS.md), and duel_cmd.h and duel_screen.h include it. After H0, replace
- * this block (BEGIN to END) with #include "duel.h", "duel_cmd.h" and "duel_screen.h".
+ * this block (BEGIN to END) with #include "legacy/duel.h", "duel_cmd.h" and "duel_screen.h".
  */
 struct DuelCard {
     u32 id:12;                      /* bits 0-11: card ID; 0 = empty slot */

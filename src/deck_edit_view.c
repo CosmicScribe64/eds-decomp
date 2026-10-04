@@ -16,8 +16,8 @@
 #include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/card_stats.h" /* CARD_STATS_TYPE_MASK/SHIFT, enum CardType, enum CardKind */
 #include "constants/sound.h"      /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR */
-#include "gba.h"                  /* A_BUTTON, B_BUTTON, DPAD_*, REG_* */
-#include "main.h"                 /* struct Main gMain, newKeys, vblankFlags */
+#include "legacy/gba.h"                  /* A_BUTTON, B_BUTTON, DPAD_*, REG_* */
+#include "legacy/main.h"                 /* struct Main gMain, newKeys, vblankFlags */
 
 /* ---- BEGIN deck_edit.h stand-in (pre-H0) ----
  * include/deck_edit.h cannot be included here: it pulls in sprite.h, util.h and palette.h, whose

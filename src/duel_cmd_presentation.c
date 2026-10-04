@@ -17,9 +17,9 @@
  * gDuelCmd.running at the end. Fast-forward (B held, or gDuelScreen.fast) skips timer frames.
  */
 #include "global.h"
-#include "gba.h"            /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
-#include "main.h"           /* gMain.heldKeys */
-#include "sound.h"          /* PlaySE */
+#include "legacy/gba.h"            /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
+#include "legacy/main.h"           /* gMain.heldKeys */
+#include "legacy/sound.h"          /* PlaySE */
 #include "sprite.h"         /* SPRITE_SHAPE_32x32 */
 #include "duel_flow.h"      /* gPulseScaleCurve */
 #include "duel_cmd.h"       /* gDuelCmd, gDuelCmdT16, gScatterScaleCurve */

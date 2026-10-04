@@ -17,7 +17,7 @@
 #include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_KIND_*, SPELL_*, gCardStats bit layout */
 #include "constants/duel.h"         /* ZONE_*, ZONE_LINK_* */
 #include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_STATS_TYPE/SUBTYPE */
-#include "duel.h"                   /* struct DuelCard/DuelZone/DuelPlayer, gDuel, gDuelPlayers, gDuelZones */
+#include "legacy/duel.h"                   /* struct DuelCard/DuelZone/DuelPlayer, gDuel, gDuelPlayers, gDuelZones */
 #include "save.h"                   /* gSaveData (saved decks), LoadPlayerDeckFromSave */
 #include "util.h"                   /* MemClear16, Random */
 

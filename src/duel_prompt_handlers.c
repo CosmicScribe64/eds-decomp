@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT, OBJ_PLTT, OBJ_VRAM0 */
-#include "main.h"                   /* gMain.newKeys, gMain.heldKeys */
+#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT, OBJ_PLTT, OBJ_VRAM0 */
+#include "legacy/main.h"                   /* gMain.newKeys, gMain.heldKeys */
 #include "util.h"                   /* StrCopy, StrCat, Random, MemCopy16 */
 #include "sprite.h"                 /* AddSprite, SPRITE_SHAPE_* */
 #include "text.h"                   /* TextCanvasInit, TextDrawString, TextCanvasToTiles, gSystemFontPal */
@@ -35,7 +35,7 @@
  * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
  * header switch (H0, build/readability/HEADERS.md), and chain.h, duel_screen.h, summon.h, card_list_view.h and
  * duel_cmd.h include it, so this block also defines its include guard. After H0, replace the block (BEGIN to
- * END) with #include "duel.h".
+ * END) with #include "legacy/duel.h".
  */
 #define GUARD_DUEL_H
 

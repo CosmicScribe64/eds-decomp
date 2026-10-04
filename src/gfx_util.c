@@ -12,7 +12,7 @@
  */
 #include "global.h"
 #include "bg.h"       /* FillVramMapRect*, CopyMap*, SetVramMapTile, DrawVramMapNumber3, enum NumberDrawMode, GetTilemapOffset, UnpackCardArt8bpp, LoadCardArt8bpp */
-#include "gba.h"      /* VRAM, PLTT, IWRAM, REG_BLDALPHA, REG_BLDY, CpuSet, Div */
+#include "legacy/gba.h"      /* VRAM, PLTT, IWRAM, REG_BLDALPHA, REG_BLDY, CpuSet, Div */
 #include "palette.h"  /* struct PalDelta, struct PalFade, struct PalFadeStrided, SetBldAlpha, SetBldY, PalFade_Start/Apply, PalFadeStrided_Start/Apply */
 #include "sprite.h"   /* struct ObjAffine, ObjAffineInit, ObjAffineApply */
 #include "util.h"     /* struct Timer, struct Ease, struct CallbackQueue, struct StepList, enum TickState, MulFix8, MulFix8Wide, DivFix8, ReciprocalFix8, MemCopy16, gSineTable */

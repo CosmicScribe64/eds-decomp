@@ -14,7 +14,7 @@
  * Clear* tilemap helpers.
  */
 #include "global.h"
-#include "gba.h"                    /* VRAM, CpuSet */
+#include "legacy/gba.h"                    /* VRAM, CpuSet */
 #include "bg.h"                     /* FillMapRectWrap, ClearMapRect, GetTilemapOffset, FillScreenblock*, LZSSDecompress (defined here) */
 #include "sprite.h"                 /* struct OamList / OamListEntry, OamListFlush / Clear / Alloc / LinkEntry (defined here) */
 #include "util.h"                   /* struct Line, enum LineState, LineInit / LineStep (defined here) */

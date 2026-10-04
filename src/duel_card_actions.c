@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, A_BUTTON, B_BUTTON */
-#include "main.h"                   /* gMain.heldKeys / newKeys */
+#include "legacy/gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, A_BUTTON, B_BUTTON */
+#include "legacy/main.h"                   /* gMain.heldKeys / newKeys */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* enum CardType, enum CardKind, gCardStats bit layout */
 #include "constants/duel.h"         /* enum DuelPhase, ResponseEventKind, ChainEntryKind, ZoneStatusFlag */
@@ -33,7 +33,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below (chain.h,
  * duel_cmd.h, duel_screen.h) use, with the header's names, types and bitfield containers (unused bytes are
  * padding), and defines duel.h's include guard so that those headers do not pull in the legacy file.
- * After H0, replace the block (BEGIN to END) with #include "duel.h": that gives the same instructions
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h": that gives the same instructions
  * (checked against the staged header; only local label numbers differ). */
 #define GUARD_DUEL_H
 

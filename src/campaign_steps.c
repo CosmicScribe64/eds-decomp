@@ -33,9 +33,9 @@
  * containers. include/main.h, duel.h and sound.h still hold the legacy headers until the header switch (H0,
  * build/readability/HEADERS.md), and the legacy main.h has none of the +0x4888 names. After H0, replace this
  * block (BEGIN to END) with:
- *     #include "main.h"
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/main.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  */
 struct Main {
     u8 unk0[0x4857];

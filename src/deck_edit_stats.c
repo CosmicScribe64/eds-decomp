@@ -17,9 +17,9 @@
 #include "constants/card_stats.h" /* enum CardType */
 #include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/sound.h"      /* SE_CANCEL */
-#include "gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_BG*HOFS, REG_BG*VOFS, REG_BLDCNT,
+#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_BG*HOFS, REG_BG*VOFS, REG_BLDCNT,
                                        VRAM, OBJ_VRAM0, BG_PLTT, OBJ_PLTT, A_BUTTON, B_BUTTON, CpuFastSet, CpuSet */
-#include "main.h"                 /* struct Main gMain (newKeys, seqState1, vblankFlags) */
+#include "legacy/main.h"                 /* struct Main gMain (newKeys, seqState1, vblankFlags) */
 #include "bg.h"                   /* CopyMapRect, CopyMapRectAddOffset, CopyTileSheetTo2D, CropMapBlock */
 #include "deck_edit.h"            /* struct DeckEdit gDeckEdit, enum DeckEditList, enum DeckStatsCategory,
                                        struct DeckStatsRow, DeckEdit_BuildCardLists, DeckEdit_SetListCard,

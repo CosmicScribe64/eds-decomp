@@ -16,8 +16,8 @@
 #include "constants/card_stats.h" /* enum CardType, CARD_STATS_DEF_MASK, CARD_STATS_POINTS_SCALE */
 #include "constants/game.h"       /* enum BoosterPackId: PACK_RANDOM_TRAP, PACK_RANDOM_MAGIC, PACK_RANDOM_ANY */
 #include "constants/sound.h"      /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR, SE_CARD_FLIP */
-#include "gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_MOSAIC, REG_IE, REG_IME, OBJ_PLTT, BG_PLTT, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON, DPAD_* */
-#include "main.h"                 /* struct Main, gMain */
+#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG0CNT..REG_BG3CNT, REG_MOSAIC, REG_IE, REG_IME, OBJ_PLTT, BG_PLTT, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON, DPAD_* */
+#include "legacy/main.h"                 /* struct Main, gMain */
 #include "booster.h"              /* struct PackSlots, struct PackOpenWork, struct PackInfo, struct PackContentsEntry, struct PackListWork, gPackOpenWork, gPackInfo, enum GetPackDetailState, enum PackRevealFrame, enum PackCursorAnim */
 #include "card_detail.h"          /* struct CardDetail, gCardDetail, CardDetail_Reset, CardDetail_InitVideo, CardDetail_DrawCard */
 #include "save.h"                 /* struct SaveData, gSaveData, SaveGame, AddCardToTrunk */

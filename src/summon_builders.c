@@ -20,7 +20,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that summon.h does not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with #include "duel.h"
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
  * (see build/readability/issues/summon_builders.md). */
 #define GUARD_DUEL_H
 

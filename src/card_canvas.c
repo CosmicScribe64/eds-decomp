@@ -21,8 +21,8 @@
 #include "constants/cards.h"        /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON,
                                    * CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/duel.h"         /* enum DuelArea */
-#include "gba.h"                    /* REG_DISPCNT, REG_VCOUNT, BG_PLTT, OBJ_PLTT, VRAM */
-#include "main.h"                   /* struct Main gMain, bgVofs / bgHofs */
+#include "legacy/gba.h"                    /* REG_DISPCNT, REG_VCOUNT, BG_PLTT, OBJ_PLTT, VRAM */
+#include "legacy/main.h"                   /* struct Main gMain, bgVofs / bgHofs */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).

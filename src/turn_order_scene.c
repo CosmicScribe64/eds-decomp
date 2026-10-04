@@ -19,9 +19,9 @@
  * after a draw, a rematch flag (LINKMSG_RPS_REMATCH) with LinkSyncStep; the "Wait" sign shows meanwhile.
  */
 #include "global.h"
-#include "gba.h"                /* REG_*, CpuFastSet, VRAM, PLTT, keys */
-#include "main.h"               /* gMain */
-#include "sound.h"              /* PlaySE, FadeOutBGM (new sound.h) */
+#include "legacy/gba.h"                /* REG_*, CpuFastSet, VRAM, PLTT, keys */
+#include "legacy/main.h"               /* gMain */
+#include "legacy/sound.h"              /* PlaySE, FadeOutBGM (new sound.h) */
 #include "constants/sound.h"    /* SE_CURSOR, SE_CONFIRM */
 #include "util.h"               /* MemClear16, MemCopy16, Random, Timer_*, Tween*, gSineTable, gSquareTable */
 #include "palette.h"            /* FadeStart, SetBldAlpha, SetBldY */

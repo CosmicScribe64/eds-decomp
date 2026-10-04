@@ -24,7 +24,7 @@
 #include "constants/card_stats.h"   /* enum CardType, enum CardKind, enum CardFrame */
 #include "constants/cards.h"        /* CARD_THE_MONARCHY, CARD_SET_SAIL_FOR_THE_KINGDOM, CARD_GLORY_OF_THE_KINGS_HAND, CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
-#include "gba.h"                    /* CpuSet */
+#include "legacy/gba.h"                    /* CpuSet */
 
 /* ---- BEGIN deck_edit.h stand-in (pre-H0) ----
  * include/deck_edit.h cannot be included here: it pulls in sprite.h, util.h and palette.h, whose

@@ -21,11 +21,11 @@
 #include "constants/cards.h"      /* CARD_OBELISK_THE_TORMENTOR, CARD_SLIFER_THE_SKY_DRAGON, CARD_THE_WINGED_DRAGON_OF_RA */
 #include "constants/card_stats.h" /* CARD_STATS_KIND_MASK/SHIFT, enum CardType */
 #include "constants/sound.h"      /* SE_CANCEL, SE_PASSWORD_CURSOR, SE_PASSWORD_PRESS */
-#include "gba.h"                  /* REG_DISPCNT, REG_BG1CNT..REG_BG3CNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY,
+#include "legacy/gba.h"                  /* REG_DISPCNT, REG_BG1CNT..REG_BG3CNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY,
                                    REG_WIN0H, REG_WIN0V, REG_WININ, REG_WINOUT, REG_DMA3SAD/DAD/CNT,
                                    REG_RCNT, REG_SIOCNT, A_BUTTON, B_BUTTON, SELECT_BUTTON, START_BUTTON,
                                    DPAD_UP/DOWN/LEFT/RIGHT, R_BUTTON, L_BUTTON */
-#include "main.h"                 /* struct Main gMain (newKeys, seqIndex1, frameCounter, vblankFlags, bgMapBuffer) */
+#include "legacy/main.h"                 /* struct Main gMain (newKeys, seqIndex1, frameCounter, vblankFlags, bgMapBuffer) */
 #include "sprite.h"               /* struct OamList, struct OamListEntry, OamListAlloc, AddSprite,
                                    enum NumberSpriteMode; OamListAddSprite and DrawNumberSprites (defined here) */
 #include "util.h"                 /* struct Tween, enum TweenMode, enum TweenState, TweenInit/TweenUpdate (defined

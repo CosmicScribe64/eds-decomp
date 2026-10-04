@@ -8,9 +8,9 @@
  * clears gDuelCmd.running when it is done.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
-#include "main.h"                   /* gMain.heldKeys */
-#include "sound.h"                  /* PlaySE */
+#include "legacy/gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, REG_BLDY, B_BUTTON, BLDCNT_* */
+#include "legacy/main.h"                   /* gMain.heldKeys */
+#include "legacy/sound.h"                  /* PlaySE */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_STATS_TYPE_* */
 #include "constants/duel.h"         /* DUEL_AREA_*, ZONE_*, ZONE_LINK_*, BANISH_*, DUEL_LOC */
@@ -22,7 +22,7 @@
 #include "duel_flow.h"              /* gDuelCtrl */
 
 #ifdef DISPCNT_MODE_4
-#include "duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer / DuelState, gDuel, ... */
+#include "legacy/duel.h"                   /* struct DuelCard / DuelZone / DuelPlayer / DuelState, gDuel, ... */
 #include "duel_cmd.h"               /* gDuelCmd, DuelCmd_Push, gScatterScaleCurve */
 #include "duel_screen.h"            /* gDuelScreen, DuelScreen_*, GetAreaX/Y, the card-image loaders */
 #else

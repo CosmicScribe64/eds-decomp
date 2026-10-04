@@ -19,15 +19,15 @@
 #include "constants/card_stats.h"   /* enum CardType, CARD_STATS_* layout */
 #include "constants/duel.h"         /* MONSTER_ZONE_COUNT */
 #include "constants/game.h"         /* enum DuelistId */
-#include "gba.h"                    /* REG_BASE */
-#include "main.h"                   /* gMain.opponent */
+#include "legacy/gba.h"                    /* REG_BASE */
+#include "legacy/main.h"                   /* gMain.opponent */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that battle.h and card_list_view.h do not pull in the legacy header. After H0, replace the
- * block (BEGIN to END) with #include "duel.h" (see build/readability/issues/ai_picks.md). */
+ * block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/ai_picks.md). */
 #define GUARD_DUEL_H
 
 struct DuelCard {

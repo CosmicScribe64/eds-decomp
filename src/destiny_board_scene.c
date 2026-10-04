@@ -17,9 +17,9 @@
  * the rock/scissors/paper carousel, the result banners, the opponent's card and the FIRST/SECOND banners.
  */
 #include "global.h"
-#include "gba.h"                /* REG_*, CpuSet, CpuFastSet, VRAM addresses */
-#include "main.h"               /* gMain */
-#include "sound.h"              /* PlaySE, PlayBGM (new sound.h) */
+#include "legacy/gba.h"                /* REG_*, CpuSet, CpuFastSet, VRAM addresses */
+#include "legacy/main.h"               /* gMain */
+#include "legacy/sound.h"              /* PlaySE, PlayBGM (new sound.h) */
 #include "util.h"               /* gSineTable */
 #include "palette.h"            /* struct Fade, FadeStart, FadeTick */
 #include "bg.h"                 /* CopyMapRect, CopyTileSheetTo2D, TILE_COLORS_16 */

@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* A_BUTTON, DPAD_*, L_BUTTON, R_BUTTON */
-#include "main.h"                   /* gMain.newKeys, gMain.frameCounter */
+#include "legacy/gba.h"                    /* A_BUTTON, DPAD_*, L_BUTTON, R_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys, gMain.frameCounter */
 #include "sprite.h"                 /* AddAffineSprite, SPRITE_SHAPE_32x32 */
 #include "text_box.h"               /* TextBoxOpen, TextBoxSetMenu */
 #include "constants/duel.h"         /* enum DuelArea, enum FieldPickMask */
@@ -30,7 +30,7 @@
  * The part of the staged duel.h that this unit and the headers it includes need (names, types and bitfield
  * containers as there; unused bytes are padding). include/duel.h still holds the legacy header until the
  * header switch (H0, build/readability/HEADERS.md), and chain.h and duel_screen.h include it, so this block
- * also defines its include guard. After H0, replace the block (BEGIN to END) with #include "duel.h".
+ * also defines its include guard. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h".
  */
 #define GUARD_DUEL_H
 

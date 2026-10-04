@@ -17,8 +17,8 @@
  * packed as pos = zone << 8 | player, to find the legal targets of the card in `entry`.
  */
 #include "global.h"
-#include "gba.h"                    /* keys */
-#include "main.h"                   /* gMain.newKeys, gMain.bgVofs */
+#include "legacy/gba.h"                    /* keys */
+#include "legacy/main.h"                   /* gMain.newKeys, gMain.bgVofs */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/card_stats.h"   /* enum CardType, CardAttribute, SpellSubtype */
 #include "constants/duel.h"         /* enum DuelArea, DuelZoneIndex, BanishKind, ZoneLinkKind */
@@ -34,8 +34,8 @@
  * legacy headers until the header switch (H0, build/readability/HEADERS.md); chain.h, duel_screen.h and
  * card_list_view.h include duel.h, so this block also defines duel.h's include guard. After H0, replace the
  * block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * which gives identical assembly (checked against the staged headers). */
 
 /* duel.h */

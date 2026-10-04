@@ -23,8 +23,8 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, CardMenuCommand, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_CANCEL, SE_ERROR */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h and sound.h still hold the legacy headers until the header switch (H0,
@@ -32,8 +32,8 @@
  * headers below use, with the header's names, types and bitfield containers (unused bytes are padding), and
  * defines duel.h's include guard so that chain.h, card_list_view.h, duel_screen.h and summon.h do not pull in
  * the legacy header. After H0, replace the block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * (see build/readability/issues/effect_hooks.md). */
 #define GUARD_DUEL_H
 

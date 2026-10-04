@@ -7,7 +7,7 @@
  */
 
 #include "global.h"
-#include "duel.h"
+#include "legacy/duel.h"
 
 /* One duel command: the current one and each queue entry (8 bytes). */
 struct DuelCmdEntry {

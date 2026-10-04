@@ -13,14 +13,14 @@
  *    Japanese public holidays of 2000-2002.
  */
 #include "global.h"
-#include "gba.h"                /* REG_*, keys, DISPCNT/BGCNT/BLDCNT bits, palette and VRAM addresses */
-#include "main.h"               /* gMain */
+#include "legacy/gba.h"                /* REG_*, keys, DISPCNT/BGCNT/BLDCNT bits, palette and VRAM addresses */
+#include "legacy/main.h"               /* gMain */
 #include "util.h"               /* StrLen, MemClear16, MemCopy16, CopyDoubleWords */
 #include "palette.h"            /* FadeToBlack, FadeFromBlack, SetBrightnessBlack */
 #include "bg.h"                 /* LoadBgImage, LoadBgImage4bppToMap, FillMapRect, ResetVideo */
 #include "sprite.h"             /* AddSprite, AddSprite8bpp, AddSprite8bppAlpha, enum SpriteShape */
 #include "save.h"               /* gSaveData.duelRecords */
-#include "sound.h"              /* PlaySE, PlayBGMNoTrack, FadeOutBGM */
+#include "legacy/sound.h"              /* PlaySE, PlayBGMNoTrack, FadeOutBGM */
 #include "calendar.h"           /* the date helpers defined here, gDaysPerMonth, HOLIDAY_*, WEEKDAY_* */
 #include "campaign.h"           /* gOpponentSelect, OpponentSelect_*, IsCampaignLevelNUnlocked, IsOpponentUnlocked */
 #include "main_menu.h"          /* gMainMenuCursor, gRecordScreen, MainMenu_*, Record_* */

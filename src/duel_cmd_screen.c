@@ -15,8 +15,8 @@
  *    command starts the scene with DuelScene_Start, sets gDuelScene.arg and waits for DuelScene_Run.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
-#include "main.h"                   /* gMain.heldKeys */
+#include "legacy/gba.h"                    /* REG_BLDCNT, REG_BLDALPHA, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
+#include "legacy/main.h"                   /* gMain.heldKeys */
 #include "constants/duel.h"         /* enum DuelPhase */
 #include "constants/duel_cmds.h"
 
@@ -26,8 +26,8 @@
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
  * so this block stands in for it: it defines GUARD_DUEL_H so that the headers included below do not pull
  * in the legacy file. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  */
 #define GUARD_DUEL_H
 

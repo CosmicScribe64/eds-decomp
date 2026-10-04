@@ -14,12 +14,12 @@
  * the league checks into a tier, and IsCardCollectionComplete tests for a full collection.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_DISPCNT, REG_BG0CNT to REG_BG3CNT, REG_IE, REG_IME, REG_MOSAIC,
+#include "legacy/gba.h"                    /* REG_DISPCNT, REG_BG0CNT to REG_BG3CNT, REG_IE, REG_IME, REG_MOSAIC,
                                      * REG_BLDCNT, REG_BLDALPHA, A_BUTTON, DPAD_LEFT, DPAD_RIGHT */
 #include "card_data.h"              /* CARD_NUMBER_ALT_ART; gCardNumberToId is read through CARD_ID_OF below */
 #include "constants/game.h"         /* enum DuelistId, enum BoosterPackId */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM */
-#include "main.h"                   /* struct Main gMain: newKeys, vblankFlags, vblankCallback, seqIndex1,
+#include "legacy/main.h"                   /* struct Main gMain: newKeys, vblankFlags, vblankCallback, seqIndex1,
                                      * seqState1, seqState2, rewardPack */
 #include "sprite.h"                 /* AddSprite */
 

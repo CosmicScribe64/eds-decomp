@@ -20,14 +20,14 @@
 #include "constants/duel.h"         /* ZONE_*, CHAIN_KIND_* */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_PLAYER, DUEL_CMD_POINT_AT_CARD, DUEL_CMD_FLIP_CARD */
 #include "constants/game.h"         /* DUELIST_RARE_HUNTER */
-#include "main.h"                   /* gMain.opponent */
+#include "legacy/main.h"                   /* gMain.opponent */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that chain.h, summon.h, duel_cmd.h and card_menu.h do not pull in the legacy header.
- * After H0, replace the block (BEGIN to END) with #include "duel.h"
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h"
  * (see build/readability/issues/ai_deck.md). */
 #define GUARD_DUEL_H
 

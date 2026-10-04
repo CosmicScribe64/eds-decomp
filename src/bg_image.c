@@ -20,7 +20,7 @@
 #include "global.h"
 #include "bg.h"                     /* struct ImagePackCount, struct ImagePackCell, gBgTileBuffer, the loader and map-buffer prototypes */
 #include "debug.h"                  /* DebugPrintf, DebugPrintFlush */
-#include "gba.h"                    /* REG_IME, REG_IE, REG_IF, REG_SIOCNT, REG_RCNT, BG_PLTT, VRAM, CpuSet */
+#include "legacy/gba.h"                    /* REG_IME, REG_IE, REG_IF, REG_SIOCNT, REG_RCNT, BG_PLTT, VRAM, CpuSet */
 #include "link.h"                   /* struct LinkSio gLinkSio, enum LinkSioPacketType, LinkSioMain, LinkSioSetSendData, LinkSerialIntr */
 #include "text.h"                   /* SetTextArea */
 #include "util.h"                   /* MemCopy16, MemClear16, CopyDoubleWords */

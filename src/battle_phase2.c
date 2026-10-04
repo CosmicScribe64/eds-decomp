@@ -22,7 +22,7 @@
  * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
  * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
  * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with #include "duel.h". */
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h". */
 #define GUARD_DUEL_H
 
 struct DuelCard {

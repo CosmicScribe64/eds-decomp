@@ -8,8 +8,8 @@
  * Mode-4 frame, and its cursor/header sprites. The Calendar steps are in campaign_select.c.
  */
 #include "global.h"
-#include "gba.h"                /* REG_DISPCNT, REG16, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON */
-#include "main.h"               /* gMain */
+#include "legacy/gba.h"                /* REG_DISPCNT, REG16, VRAM, OBJ_VRAM0, A_BUTTON, B_BUTTON */
+#include "legacy/main.h"               /* gMain */
 #include "constants/game.h"     /* enum DuelistId */
 #include "constants/sound.h"    /* enum SoundEffect */
 #include "util.h"               /* MemCopy16, struct Line, LineStep */
@@ -17,7 +17,7 @@
 #include "sprite.h"             /* struct OamList, struct AnimState, AddSprite*, AnimStateTick, AnimBlockDraw */
 #include "text.h"               /* gFontKanji10x10, gFontLatin8x10, SjisToGlyphIndex */
 #include "save.h"               /* gSaveData */
-#include "sound.h"              /* (the new sound.h declares PlaySE; see below) */
+#include "legacy/sound.h"              /* (the new sound.h declares PlaySE; see below) */
 #include "debug.h"              /* DebugPrintFlush */
 #include "calendar.h"           /* gCalendar, struct Date, the date functions, Calendar_* */
 #include "bustup.h"             /* gBustup and its aliases, enum BustupStep, GetSceneSet, Bustup_* */

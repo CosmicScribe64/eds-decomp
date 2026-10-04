@@ -11,8 +11,8 @@
  * text-mode byte, InitSaveData and the debug "get all cards" helper.
  */
 #include "global.h"   /* u8/u16/u32/s16/s32, vu16/vu32 */
-#include "gba.h"      /* REG_DISPCNT, OBJ_PLTT, OBJ_VRAM0 */
-#include "main.h"     /* struct Main gMain (rngState, oamBuffer, oamCount, affineCount) */
+#include "legacy/gba.h"      /* REG_DISPCNT, OBJ_PLTT, OBJ_VRAM0 */
+#include "legacy/main.h"     /* struct Main gMain (rngState, oamBuffer, oamCount, affineCount) */
 #include "util.h"     /* MemCopy16, MemClear16, gSineTable128 */
 #include "sprite.h"   /* struct SprAnim, enum SpriteShape, the AddSprite and SprAnim prototypes */
 #include "card_data.h" /* CARD_ID_MASK, gCardIdToNumber */

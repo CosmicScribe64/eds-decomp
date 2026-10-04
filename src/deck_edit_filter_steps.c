@@ -12,8 +12,8 @@
  * swapSelector state machine that commits the exchange in SideDeckSwap_ExchangeCards.
  */
 #include "global.h"
-#include "gba.h"          /* A_BUTTON .. L_BUTTON, REG_DISPCNT, REG_BG0HOFS .. REG_BG3VOFS, REG_BLDCNT */
-#include "main.h"         /* struct Main gMain (newKeys, seqState1, vblankFlags) */
+#include "legacy/gba.h"          /* A_BUTTON .. L_BUTTON, REG_DISPCNT, REG_BG0HOFS .. REG_BG3VOFS, REG_BLDCNT */
+#include "legacy/main.h"         /* struct Main gMain (newKeys, seqState1, vblankFlags) */
 #include "chain.h"        /* struct ChainState gChain (targetWork2) */
 #include "save.h"         /* struct SaveData gSaveData, AddCardToSavedDeck / SideDeck / FusionDeck, Remove... */
 #include "bg.h"           /* FillMapRectWrap, LoadCardArt8bpp */

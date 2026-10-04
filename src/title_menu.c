@@ -10,9 +10,9 @@
  * stars, icons, ATK/DEF digits).
  */
 #include "global.h"
-#include "gba.h"
-#include "main.h"
-#include "sound.h"
+#include "legacy/gba.h"
+#include "legacy/main.h"
+#include "legacy/sound.h"
 #include "constants/sound.h"
 #include "constants/cards.h"
 #include "util.h"

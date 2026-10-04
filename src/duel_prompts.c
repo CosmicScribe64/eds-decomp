@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys, gMain.frameCounter */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys, gMain.frameCounter */
 #include "util.h"                   /* MemCopy16, FormatStr */
 #include "sprite.h"                 /* AddAffineSprite, enum SpriteShape */
 #include "card_data.h"              /* CARD_ID_MASK, CARD_NUMBER_ALT_ART, CARD_NAME_SIZE, CARD_STATS_* */
@@ -36,8 +36,8 @@
  * are padding). include/duel.h, sound.h and gba.h still hold the legacy headers until the header switch
  * (H0, build/readability/HEADERS.md), and duel_link.h, duel_screen.h and summon.h include duel.h, so this
  * block also defines duel.h's include guard. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * (gba.h is already included above). Checked: the unit compiles to the same assembly both ways.
  */
 #define GUARD_DUEL_H

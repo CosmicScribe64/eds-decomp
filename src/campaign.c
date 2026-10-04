@@ -11,7 +11,7 @@
  *    selection with Left/Right, opens Card View, and leaves a confirmed command to CardMenu_Execute.
  */
 #include "global.h"
-#include "gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT */
+#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_LEFT, DPAD_RIGHT */
 #include "constants/card_stats.h"   /* enum CardType, CardAttribute */
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum DuelArea, ZoneLinkKind, CardMenuCommand */
@@ -47,9 +47,9 @@
  * uses, with the headers' tags, names, types and bitfield containers. include/main.h, duel.h and sound.h
  * still hold the legacy headers until the header switch (H0, build/readability/HEADERS.md), and the other
  * four headers include duel.h. After H0, replace this block (BEGIN to END) with:
- *     #include "main.h"
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/main.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  *     #include "battle.h"
  *     #include "duel_screen.h"
  *     #include "duel_cmd.h"

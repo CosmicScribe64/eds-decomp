@@ -23,8 +23,8 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, DuelPhase, DuelPromptKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_POINT_AT_CARD, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* SE_CONFIRM, SE_ERROR */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).

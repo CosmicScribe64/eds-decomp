@@ -14,9 +14,9 @@
  *   (OpponentSelect_DrawCursor, OpponentSelect_DrawDuelistInfo) live in main_menu.c.
  */
 #include "global.h"
-#include "gba.h"                /* IO registers, DMA, DISPCNT, OAM flip bits */
-#include "main.h"               /* gMain, SetMainCallback, ResetBgScroll */
-#include "sound.h"              /* PlaySE */
+#include "legacy/gba.h"                /* IO registers, DMA, DISPCNT, OAM flip bits */
+#include "legacy/main.h"               /* gMain, SetMainCallback, ResetBgScroll */
+#include "legacy/sound.h"              /* PlaySE */
 #include "constants/sound.h"    /* SE_* */
 #include "util.h"               /* MemCopy16, StrLen, struct Coords16 */
 #include "palette.h"            /* SetBrightnessBlack, FadeToBlack, FadeFromBlack */

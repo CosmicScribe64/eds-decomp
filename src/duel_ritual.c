@@ -32,7 +32,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that chain.h, summon.h and duel_screen.h do not pull in the legacy header. After H0, replace the
- * block (BEGIN to END) with #include "duel.h" (see build/readability/issues/duel_ritual.md). */
+ * block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/duel_ritual.md). */
 #define GUARD_DUEL_H
 
 struct DuelCard {
@@ -107,7 +107,7 @@ void CopyDuelCard(u32 *dst, u32 *src);
 #include "text_box.h"               /* gTextBox, TextBoxOpen, TextBoxSetMenu */
 
 /* Pre-H0: the staged sound.h declares PlaySE, the legacy include/sound.h does not. After H0, replace this
- * line with #include "sound.h". */
+ * line with #include "legacy/sound.h". */
 void PlaySE(u32 seId);
 
 /* ---- Local views kept for matching (build/readability/HEADERS.md, "Keeping a deliberate local view") ---- */

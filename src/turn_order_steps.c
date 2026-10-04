@@ -21,7 +21,7 @@
  * 8bpp card portrait; OBJ the buttons and the status icons.
  */
 #include "global.h"
-#include "gba.h"                /* REG_*, keys, VRAM / palette addresses */
+#include "legacy/gba.h"                /* REG_*, keys, VRAM / palette addresses */
 #include "constants/card_stats.h" /* enum CardType */
 #include "constants/duel.h"     /* enum BanishKind */
 #include "util.h"               /* MemCopy16, CopyDoubleWords, Random, struct Tween, TweenInit */
@@ -60,8 +60,8 @@
  * headers until the header switch (H0, build/readability/HEADERS.md); card_list_view.h and duel_screen.h
  * include duel.h, so this block also defines duel.h's include guard. After H0, replace the block (BEGIN to END)
  * with
- *     #include "main.h"
- *     #include "duel.h"
+ *     #include "legacy/main.h"
+ *     #include "legacy/duel.h"
  * which gives identical assembly (checked against the staged headers). */
 
 /* main.h */

@@ -1,5 +1,5 @@
 #include "global.h"
-#include "gba.h"                    /* REG_SIOCNT */
+#include "legacy/gba.h"                    /* REG_SIOCNT */
 #include "util.h"                   /* MemCopy16 */
 #include "link.h"                   /* gLinkBuf.timedOut, LinkRecvMessage */
 #include "duel_prompt.h"            /* DuelPrompt_PostData */
@@ -25,8 +25,8 @@
  * are padding). include/duel.h and include/sound.h still hold the legacy headers until the header switch
  * (H0, build/readability/HEADERS.md), and chain.h, duel_link.h, duel_screen.h and summon.h include duel.h,
  * so this block also defines duel.h's include guard. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * Checked: the unit compiles to the same assembly both ways.
  */
 #define GUARD_DUEL_H

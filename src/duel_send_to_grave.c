@@ -24,7 +24,7 @@
  * The part of include/duel.h this unit uses, with the header's tags, field names and bitfield containers.
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
  * so this block stands in for it: it defines GUARD_DUEL_H so that the headers included below do not pull
- * in the legacy file. After H0, replace this block (BEGIN to END) with #include "duel.h".
+ * in the legacy file. After H0, replace this block (BEGIN to END) with #include "legacy/duel.h".
  */
 #define GUARD_DUEL_H
 

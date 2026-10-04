@@ -18,8 +18,8 @@
 #include "constants/card_stats.h" /* enum CardType, CARD_STATS_*_MASK, CARD_STATS_*_SHIFT */
 #include "constants/cards.h"      /* CARD_COCOON_OF_EVOLUTION, CARD_SWORDS_OF_REVEALING_LIGHT, CARD_DNA_SURGERY */
 #include "constants/duel.h"       /* enum DuelArea */
-#include "gba.h"                  /* B_BUTTON */
-#include "main.h"                 /* struct Main gMain, heldKeys / newKeys */
+#include "legacy/gba.h"                  /* B_BUTTON */
+#include "legacy/main.h"                 /* struct Main gMain, heldKeys / newKeys */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h does not carry struct ZoneCardStats; this block declares the part of the canonical

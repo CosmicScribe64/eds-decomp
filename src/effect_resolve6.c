@@ -23,15 +23,15 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, ZoneStatusFlag, ChainEntryKind, ... */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
  * This block declares the part of the canonical duel.h (build/readability/hcheck/duel_core/staged/duel.h)
  * that this unit and the headers below use, with its names, types and bitfield containers (unused bytes are
  * padding), and defines duel.h's include guard so that the headers below do not pull in the legacy one.
- * After H0, replace the block (BEGIN to END) with #include "duel.h" and #include "sound.h"
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h"
  * (build/readability/issues/effect_resolve6.md). */
 #define GUARD_DUEL_H
 

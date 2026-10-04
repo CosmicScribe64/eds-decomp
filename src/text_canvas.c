@@ -23,7 +23,7 @@
  * always draws Latin.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_SIOCNT, REG_TM3CNT_L/H, REG_IE, REG_IF, REG_IME, REG_DISPCNT,
+#include "legacy/gba.h"                    /* REG_SIOCNT, REG_TM3CNT_L/H, REG_IE, REG_IF, REG_IME, REG_DISPCNT,
                                    REG_BG0CNT, CpuSet, A_BUTTON, B_BUTTON, DPAD_UP/DOWN/LEFT/RIGHT,
                                    R_BUTTON, L_BUTTON */
 #include "calendar.h"               /* struct Date, GetCurrentDate, GetHolidayFlags, GetCalendarEvents, GetDayOfWeek */
@@ -31,7 +31,7 @@
 #include "debug.h"                  /* struct DebugMenuItem, struct CalendarEventName, CB_Debug* / DebugMenu_* (defined here) */
 #include "link.h"                   /* struct LinkSio gLinkSio, enum LinkSioPacketType / LinkSioType / LinkSioStatus,
                                    LinkSioMain / LinkSioStartTransfer / LinkSioSetSendData / LinkSioCheckRecvData (defined here) */
-#include "main.h"                   /* struct Main gMain (newKeys, vblankFlags, seqIndexCampaign, seqIndex1, seqState0..2) */
+#include "legacy/main.h"                   /* struct Main gMain (newKeys, vblankFlags, seqIndexCampaign, seqIndex1, seqState0..2) */
 #include "save.h"                   /* struct SaveData gSaveData (language, sjisText, days), InitSaveData, RecordDuelWin */
 
 /* The debug menu's tables (debug.h: used by one unit each, so they stay local externs here). */

@@ -9,9 +9,9 @@
  * into OBJ palette 15 and the OBJ tiles from BANNER_OBJ_TILE on (VRAM 0x06016C80).
  */
 #include "global.h"
-#include "gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
-#include "main.h"                   /* gMain.heldKeys */
-#include "sound.h"                  /* PlaySE, PlayJingle, SoundIsBGMPlaying */
+#include "legacy/gba.h"                    /* OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
+#include "legacy/main.h"                   /* gMain.heldKeys */
+#include "legacy/sound.h"                  /* PlaySE, PlayJingle, SoundIsBGMPlaying */
 #include "constants/card_stats.h"   /* CARD_TYPE_*, CARD_STATS_TYPE_* */
 #include "constants/duel.h"         /* DUEL_AREA_* */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_* */
@@ -21,7 +21,7 @@
 #include "duel_flow.h"              /* gPulseScaleCurve */
 
 #ifdef DISPCNT_MODE_4
-#include "duel.h"                   /* struct DuelCard / DuelLoc / DuelZone / DuelPlayer, gDuel, gDuelPlayers */
+#include "legacy/duel.h"                   /* struct DuelCard / DuelLoc / DuelZone / DuelPlayer, gDuel, gDuelPlayers */
 #include "duel_cmd.h"               /* gDuelCmd, struct DuelResultBanner, the banner and digit graphics */
 #include "duel_screen.h"            /* gDuelScreen, card animations, field cells, DrawLifePoints */
 #else

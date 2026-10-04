@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
-#include "main.h"                   /* gMain.heldKeys */
+#include "legacy/gba.h"                    /* B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
+#include "legacy/main.h"                   /* gMain.heldKeys */
 #include "util.h"                   /* CopyDoubleWords */
 #include "sprite.h"                 /* AddAffineSprite, enum SpriteShape */
 #include "card_data.h"              /* gCardIdToNumber, CARD_ID_MASK, CARD_STATS_TYPE / CARD_STATS_ATTR */
@@ -30,7 +30,7 @@
  * this block (BEGIN to END) with:
  *     #include "battle.h"
  *     #include "chain.h"
- *     #include "duel.h"
+ *     #include "legacy/duel.h"
  *     #include "duel_cmd.h"
  *     #include "duel_screen.h"
  */

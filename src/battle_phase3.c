@@ -21,8 +21,8 @@
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/duel.h"         /* enum DuelArea, DuelPromptKind, ChainEntryKind, ResponseEventKind, ZoneStatusFlag */
 #include "constants/duel_cmds.h"    /* DUEL_CMD_*, DUEL_CMD_PLAYER */
-#include "gba.h"                    /* R_BUTTON */
-#include "main.h"                   /* struct Main gMain (newKeys, frameCounter) */
+#include "legacy/gba.h"                    /* R_BUTTON */
+#include "legacy/main.h"                   /* struct Main gMain (newKeys, frameCounter) */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).

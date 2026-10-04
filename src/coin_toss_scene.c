@@ -20,8 +20,8 @@
  *   DICE_STEP_ROLL    DiceScreen_RollToResult     the final roll to the result face, the character leaves
  */
 #include "global.h"
-#include "gba.h"            /* REG_*, CpuSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, A_BUTTON */
-#include "main.h"           /* gMain */
+#include "legacy/gba.h"            /* REG_*, CpuSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, A_BUTTON */
+#include "legacy/main.h"           /* gMain */
 #include "util.h"           /* MemClear16, Random, gSineTable, struct Ease, Ease_Init/Start/Tick */
 #include "palette.h"        /* struct Fade, FadeStart, FadeTick, FADE_STATE_FADED_OUT */
 #include "bg.h"             /* CopyTileSheetTo2D, TILE_COLORS_16 */

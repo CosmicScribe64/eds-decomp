@@ -8,8 +8,8 @@
  * clears its box. See wiki/functions/bustup-scene-c.md and wiki/game/text-system.md.
  */
 #include "global.h"
-#include "gba.h"        /* REG_DISPCNT, REG_BG1HOFS..REG_BG3VOFS, REG16, VRAM, BG_PLTT, OBJ_PLTT */
-#include "main.h"       /* gMain */
+#include "legacy/gba.h"        /* REG_DISPCNT, REG_BG1HOFS..REG_BG3VOFS, REG16, VRAM, BG_PLTT, OBJ_PLTT */
+#include "legacy/main.h"       /* gMain */
 #include "bustup.h"     /* gBustup, struct BustupTextBox / SceneSet / Duelist / BytePos, the functions defined here */
 #include "bg.h"         /* LZSSDecompress, CopyTileSheetTo2D, TILE_COLORS_16 */
 #include "sprite.h"     /* struct AnimState / OamList / OamListEntry, ANIM_PLAYING, OamListAlloc, OamListClear */

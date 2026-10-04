@@ -24,8 +24,8 @@
  * are padding). include/duel.h and sound.h still hold the legacy headers until the header switch (H0,
  * build/readability/HEADERS.md), and chain.h, duel_screen.h and summon.h include duel.h, so this block
  * also defines duel.h's include guard. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * Checked: with the block replaced, the unit compiles to the same assembly against the staged headers
  * (the shadow include/ of build/readability/integrate/check.sh).
  */

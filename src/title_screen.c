@@ -7,9 +7,9 @@
  * Title_Init, Title_Setup, Title_FadeIn, Title_HandleInput and Title_FadeOut (enum TitleStep).
  */
 #include "global.h"
-#include "gba.h"
-#include "main.h"
-#include "sound.h"
+#include "legacy/gba.h"
+#include "legacy/main.h"
+#include "legacy/sound.h"
 #include "constants/sound.h"
 #include "util.h"
 #include "palette.h"

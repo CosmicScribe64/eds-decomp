@@ -11,9 +11,9 @@
  *    helpers draw the ATK / DEF values and the damage as sprites. BattleScene_Update (battle_scene.c) runs it.
  */
 #include "global.h"
-#include "gba.h"                    /* DISPCNT_*, BGCNT_*, REG_BG2X..REG_BG3PA, B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
-#include "main.h"                   /* gMain, IntrTable, INTR_SLOT_HBLANK, ResetBgScroll */
-#include "sound.h"                  /* PlaySE */
+#include "legacy/gba.h"                    /* DISPCNT_*, BGCNT_*, REG_BG2X..REG_BG3PA, B_BUTTON, OBJ_PLTT, OBJ_VRAM0 */
+#include "legacy/main.h"                   /* gMain, IntrTable, INTR_SLOT_HBLANK, ResetBgScroll */
+#include "legacy/sound.h"                  /* PlaySE */
 #include "constants/duel.h"         /* DUEL_AREA_DECK, DUEL_AREA_HAND */
 #include "constants/sound.h"        /* SE_CARD_FLIP */
 

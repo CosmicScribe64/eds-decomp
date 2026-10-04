@@ -5,8 +5,8 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, ResponseEventKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /*
  * Card effect handlers, part 2: target checks (the Check slot of gCardEffects) and activation costs (the
@@ -34,7 +34,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that chain.h, duel_cmd.h and duel_screen.h do not pull in the legacy header. After H0, replace
- * the block (BEGIN to END) with #include "duel.h" (see build/readability/issues/effect_checks.md). */
+ * the block (BEGIN to END) with #include "legacy/duel.h" (see build/readability/issues/effect_checks.md). */
 #define GUARD_DUEL_H
 
 struct DuelCard {

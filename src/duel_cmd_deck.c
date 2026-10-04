@@ -22,8 +22,8 @@
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md),
  * so this block stands in for it. It defines GUARD_DUEL_H so that duel_cmd.h, duel_screen.h and duel_link.h
  * (below) do not include the legacy file. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  * Checked: with the staged duel.h and sound.h that gives assembly identical to this file.
  */
 #define GUARD_DUEL_H

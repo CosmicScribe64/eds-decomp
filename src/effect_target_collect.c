@@ -33,7 +33,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that card_list_view.h does not pull in the legacy header. After H0, replace the block (BEGIN to
- * END) with #include "duel.h" (see build/readability/issues/effect_target_collect.md). */
+ * END) with #include "legacy/duel.h" (see build/readability/issues/effect_target_collect.md). */
 #define GUARD_DUEL_H
 
 /* A card in a zone or pile: one 32-bit word. id 0 is an empty slot. */

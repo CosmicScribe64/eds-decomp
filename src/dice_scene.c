@@ -21,8 +21,8 @@
  *    scrolling BG layers (ScrollLayer_*), the HBlank and VBlank scroll handlers, and the F-I-N-A-L letters.
  */
 #include "global.h"
-#include "gba.h"            /* REG_*, CpuSet, CpuFastSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
-#include "main.h"           /* gMain */
+#include "legacy/gba.h"            /* REG_*, CpuSet, CpuFastSet, VRAM, BG_PLTT, OBJ_PLTT, OBJ_VRAM0, B_BUTTON */
+#include "legacy/main.h"           /* gMain */
 #include "util.h"           /* MemClear16, MemCopy16, gSineTable, struct Timer / Line, Timer_*, LineInit/Step */
 #include "palette.h"        /* struct Fade / PalFade, FadeStart, FadeTick, PalFade_Start/Apply */
 #include "bg.h"             /* CopyMapRect, CopyTileSheetTo2D, TILE_COLORS_16 */

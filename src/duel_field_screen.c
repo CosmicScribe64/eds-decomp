@@ -16,8 +16,8 @@
  */
 #include "global.h"
 #include "constants/duel.h"     /* enum DuelArea, enum DuelPhase */
-#include "gba.h"                /* REG_DISPCNT, REG_IME, REG_IE, REG_BLDCNT, REG_BLDY */
-#include "main.h"               /* struct Main gMain (vblankFlags, vblankCallback, brightness, frameCounter) */
+#include "legacy/gba.h"                /* REG_DISPCNT, REG_IME, REG_IE, REG_BLDCNT, REG_BLDY */
+#include "legacy/main.h"               /* struct Main gMain (vblankFlags, vblankCallback, brightness, frameCounter) */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) ----
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).

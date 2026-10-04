@@ -9,8 +9,8 @@
  * is the driver itself. All 30 functions are byte-matching C.
  */
 #include "global.h" /* u8/s8/u16/s16/u32/s32, vu8/vu16/vu32 */
-#include "sound.h"  /* struct SoundDriver, struct SoundTrack, struct SoundPcmVoice, gSoundDriver, gSoundSeTracks, gSoundPcmChannels */
-#include "gba.h"    /* REG_IE */
+#include "legacy/sound.h"  /* struct SoundDriver, struct SoundTrack, struct SoundPcmVoice, gSoundDriver, gSoundSeTracks, gSoundPcmChannels */
+#include "legacy/gba.h"    /* REG_IE */
 
 /* Sound hardware registers. include/gba.h names the LCD/DMA/timer/interrupt registers but not the
  * sound ones, so the SOUND* macros live here, in the GBA register map order. */

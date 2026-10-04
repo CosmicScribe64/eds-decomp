@@ -9,7 +9,7 @@
  * (SetOamMatrixPacked). This unit defines most of the helpers declared in util.h.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_* registers, SRAM/EWRAM/IWRAM/VRAM/OAM, BG_PLTT/OBJ_PLTT/OBJ_VRAM0 */
+#include "legacy/gba.h"                    /* REG_* registers, SRAM/EWRAM/IWRAM/VRAM/OAM, BG_PLTT/OBJ_PLTT/OBJ_VRAM0 */
 #include "link.h"                   /* struct LinkSio gLinkSio, struct LinkBuf gLinkBuf (timer2Ticks), gSioMultiRecv */
 #include "util.h"                   /* MemClear16/MemCopy16/CopyDoubleWords, StrCopy/StrCat/FormatStr/FormatInt, Random */
 

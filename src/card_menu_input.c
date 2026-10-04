@@ -14,8 +14,8 @@
 #include "constants/duel.h"      /* enum DuelPhase, enum DuelArea, CARDMENU_MASK_*, enum BattleStage */
 #include "constants/duel_cmds.h" /* DUEL_CMD_* duel command ids */
 #include "constants/sound.h"     /* SE_* sound effect ids */
-#include "gba.h"                 /* B_BUTTON */
-#include "main.h"                /* struct Main, gMain */
+#include "legacy/gba.h"                 /* B_BUTTON */
+#include "legacy/main.h"                /* struct Main, gMain */
 
 /* ---- BEGIN duel.h stand-in (pre-H0) --------------------------------------
  * include/duel.h cannot be included yet: several of its prototypes conflict with the

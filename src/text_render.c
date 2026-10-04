@@ -18,7 +18,7 @@
  * kept for matching are listed in build/readability/issues/text_render.md.
  */
 #include "global.h"
-#include "gba.h"        /* CpuSet, REG_BLDCNT, REG_BLDY, VRAM */
+#include "legacy/gba.h"        /* CpuSet, REG_BLDCNT, REG_BLDY, VRAM */
 #include "palette.h"    /* struct Fade, FadeStart, FadeTick, SetBldY */
 #include "bg.h"         /* CopyTileRows */
 #include "sprite.h"     /* struct AnimSeq, AnimState, AnimBlock; OamListAddTemplate, OamListAddSpriteGroup */

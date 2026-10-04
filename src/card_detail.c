@@ -11,10 +11,10 @@
  * IsEffectMonster, IsSpecialSummonOnly).
  */
 #include "global.h"
-#include "gba.h"                    /* REG_*, OBJ_PLTT, OBJ_VRAM0, key masks */
-#include "main.h"                   /* gMain */
-#include "duel.h"                   /* struct DuelPlayer, gDuelZones */
-#include "sound.h"
+#include "legacy/gba.h"                    /* REG_*, OBJ_PLTT, OBJ_VRAM0, key masks */
+#include "legacy/main.h"                   /* gMain */
+#include "legacy/duel.h"                   /* struct DuelPlayer, gDuelZones */
+#include "legacy/sound.h"
 #include "constants/cards.h"        /* CARD_* card numbers */
 #include "constants/sound.h"        /* SE_CANCEL */
 #include "card_data.h"              /* card tables, CARD_STATS_* field extractors, frame and digit graphics */

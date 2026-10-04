@@ -5,8 +5,8 @@
 #include "constants/duel.h"         /* enum DuelZoneIndex, ZoneLinkKind, ResponseEventKind, FieldPickMask */
 #include "constants/duel_cmds.h"    /* enum DuelCmdId, DUEL_CMD_PLAYER, enum TokenKind */
 #include "constants/sound.h"        /* enum SoundEffect */
-#include "gba.h"                    /* B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 
 /*
  * Card effect handlers: the Resolve slot of gCardEffects (include/effect.h) for the effect keys 1221-1318
@@ -29,7 +29,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below use, with the
  * header's names, types and bitfield containers (unused bytes are padding), and defines duel.h's include
  * guard so that chain.h, card_list_view.h, duel_cmd.h, duel_screen.h and summon.h do not pull in the legacy
- * header. After H0, replace the block (BEGIN to END) with #include "duel.h" and #include "sound.h" (see
+ * header. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h" (see
  * build/readability/issues/effect_resolve9.md). */
 #define GUARD_DUEL_H
 

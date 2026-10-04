@@ -25,11 +25,11 @@
  * The part of those headers this unit uses, with their names, types and bitfield containers. include/duel.h
  * and include/sound.h still hold the legacy headers until the header switch (H0, build/readability/HEADERS.md),
  * and duel_cmd.h, duel_screen.h and chain.h include duel.h. After H0, replace this block (BEGIN to END) with
- *     #include "duel.h"
+ *     #include "legacy/duel.h"
  *     #include "duel_cmd.h"
  *     #include "duel_screen.h"
  *     #include "chain.h"
- *     #include "sound.h"
+ *     #include "legacy/sound.h"
  * which gives identical assembly (checked against the staged headers).
  */
 struct DuelCard {

@@ -26,7 +26,7 @@
  * This block declares the part of the canonical duel.h that this unit uses, with the header's names, types
  * and bitfield containers (unused bytes are padding), and defines duel.h's include guard so that chain.h,
  * duel_cmd.h, duel_link.h and card_list_view.h do not pull in the legacy header. After H0, replace the block
- * (BEGIN to END) with #include "duel.h". */
+ * (BEGIN to END) with #include "legacy/duel.h". */
 #define GUARD_DUEL_H
 
 struct DuelCard {

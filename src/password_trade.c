@@ -13,7 +13,7 @@
  * (CardTrading_ShowReceivedCard); CardTrading_DrawMenu draws its two buttons and the spinning card.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_DISPCNT, REG_BG0CNT, REG_BG1CNT, REG_BG2HOFS, REG_IE, REG_IME, REG_MOSAIC, A_BUTTON, B_BUTTON, START_BUTTON, DPAD_UP, DPAD_DOWN */
+#include "legacy/gba.h"                    /* REG_DISPCNT, REG_BG0CNT, REG_BG1CNT, REG_BG2HOFS, REG_IE, REG_IME, REG_MOSAIC, A_BUTTON, B_BUTTON, START_BUTTON, DPAD_UP, DPAD_DOWN */
 #include "card_data.h"              /* gCardNames, CARD_NAME_SIZE, CARD_ID_MASK */
 #include "save.h"                   /* struct SaveData gSaveData (trunk[].passwordUsed), AddCardToTrunk, RemoveCardFromTrunk, SaveGame */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR, SE_PASSWORD_* */

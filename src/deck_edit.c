@@ -17,7 +17,7 @@
  * views instead of including it is recorded in build/readability/issues/deck_edit.md.
  */
 #include "global.h"
-#include "gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_*, REG_* */
+#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON, DPAD_*, REG_* */
 #include "constants/sound.h"        /* SE_CURSOR, SE_CONFIRM, SE_CANCEL, SE_ERROR */
 
 /* ---- BEGIN deck_edit.h stand-in (pre-H0) ----

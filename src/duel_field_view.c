@@ -11,9 +11,9 @@
  *    of the scene (sparkles, glints, matching) is in coin_toss_scene.c.
  */
 #include "global.h"
-#include "gba.h"                /* IO registers, VRAM / palette addresses, CpuSet */
-#include "main.h"               /* gMain.vblankFlags, gMain.bgVofs */
-#include "sound.h"              /* PlaySE */
+#include "legacy/gba.h"                /* IO registers, VRAM / palette addresses, CpuSet */
+#include "legacy/main.h"               /* gMain.vblankFlags, gMain.bgVofs */
+#include "legacy/sound.h"              /* PlaySE */
 #include "constants/duel.h"     /* enum DuelArea */
 
 /* ---- BEGIN pre-H0 block ---- */

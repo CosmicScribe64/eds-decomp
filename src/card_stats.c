@@ -19,7 +19,7 @@
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
  * This block declares the part of the canonical duel.h that this unit uses, with the header's names,
  * types and bitfield containers (unused bytes are padding), and defines duel.h's include guard. After H0,
- * replace the block (BEGIN to END) with #include "duel.h": that gives identical assembly (checked against
+ * replace the block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly (checked against
  * the staged header). */
 #define GUARD_DUEL_H
 

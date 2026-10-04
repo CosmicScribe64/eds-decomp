@@ -11,7 +11,7 @@
  *    Field), with the rare-card helpers of the Rare Hunter event.
  */
 #include "global.h"
-#include "gba.h"                /* REG_DISPCNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY, REG_IE, REG_IME */
+#include "legacy/gba.h"                /* REG_DISPCNT, REG_MOSAIC, REG_BLDCNT, REG_BLDY, REG_IE, REG_IME */
 #include "constants/duel.h"     /* enum DuelField, DuelFormat */
 #include "constants/game.h"     /* enum DuelistId */
 #include "card_data.h"          /* CARD_ID_COUNT, CARD_ID_MASK, CARD_NUMBER_ALT_ART */
@@ -42,9 +42,9 @@
  * tags, names, types and bitfield containers. include/main.h, duel.h and sound.h still hold the legacy
  * headers until the header switch (H0, build/readability/HEADERS.md), and duel_screen.h and duel_link.h
  * include duel.h. After H0, replace this block (BEGIN to END) with:
- *     #include "main.h"
- *     #include "duel.h"
- *     #include "sound.h"
+ *     #include "legacy/main.h"
+ *     #include "legacy/duel.h"
+ *     #include "legacy/sound.h"
  *     #include "duel_screen.h"
  *     #include "duel_link.h"
  */

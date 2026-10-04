@@ -1,6 +1,6 @@
 #include "global.h"
-#include "gba.h"                    /* A_BUTTON, B_BUTTON */
-#include "main.h"                   /* gMain.newKeys */
+#include "legacy/gba.h"                    /* A_BUTTON, B_BUTTON */
+#include "legacy/main.h"                   /* gMain.newKeys */
 #include "util.h"                   /* Random, FormatStr, FormatInt */
 #include "sprite.h"                 /* AddSprite */
 #include "card_data.h"              /* gCardStats, gCardNames, gCardIdToNumber, CARD_ID_MASK */

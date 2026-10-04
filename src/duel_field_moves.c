@@ -23,7 +23,7 @@
  * This block declares the part of the canonical duel.h that this unit and the headers below (chain.h,
  * battle.h, duel_cmd.h) use, with the header's names, types and bitfield containers (unused bytes are
  * padding), and defines duel.h's include guard so that those headers do not pull in the legacy file.
- * After H0, replace the block (BEGIN to END) with #include "duel.h": that gives identical assembly
+ * After H0, replace the block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly
  * (checked against the staged header). */
 #define GUARD_DUEL_H
 

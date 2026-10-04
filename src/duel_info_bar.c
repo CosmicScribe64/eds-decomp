@@ -21,8 +21,8 @@
  * is tile | palette << 12; a BG map entry is the same.
  */
 #include "global.h"
-#include "gba.h"                    /* REG_*, BG_PLTT, OBJ_PLTT, VRAM, OBJ_VRAM0, key masks */
-#include "main.h"                   /* gMain: keys, frame counter, BG map buffers */
+#include "legacy/gba.h"                    /* REG_*, BG_PLTT, OBJ_PLTT, VRAM, OBJ_VRAM0, key masks */
+#include "legacy/main.h"                   /* gMain: keys, frame counter, BG map buffers */
 #include "util.h"                   /* CopyDoubleWords, StrLen */
 #include "bg.h"                     /* LoadBgImage4bpp, LoadSystemGfx */
 #include "sprite.h"                 /* AddSprite, AddAffineSprite, SPRITE_SHAPE_*, gHandCursorPal/Gfx */
@@ -39,7 +39,7 @@
  * and duel_screen.h includes it. This block declares the part of the canonical duel.h that this unit and
  * duel_screen.h use, with the header's names, types and bitfield containers (unused bytes are padding), and
  * defines duel.h's include guard so the legacy header stays out. PlaySE is declared here too: the legacy
- * sound.h lacks it. After H0, replace the block (BEGIN to END) with #include "duel.h" and #include "sound.h"
+ * sound.h lacks it. After H0, replace the block (BEGIN to END) with #include "legacy/duel.h" and #include "sound.h"
  * (see build/readability/issues/duel_info_bar.md).
  */
 #define GUARD_DUEL_H

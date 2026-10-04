@@ -20,9 +20,9 @@
 #include "global.h"
 #include "bg.h"        /* LoadBgImageMap1, SetBgMapEntry, DrawCardPortrait */
 #include "debug.h"     /* DebugPrintf, DebugPrintFlush */
-#include "gba.h"       /* REG_SIOCNT */
+#include "legacy/gba.h"       /* REG_SIOCNT */
 #include "link.h"      /* struct LinkBuf gLinkBuf, enum LinkPacketType, the Link* packet layer */
-#include "main.h"      /* struct Main gMain (vblankCallbackEarly) */
+#include "legacy/main.h"      /* struct Main gMain (vblankCallbackEarly) */
 #include "text.h"      /* SetTextArea, the DrawBg* printers, the glyph tile renderers */
 #include "util.h"      /* MemCopy16, MemClear16 */
 

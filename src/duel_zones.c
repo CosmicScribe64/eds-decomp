@@ -17,7 +17,7 @@
 /*
  * The part of include/duel.h this unit uses, with the header's names, types and bitfield containers.
  * include/duel.h still holds the legacy header until the header switch (H0, build/readability/HEADERS.md).
- * After H0, replace this block (BEGIN to END) with #include "duel.h": that gives identical assembly
+ * After H0, replace this block (BEGIN to END) with #include "legacy/duel.h": that gives identical assembly
  * (checked against the staged header).
  */
 struct DuelCard {
